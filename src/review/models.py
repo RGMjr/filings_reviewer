@@ -149,7 +149,7 @@ PATTERN_STATUSES = ("candidate", "approved", "rejected", "deprecated")
 IMAGE_REVIEW_STATUSES = ("pending", "reviewed", "skipped")
 
 # ImageReviewCandidate.detection_tier
-IMAGE_DETECTION_TIERS = ("tier_1_cohort", "tier_2_large", "tier_3_all", "seed_list")
+IMAGE_DETECTION_TIERS = ("tier_1_cohort", "tier_2_large", "tier_3_all", "seed_list", "presentation")
 
 # ImageReviewDecision.decision
 IMAGE_DECISIONS = ("relevant", "not_relevant")

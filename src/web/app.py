@@ -404,15 +404,14 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(review_images_bp)
 
-    # V2 review routes
-    from src.web.routes.review_v2 import review_v2_bp
+    # Unified review (replaces review_v2 and api_v2)
+    from src.web.routes.review_unified import review_unified_bp
 
-    app.register_blueprint(review_v2_bp)
+    app.register_blueprint(review_unified_bp)
 
-    # V2 API routes
-    from src.web.routes.api_v2 import api_v2_bp
+    from src.web.routes.api_unified import api_unified_bp
 
-    app.register_blueprint(api_v2_bp)
+    app.register_blueprint(api_unified_bp)
 
     # Presentation image review (file-based, no DB required)
     from src.web.routes.review_pres_images import review_pres_images_bp

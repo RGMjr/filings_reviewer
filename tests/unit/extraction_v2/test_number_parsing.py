@@ -386,3 +386,53 @@ class TestTableScalePattern:
         assert TABLE_SCALE_EXCEPT_PATTERN.search("except as otherwise noted") is not None
         assert TABLE_SCALE_EXCEPT_PATTERN.search("except as noted") is not None
         assert TABLE_SCALE_EXCEPT_PATTERN.search("no qualifier here") is None
+
+
+# ============================================================================
+# Ratio Suffix ("x" multiplier) Parsing
+# ============================================================================
+
+
+class TestRatioSuffix:
+    """Tests for the 'x' multiplier suffix (e.g. Maplebear cohort revenue ratios)."""
+
+    def test_ratio_integer_x(self) -> None:
+        result = parse_number("1x")
+        assert result is not None
+        value, unit, _ = result
+        assert value == pytest.approx(1.0)
+        assert unit == Unit.RATIO
+
+    def test_ratio_decimal_x(self) -> None:
+        result = parse_number("1.73x")
+        assert result is not None
+        value, unit, _ = result
+        assert value == pytest.approx(1.73)
+        assert unit == Unit.RATIO
+
+    def test_ratio_larger_x(self) -> None:
+        result = parse_number("3.26x")
+        assert result is not None
+        value, unit, _ = result
+        assert value == pytest.approx(3.26)
+        assert unit == Unit.RATIO
+
+    def test_ratio_x_not_scaled(self) -> None:
+        # "2x" should be 2.0, not 2 * any multiplier
+        result = parse_number("2x")
+        assert result is not None
+        assert result[0] == pytest.approx(2.0)
+
+    def test_ratio_in_context(self) -> None:
+        result = parse_number("cohort revenue ratio: 1.73x")
+        assert result is not None
+        value, unit, _ = result
+        assert value == pytest.approx(1.73)
+        assert unit == Unit.RATIO
+
+    def test_ratio_zero_point_nine_eight(self) -> None:
+        result = parse_number("0.98x")
+        assert result is not None
+        value, unit, _ = result
+        assert value == pytest.approx(0.98)
+        assert unit == Unit.RATIO

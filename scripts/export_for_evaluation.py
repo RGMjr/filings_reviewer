@@ -13,6 +13,7 @@ Usage:
 import argparse
 import csv
 import json
+import logging
 import os
 import sys
 from datetime import datetime
@@ -21,6 +22,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.infra.db import DatabaseAdapter
+
+logger = logging.getLogger(__name__)
 
 
 def get_filing_info(db: DatabaseAdapter, filing_ids: list) -> list:
@@ -90,6 +93,32 @@ def get_definitions(db: DatabaseAdapter, filing_id: int) -> list:
     return db.query(query, [filing_id])
 
 
+def get_v2_metric_facts(db: DatabaseAdapter, filing_id: int) -> list:
+    """Get V2 extracted metric facts for a filing."""
+    query = """
+        SELECT
+            mf.fact_id,
+            mf.canonical_metric_id as metric_id,
+            m.display_name as metric_name,
+            mf.value as value_numeric,
+            mf.value_raw as value_text,
+            mf.unit,
+            mf.period_start,
+            mf.period_end,
+            mf.period_type,
+            mf.source_type,
+            mf.extraction_method,
+            mf.confidence,
+            mf.review_status
+        FROM v2_metric_facts mf
+        JOIN metrics m ON mf.canonical_metric_id = m.metric_id
+        WHERE mf.doc_id = %s
+          AND mf.primary_fact_id IS NULL
+        ORDER BY mf.canonical_metric_id, mf.period_end DESC NULLS LAST
+    """
+    return db.query(query, [filing_id])
+
+
 def export_filing_for_review(db: DatabaseAdapter, filing: dict, output_dir: Path):
     """Export a single filing's data for manual review."""
     filing_id = filing["filing_id"]
@@ -124,86 +153,96 @@ def export_filing_for_review(db: DatabaseAdapter, filing: dict, output_dir: Path
     values_file = company_dir / "extracted_values.csv"
     with open(values_file, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "review_status",  # Human fills: correct, incorrect, partial, missed
-            "notes",          # Human notes
-            "metric_value_id",
-            "metric_id",
-            "metric_name",
-            "value_numeric",
-            "value_text",
-            "unit",
-            "period_start",
-            "period_end",
-            "period_type",
-            "source_type",
-            "extraction_method",
-            "section_heading",
-            "source_text_preview",  # First 500 chars
-        ])
+        writer.writerow(
+            [
+                "review_status",  # Human fills: correct, incorrect, partial, missed
+                "notes",  # Human notes
+                "metric_value_id",
+                "metric_id",
+                "metric_name",
+                "value_numeric",
+                "value_text",
+                "unit",
+                "period_start",
+                "period_end",
+                "period_type",
+                "source_type",
+                "extraction_method",
+                "section_heading",
+                "source_text_preview",  # First 500 chars
+            ]
+        )
         for v in values:
             source_preview = (v["source_text"] or "")[:500]
-            writer.writerow([
-                "",  # review_status - to be filled
-                "",  # notes - to be filled
-                v["metric_value_id"],
-                v["metric_id"],
-                v["metric_name"],
-                v["value_numeric"],
-                v["value_text"],
-                v["unit"],
-                v["period_start"],
-                v["period_end"],
-                v["period_type"],
-                v["source_type"],
-                v["extraction_method"],
-                v["section_heading"],
-                source_preview,
-            ])
+            writer.writerow(
+                [
+                    "",  # review_status - to be filled
+                    "",  # notes - to be filled
+                    v["metric_value_id"],
+                    v["metric_id"],
+                    v["metric_name"],
+                    v["value_numeric"],
+                    v["value_text"],
+                    v["unit"],
+                    v["period_start"],
+                    v["period_end"],
+                    v["period_type"],
+                    v["source_type"],
+                    v["extraction_method"],
+                    v["section_heading"],
+                    source_preview,
+                ]
+            )
 
     # Export definitions for review
     defs_file = company_dir / "extracted_definitions.csv"
     with open(defs_file, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "review_status",  # Human fills: correct, incorrect, partial, missed
-            "notes",
-            "metric_definition_id",
-            "metric_id",
-            "metric_name",
-            "definition_normalized",
-            "methodology_normalized",
-            "section_heading",
-            "source_text_preview",
-        ])
+        writer.writerow(
+            [
+                "review_status",  # Human fills: correct, incorrect, partial, missed
+                "notes",
+                "metric_definition_id",
+                "metric_id",
+                "metric_name",
+                "definition_normalized",
+                "methodology_normalized",
+                "section_heading",
+                "source_text_preview",
+            ]
+        )
         for d in definitions:
             source_preview = (d["source_text"] or d["definition_raw_text"] or "")[:500]
-            writer.writerow([
-                "",
-                "",
-                d["metric_definition_id"],
-                d["metric_id"],
-                d["metric_name"],
-                d["definition_text_normalized"],
-                d["methodology_text_normalized"],
-                d["section_heading"],
-                source_preview,
-            ])
+            writer.writerow(
+                [
+                    "",
+                    "",
+                    d["metric_definition_id"],
+                    d["metric_id"],
+                    d["metric_name"],
+                    d["definition_text_normalized"],
+                    d["methodology_text_normalized"],
+                    d["section_heading"],
+                    source_preview,
+                ]
+            )
 
     # Create review template for missed items
     missed_file = company_dir / "missed_items_template.csv"
     with open(missed_file, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            "item_type",      # value or definition
-            "metric_id",      # e.g., DAU, MAU, ARR
-            "metric_name",
-            "value_numeric",  # for values
-            "value_text",     # for values or definition text
-            "period",         # e.g., FY2023, Q1 2024
-            "source_location",# section or page reference
-            "notes",
-        ])
+        writer.writerow(
+            [
+                "item_type",  # value or definition
+                "metric_id",  # e.g., DAU, MAU, ARR
+                "metric_name",
+                "value_numeric",  # for values
+                "value_text",  # for values or definition text
+                "period",  # e.g., FY2023, Q1 2024
+                "source_location",  # section or page reference
+                "notes",
+            ]
+        )
         # Leave empty for human to fill
 
     print(f"  Exported: {company}")
@@ -215,6 +254,78 @@ def export_filing_for_review(db: DatabaseAdapter, filing: dict, output_dir: Path
         "values": len(values),
         "definitions": len(definitions),
     }
+
+
+def export_v2_filing_for_review(db: DatabaseAdapter, filing: dict, output_dir: Path):
+    """Export a single filing's V2 facts for manual review."""
+    filing_id = filing["filing_id"]
+    company = filing["company_name"].replace(" ", "_").replace("/", "-")
+
+    company_dir = output_dir / company
+    company_dir.mkdir(exist_ok=True)
+
+    facts = get_v2_metric_facts(db, filing_id)
+
+    metadata = {
+        "filing_id": filing_id,
+        "company_name": filing["company_name"],
+        "cik": filing["cik"],
+        "form_type": filing["form_type"],
+        "accession_number": filing["accession_number"],
+        "sec_url": filing["sec_html_url"],
+        "local_path": filing.get("html_storage_path"),
+        "export_date": datetime.now().isoformat(),
+        "pipeline": "v2",
+        "num_facts_extracted": len(facts),
+    }
+
+    with open(company_dir / "metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2, default=str)
+
+    values_file = company_dir / "extracted_values.csv"
+    with open(values_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "review_status",
+                "notes",
+                "fact_id",
+                "metric_id",
+                "metric_name",
+                "value_numeric",
+                "value_text",
+                "unit",
+                "period_start",
+                "period_end",
+                "period_type",
+                "source_type",
+                "extraction_method",
+                "confidence",
+                "v2_review_status",
+            ]
+        )
+        for v in facts:
+            writer.writerow(
+                [
+                    "",
+                    "",
+                    v["fact_id"],
+                    v["metric_id"],
+                    v["metric_name"],
+                    v["value_numeric"],
+                    v["value_text"],
+                    v["unit"],
+                    v["period_start"],
+                    v["period_end"],
+                    v["period_type"],
+                    v["source_type"],
+                    v["extraction_method"],
+                    v["confidence"],
+                    v["review_status"],
+                ]
+            )
+
+    logger.info(f"  Exported {len(facts)} V2 facts to {values_file}")
 
 
 def get_top_filings(db: DatabaseAdapter, limit: int) -> list:
@@ -252,6 +363,11 @@ def main():
         default="data/gold_standard",
         help="Output directory for exported files",
     )
+    parser.add_argument(
+        "--v2",
+        action="store_true",
+        help="Export from V2 pipeline tables (v2_metric_facts)",
+    )
     args = parser.parse_args()
 
     if not args.filing_ids and not args.top:
@@ -267,9 +383,9 @@ def main():
     else:
         filing_ids = get_top_filings(db, args.top)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("GOLD STANDARD EXPORT")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Exporting {len(filing_ids)} filings for manual review\n")
 
     # Get filing info
@@ -286,23 +402,30 @@ def main():
     # Export each filing
     summary = []
     for filing in filings:
-        result = export_filing_for_review(db, filing, output_dir)
-        summary.append(result)
+        if args.v2:
+            export_v2_filing_for_review(db, filing, output_dir)
+        else:
+            result = export_filing_for_review(db, filing, output_dir)
+            summary.append(result)
 
     # Write summary
     summary_file = output_dir / "export_summary.json"
     with open(summary_file, "w") as f:
-        json.dump({
-            "export_date": datetime.now().isoformat(),
-            "num_filings": len(filings),
-            "filings": summary,
-            "total_values": sum(s["values"] for s in summary),
-            "total_definitions": sum(s["definitions"] for s in summary),
-        }, f, indent=2)
+        json.dump(
+            {
+                "export_date": datetime.now().isoformat(),
+                "num_filings": len(filings),
+                "filings": summary,
+                "total_values": sum(s["values"] for s in summary),
+                "total_definitions": sum(s["definitions"] for s in summary),
+            },
+            f,
+            indent=2,
+        )
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("EXPORT COMPLETE")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Output directory: {output_dir}")
     print(f"Total filings: {len(filings)}")
     print(f"Total values: {sum(s['values'] for s in summary)}")

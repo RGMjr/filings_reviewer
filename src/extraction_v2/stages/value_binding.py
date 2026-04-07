@@ -99,9 +99,18 @@ class ValueBindingStage:
     # so "a few million" won't match ("few" is not in the scale group).
     WORD_NUMBERS: dict[str, float] = {
         "a": 1,
-        "one": 1, "two": 2, "three": 3, "four": 4,
-        "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
-        "ten": 10, "eleven": 11, "twelve": 12,
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+        "eleven": 11,
+        "twelve": 12,
     }
 
     WORD_NUMBER_PATTERN = re.compile(
@@ -157,6 +166,24 @@ class ValueBindingStage:
             )
             return Unit.PERCENT
         return unit
+
+    def _try_merge_adjacent_unit(
+        self, table: Table, row: int, col: int, value: float, unit: Unit, raw: str
+    ) -> tuple[float, Unit, str]:
+        """If a bare number is followed by a unit-only cell (%, $), merge them."""
+        if unit not in (Unit.COUNT, Unit.OTHER):
+            return value, unit, raw
+        next_cell = table.get_cell(row, col + 1)
+        if next_cell and next_cell.text.strip() == "%":
+            return value, Unit.PERCENT, raw + "%"
+        if next_cell and next_cell.text.strip() in ("$", "£", "€"):
+            return value, Unit.CURRENCY, next_cell.text.strip() + raw
+        # Also check preceding cell for leading currency symbol
+        if col > 0:
+            prev_cell = table.get_cell(row, col - 1)
+            if prev_cell and prev_cell.text.strip() in ("$", "£", "€"):
+                return value, Unit.CURRENCY, prev_cell.text.strip() + raw
+        return value, unit, raw
 
     def _should_filter_unit(self, metric_id: str, unit: Unit) -> bool:
         """
@@ -246,9 +273,7 @@ class ValueBindingStage:
             List of BoundValue objects (may be empty if no binding found)
         """
         # Read effective proximity from config (if available), else use instance default
-        effective_proximity = getattr(
-            context.config, "text_proximity_chars", self.proximity_window
-        )
+        effective_proximity = getattr(context.config, "text_proximity_chars", self.proximity_window)
 
         # Detect transcript mode
         is_transcript = getattr(context, "document_type", "") == "transcript"
@@ -341,6 +366,9 @@ class ValueBindingStage:
             parsed = self._parse_number(candidate_cell.text)
             if parsed:
                 value, unit, raw = parsed
+                value, unit, raw = self._try_merge_adjacent_unit(
+                    table, candidate_cell.row, candidate_cell.col, value, unit, raw
+                )
                 # Check percentage context from table headers/stubs
                 context_text = " ".join(candidate_cell.header_path + candidate_cell.stub_path)
                 unit = self._check_percentage_context(candidate.metric_id, unit, raw, context_text)
@@ -472,6 +500,9 @@ class ValueBindingStage:
                 continue
 
             value, unit, raw = parsed
+            value, unit, raw = self._try_merge_adjacent_unit(
+                table, cell_row, cell_col, value, unit, raw
+            )
 
             if iterate_rows:
                 header_path_eff = fixed_path
@@ -691,7 +722,10 @@ class ValueBindingStage:
         candidate: MetricCandidate,
         segments: list[Segment],
         proximity_chars: int | None = None,
-    ) -> tuple[Segment, str, int, list[tuple[re.Match[str], float, Unit, str]], int, int, float] | None:
+    ) -> (
+        tuple[Segment, str, int, list[tuple[re.Match[str], float, Unit, str]], int, int, float]
+        | None
+    ):
         """
         Locate the candidate's segment and extract the proximity search window.
 
@@ -729,9 +763,7 @@ class ValueBindingStage:
 
         effective_prox = proximity_chars if proximity_chars is not None else self.proximity_window
         window_start = max(0, match_start - effective_prox)
-        numbers = self._find_numbers_in_proximity(
-            text, match_start, match_end, effective_prox
-        )
+        numbers = self._find_numbers_in_proximity(text, match_start, match_end, effective_prox)
 
         if not numbers:
             return None
@@ -916,13 +948,10 @@ class ValueBindingStage:
                 num_start_in_text = bv.source_locator.text_span[0]
                 num_sent_start, num_sent_end = find_sentence_bounds(text, num_start_in_text)
                 adjacent_sentence = (
-                    abs(num_sent_start - sentence_end) < 5
-                    or abs(sentence_start - num_sent_end) < 5
+                    abs(num_sent_start - sentence_end) < 5 or abs(sentence_start - num_sent_end) < 5
                 )
                 if adjacent_sentence:
-                    boosted_confidence = min(
-                        confidence + self.ADJACENT_SENTENCE_BONUS, 1.0
-                    )
+                    boosted_confidence = min(confidence + self.ADJACENT_SENTENCE_BONUS, 1.0)
                     bv = BoundValue(
                         candidate_id=bv.candidate_id,
                         value=bv.value,

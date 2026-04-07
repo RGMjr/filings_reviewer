@@ -477,7 +477,7 @@ def _rule_dollar_threshold_customer(
     dollar threshold is a legitimate NRR/GRR disclosure, not a count FP.
     (Flywire NRR 110-125% was incorrectly filtered by this rule.)
     """
-    if not source_text or metric_id == "cm_large_customers_period_end":
+    if not source_text or metric_id in ("cm_large_customers_period_end", "cm_revenue_concentration"):
         return None
     if bv.unit == Unit.PERCENT:
         return None
@@ -963,7 +963,7 @@ def _rule_retention_rate_over_100(
     """
     if metric_id != "cm_customer_retention_rate":
         return None
-    if bv.value is not None and bv.value >= 120:
+    if bv.value is not None and bv.value >= 130:
         return "v2_retention_rate_over_100"
     if source_text and _NRR_CONTEXT_RE.search(source_text):
         return "v2_retention_rate_nrr_context"
@@ -1111,6 +1111,10 @@ _REVENUE_CONCENTRATION_KEYWORD_RE = re.compile(
         | largest\s+customer
         | accounted\s+for
         | contribut(?:ed|es?)\s+(?:\w+\s+){0,4}(?:revenue|sales)
+        # Dollar-threshold customer counts (e.g., "customers over $100K in ARR")
+        | customers?\s+(?:over|above|exceeding|greater\s+than|with\s+more\s+than)\s+\$
+        | number\s+of\s+customers?\s+(?:over|above|exceeding|with)
+        | customers?\s+with\s+(?:annual|arr|revenue|contract)
     )
     """,
     re.IGNORECASE | re.VERBOSE,

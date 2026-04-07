@@ -1,8 +1,10 @@
 """
-Unit tests for V2 review routes (WI-04: async audit logging, WI-05: pagination).
+Unit tests for unified review routes (WI-04: async audit logging, WI-05: pagination).
+
+These tests cover the unified review blueprint (review_unified.py) which replaced
+the old review_v2.py blueprint at the same /v2/review/ URL prefix.
 """
 
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -30,7 +32,7 @@ def client(app):
 
 @pytest.fixture
 def mock_db():
-    with patch("src.web.routes.review_v2.get_db") as mock_get_db:
+    with patch("src.web.routes.review_unified.get_db") as mock_get_db:
         mock = MagicMock()
         mock_get_db.return_value = mock
         yield mock
@@ -38,7 +40,7 @@ def mock_db():
 
 @pytest.fixture(autouse=True)
 def mock_render_template():
-    with patch("src.web.routes.review_v2.render_template") as mock:
+    with patch("src.web.routes.review_unified.render_template") as mock:
         mock.return_value = "mocked template"
         yield mock
 
@@ -50,15 +52,10 @@ def mock_render_template():
 
 def test_audit_log_fires_in_background_thread(client, mock_db, app):
     """After each request a daemon thread is spawned to write the audit log."""
-    mock_db.count_v2_filings_with_facts.return_value = 0
-    mock_db.get_v2_filings_with_facts.return_value = []
+    mock_db.get_unified_filings_for_review_count.return_value = 0
+    mock_db.get_unified_filings_for_review.return_value = []
 
-    _threads_started = []
-
-    _original_thread_init = threading.Thread.__init__
-    _original_thread_start = threading.Thread.start
-
-    with patch("src.web.routes.review_v2.threading.Thread") as mock_thread_cls:
+    with patch("src.web.routes.review_unified.threading.Thread") as mock_thread_cls:
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
 
@@ -73,13 +70,13 @@ def test_audit_log_fires_in_background_thread(client, mock_db, app):
 
 def test_audit_log_error_does_not_block_response(client, app):
     """A DB error inside the audit thread must not affect the HTTP response."""
-    with patch("src.web.routes.review_v2.get_db") as mock_get_db:
+    with patch("src.web.routes.review_unified.get_db") as mock_get_db:
         mock = MagicMock()
-        mock.count_v2_filings_with_facts.return_value = 0
-        mock.get_v2_filings_with_facts.return_value = []
+        mock.get_unified_filings_for_review_count.return_value = 0
+        mock.get_unified_filings_for_review.return_value = []
         mock_get_db.return_value = mock
 
-        with patch("src.web.routes.review_v2.DatabaseAdapter") as mock_adapter_cls:
+        with patch("src.web.routes.review_unified.DatabaseAdapter") as mock_adapter_cls:
             mock_adapter = MagicMock()
             mock_adapter.insert_audit_log.side_effect = RuntimeError("DB timeout")
             mock_adapter_cls.return_value = mock_adapter
@@ -91,23 +88,18 @@ def test_audit_log_error_does_not_block_response(client, app):
 
 def test_audit_log_captures_request_context(client, app):
     """The kwargs dict passed to the thread contains the expected request fields."""
-    with patch("src.web.routes.review_v2.get_db") as mock_get_db:
+    with patch("src.web.routes.review_unified.get_db") as mock_get_db:
         mock = MagicMock()
-        mock.count_v2_filings_with_facts.return_value = 0
-        mock.get_v2_filings_with_facts.return_value = []
+        mock.get_unified_filings_for_review_count.return_value = 0
+        mock.get_unified_filings_for_review.return_value = []
         mock_get_db.return_value = mock
 
-        _captured_kwargs = {}
-
         def fake_thread(**kwargs):
-            # Intercept the target function and extract its closure kwarg dict
-            _target = kwargs.get("target")
-            # We can't easily introspect the closure; instead check thread is created
             t = MagicMock()
             t.start = MagicMock()
             return t
 
-        with patch("src.web.routes.review_v2.threading.Thread", side_effect=fake_thread) as mock_thread_cls:
+        with patch("src.web.routes.review_unified.threading.Thread", side_effect=fake_thread) as mock_thread_cls:
             client.get("/v2/review/filings?page=1")
             call_kwargs = mock_thread_cls.call_args[1]
             assert call_kwargs["daemon"] is True
@@ -121,38 +113,44 @@ def test_audit_log_captures_request_context(client, app):
 
 def test_filing_list_default_pagination(client, mock_db, mock_render_template):
     """Default request uses limit=50, offset=0."""
-    mock_db.count_v2_filings_with_facts.return_value = 5
-    mock_db.get_v2_filings_with_facts.return_value = []
+    mock_db.get_unified_filings_for_review_count.return_value = 5
+    mock_db.get_unified_filings_for_review.return_value = []
 
     client.get("/v2/review/filings")
 
-    mock_db.get_v2_filings_with_facts.assert_called_once_with(document_type=None, limit=50, offset=0)
+    mock_db.get_unified_filings_for_review.assert_called_once_with(
+        document_type=None, limit=50, offset=0
+    )
 
 
 def test_filing_list_custom_page(client, mock_db, mock_render_template):
     """?page=2&per_page=25 passes limit=25, offset=25."""
-    mock_db.count_v2_filings_with_facts.return_value = 100
-    mock_db.get_v2_filings_with_facts.return_value = []
+    mock_db.get_unified_filings_for_review_count.return_value = 100
+    mock_db.get_unified_filings_for_review.return_value = []
 
     client.get("/v2/review/filings?page=2&per_page=25")
 
-    mock_db.get_v2_filings_with_facts.assert_called_once_with(document_type=None, limit=25, offset=25)
+    mock_db.get_unified_filings_for_review.assert_called_once_with(
+        document_type=None, limit=25, offset=25
+    )
 
 
 def test_filing_list_per_page_cap(client, mock_db, mock_render_template):
     """?per_page=999 is capped to 200."""
-    mock_db.count_v2_filings_with_facts.return_value = 5
-    mock_db.get_v2_filings_with_facts.return_value = []
+    mock_db.get_unified_filings_for_review_count.return_value = 5
+    mock_db.get_unified_filings_for_review.return_value = []
 
     client.get("/v2/review/filings?per_page=999")
 
-    mock_db.get_v2_filings_with_facts.assert_called_once_with(document_type=None, limit=200, offset=0)
+    mock_db.get_unified_filings_for_review.assert_called_once_with(
+        document_type=None, limit=200, offset=0
+    )
 
 
 def test_filing_list_total_pages_in_context(client, mock_db, mock_render_template):
     """total_pages is passed to template and computed correctly."""
-    mock_db.count_v2_filings_with_facts.return_value = 110
-    mock_db.get_v2_filings_with_facts.return_value = []
+    mock_db.get_unified_filings_for_review_count.return_value = 110
+    mock_db.get_unified_filings_for_review.return_value = []
 
     client.get("/v2/review/filings?per_page=50")
 
@@ -167,6 +165,7 @@ def test_filing_list_total_pages_in_context(client, mock_db, mock_render_templat
 # WI-05: Pagination — review_filing()
 # =============================================================================
 
+
 FILING_ROW = {
     "filing_id": 1,
     "company_name": "TestCo",
@@ -175,6 +174,7 @@ FILING_ROW = {
     "form_type": "S-1",
     "filing_date": "2023-01-01",
     "company_id": 1,
+    "document_type": "sec_filing",
 }
 
 FACT_ROW = {
@@ -221,6 +221,7 @@ def test_review_filing_pagination(client, mock_db, mock_render_template):
     mock_db.query.return_value = [FILING_ROW]
     mock_db.get_v2_facts_for_filing.return_value = [FACT_ROW]
     mock_db.count_v2_facts_for_filing.return_value = 150
+    mock_db.get_image_review_candidates_for_filing.return_value = []
 
     client.get("/v2/review/1?page=2&per_page=50")
 
@@ -238,6 +239,7 @@ def test_review_filing_pagination_in_template(client, mock_db, mock_render_templ
     mock_db.query.return_value = [FILING_ROW]
     mock_db.get_v2_facts_for_filing.return_value = [FACT_ROW]
     mock_db.count_v2_facts_for_filing.return_value = 75
+    mock_db.get_image_review_candidates_for_filing.return_value = []
 
     client.get("/v2/review/1?per_page=50")
 
@@ -284,3 +286,14 @@ def test_backward_compat_no_limit_facts(mock_db):
     sql_arg = db.query.call_args[0][0]
     assert "LIMIT" not in sql_arg
     assert result == [FACT_ROW]
+
+
+# =============================================================================
+# V2 Index Redirect
+# =============================================================================
+
+def test_v2_index_redirects_to_filings(client):
+    """Test that /v2/review/ redirects to /v2/review/filings."""
+    response = client.get("/v2/review/")
+    assert response.status_code == 302
+    assert "/v2/review/filings" in response.location

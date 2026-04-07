@@ -145,288 +145,35 @@ def sample_progress():
 
 
 def test_index_redirects_to_filing_list(client):
-    """Test that /review/images/ redirects to /review/images/filings."""
+    """Test that /review/images/ permanently redirects to unified filing list."""
     response = client.get("/review/images/")
-    assert response.status_code == 302
-    assert "/review/images/filings" in response.location
+    assert response.status_code == 301
+    assert "/v2/review/filings" in response.location
 
 
 # =============================================================================
-# Test filing_list() route - Filing List Tests
+# Test filing_list() route — now a redirect
 # =============================================================================
 
 
-def test_filing_list_returns_filings_with_counts(client, mock_db, mock_render_template):
-    """Test filing list renders with correct context."""
-    mock_db.get_filings_with_image_candidates_count.return_value = 5
-    mock_db.get_filings_with_image_candidates.return_value = [
-        {
-            "filing_id": 1,
-            "accession_number": "0001-21-001",
-            "form_type": "S-1",
-            "filing_date": datetime(2021, 1, 1),
-            "company_name": "Test Corp",
-            "cik": "0001234567",
-            "total_candidates": 10,
-            "pending_count": 5,
-            "reviewed_count": 3,
-            "skipped_count": 2,
-            "first_candidate_date": datetime(2021, 1, 2),
-        }
-    ]
-    mock_db.get_image_review_progress.return_value = {
-        "total_candidates": 10,
-        "pending_count": 5,
-        "reviewed_count": 3,
-        "skipped_count": 2,
-        "review_pct": 30.0,
-        "total_filings": 1,
-        "filings_with_pending": 1,
-        "by_tier": {},
-    }
-
+def test_filing_list_redirects_to_unified(client):
+    """filing_list() now permanently redirects to the unified filing list."""
     response = client.get("/review/images/filings")
-
-    assert response.status_code == 200
-    mock_db.get_filings_with_image_candidates.assert_called_once_with(
-        status=None, limit=50, offset=0
-    )
-    mock_db.get_filings_with_image_candidates_count.assert_called_once_with(status=None)
-    mock_db.get_image_review_progress.assert_called_once()
-
-    # Verify template was called with correct context
-    call_args = mock_render_template.call_args
-    assert call_args[0][0] == "image_filing_list.html"
-    assert "filings" in call_args[1]
-    assert "progress" in call_args[1]
-    assert "pagination" in call_args[1]
-
-
-def test_filing_list_pagination_works(client, mock_db, mock_render_template):
-    """Test filing list respects pagination parameters."""
-    mock_db.get_filings_with_image_candidates_count.return_value = 100
-    mock_db.get_filings_with_image_candidates.return_value = []
-    mock_db.get_image_review_progress.return_value = {
-        "total_candidates": 0,
-        "pending_count": 0,
-        "reviewed_count": 0,
-        "skipped_count": 0,
-        "review_pct": 0,
-        "total_filings": 0,
-        "filings_with_pending": 0,
-        "by_tier": {},
-    }
-
-    response = client.get("/review/images/filings?page=2&per_page=25")
-
-    assert response.status_code == 200
-    mock_db.get_filings_with_image_candidates.assert_called_once_with(
-        status=None, limit=25, offset=25
-    )
-
-
-def test_filing_list_status_filter_works(client, mock_db):
-    """Test filing list filters by status."""
-    mock_db.get_filings_with_image_candidates_count.return_value = 0
-    mock_db.get_filings_with_image_candidates.return_value = []
-    mock_db.get_image_review_progress.return_value = {
-        "total_candidates": 0,
-        "pending_count": 0,
-        "reviewed_count": 0,
-        "skipped_count": 0,
-        "review_pct": 0,
-        "total_filings": 0,
-        "filings_with_pending": 0,
-        "by_tier": {},
-    }
-
-    client.get("/review/images/filings?status=pending")
-
-    mock_db.get_filings_with_image_candidates_count.assert_called_once_with(status="pending")
-    mock_db.get_filings_with_image_candidates.assert_called_once_with(
-        status="pending", limit=50, offset=0
-    )
-
-
-def test_filing_list_invalid_status_shows_warning(client, mock_db):
-    """Test invalid status filter is rejected with flash warning."""
-    mock_db.get_filings_with_image_candidates_count.return_value = 0
-    mock_db.get_filings_with_image_candidates.return_value = []
-    mock_db.get_image_review_progress.return_value = {
-        "total_candidates": 0,
-        "pending_count": 0,
-        "reviewed_count": 0,
-        "skipped_count": 0,
-        "review_pct": 0,
-        "total_filings": 0,
-        "filings_with_pending": 0,
-        "by_tier": {},
-    }
-
-    response = client.get("/review/images/filings?status=invalid_status")
-
-    # Should use status=None when invalid
-    mock_db.get_filings_with_image_candidates_count.assert_called_once_with(status=None)
-    assert response.status_code == 200
-
-
-def test_filing_list_handles_database_error(client, mock_db, mock_render_template):
-    """Test filing list handles database errors gracefully."""
-    mock_db.get_filings_with_image_candidates_count.side_effect = Exception("DB error")
-
-    response = client.get("/review/images/filings")
-
-    assert response.status_code == 200
-    # Should render template with empty data
-    mock_render_template.assert_called_once()
-
-
-def test_filing_list_page_exceeds_total_redirects(client, mock_db):
-    """Test requesting page beyond total redirects to page 1."""
-    mock_db.get_filings_with_image_candidates_count.return_value = 5  # Only 1 page
-    mock_db.get_filings_with_image_candidates.return_value = []
-    mock_db.get_image_review_progress.return_value = {
-        "total_candidates": 0,
-        "pending_count": 0,
-        "reviewed_count": 0,
-        "skipped_count": 0,
-        "review_pct": 0,
-        "total_filings": 0,
-        "filings_with_pending": 0,
-        "by_tier": {},
-    }
-
-    response = client.get("/review/images/filings?page=999")
-
-    assert response.status_code == 302
-    # Should redirect to filing list (without page param = page 1)
-    assert "/review/images/filings" in response.location
-    # Should NOT include page=999
-    assert "page=999" not in response.location
+    assert response.status_code == 301
+    assert "/v2/review/filings" in response.location
 
 
 # =============================================================================
-# Test review_filing() route - Review Interface Tests
+# Test review_filing() route — now a redirect
 # =============================================================================
 
 
-def test_review_filing_renders_with_valid_candidate(
-    client, mock_db, mock_render_template, sample_filing, sample_candidates
-):
-    """Test review interface renders correctly."""
-    mock_db.query.return_value = [sample_filing]
-    mock_db.get_image_review_candidates_for_filing.return_value = sample_candidates
-
+def test_review_filing_redirects_to_unified_images_tab(client):
+    """review_filing() permanently redirects to unified review (images tab)."""
     response = client.get("/review/images/123")
-
-    assert response.status_code == 200
-
-    # Verify template called with correct args
-    call_args = mock_render_template.call_args
-    assert call_args[0][0] == "review_images.html"
-    assert "filing" in call_args[1]
-    assert "current_candidate" in call_args[1]
-    assert "candidates" in call_args[1]
-    assert "progress" in call_args[1]
-    assert "chart_types" in call_args[1]
-    assert "rejection_reasons" in call_args[1]
-
-
-def test_review_filing_selects_first_pending_when_no_id(
-    client, mock_db, mock_render_template, sample_filing, sample_candidates
-):
-    """Test review interface selects first pending candidate by default."""
-    mock_db.query.return_value = [sample_filing]
-    mock_db.get_image_review_candidates_for_filing.return_value = sample_candidates
-
-    response = client.get("/review/images/123")
-
-    assert response.status_code == 200
-
-    # First candidate (pending) should be selected
-    call_args = mock_render_template.call_args
-    current = call_args[1]["current_candidate"]
-    assert current["image_candidate_id"] == 1
-    assert current["review_status"] == "pending"
-
-
-def test_review_filing_selects_specific_candidate_when_requested(
-    client, mock_db, mock_render_template, sample_filing, sample_candidates
-):
-    """Test review interface selects specific candidate when ID provided."""
-    mock_db.query.return_value = [sample_filing]
-    mock_db.get_image_review_candidates_for_filing.return_value = sample_candidates
-
-    response = client.get("/review/images/123?image_candidate_id=2")
-
-    assert response.status_code == 200
-
-    call_args = mock_render_template.call_args
-    current = call_args[1]["current_candidate"]
-    assert current["image_candidate_id"] == 2
-
-
-def test_review_filing_404_for_invalid_filing(client, mock_db):
-    """Test 404 returned for non-existent filing."""
-    mock_db.query.return_value = []
-
-    response = client.get("/review/images/99999")
-
-    assert response.status_code == 404
-
-
-def test_review_filing_redirects_when_no_candidates(client, mock_db, sample_filing):
-    """Test redirect to filing list when filing has no candidates."""
-    mock_db.query.return_value = [sample_filing]
-    mock_db.get_image_review_candidates_for_filing.return_value = []
-
-    response = client.get("/review/images/123")
-
-    assert response.status_code == 302
-    assert "/review/images/filings" in response.location
-
-
-def test_review_filing_handles_database_error(client, mock_db, sample_filing):
-    """Test review interface handles database errors."""
-    mock_db.query.return_value = [sample_filing]
-    mock_db.get_image_review_candidates_for_filing.side_effect = Exception("DB error")
-
-    response = client.get("/review/images/123")
-
-    assert response.status_code == 302
-    assert "/review/images/filings" in response.location
-
-
-def test_review_filing_filters_by_status(
-    client, mock_db, mock_render_template, sample_filing, sample_candidates
-):
-    """Test review interface respects status filter."""
-    mock_db.query.return_value = [sample_filing]
-    mock_db.get_image_review_candidates_for_filing.return_value = sample_candidates
-
-    response = client.get("/review/images/123?status=pending")
-
-    assert response.status_code == 200
-    # Should call db method twice - once unfiltered, once filtered
-    calls = mock_db.get_image_review_candidates_for_filing.call_args_list
-    assert len(calls) == 2
-    # Second call should have status filter
-    assert calls[1][1]["status"] == "pending"
-
-
-def test_review_filing_sorts_by_parameter(
-    client, mock_db, mock_render_template, sample_filing, sample_candidates
-):
-    """Test review interface respects sort parameter."""
-    mock_db.query.return_value = [sample_filing]
-    mock_db.get_image_review_candidates_for_filing.return_value = sample_candidates
-
-    response = client.get("/review/images/123?sort=confidence")
-
-    assert response.status_code == 200
-    calls = mock_db.get_image_review_candidates_for_filing.call_args_list
-    # Second call should have sort_by=confidence
-    assert calls[1][1]["sort_by"] == "confidence"
+    assert response.status_code == 301
+    assert "/v2/review/123" in response.location
+    assert "tab=images" in response.location
 
 
 # =============================================================================

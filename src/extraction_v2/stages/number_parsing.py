@@ -31,7 +31,7 @@ NUMBER_PATTERN = re.compile(
         \d+(?:\.\d+)?                    # Plain number
     )
     \s*
-    (?P<suffix>million|billion|thousand|mn|bn|k|m|b)?  # Scale suffix
+    (?P<suffix>million|billion|thousand|mn|bn|k|m|b|x)?  # Scale suffix (x = ratio multiplier)
     \s*
     (?P<percent>%|percent)?             # Percentage indicator
     """,
@@ -105,6 +105,7 @@ def parse_number(text: str) -> tuple[float, Unit, str] | None:
             suffix_lower = suffix.lower()
             if suffix_lower in SCALE_MULTIPLIERS:
                 value *= SCALE_MULTIPLIERS[suffix_lower]
+            # "x" suffix means ratio multiplier — do not scale
 
         if negative:
             value = -value
@@ -113,6 +114,8 @@ def parse_number(text: str) -> tuple[float, Unit, str] | None:
             unit = Unit.PERCENT
         elif currency:
             unit = Unit.CURRENCY
+        elif suffix and suffix.lower() == "x":
+            unit = Unit.RATIO
         elif suffix or "," in number_str or "." in number_str:
             # Comma-separated integers, scaled values, or decimals → COUNT
             # (clearly-scaled quantities or structured numeric forms)

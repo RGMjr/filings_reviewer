@@ -289,7 +289,7 @@ class V2PersistenceAdapter:
 
         try:
             with self._db.transaction() as conn:
-                with conn.cursor() as cur:
+                with conn.pipeline(), conn.cursor() as cur:
                     # 1. Persist document
                     doc_count = self._persist_document_in_tx(
                         cur,
@@ -444,9 +444,8 @@ class V2PersistenceAdapter:
                 next_segment_id = EXCLUDED.next_segment_id
         """
 
-        count = 0
-        for segment in segments:
-            params = {
+        params_list = [
+            {
                 "segment_id": segment.segment_id,
                 "doc_id": filing_id,
                 "segment_type": segment.segment_type.value,
@@ -458,10 +457,10 @@ class V2PersistenceAdapter:
                 "prev_segment_id": segment.prev_id,
                 "next_segment_id": segment.next_id,
             }
-            cur.execute(sql, params)
-            count += 1
-
-        return count
+            for segment in segments
+        ]
+        cur.executemany(sql, params_list)
+        return len(params_list)
 
     def _persist_tables_in_tx(
         self,
@@ -520,11 +519,8 @@ class V2PersistenceAdapter:
                 dom_locator = EXCLUDED.dom_locator
         """
 
-        table_count = 0
-        cell_count = 0
-
-        for table in tables:
-            table_params = {
+        table_params_list = [
+            {
                 "table_id": table.table_id,
                 "doc_id": filing_id,
                 "segment_id": None,  # v2_tables.segment_id FKs to V1 source_segments; not used in V2
@@ -537,15 +533,16 @@ class V2PersistenceAdapter:
                 "stub_cols": table.stub_cols,
                 "raw_html": None,
             }
-            cur.execute(table_sql, table_params)
-            table_count += 1
-
-            for cell in table.cells:
-                cell_params = self._cell_to_params(cell, table.table_id)
-                cur.execute(cell_sql, cell_params)
-                cell_count += 1
-
-        return table_count, cell_count
+            for table in tables
+        ]
+        cell_params_list = [
+            self._cell_to_params(cell, table.table_id)
+            for table in tables
+            for cell in table.cells
+        ]
+        cur.executemany(table_sql, table_params_list)
+        cur.executemany(cell_sql, cell_params_list)
+        return len(table_params_list), len(cell_params_list)
 
     def _persist_images_in_tx(
         self,
@@ -595,9 +592,8 @@ class V2PersistenceAdapter:
                 requires_manual = EXCLUDED.requires_manual
         """
 
-        count = 0
-        for image in images:
-            params = {
+        params_list = [
+            {
                 "img_id": image.img_id,
                 "doc_id": filing_id,
                 "segment_id": None,  # v2_image_assets.segment_id FKs to V1 source_segments; not used in V2
@@ -619,10 +615,10 @@ class V2PersistenceAdapter:
                 "confidence": image.confidence,
                 "requires_manual": image.requires_manual_capture,
             }
-            cur.execute(sql, params)
-            count += 1
-
-        return count
+            for image in images
+        ]
+        cur.executemany(sql, params_list)
+        return len(params_list)
 
     def _fact_to_params(self, fact: MetricFact, filing_id: int) -> dict[str, Any]:
         """Convert MetricFact to database parameters."""
@@ -693,13 +689,9 @@ class V2PersistenceAdapter:
             )
         """
 
-        count = 0
-        for fact in facts:
-            params = self._fact_to_params(fact, filing_id)
-            cur.execute(sql, params)
-            count += 1
-
-        return count
+        params_list = [self._fact_to_params(fact, filing_id) for fact in facts]
+        cur.executemany(sql, params_list)
+        return len(params_list)
 
     def persist_definitions(
         self,
@@ -779,10 +771,9 @@ class V2PersistenceAdapter:
                         %(has_acquisition_cohort_flag)s
                     )
                 """
-                count = 0
-                for score in scores:
-                    cur.execute(sql, score.to_dict())
-                    count += 1
+                params_list = [score.to_dict() for score in scores]
+                cur.executemany(sql, params_list)
+                count = len(params_list)
 
         logger.debug(f"Inserted {count} quality scores for filing_id={filing_id}")
         return count
@@ -822,9 +813,8 @@ class V2PersistenceAdapter:
                 alignment_flag = EXCLUDED.alignment_flag,
                 updated_at = NOW()
         """
-        count = 0
-        for defn in definitions:
-            params = {
+        params_list = [
+            {
                 "definition_id": defn.definition_id,
                 "doc_id": filing_id,
                 "canonical_metric_id": defn.canonical_metric_id,
@@ -836,6 +826,7 @@ class V2PersistenceAdapter:
                 "methodology_segment_id": defn.methodology_segment_id,
                 "alignment_flag": defn.alignment_flag,
             }
-            cur.execute(sql, params)
-            count += 1
-        return count
+            for defn in definitions
+        ]
+        cur.executemany(sql, params_list)
+        return len(params_list)

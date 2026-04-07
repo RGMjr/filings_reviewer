@@ -200,7 +200,7 @@ cm_large_customers_period_end:
     - '\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b'
     - '\blarge\s+(?:enterprise\s+)?customers?\b'
     - '\benterprise\s+customers?\b'
-    - '\b\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
+    - '\$\d+(?:,\d+)*(?:k|K)?\+?\s*arr\s+customers?\b'
     - '\bcustomers?\s+(?:with\s+)?(?:over|above|greater\s+than|>)\s*\$[\d,]+'
     - '\bpaid\s+customers?\s+(?:with|of)\s+\$[\d,]+\s*(?:\+|or\s+more)?'
     # Transcript: "400 deals over $1 million" (CRM) — require $ sign to avoid extracting
@@ -210,6 +210,12 @@ cm_large_customers_period_end:
     - '\bcustomers?\s+with\s+trailing\s+\d+[- ]month\s+(?:\w+\s+)*revenue\s+(?:greater\s+than|more\s+than|over|above|exceeding|>)\s*\$'
     # Snowflake narrative: "customers that contributed more than $X million in trailing..."
     - '\bcustomers?\s+(?:that\s+)?contributed\s+(?:more\s+than|over|above)\s+\$'
+    # Samsara: "customers representing over $100,000 in ARR"
+    - '\bcustomers?\s+representing\s+(?:over|above|more\s+than|greater\s+than)\s*\$'
+    # Gitlab: "$1.0 million ARR customers" — decimal + word multiplier threshold
+    - '\$\d+(?:\.\d+)?\s*(?:million|billion|mil|bn)\s+arr\s+customers?\b'
+    # Samsara: "exceeded $1,000 in ARR" / "exceeding $100,000"
+    - '\bcustomers?\s+(?:that\s+)?(?:exceeded|exceeding)\s+\$'
     # Transcript: "900,000 have 4 or more workloads" (MSFT) — customers using multiple products
     - '\bhave\s+\d+\s+or\s+more\s+workloads?\b'
   exclusions:
@@ -223,6 +229,7 @@ cm_large_customers_period_end:
     - 'large\s+customers?'
     - 'customers?\s+with\s+trailing'
     - 'customers?\s+(?:that\s+)?contributed'
+    - 'customers?\s+representing'
 
 cm_customers_period_end_by_tenure:
   patterns:
@@ -331,6 +338,8 @@ cm_revenue_per_customer:
     - '\bprepaid\s+arpu\b'
     # Telecom: average margin per user (close substitute for ARPU in some carriers)
     - '\bampu\b'
+    # Kingsoft Cloud: "average revenues per Public/Enterprise Cloud Service Premium Customer"
+    - '\baverage\s+revenues?\s+per\s+(?:\w+\s+){0,4}premium\s+customer\b'
   exclusions:
     - '\bcost\s+per\s+customer\b'
     - '\bcost\s+per\s+user\b'
@@ -382,6 +391,8 @@ cm_customer_retention_rate:
     - '\bdollar\s+retention\b'
     - '\bnrr\b'
     - '\bgrr\b'
+    # FIX-FN: "dollar-based retention" belongs to NRR, not CRR
+    - '\bdollar[- ]?based\s+retention\b'
 
 cm_customer_churn_rate:
   patterns:
@@ -404,6 +415,8 @@ cm_net_revenue_retention:
     - '\bnet\s+dollar\s+retention\b'
     - '\bndr\b'
     - '\bnet\s+retention\s+rate\b'
+    # FIX-FN: Flywire "net dollar-based retention rate" / "dollar-based retention rate"
+    - '\bdollar[- ]?based\s+(?:net\s+)?retention\b'
   exclusions:
     - 'we\s+(?:calculate|define|compute|measure)\b'
     - 'calculated\s+(?:as|by)\b'
@@ -460,6 +473,17 @@ cm_daily_active_users:
   specific_patterns:
     - 'daily\s+active\s+users?'
     - 'daily\s+active\s+people'
+
+cm_balance_by_cohort:
+  # Robinhood-specific: cumulative net deposits tracked per acquisition cohort
+  patterns:
+    - '\bcumulative\s+net\s+deposits?\s+by\s+(?:annual\s+)?cohort\b'
+    - '\baverage\s+(?:balance\s+of\s+)?cumulative\s+net\s+deposits?\b'
+    - '\bcumulative\s+net\s+deposits?\b[^.;]{0,80}\bcohort\b'
+    - '\bcohort\b[^.;]{0,80}\bcumulative\s+net\s+deposits?\b'
+  specific_patterns:
+    - 'cumulative\s+net\s+deposits?\s+by\s+(?:annual\s+)?cohort'
+    - 'average\s+(?:balance\s+of\s+)?cumulative\s+net\s+deposits?'
 
 cm_gross_margin_by_cohort:
   # Only patterns that explicitly require "cohort" or "vintage" context
@@ -523,12 +547,19 @@ cm_revenue_concentration:
     - '\brepresented\s+\d+%\s+or\s+more\s+of\s+revenue\b'
     # Snowflake-style: "generated X% of our revenue"
     - '\bgenerated\s+\d+%\s+of\s+(?:our\s+)?revenue\b'
+    # FIX-FN: Tenable-style "[distributor/customer] accounted for X% of revenue"
+    # Requires customer/distributor context before "accounted for" to avoid segment revenue FPs
+    - '\b(?:distributor[s]?|reseller[s]?|customer[s]?|client[s]?)\b[^.;]{0,100}\baccounted\s+for\s+(?:approximately\s+)?\d+%'
+    # FIX-FN: Samsara-style "X% of our ARR came from customers representing over $100K"
+    - '\b\d+%\s+of\s+(?:our\s+)?ARR\s+came\s+from\s+customers\b'
   exclusions:
     # FIX-FP: Exclude business segment revenue share (not customer concentration)
     - '\b(?:fulfilment|fulfillment|marketplace|in-store|platform)\s+revenue\b'
     - '\bsource\s+of\b[^.;]{0,40}\brevenue\b'
     - '\brevenue\s+(?:from|generated\s+by)\s+(?:our\s+)?(?:platform|marketplace|fulfilment|fulfillment)\b'
     - '\bno\s+(?:individual|single)\b'
+    # FIX-FP: Exclude negative assertions ("No customer accounted for more than X%")
+    - '\bno\s+customer\b'
     - '\bdid\s+not\s+(?:exceed|comprise)\b'
     - '\bin\s+excess\s+of\b'
 

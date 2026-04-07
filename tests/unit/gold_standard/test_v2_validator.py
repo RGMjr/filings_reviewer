@@ -855,7 +855,7 @@ class TestValidateFiling:
         with patch.object(V2GoldStandardValidator, "__init__", lambda self: None):
             v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
             v.value_tolerance = 0.02
-            v.min_confidence = 0.50
+            v.min_confidence = 0.35
             v.fn_diagnostics = False
             v.v2_pipeline = MagicMock()
             return v
@@ -1381,13 +1381,13 @@ class TestRunValidation:
 
         result = run_validation()
 
-        # Called twice: once for confidence threshold (0.50), once for unfiltered (0.0)
+        # Called twice: once for confidence threshold (0.35), once for unfiltered (0.0)
         assert mock_instance.validate_all.call_count == 2
         assert result.precision == 0.85
 
         captured = capsys.readouterr()
         assert "85.0%" in captured.out
-        assert "confidence >= 0.5" in captured.out
+        assert "confidence >= 0.35" in captured.out
 
     @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
     def test_update_baseline_saves(self, mock_validator_cls: MagicMock) -> None:
@@ -1526,7 +1526,7 @@ class TestDuplicateEntrySkip:
         with patch.object(V2GoldStandardValidator, "__init__", lambda self: None):
             v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
             v.value_tolerance = 0.02
-            v.min_confidence = 0.50
+            v.min_confidence = 0.35
             v.fn_diagnostics = False
             v.v2_pipeline = MagicMock()
             return v
@@ -1780,7 +1780,7 @@ class TestDiagnosefalseNegative:
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         cand = make_candidate("cm_dau", "cand-1")
         bv = make_bound_value("cand-1", "bv-1")
-        # Fact exists but with low confidence (below 0.50 default)
+        # Fact exists but with low confidence (below 0.35 default)
         low_conf_fact = MetricFact(
             fact_id="fact-low",
             canonical_metric_id="cm_dau",
