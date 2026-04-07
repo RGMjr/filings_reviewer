@@ -355,6 +355,7 @@ Workflow commands for common tasks:
 | `/merge-check` | Thorough merge readiness assessment (CI, migrations, imports, tests) |
 | `/ci-fix` | Autonomous CI fix loop: iterates ruff → mypy → pytest until all pass |
 | `/plan-execute` | Execute a multi-phase plan with parallel sub-agents per independent wave |
+| `/plan-review` | Review and critique a plan before execution |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
 
 ### Skills (`.claude/skills/`)
@@ -363,11 +364,11 @@ Internal prompt templates for consistent, efficient task execution. Skills reduc
 
 | Skill | Purpose |
 |-------|---------|
-| `implementation-planner.md` | Generate structured plans with A/B/C streams |
 | `flask-api-builder.md` | Generate Flask routes, validation, tests |
 | `test-coverage-analyzer.md` | Find gaps, generate tests |
 | `database-migration-helper.md` | Generate SQL migrations + db.py methods |
 | `documentation-sync-validator.md` | Check documentation accuracy |
+| `ralph/SKILL.md` | Autonomous execution loop for multi-step development tasks |
 
 ---
 
