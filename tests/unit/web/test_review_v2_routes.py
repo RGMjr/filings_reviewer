@@ -32,9 +32,13 @@ def client(app):
 
 @pytest.fixture
 def mock_db():
-    with patch("src.web.routes.review_unified.get_db") as mock_get_db:
+    with (
+        patch("src.web.routes.review_unified.get_db") as mock_get_db,
+        patch("src.web.routes._metrics.get_db") as mock_metrics_get_db,
+    ):
         mock = MagicMock()
         mock_get_db.return_value = mock
+        mock_metrics_get_db.return_value = mock
         yield mock
 
 

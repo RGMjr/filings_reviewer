@@ -7,7 +7,7 @@ now 301-redirect to the V2 unified interface (/v2/review/) were removed.
 
 import pytest
 
-from src.web.app import create_app
+from src.web.app import close_pool, create_app
 from tests.integration.conftest import (
     create_test_company_and_filing,
     create_test_image_candidate,
@@ -24,7 +24,8 @@ def app(test_db_url):
     app = create_app("testing")
     app.config["DATABASE_URL"] = test_db_url
     app.config["TESTING"] = True
-    return app
+    yield app
+    close_pool(app)
 
 
 @pytest.fixture

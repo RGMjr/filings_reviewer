@@ -16,7 +16,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from src.infra.db import DatabaseAdapter
-from src.web.app import create_app
+from src.web.app import close_pool, create_app
 
 # Import the V2 helpers from conftest (they're plain functions, not fixtures)
 from tests.integration.conftest import (
@@ -42,13 +42,17 @@ def db_url():
 @pytest.fixture(scope="module")
 def db_adapter(db_url):
     """Create database adapter for test setup/teardown."""
-    return DatabaseAdapter(db_url)
+    db = DatabaseAdapter(db_url)
+    yield db
+    db.close()
 
 
 @pytest.fixture
 def app(db_url):
     """Create Flask test app with real database."""
-    return create_app("testing", config_override={"DATABASE_URL": db_url})
+    app = create_app("testing", config_override={"DATABASE_URL": db_url})
+    yield app
+    close_pool(app)
 
 
 @pytest.fixture
