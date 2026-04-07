@@ -32,13 +32,10 @@
                 <ul class="navbar-nav me-auto">
                     {% block nav_items %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('review.filing_list') }}">Filings</a>
+                        <a class="nav-link" href="{{ url_for('review_unified.filing_list') }}">Review</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('review.stats') }}">Statistics</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('review_pres_images.index') }}">Pres Images</a>
+                        <a class="nav-link" href="{{ url_for('review_unified.stats') }}">Statistics</a>
                     </li>
                     {% endblock %}
                 </ul>

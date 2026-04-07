@@ -494,6 +494,25 @@ def print_session_stats(stats: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _parse_key_from_filename(stem: str) -> tuple[str, str, str]:
+    """Extract (ticker, date, company) from a preannotated filename stem.
+
+    Handles two formats:
+      {TICKER}_{DATE}_preannotated      e.g. ADBE_2019-01-24_preannotated
+      {TICKER}_{FORM}_{DATE}_preannotated  e.g. NETS_F-1_2017-03-21_preannotated
+    Returns (ticker, date, company) where company defaults to ticker.
+    """
+    import re
+    clean = stem.replace("_preannotated", "")
+    match = re.search(r"(\d{4}-\d{2}-\d{2})", clean)
+    if not match:
+        return clean, "", clean
+    date = match.group(1)
+    prefix = clean[: match.start()].rstrip("_")
+    ticker = prefix.split("_")[0]
+    return ticker, date, ticker
+
+
 def review_file(input_path: Path, resume: bool) -> None:
     """
     Run the review loop for a single pre-annotated CSV file.
@@ -504,15 +523,19 @@ def review_file(input_path: Path, resume: bool) -> None:
 
     # Load candidates
     candidates = load_candidates(input_path)
-    if not candidates:
-        print(f"No candidates found in {input_path}")
-        return
+    zero_candidate_file = not candidates
 
-    # Determine company/ticker/date from first row
-    first = candidates[0]
-    company = first.get("company", "")
-    ticker = first.get("ticker", "")
-    date = first.get("date", "")
+    if candidates:
+        first = candidates[0]
+        company = first.get("company", "")
+        ticker = first.get("ticker", "")
+        date = first.get("date", "")
+    else:
+        ticker, date, company = _parse_key_from_filename(input_path.stem)
+        if not ticker or not date:
+            print(f"No candidates found and cannot parse ticker/date from {input_path.name}")
+            return
+        print(f"No pipeline candidates for {ticker} {date} — entering add-only mode.")
 
     # Resume: skip already-reviewed candidates
     already_reviewed: list[dict] = []
@@ -538,7 +561,7 @@ def review_file(input_path: Path, resume: bool) -> None:
             pending.append(c)
 
     total = len(pending)
-    if total == 0:
+    if total == 0 and not zero_candidate_file:
         print(green(f"All {len(candidates)} candidates already reviewed."))
         print(f"Output: {out_path}")
         return

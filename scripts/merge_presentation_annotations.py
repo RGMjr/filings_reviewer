@@ -67,6 +67,11 @@ COMPANY_SECTORS: dict[str, str] = {
     "HOOD": "Fintech",
     "DDOG": "SaaS",
     "GTLB": "SaaS",
+    "SNOW": "SaaS",
+    "DASH": "Marketplace",
+    "DUOL": "Consumer Tech",
+    "BRZE": "SaaS",
+    "ABNB": "Marketplace",
 }
 
 # Default test set: empty until there are enough companies to split.

@@ -10,16 +10,12 @@ API endpoints for AJAX decision submission are in api_images.py.
 import logging
 from typing import TypedDict
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from src.infra.db import DatabaseAdapter
 from src.review.models import (
     IMAGE_CHART_TYPE_LABELS,
-    IMAGE_CHART_TYPES,
-    IMAGE_DECISIONS,
     IMAGE_REJECTION_REASON_LABELS,
-    IMAGE_REJECTION_REASONS,
-    IMAGE_REVIEW_STATUSES,
 )
 from src.web.app import get_db
 from src.web.utils import _validate_positive_int  # noqa: F401 (re-exported for callers)
@@ -82,179 +78,22 @@ class ImageReviewProgress(TypedDict, total=False):
 
 @review_images_bp.route("/")
 def index():
-    """Redirect root to filing list."""
-    return redirect(url_for("review_images.filing_list"))
+    """Redirect to unified filing list."""
+    return redirect(url_for("review_unified.filing_list"), 301)
 
 
 @review_images_bp.route("/filings")
 def filing_list():
-    """Display list of filings with image candidates."""
-    db = get_db()
-
-    # Get pagination parameters
-    page_raw = request.args.get("page", type=int)
-    per_page_raw = request.args.get("per_page", type=int)
-
-    # Validate pagination
-    page = _validate_positive_int("page", page_raw, default=1, min_value=1)
-    per_page = _validate_positive_int(
-        "per_page", per_page_raw, default=50, min_value=1, max_value=100
-    )
-
-    # Get status filter
-    status = request.args.get("status")
-    if status and status not in IMAGE_REVIEW_STATUSES:
-        flash(f"Invalid status filter: {status}", "warning")
-        status = None
-
-    try:
-        # Get total count for pagination
-        total_count = db.get_filings_with_image_candidates_count(status=status)
-
-        # Calculate pagination
-        pagination = _paginate(page=page, per_page=per_page, total_count=total_count)
-
-        # Validate page doesn't exceed total_pages
-        if total_count > 0 and page > pagination["total_pages"]:
-            flash(
-                f"Page {page} does not exist. Showing page 1 of {pagination['total_pages']}.",
-                "warning",
-            )
-            return redirect(
-                url_for("review_images.filing_list", status=status, per_page=per_page)
-            )
-
-        # Get filings for current page
-        filings = db.get_filings_with_image_candidates(
-            status=status, limit=pagination["limit"], offset=pagination["offset"]
-        )
-
-        # Get overall progress
-        progress = db.get_image_review_progress()
-
-    except Exception as e:
-        logger.error(f"Database error in image filing_list: {e}")
-        flash("Error loading filings. Please try again.", "danger")
-        filings = []
-        progress = {
-            "total_candidates": 0,
-            "pending_count": 0,
-            "reviewed_count": 0,
-            "skipped_count": 0,
-            "review_pct": 0,
-            "total_filings": 0,
-            "filings_with_pending": 0,
-            "by_tier": {},
-        }
-        pagination = _paginate(page=1, per_page=50, total_count=0)
-
-    # Handle empty results
-    if not filings and page == 1:
-        flash(
-            "No filings with image candidates found. Generate candidates first.", "info"
-        )
-
-    return render_template(
-        "image_filing_list.html",
-        filings=filings,
-        progress=progress,
-        current_status_filter=status,
-        review_statuses=IMAGE_REVIEW_STATUSES,
-        pagination=pagination,
-    )
+    """Redirect to unified filing list."""
+    return redirect(url_for("review_unified.filing_list"), 301)
 
 
 @review_images_bp.route("/<int:filing_id>")
 def review_filing(filing_id: int):
-    """Main image review interface for a filing."""
-    db = get_db()
-
-    # Get filing metadata (outside try block to let 404 propagate)
-    filing = _get_filing_data(db, filing_id)
-    if not filing:
-        abort(404)
-
-    try:
-
-        # Get filter and sort parameters
-        filter_status = request.args.get("status", "all")
-        sort_by = request.args.get("sort", "tier")
-
-        # Validate filter values
-        db_status = filter_status if filter_status in IMAGE_REVIEW_STATUSES else None
-        db_sort = sort_by if sort_by in ("tier", "confidence", "position") else "tier"
-
-        # Get all candidates (unfiltered) for progress calculation
-        all_candidates = db.get_image_review_candidates_for_filing(
-            filing_id=filing_id, limit=1000
-        )
-
-        if not all_candidates:
-            flash("This filing has no image candidates.", "info")
-            return redirect(url_for("review_images.filing_list"))
-
-        # Get filtered candidates for sidebar
-        candidates = db.get_image_review_candidates_for_filing(
-            filing_id=filing_id,
-            status=db_status,
-            sort_by=db_sort,
-            limit=1000,
-        )
-
-        # Get requested candidate_id
-        candidate_id_param = _validate_positive_int(
-            "image_candidate_id",
-            request.args.get("image_candidate_id", type=int),
-            default=None,
-            min_value=1,
-            flash_errors=False,
-        )
-
-        # Select current candidate
-        current_candidate = _select_current_candidate(candidates, candidate_id_param)
-
-        if not current_candidate:
-            # No candidates match filters
-            flash("No candidates match your filters.", "warning")
-            return redirect(url_for("review_images.review_filing", filing_id=filing_id))
-
-        # Calculate progress from all candidates
-        progress = _calculate_progress(all_candidates)
-
-        # Build current_filters dict
-        has_active_filters = filter_status != "all" or sort_by != "tier"
-        current_filters = {
-            "status": filter_status,
-            "sort": sort_by,
-            "has_active_filters": has_active_filters,
-        }
-
-        # Build chart_types and rejection_reasons for dropdowns from models.py
-        chart_types = [
-            (ct, IMAGE_CHART_TYPE_LABELS[ct]) for ct in IMAGE_CHART_TYPES
-        ]
-        rejection_reasons = [
-            (rr, IMAGE_REJECTION_REASON_LABELS[rr]) for rr in IMAGE_REJECTION_REASONS
-        ]
-
-        return render_template(
-            "review_images.html",
-            filing=filing,
-            current_candidate=current_candidate,
-            candidates=candidates,
-            all_candidates=all_candidates,
-            progress=progress,
-            current_filters=current_filters,
-            chart_types=chart_types,
-            rejection_reasons=rejection_reasons,
-            image_decisions=IMAGE_DECISIONS,
-            review_statuses=IMAGE_REVIEW_STATUSES,
-        )
-
-    except Exception as e:
-        logger.error(f"Error in review_filing for filing_id={filing_id}: {e}")
-        flash("Error loading filing. Please try again.", "danger")
-        return redirect(url_for("review_images.filing_list"))
+    """Redirect to unified review (images tab)."""
+    return redirect(
+        url_for("review_unified.review_filing", filing_id=filing_id, tab="images"), 301
+    )
 
 
 @review_images_bp.route("/<int:filing_id>/next")

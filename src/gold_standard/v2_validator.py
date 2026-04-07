@@ -232,7 +232,7 @@ class V2GoldStandardValidator:
         gold_standard_path: Path | str = GOLD_STANDARD_CSV,
         v2_config: PipelineConfig | None = None,
         value_tolerance: float = 0.02,
-        min_confidence: float = 0.50,
+        min_confidence: float = 0.35,
         fn_diagnostics: bool = False,
     ):
         """
@@ -1372,7 +1372,7 @@ def normalize_value(
 def run_validation(
     update_baseline: bool = False,
     baseline_description: str | None = None,
-    min_confidence: float = 0.50,
+    min_confidence: float = 0.35,
     fn_diagnostics: bool = False,
 ) -> AggregateMetrics:
     """

@@ -2930,10 +2930,10 @@ class TestDeltaCountOrBy:
 class TestRetentionRateOver100:
     """Tests for _rule_retention_rate_over_100 — blocks NRR values on retention metric."""
 
-    def test_value_over_120_rejected(self):
-        """Retention rate of 125% → rejected (clearly NRR, not retention)."""
-        bv = _make_bound_value("c1", 125.0, "125%", Unit.PERCENT)
-        source = "Our net revenue retention was 125% for the quarter."
+    def test_value_over_130_rejected(self):
+        """Retention rate of 135% → rejected by value threshold (above 130)."""
+        bv = _make_bound_value("c1", 135.0, "135%", Unit.PERCENT)
+        source = "Customer retention rate was 135% this quarter."
         is_fp, reason = _is_v2_false_positive(
             bv, source, metric_id="cm_customer_retention_rate"
         )

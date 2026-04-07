@@ -150,7 +150,8 @@ def main():
 
     # Create Flask app
     logger.info("Creating Flask application...")
-    app = create_app("production")
+    env = os.environ.get("APP_ENV", "development")
+    app = create_app(env)
 
     # Start Waitress server
     logger.info("=" * 60)

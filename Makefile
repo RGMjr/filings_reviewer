@@ -2,7 +2,7 @@
 #
 # Common commands for development, testing, and documentation maintenance.
 
-.PHONY: help install test coverage lint format docs-check docs-update hooks-install clean
+.PHONY: help install test test-unit coverage lint format docs-check docs-update hooks-install clean
 
 # Default target
 help:
@@ -14,6 +14,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make test           Run all tests"
+	@echo "  make test-unit      Run unit tests in parallel (pytest-xdist)"
 	@echo "  make coverage       Run tests with coverage report"
 	@echo "  make lint           Run linter (ruff)"
 	@echo "  make format         Format code (black)"
@@ -44,6 +45,9 @@ hooks-install:
 
 test:
 	pytest tests/ -v
+
+test-unit:
+	pytest tests/unit/ -n auto -v
 
 coverage:
 	pytest --cov=src --cov-report=html --cov-report=term

@@ -35,7 +35,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run unit tests
-        run: uv run pytest tests/unit/ -x -q --tb=short --cov=src --cov-fail-under=75
+        run: uv run pytest tests/unit/ -n auto -x -q --tb=short --cov=src --cov-fail-under=75
 
   vulnerability-scan:
     name: Vulnerability Scan
