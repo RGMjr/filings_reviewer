@@ -825,5 +825,5 @@ def _get_next_image_candidate_info(
 
     return {
         "image_candidate_id": next_id,
-        "url": f"/review/images/{filing_id}?image_candidate_id={next_id}",
+        "url": f"/v2/review/{filing_id}?image_candidate_id={next_id}&tab=images",
     }

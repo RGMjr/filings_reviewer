@@ -309,7 +309,7 @@
                 } else {
                     showToast('All candidates reviewed!', 'info');
                     setTimeout(() => {
-                        window.location.href = '/review/images/filings';
+                        window.location.href = '/v2/review/';
                     }, 1500);
                 }
             } else {
@@ -349,7 +349,7 @@
                 } else {
                     showToast('All candidates reviewed!', 'info');
                     setTimeout(() => {
-                        window.location.href = '/review/images/filings';
+                        window.location.href = '/v2/review/';
                     }, 1500);
                 }
             } else {
@@ -430,7 +430,7 @@
 
         if (currentIndex < state.candidates.length - 1) {
             const next = state.candidates[currentIndex + 1];
-            window.location.href = `/review/images/${state.filingId}?image_candidate_id=${next.image_candidate_id}`;
+            window.location.href = `/v2/review/${state.filingId}?image_candidate_id=${next.image_candidate_id}&tab=images`;
         } else {
             showToast('Already at last image', 'info');
         }
@@ -443,7 +443,7 @@
 
         if (currentIndex > 0) {
             const prev = state.candidates[currentIndex - 1];
-            window.location.href = `/review/images/${state.filingId}?image_candidate_id=${prev.image_candidate_id}`;
+            window.location.href = `/v2/review/${state.filingId}?image_candidate_id=${prev.image_candidate_id}&tab=images`;
         } else {
             showToast('Already at first image', 'info');
         }

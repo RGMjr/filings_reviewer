@@ -374,14 +374,10 @@
           <div id="correct-form" style="display: none;" class="border rounded p-3 mb-2">
             <div class="mb-2">
               <label class="form-label mb-1">Corrected Metric ID (optional)</label>
-              <select id="correct-metric" class="form-select form-select-sm">
-                <option value="">Keep current: {{ current_fact.canonical_metric_id }}</option>
-                {% for m in available_metrics %}
-                {% if m != current_fact.canonical_metric_id %}
-                <option value="{{ m }}">{{ m }}</option>
-                {% endif %}
-                {% endfor %}
-              </select>
+              <input type="text" id="correct-metric" class="form-control form-control-sm"
+                     list="all-metrics-datalist"
+                     placeholder="Keep current: {{ current_fact.canonical_metric_id }}"
+                     autocomplete="off">
             </div>
             <div class="mb-2">
               <label class="form-label mb-1">Corrected Value (optional)</label>
@@ -454,12 +450,10 @@
       <div class="modal-body">
         <div class="mb-3">
           <label for="missed-metric-id" class="form-label">Metric <span class="text-danger">*</span></label>
-          <select id="missed-metric-id" class="form-select">
-            <option value="">Select metric...</option>
-            {% for m in available_metrics %}
-            <option value="{{ m }}">{{ m }}</option>
-            {% endfor %}
-          </select>
+          <input type="text" id="missed-metric-id" class="form-control"
+                 list="all-metrics-datalist"
+                 placeholder="Search metrics..."
+                 autocomplete="off">
         </div>
         <div class="mb-3">
           <label for="missed-value-raw" class="form-label">Value (raw text) <span class="text-danger">*</span></label>
@@ -578,7 +572,7 @@
           <div class="list-group list-group-flush">
             {% for candidate in image_candidates %}
             {% set is_current = current_image and candidate.image_candidate_id == current_image.image_candidate_id %}
-            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, image_candidate_id=candidate.image_candidate_id, image_status=image_filters.status) }}?tab=images"
+            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, image_candidate_id=candidate.image_candidate_id, image_status=image_filters.status, tab='images') }}"
                class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.review_status == 'reviewed' else '' }}"
                data-candidate-id="{{ candidate.image_candidate_id }}">
               <div class="d-flex align-items-center gap-2">
@@ -753,7 +747,7 @@
           {% endif %}
 
           <div class="d-flex justify-content-end">
-            <a href="{{ url_for('review_images.next_candidate', filing_id=filing.filing_id, current=current_image.image_candidate_id) }}"
+            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images', image_status=image_filters.status) }}"
                class="btn btn-primary">
               Next Pending &rarr;
             </a>
@@ -972,8 +966,15 @@ function submitDecision(decision) {
   }
 
   if (decision === 'correct') {
-    const metricId = document.getElementById('correct-metric')?.value;
-    if (metricId) body.assigned_metric_id = metricId;
+    const metricId = document.getElementById('correct-metric')?.value?.trim();
+    if (metricId) {
+      const validIds = Array.from(document.querySelectorAll('#all-metrics-datalist option')).map(o => o.value);
+      if (!validIds.includes(metricId)) {
+        alert('Please select a valid metric from the list (use the dropdown suggestions).');
+        return;
+      }
+      body.assigned_metric_id = metricId;
+    }
     const val = document.getElementById('correct-value')?.value;
     if (val) body.corrected_value = parseFloat(val);
     body.reviewer_notes = document.getElementById('correct-notes')?.value || body.reviewer_notes;
@@ -1092,4 +1093,11 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 <script src="{{ url_for('static', filename='js/review_images.js') }}"></script>
+
+{# Shared datalist for all active metrics -- used by correction and missed-metric inputs #}
+<datalist id="all-metrics-datalist">
+  {% for m in all_metrics %}
+  <option value="{{ m.metric_id }}">{{ m.display_name }}</option>
+  {% endfor %}
+</datalist>
 {% endblock %}
