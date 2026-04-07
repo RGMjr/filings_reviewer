@@ -1,0 +1,26 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,,20000,cm_monthly_active_users,cm_monthly_active_users,7700000,7.7 million,count,2022-01-01,2022-12-31,,text,manual,unknown,7.7 million
+accepted,wrong metric,20001,cm_purchase_transactions_overall,cm_purchase_transactions_overall,262600000.00000003,262.6 million,count,2022-01-01,2022-12-31,,text,manual,unknown,262.6 million
+accepted,,20002,cm_revenue_concentration,cm_revenue_concentration,13.0,13%,%,2020-01-01,2020-12-31,,text,manual,unknown,13%
+accepted,,20003,cm_revenue_concentration,cm_revenue_concentration,34.0,34%,%,2020-01-01,2020-12-31,,text,manual,unknown,34%
+accepted,,20004,cm_revenue_concentration,cm_revenue_concentration,13.0,13%,%,2022-01-01,2022-06-30,,text,manual,unknown,13%
+accepted,,20005,cm_revenue_concentration,cm_revenue_concentration,18.0,18%,%,2022-01-01,2022-06-30,,text,manual,unknown,18%
+accepted,,20006,cm_revenue_concentration,cm_revenue_concentration,14.0,14%,%,2022-01-01,2022-06-30,,text,manual,unknown,14%
+accepted,,20007,cm_revenue_concentration,cm_revenue_concentration,13.0,13%,%,2023-01-01,2023-06-30,,text,manual,unknown,13%
+accepted,,20008,cm_revenue_concentration,cm_revenue_concentration,14.0,14%,%,2023-01-01,2023-06-30,,text,manual,unknown,14%
+accepted,,20009,cm_revenue_concentration,cm_revenue_concentration,11.0,11%,%,2023-01-01,2023-06-30,,text,manual,unknown,11%
+accepted,,20010,cm_revenue_concentration,cm_revenue_concentration,12.0,12%,%,2022-01-01,2022-12-31,,text,manual,unknown,12%
+accepted,,20011,cm_revenue_concentration,cm_revenue_concentration,16.0,16%,%,2022-01-01,2022-12-31,,text,manual,unknown,16%
+accepted,,20012,cm_revenue_concentration,cm_revenue_concentration,18.0,18%,%,2021-01-01,2021-12-31,,text,manual,unknown,18%
+accepted,,20013,cm_revenue_concentration,cm_revenue_concentration,23.0,23%,%,2021-01-01,2021-12-31,,text,manual,unknown,23%
+accepted,,20014,cm_average_order_value,cm_average_order_value,110.0,$110,$,2022-01-01,2022-12-31,,text,manual,unknown,$110
+accepted,Added by reviewer (pipeline missed),20015,cm_revenue_by_cohort,cm_revenue_by_cohort,1.0,1,ratio,,,,chart,manual,KEY_METRICS,1.00x
+accepted,Added by reviewer (pipeline missed),20016,cm_revenue_by_cohort,cm_revenue_by_cohort,0.98,0.98,ratio,,,,chart,manual,MDNA,0.98x
+accepted,Added by reviewer (pipeline missed),20017,cm_revenue_by_cohort,cm_revenue_by_cohort,1.73,1.73,ratio,,,,chart,manual,MDNA,1.73x
+accepted,Added by reviewer (pipeline missed),20018,cm_revenue_by_cohort,cm_revenue_by_cohort,1.74,1.74,ratio,,,,chart,manual,MDNA,1.74x
+accepted,Added by reviewer (pipeline missed),20019,cm_revenue_by_cohort,cm_revenue_by_cohort,3.0,3.00,ratio,,,,chart,manual,MDNA,3.00x
+accepted,Added by reviewer (pipeline missed),20020,cm_revenue_by_cohort,cm_revenue_by_cohort,3.26,3.26,ratio,,,,chart,manual,MDNA,3.26x
+accepted,Added by reviewer (pipeline missed),20021,cm_revenue_by_cohort,cm_revenue_by_cohort,3.52,3.52,ratio,,,,chart,manual,MDNA,3.52x
+accepted,Added by reviewer (pipeline missed),20022,cm_revenue_by_cohort,cm_revenue_by_cohort,1.0,1.00,ratio,,,,chart,manual,MDNA,1.00x
+accepted,Added by reviewer (pipeline missed),20023,cm_revenue_by_cohort,cm_revenue_by_cohort,1.49,1.49,ratio,,,,chart,manual,MDNA,1.49x
+accepted,Added by reviewer (pipeline missed),20024,cm_revenue_by_cohort,cm_revenue_by_cohort,2.42,2.42,ratio,,,,chart,manual,MDNA,2.42x

@@ -1,0 +1,32 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,"this is a count, not revenue (which would generally be currency)",20000,cm_large_customers_period_end,cm_large_customers_period_end,1662.0,"1,662",count,,2020-01-31,,text,manual,cover,"1,662"
+accepted,,20001,cm_large_customers_period_end,cm_large_customers_period_end,2745.0,"2,745",count,,2020-01-31,,text,manual,cover,"2,745"
+accepted,,20002,cm_net_revenue_retention,cm_net_revenue_retention,148.0,148,%,,2021-01-31,,table,manual,unknown,148
+accepted,,20003,cm_net_revenue_retention,cm_net_revenue_retention,152.0,152,%,,2021-01-31,,table,manual,unknown,152
+accepted,,20004,cm_net_revenue_retention,cm_net_revenue_retention,179.0,179,%,,2020-07-31,,table,manual,unknown,179
+accepted,,20005,cm_net_revenue_retention,cm_net_revenue_retention,148.0,148%,%,2020-01-01,2020-12-31,,text,manual,mda,148%
+accepted,,20006,cm_net_revenue_retention,cm_net_revenue_retention,153.0,153%,%,,2020-07-31,,text,manual,mda,153%
+accepted,"this is not a percent, it's a count. there is no indication of it being a percent",20007,cm_large_customers_period_end,cm_large_customers_period_end,173.0,173,%,,2020-07-31,,text,manual,cover,173
+accepted,"this is a count, not a percent",20008,cm_large_customers_period_end,cm_large_customers_period_end,283.0,283,%,,2020-07-31,,text,manual,cover,283
+accepted,this is a count not a percent,20009,cm_large_customers_period_end,cm_large_customers_period_end,383.0,383,count,,2020-07-31,,text,manual,cover,383
+accepted,,20010,cm_customers_period_end,cm_customers_period_end,1662.0,"1,662",count,,2020-01-31,,text,manual,mda,"1,662"
+accepted,"customers over $100,000 ARR - large customers",20011,cm_large_customers_period_end,cm_large_customers_period_end,173.0,173,count,,2020-01-31,,text,manual,mda,173
+accepted,,20012,cm_large_customers_period_end,cm_large_customers_period_end,283.0,283,count,,2020-01-31,,text,manual,mda,283
+accepted,"large customers (""our $1.0 million ARR customers increased from 11 as of January 31, 2020..."")",20013,cm_large_customers_period_end,cm_large_customers_period_end,11.0,11,count,,2020-01-31,,text,manual,mda,11
+accepted,,20014,cm_large_customers_period_end,cm_large_customers_period_end,20.0,20,count,,2020-01-31,,text,manual,mda,20
+accepted,,20015,cm_large_customers_period_end,cm_large_customers_period_end,27.0,27,count,,2020-01-31,,text,manual,mda,27
+accepted,"(""We had 383 $100,000 ARR customers as of July 31, 2021, increasing from 219 as of July 31, 2020."")",20016,cm_large_customers_period_end,cm_large_customers_period_end,219.0,219,count,,2020-07-31,,text,manual,mda,219
+accepted,"(""We had 383 $100,000 ARR customers as of July 31, 2021, increasing from 219 as of July 31, 2020."")",20017,cm_large_customers_period_end,cm_large_customers_period_end,383.0,383,other,,2020-07-31,,"(""We had 383 $100,000 ARR customers as of July 31, 2021, increasing from 219 as of July 31, 2020."")",manual,mda,383
+accepted,"""our $1.0 million ARR customers increased from 15 as of July 31, 2020 to 27 as of July 31, 2021, ...""",20018,cm_large_customers_period_end,cm_large_customers_period_end,15.0,15,count,,2020-07-31,,text,manual,mda,15
+accepted,"""...our $1.0 million ARR customers increased from 15 as of July 31, 2020 to 27 as of July 31, 2021, ...""",20019,cm_large_customers_period_end,cm_large_customers_period_end,27.0,27,count,,2020-07-31,,text,manual,mda,27
+accepted,,20020,cm_net_revenue_retention,cm_net_revenue_retention,153.0,153%,%,,2020-07-31,,text,manual,mda,153%
+accepted,,20021,cm_net_revenue_retention,cm_net_revenue_retention,179.0,179%,%,2020-01-01,2020-12-31,,text,manual,mda,179%
+accepted,,20022,cm_net_revenue_retention,cm_net_revenue_retention,148.0,148%,%,2020-01-01,2020-12-31,,text,manual,mda,148%
+accepted,"""our Dollar-Based Gross Retention Rate was 97% as of each of January 31, 2020, January 31, 2021, and July 31, 2021.""",20023,cm_gross_revenue_retention,cm_gross_revenue_retention,97.0,97%,%,,2020-01-31,,text,manual,mda,97%
+accepted,"""As of July 31, 2020 and 2021, our Dollar-Based Net Retention Rate was 153% and 152%, respectively. """,20024,cm_net_revenue_retention,cm_net_revenue_retention,152.0,152%,%,,2021-07-31,,text,manual,mda,152%
+accepted,"""...our Dollar-Based Net Retention Rate of 148% as of January 31, 2021""",20025,cm_net_revenue_retention,cm_net_revenue_retention,148.0,148%,%,,2021-01-31,,text,manual,mda,148%
+accepted,,20026,cm_active_customers_total,cm_active_customers_total,11000.0,"11,000",count,,,,text,manual,mda,"11,000"
+accepted,"""...growth in our $100,000 ARR customers from 173 as of January 31, 2020...""",20027,cm_large_customers_period_end,cm_large_customers_period_end,173.0,173,count,,,,text,manual,unknown,173
+accepted,,20028,cm_large_customers_period_end,cm_large_customers_period_end,283.0,283,count,,,,text,manual,unknown,283
+accepted,,20029,cm_large_customers_period_end,cm_large_customers_period_end,383.0,383,count,,,,text,manual,unknown,383
+accepted,,20030,cm_large_customers_period_end,cm_large_customers_period_end,219.0,219,count,,,,text,manual,unknown,219

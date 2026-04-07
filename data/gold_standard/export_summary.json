@@ -1,0 +1,58 @@
+{
+  "export_date": "2025-12-05T11:45:45.979745",
+  "num_filings": 10,
+  "filings": [
+    {
+      "company": "Farfetch Ltd",
+      "values": 89,
+      "definitions": 11
+    },
+    {
+      "company": "iCIMS Holding LLC",
+      "values": 112,
+      "definitions": 8
+    },
+    {
+      "company": "Kingsoft Cloud Holdings Ltd",
+      "values": 135,
+      "definitions": 6
+    },
+    {
+      "company": "Netshoes (Cayman) Ltd.",
+      "values": 101,
+      "definitions": 7
+    },
+    {
+      "company": "PlayAGS, Inc.",
+      "values": 80,
+      "definitions": 6
+    },
+    {
+      "company": "Samsara Inc.",
+      "values": 83,
+      "definitions": 11
+    },
+    {
+      "company": "Silvergate Capital Corp",
+      "values": 100,
+      "definitions": 5
+    },
+    {
+      "company": "Soulgate Inc.",
+      "values": 86,
+      "definitions": 4
+    },
+    {
+      "company": "Tenable Holdings, Inc.",
+      "values": 90,
+      "definitions": 6
+    },
+    {
+      "company": "Torrid Holdings Inc.",
+      "values": 131,
+      "definitions": 11
+    }
+  ],
+  "total_values": 1007,
+  "total_definitions": 75
+}

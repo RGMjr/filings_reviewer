@@ -1,0 +1,42 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,"""Net Cumulative Funded Accounts"" is a proxy for number of customers, not revenue",20000,cm_customers_period_end,cm_customers_period_end,5.1,5.1,count,,,,text,manual,cover,5.1
+accepted,,20001,cm_customers_period_end,cm_customers_period_end,12.5,12.5,count,,,,text,manual,cover,12.5
+accepted,"Net Cumulative Funded Accounts is a proxy for number of customers, not revenue",20002,cm_customers_period_end,cm_customers_period_end,9.8,9.8,count,,,,text,manual,cover,9.8
+accepted,,20003,cm_customers_period_end,cm_customers_period_end,,22.5 M,count,,,,text,manual,cover,22.5 M
+accepted,,20004,cm_monthly_active_users,cm_monthly_active_users,4.3,4.3,count,,,,text,manual,cover,4.3
+accepted,,20005,cm_revenue_per_customer,cm_revenue_per_customer,65.7,65.7,count,2019-01-01,2019-12-31,,table,manual,unknown,65.7
+accepted,,20006,cm_revenue_per_customer,cm_revenue_per_customer,108.9,108.9,count,2020-01-01,2020-12-31,,table,manual,unknown,108.9
+accepted,,20007,cm_revenue_per_customer,cm_revenue_per_customer,115.2,115.2,count,,,,table,manual,unknown,115.2
+accepted,,20008,cm_revenue_per_customer,cm_revenue_per_customer,111.7,111.7,count,,,,table,manual,unknown,111.7
+accepted,,20009,cm_revenue_per_customer,cm_revenue_per_customer,65.7,$65.70,$,,,,text,manual,cover,$65.70
+accepted,,20010,cm_revenue_per_customer,cm_revenue_per_customer,108.9,$108.90,$,,,,text,manual,cover,$108.90
+accepted,,20011,cm_revenue_per_customer,cm_revenue_per_customer,115.2,$115.20,$,,,,text,manual,mda,$115.20
+accepted,,20012,cm_revenue_per_customer,cm_revenue_per_customer,111.7,$111.70,$,,,,text,manual,mda,$111.70
+accepted,,20013,cm_monthly_active_users,cm_monthly_active_users,11.7,11.7,count,2020-01-01,2020-12-31,,table,manual,unknown,11.7
+accepted,,20014,cm_monthly_active_users,cm_monthly_active_users,10.2,10.2,count,,,,table,manual,unknown,10.2
+accepted,,20015,cm_monthly_active_users,cm_monthly_active_users,21.3,21.3,count,,,,table,manual,unknown,21.3
+accepted,,20016,cm_monthly_active_users,cm_monthly_active_users,11700000,11.7 million,count,,,,text,manual,mda,11.7 million
+accepted,,20017,cm_monthly_active_users,cm_monthly_active_users,4300000,4.3 million,count,,,,text,manual,mda,4.3 million
+accepted,,20018,cm_monthly_active_users,cm_monthly_active_users,21300000,21.3 million,count,,,,text,manual,mda,21.3 million
+accepted,,20019,cm_monthly_active_users,cm_monthly_active_users,10200000,10.2 million,count,,,,text,manual,mda,10.2 million
+accepted,,20020,cm_customer_acquisition_cost,cm_customer_acquisition_cost,53.0,$53,$,2019-01-01,2019-12-31,,text,manual,mda,$53
+accepted,,20021,cm_customer_acquisition_cost,cm_customer_acquisition_cost,20.0,$20,$,2019-01-01,2019-12-31,,text,manual,mda,$20
+accepted,Need new metric: cm_balance_by_cohort,20022,cm_balance_by_cohort,cm_balance_by_cohort,1731.0,"$1,731",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$1,731"
+accepted,Need new metric: cm_balance_by_cohort,20023,cm_balance_by_cohort,cm_balance_by_cohort,3112.0,"$3,112",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$3,112"
+accepted,Need new metric: cm_balance_by_cohort,20024,cm_balance_by_cohort,cm_balance_by_cohort,3496.0,"$3,496",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$3,496"
+accepted,Need new metric: cm_balance_by_cohort,20025,cm_balance_by_cohort,cm_balance_by_cohort,3239.0,"$3,239",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$3,239"
+accepted,Need new metric: cm_balance_by_cohort,20026,cm_balance_by_cohort,cm_balance_by_cohort,4411.0,"$4,411",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$4,411"
+accepted,Need new metric: cm_balance_by_cohort,20027,cm_balance_by_cohort,cm_balance_by_cohort,2466.0,"$2,466",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$2,466"
+accepted,Need new metric: cm_balance_by_cohort,20028,cm_balance_by_cohort,cm_balance_by_cohort,8487.0,"$8,487",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$8,487"
+accepted,Need new metric: cm_balance_by_cohort,20029,cm_balance_by_cohort,cm_balance_by_cohort,6703.0,"$6,703",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$6,703"
+accepted,Need new metric: cm_balance_by_cohort,20030,cm_balance_by_cohort,cm_balance_by_cohort,18019.0,"$18,019",$,,,,chart,manual,unknown,"Cumulative Net Deposits by Annual Cohort ($mm)$18,019"
+accepted,,20031,cm_revenue_by_cohort,cm_revenue_by_cohort,17.0,$17,$,2017-01-01,2017-12-31,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$17
+accepted,,20032,cm_revenue_by_cohort,cm_revenue_by_cohort,62.0,$62,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$62
+accepted,,20033,cm_revenue_by_cohort,cm_revenue_by_cohort,44.0,$44,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$44
+accepted,,20034,cm_revenue_by_cohort,cm_revenue_by_cohort,56.0,$56,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$56
+accepted,,20035,cm_revenue_by_cohort,cm_revenue_by_cohort,87.0,$87,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$87
+accepted,,20036,cm_revenue_by_cohort,cm_revenue_by_cohort,45.0,$45,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$45
+accepted,,20037,cm_revenue_by_cohort,cm_revenue_by_cohort,130.0,$130,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$130
+accepted,,20038,cm_revenue_by_cohort,cm_revenue_by_cohort,186.0,$186,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$186
+accepted,,20039,cm_revenue_by_cohort,cm_revenue_by_cohort,175.0,$175,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$175
+accepted,,20040,cm_revenue_by_cohort,cm_revenue_by_cohort,326.0,$326,$,,,,chart,manual,unknown,Annual Revenue by Annual Cohort ($mm)$326

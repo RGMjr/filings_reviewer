@@ -7,11 +7,10 @@ data/presentation_gold_standard/{key}_image_candidates.json.
 
 import logging
 
-from flask import Blueprint, abort, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
 
 from src.web.pres_image_store import (
     get_edgar_url,
-    get_filing_keys,
     load_candidates,
     load_decisions,
     save_decision,
@@ -56,15 +55,10 @@ def _progress_from_candidates(key: str, candidates: list[dict], decisions: dict)
 
 @review_pres_images_bp.route("/")
 def index():
-    """List all filings with image candidates."""
-    keys = get_filing_keys()
-    decisions = load_decisions()
-    filings = []
-    for key in keys:
-        candidates = load_candidates(key)
-        progress = _progress_from_candidates(key, candidates, decisions)
-        filings.append({"key": key, "ticker": _ticker_from_key(key), **progress})
-    return render_template("pres_image_filing_list.html", filings=filings)
+    """Redirect to unified filing list (presentations)."""
+    return redirect(
+        url_for("review_unified.filing_list", document_type="investor_presentation"), 301
+    )
 
 
 @review_pres_images_bp.route("/<key>")

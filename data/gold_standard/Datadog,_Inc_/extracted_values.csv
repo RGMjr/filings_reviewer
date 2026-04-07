@@ -1,0 +1,16 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,,20000,cm_net_revenue_retention,cm_net_revenue_retention,146.0,146%,%,,2018-06-30,,text,manual,cover,146%
+accepted,,20001,cm_net_revenue_retention,cm_net_revenue_retention,141.0,141%,%,,2018-06-30,,text,manual,cover,141%
+accepted,,20002,cm_net_revenue_retention,cm_net_revenue_retention,151.0,151%,%,,2018-06-30,,text,manual,cover,151%
+accepted,"not customers, net revenue retention",20003,cm_net_revenue_retention,cm_net_revenue_retention,146.0,146%,%,,2018-06-30,,text,manual,cover,146%
+accepted,wrong metric,20004,cm_net_revenue_retention,cm_net_revenue_retention,141.0,141%,%,,2018-06-30,,text,manual,cover,141%
+accepted,"NRR, not customer retention",20005,cm_net_revenue_retention,cm_net_revenue_retention,151.0,151%,%,,2018-06-30,,text,manual,cover,151%
+accepted,"""dollar-based gross retention rate"" not customer retention",20006,cm_gross_revenue_retention,cm_gross_revenue_retention,90.0,90%,%,,,,text,manual,cover,90%
+accepted,"This is the average ARR for one type of ""large customer"" (""defined as having 5,000 or more employees"")",20007,cm_arr,cm_arr,200000.0,"$200,000",$,,2019-06-30,,text,manual,cover,"$200,000"
+accepted,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to ..."")",20008,cm_revenue_by_cohort,cm_revenue_by_cohort,4800000,$4.8 million,$,,2014-12-31,,text,manual,cover,$4.8 million
+accepted,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to $19.2 million..."")",20009,cm_revenue_by_cohort,cm_revenue_by_cohort,19200000,$19.2 million,$,,2014-12-31,,text,manual,cover,$19.2 million
+accepted,,20010,cm_revenue_concentration,cm_revenue_concentration,14.0,14%,%,,2019-06-30,,text,manual,cover,14%
+accepted,,20011,cm_revenue_concentration,cm_revenue_concentration,5.0,5%,%,,2019-06-30,,text,manual,cover,5%
+accepted,,20012,cm_revenue_by_cohort,cm_revenue_by_cohort,60.0,60%,%,2019-01-01,2019-06-30,,text,manual,cover,60%
+accepted,,20013,cm_revenue_by_cohort,cm_revenue_by_cohort,60.0,60%,%,2018-01-01,2018-12-31,,text,manual,cover,60%
+accepted,wrong metric,20014,cm_customers_period_end,cm_customers_period_end,8800.0,"8,800",count,,2019-06-30,,text,manual,unknown,"8,800"

@@ -1,0 +1,17 @@
+review_status,notes,metric_value_id,metric_id,metric_name,value_numeric,value_text,unit,period_start,period_end,period_type,source_type,extraction_method,section_heading,source_text_preview
+accepted,,20000,cm_active_customers_total,cm_active_customers_total,11321.0,"11,321",count,,2019-05-05,,table,manual,unknown,"11,321"
+accepted,,20001,cm_active_customers_total,cm_active_customers_total,7830.0,"7,830",count,,2018-04-29,,table,manual,unknown,"7,830"
+accepted,,20002,cm_active_customers_total,cm_active_customers_total,3034.0,"3,034",count,,2019-02-03,,text,manual,cover,"3,034"
+accepted,,20003,cm_active_customers_total,cm_active_customers_total,6789.0,"6,789",count,,2019-02-03,,text,manual,cover,"6,789"
+accepted,,20004,cm_active_customers_total,cm_active_customers_total,10585.0,"10,585",count,,2019-02-03,,text,manual,cover,"10,585"
+accepted,,20005,cm_active_customers_total,cm_active_customers_total,10585.0,"10,585",count,2018-01-01,2018-12-31,,table,manual,unknown,"10,585"
+accepted,,20006,cm_active_customers_total,cm_active_customers_total,6789.0,"6,789",count,2017-01-01,2017-12-31,,table,manual,unknown,"6,789"
+accepted,,20007,cm_active_customers_total,cm_active_customers_total,3034.0,"3,034",count,2016-01-01,2016-12-31,,table,manual,unknown,"3,034"
+accepted,,20008,cm_customers_period_end,cm_customers_period_end,10600000,10.6 million,count,,2019-02-03,,text,manual,mda,10.6 million
+accepted,,20009,cm_customers_period_end,cm_customers_period_end,3000000,3 million,count,,2019-02-03,,text,manual,mda,3 million
+accepted,,20010,cm_ltv_to_cac_ratio,cm_ltv_to_cac_ratio,2.4,2.4,%,,,,text,manual,mda,2.4
+accepted,"this is revenue per active customer, not total active customers. it is currency, not a count",20011,cm_revenue_per_customer,cm_revenue_per_customer,343.0,343,other,,2019-05-05,,table,manual,unknown,343
+accepted,"this is revenue per active customer, not active customer count",20012,cm_revenue_per_customer,cm_revenue_per_customer,314.0,314,$,,2018-04-29,,table,manual,unknown,314
+accepted,"revenue per active customer, not active customer count",20013,cm_revenue_per_customer,cm_revenue_per_customer,297.0,297,$,2016-01-01,2016-12-31,,table,manual,unknown,297
+accepted,,20014,cm_revenue_per_customer,cm_revenue_per_customer,310.0,310,$,2017-01-01,2017-12-31,,table,manual,unknown,310
+accepted,"revenue per active customer, not customer count",20015,cm_revenue_per_customer,cm_revenue_per_customer,334.0,334,$,2018-01-01,2018-12-31,,table,manual,unknown,334
