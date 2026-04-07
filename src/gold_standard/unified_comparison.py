@@ -25,7 +25,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from src.extraction.keyword_config import metrics_are_equivalent
 from src.extraction_v2.models import MetricFact, SourceType
 from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
 from src.gold_standard.baseline import MetricScores
@@ -38,6 +37,7 @@ from src.gold_standard.v2_validator import (
     normalize_value,
 )
 from src.review.models import ReviewCandidate
+from src.shared.keyword_config import metrics_are_equivalent
 
 logger = logging.getLogger(__name__)
 

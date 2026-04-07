@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT))
 from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline  # noqa: E402
 
 try:
-    from src.extraction.keyword_config import metrics_are_equivalent
+    from src.shared.keyword_config import metrics_are_equivalent
 
     _HAS_EQUIVALENCE = True
 except ImportError:

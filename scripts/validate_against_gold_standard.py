@@ -44,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 
-from src.extraction.keyword_config import metrics_are_equivalent
+from src.shared.keyword_config import metrics_are_equivalent
 
 logger = logging.getLogger(__name__)
 

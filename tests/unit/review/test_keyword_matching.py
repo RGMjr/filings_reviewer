@@ -8,7 +8,6 @@ from decimal import Decimal
 
 import pytest
 
-from src.extraction.keyword_config import is_metric_deprecated
 from src.review.keyword_matching import (
     METRIC_KEYWORDS,
     METRIC_REQUIRED_CONTEXT,
@@ -17,6 +16,7 @@ from src.review.keyword_matching import (
     KeywordMatcher,
 )
 from src.review.number_parsing import NumberMatch
+from src.shared.keyword_config import is_metric_deprecated
 
 # =============================================================================
 # KeywordMatcher.find_all_keywords Tests
