@@ -3,6 +3,7 @@ paths:
   - "scripts/validate_against_gold_standard.py"
   - "src/gold_standard/**"
   - "data/gold_standard/**"
+  - "data/presentation_gold_standard/**"
 ---
 
 # Gold Standard Validation Rules
@@ -11,6 +12,7 @@ paths:
 
 **Required** before committing changes to:
 - `config/metric_keywords.yaml`
+- `src/extraction_v2/` modules (active V2 pipeline)
 - `src/extraction/` modules (V1, deprecated)
 - `src/shared/keyword_config.py` or `src/shared/models.py`
 - `src/review/candidate_generator.py`
