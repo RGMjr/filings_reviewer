@@ -1037,3 +1037,156 @@ class TestDateHeaderFix:
         table = reconstructor.reconstruct(table_elem)
         assert table.header_rows == 4
         assert table.stub_cols >= 1
+
+
+class TestRowspanAwareColumnCount:
+    """Tests for the rowspan-aware first-pass column count fix."""
+
+    def test_rowspan_does_not_undercount_columns(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Row 2 has fewer physical cells due to rowspan from row 1; col_count must be correct.
+
+        Without the fix: row 2 sums to 1 physical cell (colspan=1), so col_count = max(3,1) = 3.
+        With the fix:    row 2 has 2 columns occupied by rowspan + 1 physical = 3 total. Still 3.
+
+        The critical case: if row 1 had a colspan=2 rowspan=2 cell AND row 2 had an extra cell,
+        the naive sum would see row 2 as 2 cols instead of 3.
+        """
+        html = """
+        <table>
+            <tr><th>Label</th><th colspan="2">Period</th></tr>
+            <tr><td rowspan="2" colspan="2">Big Cell</td><td>100</td></tr>
+            <tr><td>200</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        # All rows span 3 columns
+        assert table.col_count == 3
+        assert table.row_count == 3
+
+        # Row 2 col 2 should be "100"
+        cell_12 = table.get_cell(1, 2)
+        assert cell_12 is not None
+        assert cell_12.text == "100"
+
+        # Row 3 col 2 should be "200"
+        cell_22 = table.get_cell(2, 2)
+        assert cell_22 is not None
+        assert cell_22.text == "200"
+
+    def test_rowspan_colspan_interaction_wide_table(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Multi-level header with colspan + data rows with rowspan in stub.
+
+        Simulates a typical SEC filing metrics table:
+          Row 0: [empty] | Year Ended Jan 31 (colspan=3)
+          Row 1: Metric  | FY2021 | FY2022 | FY2023
+          Row 2: NRR     | 158%   | 169%   | 180%
+        """
+        html = """
+        <table>
+            <tr>
+                <th></th>
+                <th colspan="3">Year Ended January 31,</th>
+            </tr>
+            <tr>
+                <th>Metric</th>
+                <th>2021</th><th>2022</th><th>2023</th>
+            </tr>
+            <tr>
+                <td>Net Revenue Retention Rate</td>
+                <td>158%</td><td>169%</td><td>180%</td>
+            </tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        assert table.col_count == 4
+        assert table.row_count == 3
+        assert table.header_rows == 2
+        assert table.stub_cols == 1
+
+        # Data cells should NOT be stubs
+        cell_22 = table.get_cell(2, 1)
+        assert cell_22 is not None
+        assert cell_22.text == "158%"
+        assert not cell_22.is_stub
+        assert not cell_22.is_header
+
+
+class TestStubDetectionGuard:
+    """Tests for the >50% stub column safety net."""
+
+    def test_stub_detection_caps_when_exceeds_threshold_in_wide_table(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """In a wide table (8+ cols), >75% stub cols triggers the safety net cap."""
+        # 10 columns: 8 text, 2 numeric. 8/10 = 80% > 75% in a wide table -> cap at 1.
+        html = """
+        <table>
+            <tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th>
+                <th>F</th><th>G</th><th>H</th><th>Val1</th><th>Val2</th></tr>
+            <tr><td>t</td><td>t</td><td>t</td><td>t</td><td>t</td>
+                <td>t</td><td>t</td><td>t</td><td>100</td><td>200</td></tr>
+            <tr><td>t</td><td>t</td><td>t</td><td>t</td><td>t</td>
+                <td>t</td><td>t</td><td>t</td><td>110</td><td>210</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        assert table.col_count == 10
+        # 8/10 = 80% > 75% threshold in wide table -> capped at 1
+        assert table.stub_cols == 1
+
+    def test_stub_detection_allows_normal_single_stub(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """Normal table with 1 stub out of 5 cols is well under 50% and is not capped."""
+        html = """
+        <table>
+            <tr><th>Metric</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr>
+            <tr><td>NRR</td><td>158%</td><td>162%</td><td>169%</td><td>174%</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        assert table.col_count == 5
+        assert table.stub_cols == 1  # Normal: 1/5 = 20%, well under threshold
+
+    def test_stub_detection_allows_two_stubs_in_wide_table(
+        self, reconstructor: TableReconstructor
+    ) -> None:
+        """2 stubs in a 6-col table is 33% < 50%, so no cap applied."""
+        html = """
+        <table>
+            <tr><th>Cat</th><th>Metric</th><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr>
+            <tr><td>A</td><td>NRR</td><td>158%</td><td>162%</td><td>169%</td><td>174%</td></tr>
+        </table>
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        table_elem = soup.find("table")
+        assert table_elem is not None
+
+        table = reconstructor.reconstruct(table_elem)
+
+        assert table.col_count == 6
+        assert table.stub_cols == 2  # 2/6 = 33%, under threshold

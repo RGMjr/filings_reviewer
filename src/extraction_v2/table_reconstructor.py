@@ -244,23 +244,48 @@ class TableReconstructor:
         if not rows:
             return []
 
-        # First pass: determine grid dimensions more accurately
-        # Account for rowspans that might extend the grid
+        # First pass: determine grid dimensions using rowspan-aware simulation.
+        # A naive colspan-sum per row underestimates col_count when earlier rows
+        # have active rowspans that occupy columns in subsequent rows (those rows
+        # have fewer physical cells but the same logical width).
         row_count = len(rows)
         col_count = 0
 
-        # TODO (M7): This first-pass column count sums colspans per row but does
-        # not account for cells from earlier rows that are still "occupying" columns
-        # via rowspan. A row with an active rowspan-1 cell from the previous row
-        # will appear to have fewer physical cells than actual grid columns, so
-        # col_count may be underestimated. Full fix requires rowspan simulation in
-        # the first pass (mirroring the second-pass grid-fill logic). Deferring
-        # because the second pass clips spans to col_count, so underestimation
-        # causes truncation rather than a crash — an acceptable degradation for now.
+        # Track how many more rows each column's active rowspan still occupies.
+        # Sized dynamically as we discover wider rows.
+        rowspan_remaining: list[int] = []
+
         for tr in rows:
-            cells = tr.find_all(["td", "th"])
-            total_cols = sum(int(str(cell.get("colspan", "1"))) for cell in cells)
+            # Columns occupied by active rowspans from previous rows
+            occupied = sum(1 for r in rowspan_remaining if r > 0)
+            physical_cells = tr.find_all(["td", "th"])
+            physical_width = sum(
+                int(str(cell.get("colspan", "1"))) for cell in physical_cells
+            )
+            total_cols = occupied + physical_width
             col_count = max(col_count, total_cols)
+
+            # Extend rowspan tracker if this row revealed new columns
+            while len(rowspan_remaining) < col_count:
+                rowspan_remaining.append(0)
+
+            # Place physical cells into the tracker (left-to-right, skipping occupied)
+            col_idx = 0
+            for cell in physical_cells:
+                while col_idx < len(rowspan_remaining) and rowspan_remaining[col_idx] > 0:
+                    col_idx += 1
+                try:
+                    rs = max(1, int(str(cell.get("rowspan", "1"))))
+                    cs = max(1, int(str(cell.get("colspan", "1"))))
+                except (ValueError, TypeError):
+                    rs, cs = 1, 1
+                for c in range(cs):
+                    if col_idx + c < len(rowspan_remaining):
+                        rowspan_remaining[col_idx + c] = rs
+                col_idx += cs
+
+            # Decrement all rowspan counters for this row
+            rowspan_remaining = [max(0, r - 1) for r in rowspan_remaining]
 
         if col_count == 0:
             return []
@@ -446,6 +471,16 @@ class TableReconstructor:
                 stub_col_count += 1
             else:
                 break  # Stop at first non-stub column
+
+        # Safety net: in wide tables (8+ cols), >75% stub columns indicates a
+        # malformed reconstruction (e.g. inflated grid). Fall back to 1 stub.
+        # Narrow tables legitimately have high stub ratios (e.g. 2/3 cols).
+        if col_count >= 8 and stub_col_count > col_count * 0.75:
+            logger.warning(
+                f"Stub detection found {stub_col_count}/{col_count} stub cols "
+                f"(>75% in wide table); falling back to 1"
+            )
+            stub_col_count = 1
 
         return max(1, stub_col_count)  # At least 1 stub column
 
