@@ -407,7 +407,7 @@ class TestKeywordPatterns:
 
     def test_active_consumers_keyword_exists(self) -> None:
         """Verify 'active consumers' keyword is in metric patterns."""
-        from src.extraction.keyword_config import get_metric_keywords
+        from src.shared.keyword_config import get_metric_keywords
 
         keywords = get_metric_keywords().get("cm_active_customers_total", [])
 
@@ -420,7 +420,7 @@ class TestKeywordPatterns:
 
     def test_number_of_orders_keyword_exists(self) -> None:
         """Verify 'number of orders' keyword is in metric patterns."""
-        from src.extraction.keyword_config import get_metric_keywords
+        from src.shared.keyword_config import get_metric_keywords
 
         keywords = get_metric_keywords().get("cm_transactions_by_cohort", [])
 
@@ -433,7 +433,7 @@ class TestKeywordPatterns:
 
     def test_customer_abc_keyword_exists(self) -> None:
         """Verify 'Customer A/B/C' keyword is in revenue concentration patterns."""
-        from src.extraction.keyword_config import get_metric_keywords
+        from src.shared.keyword_config import get_metric_keywords
 
         keywords = get_metric_keywords().get("cm_revenue_concentration", [])
 

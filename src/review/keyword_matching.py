@@ -103,7 +103,7 @@ def _load_metric_keywords() -> dict[str, list[str]]:
     Raises:
         KeywordConfigError: If YAML config cannot be loaded.
     """
-    from src.extraction.keyword_config import get_metric_keywords, is_metric_deprecated
+    from src.shared.keyword_config import get_metric_keywords, is_metric_deprecated
 
     all_keywords = get_metric_keywords()
 
@@ -128,7 +128,7 @@ def _load_exclusion_patterns() -> dict[str, list[str]]:
     Raises:
         KeywordConfigError: If YAML config cannot be loaded.
     """
-    from src.extraction.keyword_config import get_exclusion_patterns, is_metric_deprecated
+    from src.shared.keyword_config import get_exclusion_patterns, is_metric_deprecated
 
     all_exclusions = get_exclusion_patterns()
 
@@ -148,7 +148,7 @@ def _load_specific_patterns() -> list[str]:
     Raises:
         KeywordConfigError: If YAML config cannot be loaded.
     """
-    from src.extraction.keyword_config import get_specific_patterns
+    from src.shared.keyword_config import get_specific_patterns
     return cast(list[str], get_specific_patterns())
 
 
@@ -162,7 +162,7 @@ def _load_required_context() -> dict[str, dict[str, Any]]:
     Raises:
         KeywordConfigError: If YAML config cannot be loaded.
     """
-    from src.extraction.keyword_config import get_required_context, is_metric_deprecated
+    from src.shared.keyword_config import get_required_context, is_metric_deprecated
 
     all_context = get_required_context()
 
