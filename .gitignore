@@ -113,3 +113,16 @@ debug_*.py
 # Corrupted SQL temp files
 sql/.!*
 ops/logs/
+
+# Virtual environment (actual dir name)
+.venv/
+
+# Large generated artifacts
+evidence_v2/
+.claude/worktrees/
+coverage.json
+reports/
+.benchmarks/
+data/gold_standard_reextracted/
+data/reextraction_results/
+data/training/
