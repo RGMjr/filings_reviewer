@@ -1,0 +1,15 @@
+[
+  {
+    "img_id": "13c1cc87-1944-4f90-90ea-1e8aa0a1484d",
+    "filename": "image16.jpg",
+    "image_url": "https://www.sec.gov/Archives/edgar/data/1792789/000162828023035962/image16.jpg",
+    "classification": "unknown",
+    "relevance_score": 0.2,
+    "nearby_text": "",
+    "section_type": "unknown",
+    "ocr_text": "",
+    "dom_locator": "/html/body[1]/document[1]/type[1]/sequence[1]/filename[1]/description[1]/text[1]/div[2]/div[1]/img[1]",
+    "width": 0,
+    "height": 0
+  }
+]

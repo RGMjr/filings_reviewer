@@ -1,0 +1,7 @@
+company,ticker,date,metric_id,value,unit,period,source_type,raw_text,context_before,context_after,header_path,stub_path,confidence,section,is_trap,disposition,disposition_reason
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,543 million,count,other,text,543 million,•Total Orders increased 24% year-over-year (Y/Y) to,and Marketplace GOV increased 24% Y/Y to $16.8 billion.,,,LOW,cover,False,,
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,439,other,2026-01-01 to 2026-03-31,html_table,439,,,Three Months Ended,Total Orders > Total Orders > Total Orders,HIGH,unknown,False,,
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,467,other,2026-01-01 to 2026-03-31,html_table,467,,,Three Months Ended,Total Orders > Total Orders > Total Orders,HIGH,unknown,False,,
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,512,other,2026-01-01 to 2026-03-31,html_table,512,,,Three Months Ended,Total Orders > Total Orders > Total Orders,HIGH,unknown,False,,
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,532,other,2026-01-01 to 2026-03-31,html_table,532,,,Three Months Ended,Total Orders > Total Orders > Total Orders,HIGH,unknown,False,,
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,543,other,2026-01-01 to 2026-03-31,html_table,543,,,Three Months Ended,Total Orders > Total Orders > Total Orders,HIGH,unknown,False,,

@@ -92,6 +92,13 @@ class UniverseBuilder:
                 )
                 requires_review_count += 1
 
+        # Mark earlier S-1/S-1/A/F-1/F-1/A filings as out of scope.
+        # Only the latest amendment per company should be fetched and extracted.
+        superseded = self.db.mark_superseded_filings()
+        if superseded:
+            in_scope_count -= superseded
+            logger.info(f"Marked {superseded} superseded filing(s) as out of scope")
+
         logger.info(
             f"Universe build complete: "
             f"{in_scope_count} in-scope filings, "

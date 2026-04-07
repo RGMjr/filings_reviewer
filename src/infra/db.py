@@ -461,6 +461,39 @@ class DatabaseAdapter:
         results = self.query(sql, {"cik": cik, "filing_date": filing_date})
         return bool(results and results[0]["count"] > 0)
 
+    def mark_superseded_filings(self) -> int:
+        """
+        Mark non-latest S-1/S-1/A/F-1/F-1/A filings as out of scope.
+
+        For each company, keeps only the most recently filed registration
+        statement as is_in_scope_phase1=TRUE. Earlier filings (original S-1
+        and interim amendments) are marked FALSE so they are not fetched,
+        extracted, or surfaced in the review UI.
+
+        All filings are retained in the database for historical reference.
+
+        Returns:
+            Number of filings marked out of scope.
+        """
+        sql = """
+            UPDATE filings
+            SET is_in_scope_phase1 = FALSE
+            WHERE form_type IN ('S-1', 'S-1/A', 'F-1', 'F-1/A')
+              AND is_in_scope_phase1 = TRUE
+              AND filing_id NOT IN (
+                  SELECT DISTINCT ON (company_id) filing_id
+                  FROM filings
+                  WHERE form_type IN ('S-1', 'S-1/A', 'F-1', 'F-1/A')
+                  ORDER BY company_id, filing_date DESC NULLS LAST
+              )
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                affected = cur.rowcount
+                conn.commit()
+        return affected
+
     def get_in_scope_filing_count(self) -> int:
         """
         Get count of filings where is_in_scope_phase1 = true.
@@ -3943,6 +3976,98 @@ class DatabaseAdapter:
                 )
                 existing = cur.fetchone()
                 return int(existing["image_candidate_id"]) if existing else 0
+
+    def bridge_v2_images_to_review_candidates(
+        self,
+        filing_id: int,
+        company_id: int,
+        cik: str,
+        accession_number: str,
+    ) -> int:
+        """
+        Populate image_review_candidates from v2_image_assets for a filing.
+
+        After V2 extraction runs, image assets are stored in v2_image_assets but
+        the Images tab in the review UI reads from image_review_candidates.  This
+        method bridges the two tables so newly-extracted filings automatically
+        appear in the review UI without manual script runs.
+
+        Skips decorative/logo/signature images.  Maps V2 relevance scores and
+        classifications to detection tiers:
+            - chart  + relevance >= 0.6            → tier_1_cohort
+            - chart or table_image + 300×300px      → tier_2_large
+            - all other non-decorative              → tier_3_all
+
+        Uses insert_image_review_candidate() which is upsert-safe, so re-running
+        this method for the same filing is idempotent.
+
+        Args:
+            filing_id:        DB filing_id (also the doc_id in v2_image_assets).
+            company_id:       Company owning the filing.
+            cik:              SEC CIK (used to construct the image URL).
+            accession_number: SEC accession number with dashes (e.g. "0001193125-23-235646").
+
+        Returns:
+            Number of candidates inserted (0 if all already existed or no images).
+        """
+        # Fetch non-decorative images that have a filename
+        rows = self.query(
+            """
+            SELECT img_id, filename, width, height, nearby_text,
+                   classification, relevance_score
+            FROM v2_image_assets
+            WHERE doc_id = %(filing_id)s
+              AND classification NOT IN ('decorative', 'logo', 'signature')
+              AND filename IS NOT NULL
+              AND filename != ''
+            ORDER BY relevance_score DESC
+            """,
+            {"filing_id": filing_id},
+        )
+        if not rows:
+            return 0
+
+        # Construct base URL (mirrors sec_client.fetch_image URL logic)
+        cik_stripped = cik.lstrip("0") or "0"
+        accession_no_dashes = accession_number.replace("-", "")
+        base_url = (
+            f"https://www.sec.gov/Archives/edgar/data/"
+            f"{cik_stripped}/{accession_no_dashes}/"
+        )
+
+        inserted = 0
+        for row in rows:
+            classification = row["classification"] or ""
+            relevance = float(row["relevance_score"] or 0.0)
+            width = int(row["width"] or 0)
+            height = int(row["height"] or 0)
+            filename = row["filename"]
+
+            # Tier mapping
+            if classification == "chart" and relevance >= 0.6:
+                tier = "tier_1_cohort"
+            elif classification in ("chart", "table_image") and width >= 300 and height >= 300:
+                tier = "tier_2_large"
+            else:
+                tier = "tier_3_all"
+
+            candidate_id = self.insert_image_review_candidate(
+                filing_id=filing_id,
+                company_id=company_id,
+                image_src=filename,
+                image_url=base_url + filename,
+                image_width=width or None,
+                image_height=height or None,
+                preceding_text=(row["nearby_text"] or None),
+                cohort_keyword_nearby=(relevance >= 0.6),
+                cohort_confidence=min(relevance, 1.0),
+                is_decorative=False,
+                detection_tier=tier,
+            )
+            if candidate_id:
+                inserted += 1
+
+        return inserted
 
     def insert_image_review_decision(
         self,
