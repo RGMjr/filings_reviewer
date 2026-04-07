@@ -6,7 +6,7 @@ paths:
 # SQL Migration Rules
 
 ## Naming Convention
-Files must be named `NN-description.sql` where `NN` is a zero-padded integer (e.g., `15-add-indexes.sql`).
+Files must be named `NN_description.sql` where `NN` is a zero-padded integer (e.g., `15_add_indexes.sql`).
 
 ## Ordering Requirements
 - Numbers must be sequential with no gaps

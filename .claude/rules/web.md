@@ -9,7 +9,7 @@ paths:
 
 - `src/web/routes/review.py` / `api.py`: Text/metric review interface (page + JSON API)
 - `src/web/routes/review_images.py` / `api_images.py`: Image review (DB-backed, SEC filings)
-- `src/web/routes/review_v2.py` / `api_v2.py`: V2 extraction review interface
+- `src/web/routes/review_unified.py` / `api_unified.py`: Unified V2 extraction review interface (replaces review_v2 / api_v2)
 - `src/web/routes/review_pres_images.py`: Presentation image review (file-based, `/review/pres-images/`)
 
 ## Conventions
@@ -22,4 +22,4 @@ paths:
 ## Templates and Static
 
 HTML templates in `src/web/templates/`. Base: `base.html`.
-Static: `src/web/static/js/review.js` (2,162 lines), `static/css/review.css`.
+Static: `src/web/static/js/review.js`, `static/css/review.css`.

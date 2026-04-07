@@ -1,6 +1,7 @@
 ---
 paths:
   - "src/extraction_v2/**"
+  - "config/metric_keywords.yaml"
 ---
 
 # V2 Extraction Pipeline

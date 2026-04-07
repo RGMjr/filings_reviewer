@@ -21,12 +21,14 @@ Design doc: `docs/analysis/spike/BEYOND_SEC_DESIGN_DOCUMENT.md`
 
 ## Current Benchmarks
 
-| Source | R | P | F1 | Notes |
-|--------|---:|---:|---:|-------|
-| Transcript | 75.8% | 74.2% | 75.0% | 91 annotations, 20 files (2026-03-02) |
-| Presentation | 100.0% | 36.8% | 53.8% | 7 annotations, 5 files (2026-03-11) |
+Run the validation scripts for current numbers — do not rely on stale snapshots here:
 
-SNAP presentations: poor precision (29%) — image-based investor letter generates spurious text candidates.
+```bash
+python3 scripts/validate_transcript_extraction.py --split tuning --baseline --verbose
+python3 scripts/validate_presentation_extraction.py --baseline --verbose
+```
+
+Known issue: SNAP presentations have poor precision — image-based investor letter generates spurious text candidates.
 
 ## Transcript Gold Standard Workflow
 

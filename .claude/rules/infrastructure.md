@@ -40,6 +40,3 @@ Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmo
 - Rate limiting: 100ms minimum between requests (enforced in `sec_client.py`)
 - User-Agent header required: set via `SEC_USER_AGENT` env var
 
-## Code Audit Rules
-
-When performing merge readiness assessments or code audits: thorough deep pass first time. Always check CI status on branch, migration file ordering, import statements in changed files. Dropped imports and empty regex patterns from config moves are common failure modes.
