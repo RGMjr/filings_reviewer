@@ -11,6 +11,13 @@ Usage:
     results = validator.validate_all()
     metrics = validator.compute_metrics(results)
     print(f"Precision: {metrics.precision:.1%}, Recall: {metrics.recall:.1%}")
+
+CLI:
+    # Run V2 validation (compare against baseline)
+    python3 -m src.gold_standard.v2_validator
+
+    # Update V2 baseline after intentional improvement
+    python3 -m src.gold_standard.v2_validator --update-baseline --description "Post-keyword-update"
 """
 
 from __future__ import annotations
@@ -44,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 # Default paths
 GOLD_STANDARD_DIR = Path(__file__).parent.parent.parent / "data" / "gold_standard"
-GOLD_STANDARD_CSV = GOLD_STANDARD_DIR / "golden_set_260407.csv"
+GOLD_STANDARD_CSV = GOLD_STANDARD_DIR / "golden_set_260408.csv"
 V2_BASELINE_PATH = GOLD_STANDARD_DIR / "v2_baseline.json"
 
 
@@ -1486,3 +1493,41 @@ def run_validation(
         validator.save_baseline(metrics, description=baseline_description)
 
     return metrics
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="V2 Gold Standard Validator — run validation and optionally update baseline."
+    )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Save current metrics as the new V2 baseline",
+    )
+    parser.add_argument(
+        "--description",
+        type=str,
+        default=None,
+        help="Description for the new baseline snapshot",
+    )
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.35,
+        help="Minimum confidence threshold (default: 0.35)",
+    )
+    parser.add_argument(
+        "--fn-diagnostics",
+        action="store_true",
+        help="Enable false-negative root cause analysis",
+    )
+
+    _args = parser.parse_args()
+    run_validation(
+        update_baseline=_args.update_baseline,
+        baseline_description=_args.description,
+        min_confidence=_args.min_confidence,
+        fn_diagnostics=_args.fn_diagnostics,
+    )

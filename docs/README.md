@@ -389,7 +389,7 @@ Internal prompt templates for consistent, efficient task execution. Skills reduc
 - ✅ Neon (cloud PostgreSQL) documented as production DB in CLAUDE.md and `.env.template`
 - ✅ `*.dump` added to `.gitignore` to prevent accidental production data commits
 - ✅ Issue #9 partially resolved: validation DB dependency eliminated; Snap CIK fix still pending
-- ✅ `baseline.json` and `baseline_metrics.json` synced to stable fresh-mode metrics (P:84.1%, R:73.0%, F1:78.1%)
+- ✅ `baseline_metrics.json` synced to stable fresh-mode metrics (P:84.1%, R:73.0%, F1:78.1%)
 
 ### Version 2.3 (2026-03-16)
 - ✅ Cloud deployment runbook added (Render + Neon DB)

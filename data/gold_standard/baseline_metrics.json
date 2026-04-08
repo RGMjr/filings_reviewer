@@ -1,32 +1,87 @@
 {
-  "baseline_date": "2026-03-09T17:38:51.666507+00:00",
-  "description": "Validation run with 4 filings",
+  "baseline_date": "2026-04-08T18:10:37.065347+00:00",
+  "description": "Validation run with 15 filings",
   "overall": {
-    "precision": 0.0,
-    "recall": 0.0,
-    "f1": 0.0
+    "precision": 0.675,
+    "recall": 0.801980198019802,
+    "f1": 0.7330316742081447
   },
   "by_company": {
+    "Chewy, Inc.": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666
+    },
+    "Datadog, Inc.": {
+      "precision": 0.8666666666666667,
+      "recall": 0.9285714285714286,
+      "f1": 0.896551724137931
+    },
     "Farfetch Limited": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 0.39473684210526316,
+      "recall": 0.5,
+      "f1": 0.4411764705882353
+    },
+    "Flywire Corp": {
+      "precision": 0.6,
+      "recall": 1.0,
+      "f1": 0.7499999999999999
+    },
+    "Gitlab Inc.": {
+      "precision": 0.673469387755102,
+      "recall": 0.9705882352941176,
+      "f1": 0.7951807228915663
+    },
+    "Kingsoft Cloud Holdings Ltd": {
+      "precision": 0.4666666666666667,
+      "recall": 1.0,
+      "f1": 0.6363636363636364
+    },
+    "Maplebear Inc.": {
+      "precision": 0.5,
+      "recall": 0.5652173913043478,
+      "f1": 0.5306122448979592
+    },
+    "Robinhood Markets, Inc.": {
+      "precision": 0.8095238095238095,
+      "recall": 0.4857142857142857,
+      "f1": 0.6071428571428571
     },
     "SAMSARA VISION INC.": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 0.3333333333333333,
+      "recall": 1.0,
+      "f1": 0.5
+    },
+    "Samsara Inc.": {
+      "precision": 0.8928571428571429,
+      "recall": 0.5952380952380952,
+      "f1": 0.7142857142857143
     },
     "Slack Technologies": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 0.9019607843137255,
+      "recall": 0.8846153846153846,
+      "f1": 0.8932038834951457
+    },
+    "Slack Technologies, Inc.": {
+      "precision": 0.9019607843137255,
+      "recall": 0.8846153846153846,
+      "f1": 0.8932038834951457
     },
     "Snowflake Inc": {
-      "precision": 0,
-      "recall": 0.0,
-      "f1": 0
+      "precision": 0.6122448979591837,
+      "recall": 1.0,
+      "f1": 0.759493670886076
+    },
+    "Tenable Holdings, Inc.": {
+      "precision": 0.7333333333333333,
+      "recall": 0.8461538461538461,
+      "f1": 0.7857142857142856
+    },
+    "Torrid Holdings Inc.": {
+      "precision": 0.6808510638297872,
+      "recall": 0.8888888888888888,
+      "f1": 0.7710843373493975
     }
   },
-  "pipeline_version": "v1"
+  "unique_recall": 0.801980198019802
 }

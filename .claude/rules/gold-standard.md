@@ -44,6 +44,12 @@ python scripts/validate_against_gold_standard.py --all --mode fresh --update-bas
 ```
 Commit the updated `data/gold_standard/baseline_metrics.json`.
 
+### 5. Update V2 Baseline (after intentional V2 changes)
+```bash
+python3 -m src.gold_standard.v2_validator --update-baseline --description "Rationale"
+```
+Commit the updated `data/gold_standard/v2_baseline.json`.
+
 ## Key Metrics
 
 - **Precision**: % of generated candidates that are correct
@@ -82,3 +88,7 @@ pytest -m transcript_gold_standard --transcript-update-baseline -v
 python3 scripts/validate_transcript_extraction.py --split tuning --save-baseline
 python3 scripts/validate_transcript_extraction.py --split test --save-baseline
 ```
+
+## Full Procedures
+
+See `docs/operations/gold-standard-runbook.md` for the complete baseline update runbook covering V1, V2, transcript, and presentation pipelines.
