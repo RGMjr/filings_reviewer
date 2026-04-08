@@ -536,12 +536,22 @@ _DELTA_COUNT_RE = re.compile(
     r"|(?:up|down)\s+(?:by\s+)?(?:more\s+than\s+|approximately\s+|nearly\s+|over\s+|about\s+)?"
     r"|(?:net\s+)?(?:additions?)\s+of"
     r"|,?\s*or\s+by\s+(?:more\s+than\s+|approximately\s+|nearly\s+|over\s+|about\s+)?"
+    r"|(?:increas(?:e[ds]?|ing)|decreas(?:e[ds]?|ing)|grew|declined)\s+(?:by\s+)?(?:approximately\s+|nearly\s+|over\s+|about\s+|more\s+than\s+)?"
     r")\s*$",
     re.IGNORECASE,
 )
 
 _DELTA_BY_MORE_RE = re.compile(
     r"\b(?:up|down|grew|grown|increased?|decreased?)\b.{0,40}\bby[\s\u200b]+(?:more[\s\u200b]+than|approximately|nearly|over|about)[\s\u200b]*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Indirect delta pattern: "increase in X by N" or "decrease of X by N" where a noun
+# phrase (up to 60 chars) separates the delta verb from "by".  Catches constructions
+# like "increase in the number of active customers by 3.8 million".  Applied inside
+# _rule_delta_count_value after _DELTA_COUNT_RE and _DELTA_BY_MORE_RE.
+_DELTA_INDIRECT_RE = re.compile(
+    r"\b(?:increase|decrease)\b.{0,60}\bby\s+(?:approximately\s+|nearly\s+|over\s+|about\s+|more\s+than\s+)?$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -628,9 +638,10 @@ def _rule_delta_count_value(bv: BoundValue, source_text: str, metric_id: str) ->
     These patterns indicate the number is a growth amount, not an absolute stock.
 
     Two checks:
-    1. 60-char pre-window: _DELTA_COUNT_RE ("increase of", "up by", "net additions of")
-    2. 30-char pre-window: _DELTA_BY_MORE_RE ("by more than", "by approximately", etc.)
-       — tighter window to avoid matching "grew X% year over year to over VALUE"
+    1. 60-char pre-window: _DELTA_COUNT_RE ("increase of", "up by", "net additions of",
+       "increased by", "increasing by", "grew by", "declined N")
+    2. 60-char pre-window: _DELTA_BY_MORE_RE ("by more than", "by approximately", etc.)
+    3. 60-char pre-window: _DELTA_INDIRECT_RE ("increase in X by N" with noun gap)
 
     Excludes cm_new_customers_acquired because "added/adding VALUE" is the canonical
     reporting pattern for net customer additions and should remain valid.
@@ -656,6 +667,10 @@ def _rule_delta_count_value(bv: BoundValue, source_text: str, metric_id: str) ->
     # (wider than the former 30-char window to catch "grew ... (MAU) by more than VALUE"
     # where a noun phrase separates the verb from "by")
     if _DELTA_BY_MORE_RE.search(pre_window):
+        return "v2_delta_count_value"
+    # Check for "increase in X by N" constructions where a noun phrase separates
+    # the delta verb from "by".
+    if _DELTA_INDIRECT_RE.search(pre_window):
         return "v2_delta_count_value"
     return None
 
@@ -1194,23 +1209,32 @@ def _rule_financial_context_on_customer_metric(
     Table bindings: always fire when a financial keyword appears in the
     header/stub path (which directly labels the row/column).
     Text bindings: fire only when the keyword is within 100 chars of the value.
+    Uses a window-based check around the value to avoid being misled by an
+    early financial keyword far from the actual bound value position.
     """
     if metric_id not in _FINANCIAL_CONTEXT_BLOCKED_METRICS:
         return None
     if not source_text:
         return None
-    match = _FINANCIAL_CONTEXT_KEYWORD_RE.search(source_text)
-    if not match:
-        return None
-    # Table-sourced: header/stub path directly labels the cell — always fire.
+    # Table-sourced: header/stub path directly labels the cell — always fire
+    # if any financial keyword appears anywhere in source_text.
     if bv.source_locator.table_id is not None:
-        return "v2_financial_context_customer_metric"
-    # Text-sourced: require proximity to the value.
+        if _FINANCIAL_CONTEXT_KEYWORD_RE.search(source_text):
+            return "v2_financial_context_customer_metric"
+        return None
+    # Text-sourced: require a financial keyword in the 100-char pre-window.
+    # Financial row labels appear BEFORE the values they describe in linearized
+    # text.  Using the pre-window (not a symmetric window) prevents blocking
+    # legitimate customer counts that appear before a financial row in the same
+    # segment (e.g., "Customers 255 … Non-GAAP loss $(219,609)").
     raw = (bv.value_raw or "").strip()
     if not raw:
         return None
     value_pos = source_text.find(raw)
-    if value_pos >= 0 and abs(match.start() - value_pos) <= 100:
+    if value_pos < 0:
+        return None
+    pre_window = source_text[max(0, value_pos - 100):value_pos]
+    if _FINANCIAL_CONTEXT_KEYWORD_RE.search(pre_window):
         return "v2_financial_context_customer_metric"
     return None
 
@@ -1227,6 +1251,10 @@ _METRIC_DEFINITION_THRESHOLD_RE = re.compile(
         # Customer-qualified threshold language (requires "customer" prefix)
         | \bcustomer[s]?\s+(?:with|spending|generating|having|represent(?:ing)?)\s+
           (?:over|more\s+than|at\s+least|greater\s+than|>\s*\$|>=\s*\$)
+        # ARR-qualified threshold: "ARR of greater than $X", "ARR exceeding $X"
+        | \bARR\s+(?:of\s+)?(?:over|greater\s+than|more\s+than|at\s+least|exceeding|>\s*)
+        # "representing over $X in ARR" — subscription tier threshold
+        | \brepresenting\s+(?:over|more\s+than|at\s+least|greater\s+than)\s+\$
         # Pure threshold marker (must appear immediately before a dollar sign or number)
         | \bthreshold\b
     )
@@ -1256,7 +1284,7 @@ def _rule_metric_definition_value(
     value_pos = source_text.find(raw)
     if value_pos < 0:
         return None
-    pre_start = max(0, value_pos - 80)
+    pre_start = max(0, value_pos - 120)
     pre_window = source_text[pre_start:value_pos]
     if _METRIC_DEFINITION_THRESHOLD_RE.search(pre_window):
         return "v2_metric_definition_value"
@@ -1301,6 +1329,60 @@ def _rule_chart_pricing_label(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Wave 6: TAM / market size suppression
+# ---------------------------------------------------------------------------
+
+_TAM_MARKET_SIZE_RE = re.compile(
+    r"\b(?:"
+    r"total\s+addressable\s+market"
+    r"|TAM\b"
+    r"|SAM\b"
+    r"|SOM\b"
+    r"|serviceable\s+(?:addressable|obtainable)\s+market"
+    r"|market\s+(?:size|opportunity)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Metrics that should never take a total-market-size value.
+_TAM_BLOCKED_METRICS = _FINANCIAL_CONTEXT_BLOCKED_METRICS | frozenset({
+    "cm_arr",
+    "cm_lifetime_value_per_customer",
+    "cm_ltv_to_cac_ratio",
+    "cm_revenue_per_customer",
+    "cm_revenue_by_cohort",
+})
+
+
+def _rule_tam_market_size(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Block values that represent TAM/SAM/SOM or market-size projections.
+
+    Total addressable market figures appear in investor presentations and S-1
+    filings near customer metric keywords, causing spurious extractions.  TAM
+    values are never legitimate customer metric values — they measure the overall
+    market, not the company's actual performance.
+
+    Fires when TAM/market-size language appears within 200 chars of the value.
+    """
+    if metric_id not in _TAM_BLOCKED_METRICS:
+        return None
+    if not source_text:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    value_pos = source_text.find(raw)
+    if value_pos < 0:
+        return None
+    window_start = max(0, value_pos - 200)
+    window_end = min(len(source_text), value_pos + len(raw) + 200)
+    window = source_text[window_start:window_end]
+    if _TAM_MARKET_SIZE_RE.search(window):
+        return "v2_tam_market_size"
+    return None
+
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # Tags are used by the relaxed-mode skip list below.
@@ -1336,6 +1418,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
     ("financial_context_customer_metric", _rule_financial_context_on_customer_metric),
     ("metric_definition_value", _rule_metric_definition_value),
     ("chart_pricing_label", _rule_chart_pricing_label),
+    ("tam_market_size", _rule_tam_market_size),
 ]
 
 # Rules skipped in relaxed mode per document type.
