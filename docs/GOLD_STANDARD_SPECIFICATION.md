@@ -28,7 +28,7 @@ grep '^cm_' config/metric_keywords.yaml | grep -v '^\s*#'
 
 ## 2. Value Normalization
 
-Gold standard values are compared to extracted values using `normalize_value()` in `scripts/validate_against_gold_standard.py:122`. The normalization rules are:
+Gold standard values are compared to extracted values using `normalize_value()` in `scripts/validate_against_gold_standard.py:121`. The normalization rules are:
 
 | Input format | Normalized result |
 |---|---|

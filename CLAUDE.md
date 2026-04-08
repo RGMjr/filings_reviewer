@@ -8,7 +8,7 @@ Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclo
 
 ```
 src/
-├── infra/          # db.py, sec_client.py, http_client.py, logging_config.py, pool.py, validation.py, exceptions.py
+├── infra/          # db.py, sec_client.py, http_client.py, logging_config.py, pool.py, validation.py, exceptions.py, company_mapping.py, document_source.py, fmp_source.py, huggingface_source.py, sec_presentation_source.py
 ├── universe/       # Filing discovery: classifiers.py, universe_builder.py
 ├── filing_fetcher/ # Document retrieval and caching
 ├── extraction/     # Metric extraction (V1 - retired; code kept for historical reference)
@@ -45,7 +45,7 @@ SEC_USER_AGENT="YourName contact@example.com"
 
 ## Database
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-16). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-18). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 ## Testing Standards
 

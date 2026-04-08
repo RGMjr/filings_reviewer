@@ -52,7 +52,7 @@ We classify metrics into three groups:
 Examples:
 
 - Core: `cm_new_customers_acquired`  
-- Extended: `cm_active_customers_total`, `cm_arpu`  
+- Extended: `cm_active_customers_total`, `cm_revenue_per_customer`  
 - Future: `cm_lifetime_value_per_customer`
 
 These IDs are the **single source of truth** across:
@@ -349,6 +349,82 @@ Measure **purchase intensity** and **engagement** by cohort, independent of tick
 
 ---
 
+### 3.5 CM4b – Purchase Transactions (Overall)
+
+**ID:** `cm_purchase_transactions_overall`  
+**Class:** Core (Phase 1)  
+
+**Business intent**
+
+Measure total **purchase transaction volume** across all customers in the period, independent of cohort. This is the aggregate complement to CM4 (`cm_transactions_by_cohort`) and captures companies that disclose order counts without a cohort breakdown.
+
+**Canonical definition**
+
+> The total number of **completed purchase transactions** in the reporting period, across all customers and cohorts.
+
+**Units**
+
+- Integer count of transactions  
+
+**Required dimensions**
+
+- Time:
+  - `period_start`, `period_end`, `period_type`  
+
+**What counts in Phase 1**
+
+- “Number of orders”  
+- “Total orders”  
+- “Purchase transactions” (without cohort qualifier)  
+- “Order count” or “order volume”
+
+**Out-of-scope / must not map here**
+
+- Transaction counts broken down by cohort (those belong to `cm_transactions_by_cohort`)  
+- Page views, sessions, or non-purchase engagement events  
+
+---
+
+### 3.6 CM5 – Customers at Period End (Total)
+
+**ID:** `cm_customers_period_end`  
+**Class:** Core (Phase 1)  
+
+**Business intent**
+
+Measure the **total size of the customer base** at the end of each period. This is a stock count of all customers — paying or otherwise as defined by the issuer — and is the most fundamental customer-base metric.
+
+**Canonical definition**
+
+> The count of **unique customers** that meet the issuer's definition of “customer” as of the last day of the reporting period.
+
+**Units**
+
+- Integer count of customers  
+
+**Required dimensions**
+
+- Time:
+  - `period_end`, `period_type`  
+- Company:
+  - `cik`, `company_id`  
+
+**What counts in Phase 1**
+
+- “Total customers”  
+- “Paid customers” / “paying customers”  
+- “Total paying organizations”  
+- “Customer base” disclosures with a count  
+- Period-end subscriber counts (telecom, SaaS)
+
+**Out-of-scope / must not map here**
+
+- Active customers based on engagement criteria (those belong to `cm_active_customers_total`)  
+- New customers acquired in the period (those belong to `cm_new_customers_acquired`)  
+- Leads, sign-ups, or app downloads without evidence of economic activity  
+
+---
+
 ## 4. Extended Metrics (Phase 1)
 
 Extended metrics are **not primary** for Phase 1 but provide important context. We track incidence and values where feasible.
@@ -368,12 +444,12 @@ We will:
 - Capture the issuer’s definition of “active” (see Section 5)  
 - Link to revenue and cohort metrics where possible  
 
-### 4.2 ARPU / Revenue per Customer
+### 4.2 Revenue per Customer (ARPU)
 
 **ID:** `cm_revenue_per_customer`  
 **Class:** Extended (Phase 1)  
 
-Any metric clearly framed as revenue per user/customer/subscriber over a defined period.
+Any metric clearly framed as revenue per user/customer/subscriber over a defined period. Common labels include ARPU (average revenue per user) and ARPA (average revenue per account).
 
 We will:
 
@@ -404,6 +480,97 @@ Phase 1:
 
 - Focus on incidence and basic extraction of values  
 - Defer detailed comparability analysis to Phase 2  
+
+### 4.5 Large Customers at Period End
+
+**ID:** `cm_large_customers_period_end`  
+**Class:** Extended (Phase 1)  
+
+Count of customers exceeding a revenue or ARR threshold defined by the issuer (e.g., customers with trailing 12-month revenue greater than $100,000). Common in SaaS and enterprise software filings.
+
+### 4.6 Net Revenue Retention
+
+**ID:** `cm_net_revenue_retention`  
+**Class:** Extended (Phase 1)  
+
+Revenue retained from the prior-period cohort of customers including expansion, net of churn and contraction. Also referred to as Net Dollar Retention (NDR) or dollar-based net retention. A value above 100% indicates expansion outweighs churn.
+
+### 4.7 Gross Revenue Retention
+
+**ID:** `cm_gross_revenue_retention`  
+**Class:** Extended (Phase 1)  
+
+Revenue retained from the prior-period cohort of customers excluding expansion (churn and contraction only). Represents the floor of revenue retained, capped at 100%. Also referred to as GRR.
+
+### 4.8 Monthly Active Users
+
+**ID:** `cm_monthly_active_users`  
+**Class:** Extended (Phase 1)  
+
+Count of unique users or accounts that meet the issuer's activity criteria within a calendar month. Commonly abbreviated MAU. Widely disclosed by consumer internet, social media, and payments companies.
+
+### 4.9 Daily Active Users
+
+**ID:** `cm_daily_active_users`  
+**Class:** Extended (Phase 1)  
+
+Count of unique users or accounts that meet the issuer's activity criteria within a single day. Commonly abbreviated DAU. Often disclosed alongside MAU to show engagement depth.
+
+### 4.10 Gross Margin by Cohort
+
+**ID:** `cm_gross_margin_by_cohort`  
+**Class:** Extended (Phase 1)  
+
+Gross margin or contribution margin analyzed by customer acquisition cohort or vintage. Captures how unit economics evolve as cohorts mature. Common in e-commerce and marketplace filings (e.g., order contribution margin for new vs. existing customers).
+
+### 4.11 Annual Recurring Revenue
+
+**ID:** `cm_arr`  
+**Class:** Extended (Phase 1)  
+
+Annualized value of subscription or recurring contract revenue as of a point in time. Commonly abbreviated ARR. A standard SaaS metric; includes annualized run-rate variants disclosed by issuers.
+
+### 4.12 Monthly Recurring Revenue
+
+**ID:** `cm_mrr`  
+**Class:** Extended (Phase 1)  
+
+Monthly subscription or recurring contract revenue as of a point in time. Commonly abbreviated MRR. The monthly analogue of ARR; typically used by earlier-stage SaaS companies or those with monthly billing cycles.
+
+### 4.13 Expansion Revenue
+
+**ID:** `cm_expansion_revenue`  
+**Class:** Extended (Phase 1)  
+
+Revenue generated from existing customers beyond their initial contract or baseline spend. Includes upsell, cross-sell, and additional product adoption. Sometimes expressed as products per customer or transactions per active account.
+
+### 4.14 Revenue Concentration
+
+**ID:** `cm_revenue_concentration`  
+**Class:** Extended (Phase 1)  
+
+Measure of how revenue is distributed across the customer base. Commonly disclosed as revenue from the top N customers, a named customer's revenue percentage, or a statement that no single customer exceeds a given threshold. Signals customer dependency risk.
+
+### 4.15 Average Order Value
+
+**ID:** `cm_average_order_value`  
+**Class:** Extended (Phase 1)  
+
+Average revenue per purchase transaction, also referred to as average ticket size or average basket size. Commonly abbreviated AOV. Primarily used in e-commerce and retail filings.
+
+### 4.16 Repeat Purchase Rate
+
+**ID:** `cm_repeat_purchase_rate`  
+**Class:** Extended (Phase 1)  
+
+The proportion of customers who make more than one purchase, or the frequency with which customers reorder. Common labels include repeat purchase rate, purchase frequency, reorder rate, and repurchase rate.
+
+### 4.17 LTV/CAC Ratio by Cohort
+
+**ID:** `cm_ltv_to_cac_ratio_by_cohort`  
+**Class:** Extended (Phase 1)  
+
+The ratio of customer lifetime value to customer acquisition cost, analyzed by acquisition cohort. Captures how unit economics vary across cohorts over time. May be disclosed with temporal qualifiers such as "6-month LTV/CAC" or "LTV/CAC after 12 months."
 
 ---
 

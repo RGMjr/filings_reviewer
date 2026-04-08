@@ -1,653 +1,331 @@
-# Implementation Guide
+# Setup Guide
 
-**Version:** 2.0
-**Last Updated:** 2025-11-14
+**Last Updated:** 2026-04-08
 
 ---
 
-## Phase 1: Setup & Foundation (Week 1)
+## Prerequisites
 
-### Day 1-2: Environment Setup
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.11 or 3.12 | 3.11 is the primary target |
+| PostgreSQL | 15+ | Local via Docker or Neon (cloud) |
+| uv | latest | Preferred for dependency management |
+| git | any | |
 
-#### 1.1 Create Project Structure
+Install `uv` if you do not have it:
 
 ```bash
+pip install uv
+```
+
+---
+
+## 1. Clone and Install
+
+```bash
+git clone https://github.com/RGMjr/filings_reviewer
 cd filings_reviewer
-
-# Create directory structure
-mkdir -p core config data/cache data/exports docs tests
-
-# Create __init__ files
-touch core/__init__.py tests/__init__.py
-
-# Create main files
-touch core/{discovery,cache,table_extractor,keyword_filter,llm_extractor,qa_agent,orchestrator,storage,rate_limiter,monitor}.py
-touch config/{s1_config.yaml,10k_config.yaml}
-touch main.py
 ```
 
-#### 1.2 Setup Virtual Environment
+Install dependencies:
 
 ```bash
-# Create virtual environment
-python3.11 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install --upgrade pip
-pip install \
-    requests>=2.31.0 \
-    beautifulsoup4>=4.12.0 \
-    lxml>=5.0.0 \
-    pandas>=2.0.0 \
-    openai>=1.0.0 \
-    python-dotenv>=1.0.0 \
-    ftfy>=6.1.0 \
-    tqdm>=4.65.0 \
-    rich>=13.0.0 \
-    pyyaml>=6.0.0 \
-    tenacity>=8.2.0 \
-    tiktoken>=0.5.0
-
-# Development dependencies
-pip install \
-    pytest>=7.0.0 \
-    black>=23.0.0 \
-    mypy>=1.0.0 \
-    ruff>=0.1.0
-
-# Save dependencies
-pip freeze > requirements.txt
+uv pip install -r requirements.txt
 ```
 
-#### 1.3 Configuration Files
-
-**`.env`** (DO NOT commit to git):
-```bash
-# OpenAI API key
-OPENAI_API_KEY=sk-...your-key-here...
-
-# Database path
-DATABASE_PATH=data/filings_data.db
-
-# Cache directory
-CACHE_DIR=data/cache
-
-# Rate limiting (optional overrides)
-MAX_CONCURRENT_WORKERS=10
-TOKENS_PER_MINUTE=90000
-```
-
-**.gitignore**:
-```
-# Environment
-.env
-venv/
-__pycache__/
-*.pyc
-
-# Data
-data/cache/
-data/*.db
-data/*.db-journal
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# OS
-.DS_Store
-Thumbs.db
-```
-
-### Day 3-4: Core Data Models
-
-**`core/models.py`**:
-```python
-"""
-Data models for the SEC filings extraction system.
-"""
-
-from dataclasses import dataclass, field
-from datetime import date, datetime
-from enum import Enum
-from typing import Optional, List
-import logging
-
-logger = logging.getLogger(__name__)
-
-# Enums
-class SourceType(str, Enum):
-    TABLE = "table"
-    TEXT = "text"
-    GRAPH = "graph_description"
-
-class ExtractionMethod(str, Enum):
-    RULE_BASED = "rule_based"
-    GPT_4O_MINI = "gpt-4o-mini"
-    GPT_4O = "gpt-4o"
-
-class WarningSeverity(str, Enum):
-    CRITICAL = "critical"
-    WARNING = "warning"
-    INFO = "info"
-
-class WarningType(str, Enum):
-    DATA_VALIDITY = "data_validity"
-    EXTRACTION_CONFIDENCE = "extraction_confidence"
-    CONSISTENCY = "consistency"
-    COMPLETENESS = "completeness"
-
-# Filing metadata
-@dataclass
-class FilingMetadata:
-    """Metadata for a single SEC filing"""
-    cik: str
-    accession_number: str
-    filing_id: str
-    company_name: str
-    filing_type: str
-    filing_date: date
-    url: str
-    ticker: Optional[str] = None
-    sic_code: Optional[str] = None
-    industry: Optional[str] = None
-
-# Metrics
-@dataclass
-class Metric:
-    """Base class for extracted metrics"""
-    metric_name: str
-    value: str
-    value_numeric: Optional[float] = None
-    period: Optional[str] = None
-    period_start: Optional[date] = None
-    period_end: Optional[date] = None
-    source_type: SourceType = SourceType.TEXT
-    source_details: str = ""
-    extraction_method: ExtractionMethod = ExtractionMethod.RULE_BASED
-    confidence: float = 0.0
-
-@dataclass
-class TableMetric(Metric):
-    """Metric extracted from HTML table"""
-    row_index: int = 0
-    col_index: int = 0
-    table_caption: Optional[str] = None
-
-    def __post_init__(self):
-        self.source_type = SourceType.TABLE
-        self.extraction_method = ExtractionMethod.RULE_BASED
-
-@dataclass
-class LLMMetric(Metric):
-    """Metric extracted by LLM"""
-    model: str = "gpt-4o-mini"
-    tokens_used: int = 0
-
-# Processing results
-@dataclass
-class TokenUsage:
-    """OpenAI API token usage"""
-    input_tokens: int
-    output_tokens: int
-    model: str
-
-    @property
-    def cost_usd(self) -> float:
-        """Calculate cost"""
-        if self.model == "gpt-4o-mini":
-            return (self.input_tokens * 0.15 + self.output_tokens * 0.60) / 1_000_000
-        elif self.model == "gpt-4o":
-            return (self.input_tokens * 2.50 + self.output_tokens * 10.00) / 1_000_000
-        return 0.0
-
-@dataclass
-class FilingResult:
-    """Result of processing one filing"""
-    filing_metadata: FilingMetadata
-    success: bool
-    table_metrics: List[TableMetric] = field(default_factory=list)
-    llm_metrics: List[LLMMetric] = field(default_factory=list)
-    qa_result: Optional['QAResult'] = None
-    token_usage: List[TokenUsage] = field(default_factory=list)
-    processing_time_seconds: float = 0.0
-    error: Optional[Exception] = None
-
-    @property
-    def total_cost_usd(self) -> float:
-        return sum(u.cost_usd for u in self.token_usage)
-
-# Continue with other models...
-# (See 03_DATA_MODELS.md for complete definitions)
-```
-
-### Day 5-7: Implement Discovery Service
-
-**`core/discovery.py`**:
-```python
-"""
-SEC EDGAR filing discovery service.
-"""
-
-import requests
-from bs4 import BeautifulSoup
-from datetime import date, datetime
-from typing import List, Optional
-import time
-import logging
-from core.models import FilingMetadata
-
-logger = logging.getLogger(__name__)
-
-# SEC requires User-Agent
-SEC_HEADERS = {
-    'User-Agent': 'YourCompany contact@yourcompany.com',  # UPDATE THIS
-    'Accept-Encoding': 'gzip, deflate',
-    'Host': 'www.sec.gov'
-}
-
-def discover_filings(
-    start_date: date,
-    end_date: date,
-    filing_type: str = "S-1",
-    max_results: Optional[int] = None
-) -> List[FilingMetadata]:
-    """
-    Discover filings from SEC EDGAR.
-
-    Implementation steps:
-    1. Determine quarters to fetch
-    2. Download quarterly index files
-    3. Parse index files
-    4. Filter by date range and type
-    5. Enrich with company metadata
-    6. Return sorted list
-    """
-
-    logger.info(f"Discovering {filing_type} filings from {start_date} to {end_date}")
-
-    # Get quarters in range
-    quarters = get_quarters_in_range(start_date, end_date)
-    logger.debug(f"Fetching {len(quarters)} quarters")
-
-    all_filings = []
-
-    for year, quarter in quarters:
-        try:
-            # Fetch quarter index
-            filings = fetch_quarter_filings(year, quarter, filing_type)
-            all_filings.extend(filings)
-            logger.debug(f"Q{quarter} {year}: {len(filings)} filings")
-
-            # Be polite to SEC
-            time.sleep(0.1)
-
-        except Exception as e:
-            logger.error(f"Error fetching Q{quarter} {year}: {e}")
-            continue
-
-    # Filter by date range
-    filtered = [
-        f for f in all_filings
-        if start_date <= f.filing_date <= end_date
-    ]
-
-    # Sort by date (newest first)
-    filtered.sort(key=lambda f: f.filing_date, reverse=True)
-
-    # Limit if requested
-    if max_results:
-        filtered = filtered[:max_results]
-
-    logger.info(f"Found {len(filtered)} {filing_type} filings")
-
-    return filtered
-
-def get_quarters_in_range(start_date: date, end_date: date) -> List[tuple]:
-    """Generate list of (year, quarter) tuples"""
-    # Implementation here
-    pass
-
-def fetch_quarter_filings(year: int, quarter: int, filing_type: str) -> List[FilingMetadata]:
-    """Fetch filings for one quarter"""
-    # Implementation here
-    pass
-
-# ... Continue implementation based on 02_SYSTEM_COMPONENTS.md ...
-```
-
----
-
-## Phase 2: Core Extraction (Week 2)
-
-### Implement in this order:
-
-1. **Cache Layer** (`core/cache.py`)
-   - Simple file-based caching
-   - Test with a few filings
-
-2. **Table Extractor** (`core/table_extractor.py`)
-   - Follow 04_TABLE_EXTRACTION.md
-   - Test with sample HTML tables
-   - Validate against known filings
-
-3. **Keyword Filter** (`core/keyword_filter.py`)
-   - Load keywords from config
-   - Extract and score paragraphs
-
-4. **LLM Extractor** (`core/llm_extractor.py`)
-   - Follow 05_LLM_EXTRACTION.md
-   - Start with GPT-4o-mini only
-   - Test with small samples
-
-5. **QA Agent** (`core/qa_agent.py`)
-   - Implement validation rules
-   - Generate warnings
-
-6. **Storage Layer** (`core/storage.py`)
-   - Create SQLite database
-   - Implement append functions
-   - Add CSV export
-
-### Testing After Each Component
+For development tools (pytest, black, ruff, mypy):
 
 ```bash
-# Run tests
-pytest tests/test_discovery.py -v
-pytest tests/test_table_extractor.py -v
-pytest tests/test_llm_extractor.py -v
-
-# Integration test with 1 filing
-python -m core.orchestrator --test-single-filing
+uv pip install -e ".[dev]"
 ```
 
 ---
 
-## Phase 3: Orchestration & Scale (Week 3)
+## 2. Environment Configuration
 
-### Day 1-2: Rate Limiter
+Copy the template and fill in your values:
 
-**`core/rate_limiter.py`**:
-```python
-"""
-Rate limiter for OpenAI API.
-"""
-
-import time
-import threading
-from contextlib import contextmanager
-
-class RateLimiter:
-    """Token bucket rate limiter"""
-
-    def __init__(
-        self,
-        tokens_per_minute: int = 90000,
-        requests_per_minute: int = 500
-    ):
-        self.tokens_per_minute = tokens_per_minute
-        self.requests_per_minute = requests_per_minute
-
-        self.token_bucket = tokens_per_minute
-        self.request_bucket = requests_per_minute
-
-        self.last_refill = time.time()
-        self.lock = threading.Lock()
-
-    def _refill(self):
-        """Refill buckets based on time elapsed"""
-        now = time.time()
-        elapsed = now - self.last_refill
-
-        # Refill tokens
-        tokens_to_add = (elapsed / 60.0) * self.tokens_per_minute
-        self.token_bucket = min(
-            self.token_bucket + tokens_to_add,
-            self.tokens_per_minute
-        )
-
-        # Refill requests
-        requests_to_add = (elapsed / 60.0) * self.requests_per_minute
-        self.request_bucket = min(
-            self.request_bucket + requests_to_add,
-            self.requests_per_minute
-        )
-
-        self.last_refill = now
-
-    def acquire(self, tokens: int):
-        """Block until rate limit allows request"""
-        with self.lock:
-            while True:
-                self._refill()
-
-                if self.token_bucket >= tokens and self.request_bucket >= 1:
-                    self.token_bucket -= tokens
-                    self.request_bucket -= 1
-                    return
-
-                # Wait before checking again
-                time.sleep(0.1)
-
-    @contextmanager
-    def limit(self, estimated_tokens: int):
-        """Context manager for rate-limited operations"""
-        self.acquire(estimated_tokens)
-        yield
+```bash
+cp .env.template .env
 ```
 
-### Day 3-5: Parallel Orchestrator
+The table below documents every variable. Variables marked **Required** must be set before the system will start.
 
-**`core/orchestrator.py`**:
-```python
-"""
-Batch processing orchestrator.
-"""
+### Core variables
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
-import logging
-from core.discovery import discover_filings
-from core.agent import process_filing
-from core.storage import save_filing_results
-from core.rate_limiter import RateLimiter
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string. Local: `postgresql://dev:dev@localhost:5433/filings_analysis`. Neon: `postgresql://user:password@host.neon.tech/dbname?sslmode=require` |
+| `TEST_DATABASE_URL` | Tests only | Separate database used by `pytest`. Prevents test runs from touching the main database. |
+| `SECRET_KEY` | Production | Flask session secret. Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. In development a random key is auto-generated (sessions do not persist across restarts). |
+| `OPENAI_API_KEY` | LLM features | OpenAI API key from [platform.openai.com/api-keys](https://platform.openai.com/api-keys). Required for extraction and quality scoring. |
 
-logger = logging.getLogger(__name__)
+### Application settings
 
-def process_batch(config: BatchConfig) -> BatchResult:
-    """Process batch of filings in parallel"""
+| Variable | Default | Description |
+|---|---|---|
+| `APP_ENV` | `development` | Set to `production` to enforce strict validation and require `SECRET_KEY` and `FILINGS_API_KEY`. |
+| `FILINGS_API_KEY` | — | API key for web route authentication. Required in production. Generate with `secrets.token_hex(32)`. |
+| `API_KEY_REQUIRED` | `false` | Set to `true` to require API key authentication. Always `true` in production. |
 
-    # 1. Discovery
-    filings = discover_filings(
-        config.start_date,
-        config.end_date,
-        config.filing_type
-    )
+### LLM cache
 
-    # 2. Filter already processed
-    if not config.force_rerun:
-        filings = filter_processed(filings)
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_CACHE_ENABLED` | `true` | Cache LLM responses in a local SQLite file to reduce repeat API costs. |
+| `LLM_CACHE_PATH` | `data/llm_cache.db` | Path to the cache database file. |
+| `LLM_CACHE_VERSION` | `v1` | Increment this string to invalidate all cached responses when prompts change. |
 
-    # 3. Initialize
-    rate_limiter = RateLimiter()
-    results = {'successful': 0, 'failed': 0, 'total_cost': 0.0}
+### V2 pipeline settings
 
-    # 4. Process in parallel
-    with ThreadPoolExecutor(max_workers=config.max_workers) as executor:
-        futures = {
-            executor.submit(process_filing, f, rate_limiter): f
-            for f in filings
-        }
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
+| `V2_WORKER_COUNT` | `4` | Default number of parallel workers for batch extraction. |
+| `V2_MIN_CONFIDENCE` | `0.5` | Minimum confidence threshold for including extracted facts. |
 
-        with tqdm(total=len(filings)) as pbar:
-            for future in as_completed(futures):
-                filing = futures[future]
+### Optional integrations
 
-                try:
-                    result = future.result()
-                    results['successful'] += 1
-                    results['total_cost'] += result.total_cost_usd
+| Variable | Description |
+|---|---|
+| `FMP_API_KEY` | Financial Modeling Prep API key. Required for transcript ingestion via `scripts/ingest_transcripts.py --source fmp`. Get from [financialmodelingprep.com](https://financialmodelingprep.com/developer/docs/). |
+| `SENTRY_DSN` | Sentry error tracking DSN. Uncomment in `.env` to enable. |
+| `JSON_LOGS` | Set to `1` to emit structured JSON log output instead of plain text. |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | GitHub token for the Claude Code MCP server. Scopes: `repo`, `read:org`. |
+| `BRAVE_API_KEY` | Brave Search API key for the Brave Search MCP server. |
+| `GEMINI_API_KEY` | Google Gemini API key for the Python Testing MCP server. |
 
-                    save_filing_results(result)
+---
 
-                except Exception as e:
-                    logger.error(f"Failed {filing.filing_id}: {e}")
-                    results['failed'] += 1
+## 3. Database Setup
 
-                finally:
-                    pbar.update(1)
-                    pbar.set_postfix(results)
+### Option A: Local PostgreSQL via Docker (recommended for development)
 
-    # 5. Return summary
-    return BatchResult(**results)
+The `docker-compose.yml` at the project root starts a PostgreSQL 15 container on port **5433** (to avoid conflicting with any local PostgreSQL instance on 5432).
+
+```bash
+docker compose up -d
 ```
 
-### Day 6-7: CLI Interface
+Connection string for `.env`:
 
-**`main.py`**:
-```python
-"""
-CLI interface for SEC filings extraction.
-"""
+```
+DATABASE_URL=postgresql://dev:dev@localhost:5433/filings_analysis
+```
 
-import argparse
-from datetime import datetime
-from core.orchestrator import process_batch, BatchConfig
-import logging
+To stop the container:
 
-def main():
-    parser = argparse.ArgumentParser(description='SEC Filings Metrics Extractor')
+```bash
+docker compose down
+```
 
-    parser.add_argument('--start-date', type=str, required=True)
-    parser.add_argument('--end-date', type=str, required=True)
-    parser.add_argument('--filing-type', type=str, default='S-1')
-    parser.add_argument('--workers', type=int, default=10)
-    parser.add_argument('--force', action='store_true')
-    parser.add_argument('--max-cost', type=float)
+Data is persisted in the `pgdata` Docker volume; it survives container restarts.
 
-    args = parser.parse_args()
+### Option B: Neon (cloud PostgreSQL)
 
-    # Parse dates
-    start_date = datetime.strptime(args.start_date, '%Y-%m-%d').date()
-    end_date = datetime.strptime(args.end_date, '%Y-%m-%d').date()
+Neon is used for the production deployment on Render. See `docs/operations/cloud-deployment-runbook.md` for the full provisioning and cutover checklist.
 
-    # Create config
-    config = BatchConfig(
-        start_date=start_date,
-        end_date=end_date,
-        filing_type=args.filing_type,
-        max_workers=args.workers,
-        force_rerun=args.force,
-        max_cost_usd=args.max_cost
-    )
+Connection string format:
 
-    # Run batch
-    result = process_batch(config)
+```
+DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=require
+```
 
-    # Print summary
-    print(f"\n{'='*60}")
-    print(f"Batch Processing Complete")
-    print(f"{'='*60}")
-    print(f"Successful: {result.successful}")
-    print(f"Failed: {result.failed}")
-    print(f"Total Cost: ${result.total_cost_usd:.2f}")
-    print(f"Metrics Extracted: {result.metrics_extracted}")
+### Running migrations
 
-if __name__ == '__main__':
-    main()
+Once the database is reachable, apply all schema migrations in canonical order:
+
+```bash
+python3 scripts/apply_all_migrations.py
+```
+
+The script maintains a `schema_migrations` tracking table and skips already-applied files, making re-runs safe. Useful flags:
+
+```bash
+# Preview which migrations would be applied without executing
+python3 scripts/apply_all_migrations.py --dry-run
+
+# Point at a specific database instead of DATABASE_URL
+python3 scripts/apply_all_migrations.py --database-url "postgresql://..."
+
+# For an existing database set up before migration tracking was added:
+# record all migrations as applied without re-executing them
+python3 scripts/apply_all_migrations.py --mark-all-applied
 ```
 
 ---
 
-## Phase 4: Testing & Validation (Week 4)
+## 4. Verify Installation
 
-### Test Suite
+Run the test suite to confirm everything is wired up correctly:
 
-**`tests/test_integration.py`**:
-```python
-"""
-Integration tests with real filings.
-"""
-
-import pytest
-from datetime import date
-from core.orchestrator import process_batch, BatchConfig
-
-def test_process_single_filing():
-    """Test processing one known good filing"""
-
-    config = BatchConfig(
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 1, 31),
-        filing_type="S-1",
-        max_workers=1
-    )
-
-    result = process_batch(config)
-
-    assert result.successful >= 1
-    assert result.total_cost_usd < 1.0  # Should be very cheap
-
-def test_cost_estimation():
-    """Verify cost is within expected range"""
-
-    # Process 10 filings
-    config = BatchConfig(
-        start_date=date(2024, 1, 1),
-        end_date=date(2024, 3, 31),
-        filing_type="S-1",
-        max_workers=5
-    )
-
-    result = process_batch(config)
-
-    # Should be ~$0.03-$0.06 per filing
-    avg_cost = result.total_cost_usd / max(result.successful, 1)
-    assert avg_cost < 0.10, f"Cost too high: ${avg_cost:.4f} per filing"
-
-def test_extraction_quality():
-    """Verify extraction quality on known filing"""
-
-    # Use a specific filing with known metrics
-    # ...
-    pass
+```bash
+pytest -v
 ```
 
-### Validation Script
+The default test run excludes slow, gold standard, and integration tests (those requiring a live database). To run integration tests, ensure `TEST_DATABASE_URL` is set and run:
 
-**`scripts/validate_extraction.py`**:
-```python
-"""
-Validate extraction quality on sample filings.
-"""
+```bash
+pytest -v -m integration
+```
 
-# Manually review 10-20 filings
-# Compare extracted metrics to actual filing content
-# Calculate precision/recall
+Minimum coverage is enforced at 75%. To generate a coverage report:
+
+```bash
+pytest --cov=src --cov-report=html
 ```
 
 ---
 
-## Deployment Checklist
+## 5. Running the System
 
-- [ ] All tests passing
-- [ ] Cost per filing < $0.10
-- [ ] Success rate > 95%
-- [ ] QA warnings reviewed
-- [ ] Documentation complete
-- [ ] `.env` file configured
-- [ ] Database initialized
-- [ ] Cache directory created
+### 5.1 Build the filing universe
+
+Queries SEC EDGAR for S-1/F-1 filings in a date range and populates the `companies` and `filings` tables.
+
+```bash
+# Test with a narrow date range first
+python3 scripts/build_universe_real.py --start-date 2024-01-01 --end-date 2024-01-31
+
+# Full Phase 1 range
+python3 scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12-31
+
+# Dry run — classifies filings without committing to the database
+python3 scripts/build_universe_real.py --start-date 2024-01-01 --end-date 2024-01-31 --dry-run
+```
+
+The `--user-agent` argument defaults to the CMASB contact. SEC policy requires a valid contact email in the User-Agent header; the script will refuse to run without one.
+
+### 5.2 Run extraction on a single filing
+
+```bash
+# By filing ID (from the filings table)
+python3 scripts/run_v2_extraction.py --filing-id 1
+
+# By SEC accession number
+python3 scripts/run_v2_extraction.py --accession 0001193125-21-186026
+
+# Dry run — runs the full pipeline without persisting results
+python3 scripts/run_v2_extraction.py --filing-id 1 --dry-run
+
+# Adjust auto-accept confidence threshold (default: 0.90)
+python3 scripts/run_v2_extraction.py --filing-id 1 --min-confidence 0.85
+
+# Disable image/chart extraction
+python3 scripts/run_v2_extraction.py --filing-id 1 --no-images
+```
+
+The script prints a summary table showing facts extracted, confidence distribution, and persistence counts.
+
+### 5.3 Run batch extraction
+
+Processes multiple filings in parallel using `ProcessPoolExecutor`. Supports checkpointing, graceful shutdown (Ctrl+C), and a circuit breaker that aborts on too many consecutive failures.
+
+```bash
+# Process all filings (4 workers, default)
+python3 scripts/batch_v2_extraction.py
+
+# Process only filings with status 'fetched'
+python3 scripts/batch_v2_extraction.py --status fetched
+
+# Limit to first 10 filings
+python3 scripts/batch_v2_extraction.py --limit 10
+
+# Resume from a checkpoint (skip filing_ids below this value)
+python3 scripts/batch_v2_extraction.py --resume-from 1234
+
+# Custom workers and batch-size (checkpoint interval)
+python3 scripts/batch_v2_extraction.py --workers 8 --batch-size 20
+
+# Dry run
+python3 scripts/batch_v2_extraction.py --dry-run --limit 5
+```
+
+Progress checkpoints are written to `logs/batch_v2_progress.json`. A per-run JSON summary is written to `logs/batch_v2_summary_<timestamp>.json`.
+
+The production cron on Render runs:
+```bash
+python3 scripts/batch_v2_extraction.py --status fetched --workers 2 --limit 50
+```
+
+### 5.4 Run the review web UI
+
+The review interface is a Flask application served by Waitress.
+
+```bash
+python3 scripts/run_review_server.py
+```
+
+Defaults to `0.0.0.0:8000`. Options:
+
+```bash
+python3 scripts/run_review_server.py --host 0.0.0.0 --port 8080 --threads 8
+```
+
+The server requires `DATABASE_URL` and `SECRET_KEY` to be set. In production, also set `APP_ENV=production` and `FILINGS_API_KEY`.
+
+Once running:
+- Review interface: `http://localhost:8000/filings`
+- Health check: `http://localhost:8000/health`
+
+For local development without the Waitress server:
+
+```bash
+python3 scripts/run_dev_server.py
+```
 
 ---
 
-## Next Steps
+## 6. Project Structure
 
-1. Run pilot on 100 filings (2024 Q1)
-2. Review results and QA warnings
-3. Iterate on extraction rules
-4. Scale to full dataset
+```
+filings_reviewer/
+├── src/
+│   ├── infra/           # Shared infrastructure: db.py, sec_client.py, http_client.py,
+│   │                    #   logging_config.py, pool.py, validation.py, exceptions.py
+│   ├── universe/        # Filing discovery: classifiers.py, universe_builder.py
+│   ├── filing_fetcher/  # Document retrieval and local caching
+│   ├── extraction/      # V1 extraction pipeline (retired — kept for historical reference only)
+│   ├── extraction_v2/   # V2 unified extraction pipeline (active production pipeline)
+│   │                    #   Handles SEC filings, transcripts, and investor presentations.
+│   │                    #   Stages: ingestion, segmentation, keyword filter, LLM extraction,
+│   │                    #   false positive filter, persistence, quality scoring.
+│   ├── review/          # Human review support: candidate_generator.py, pattern_analyzer.py
+│   ├── shared/          # Cross-cutting models and config: models.py, keyword_config.py
+│   ├── web/             # Flask application: routes/, templates/, static/
+│   ├── llm/             # OpenAI integration with PostgreSQL-backed response cache;
+│   │                    #   includes vision_client.py and prompts.py
+│   └── gold_standard/   # Validation framework: baseline.py, fresh_extractor.py,
+│                        #   v2_validator.py, unified_comparison.py
+├── scripts/             # Runnable scripts (see section 5)
+├── sql/                 # Schema migration files (00–16)
+├── config/
+│   └── metric_keywords.yaml   # Authoritative metric keyword patterns
+├── data/
+│   ├── gold_standard/   # Gold standard filings and annotation files
+│   └── llm_cache.db     # LLM response cache (gitignored)
+├── tests/               # pytest test suite
+├── docs/                # Project documentation
+├── docker-compose.yml   # Local PostgreSQL (port 5433)
+├── pyproject.toml       # Project metadata, tool config, test config
+├── requirements.txt     # Runtime dependencies
+└── .env.template        # Environment variable template
+```
 
-See **07_TESTING_STRATEGY.md** and **08_DEPLOYMENT_GUIDE.md** for production deployment.
+---
+
+## 7. Development Tools
+
+```bash
+# Format code
+black src/ tests/
+
+# Lint
+ruff check src/ tests/
+
+# Type-check the review module (strict mode)
+mypy src/review/ --strict
+```
+
+Code style targets Python 3.11, line length 100. The `src/extraction/` (V1) directory is excluded from coverage and type checking.

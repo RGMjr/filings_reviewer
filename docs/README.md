@@ -1,7 +1,7 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.4
+**Version:** 2.5
 **Status:** Production Ready
 **Last Updated:** 2026-03-22
 
@@ -117,7 +117,7 @@ Use `/task-create` and `/task-run` slash commands for structured task execution.
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
 - **Parsing:** BeautifulSoup4, lxml
-- **Testing:** pytest (75%+ coverage, 3,129 tests)
+- **Testing:** pytest (75%+ coverage, 4,500+ tests)
 
 ### Cost Profile
 
@@ -152,7 +152,7 @@ Use `/task-create` and `/task-run` slash commands for structured task execution.
 | Image Review UI (IMG-1) | ✅ Complete | N/A | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 | Image Stats Dashboard | ✅ Complete | N/A | [Human Review](HUMAN_REVIEW_SYSTEM.md) |
 
-**Overall Status:** ✅ **Production Ready** (87% test coverage, 3,150+ tests)
+**Overall Status:** ✅ **Production Ready** (87% test coverage, 4,500+ tests)
 
 ---
 
@@ -208,7 +208,7 @@ python3 scripts/run_v2_extraction.py
 pytest -v
 
 # Specific module
-pytest tests/unit/extraction/test_value_extractor.py -v
+pytest tests/unit/extraction_v2/test_candidate_generation.py -v
 
 # With coverage
 pytest --cov=src --cov-report=html

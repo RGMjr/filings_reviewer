@@ -17,7 +17,7 @@ It answers four questions:
 3. What numeric quality targets are we aiming for in Phase 1?
 4. When do we require manual review vs accepting automated output?
 
-`07_TEST_STRATEGY_AND_FIX_PROCESS.md` will describe **how** we measure and enforce this model (gold standards, tests, and defect process).
+`docs/development/testing.md` will describe **how** we measure and enforce this model (gold standards, tests, and defect process).
 
 ---
 
@@ -352,6 +352,7 @@ Rule-based checks may include:
 
 In `filing_metric_incidence` we store 0–3 integer scores for:
 
+- `quality_overall_score`
 - `quality_definition_score`
 - `quality_methodology_score`
 - `quality_completeness_score`
@@ -364,7 +365,9 @@ Interpretation:
 - 1 – Weak or incomplete
 - 0 – Not present or unusable
 
-These may be derived from LLM scoring plus rule-based signals.
+`quality_overall_score` is an aggregate score computed by `V2QualityScorer`. Rubric: 0 = metric not disclosed (no facts and no definitions); 1 = minimal (value present but no definition or methodology); 2 = moderate (value plus at least a definition or methodology); 3 = excellent (value plus both definition and methodology plus cohort breakdown).
+
+The four dimension scores (`quality_definition_score`, `quality_methodology_score`, `quality_completeness_score`, `quality_comparability_score`) are derived from rule-based signals on the extracted `MetricDefinition` and `MetricFact` objects.
 
 ### 10.3 Use in analysis
 
@@ -424,7 +427,7 @@ Before moving from pilot to full Phase 1 run:
 If these gates are not met, the system is not ready for a full Phase 1 run. We then:
 
 - Identify failure modes (by component and pattern)
-- Add tests and fixes (to be detailed in `07_TEST_STRATEGY_AND_FIX_PROCESS.md`)
+- Add tests and fixes (to be detailed in `docs/development/testing.md`)
 - Re-run the pilot sample until gates are satisfied
 
 ---
@@ -445,5 +448,5 @@ Open items to refine in later iterations:
 
 These will be specified in coordination with:
 
-- `07_TEST_STRATEGY_AND_FIX_PROCESS.md`
+- `docs/development/testing.md`
 - CMASB stakeholder expectations

@@ -23,7 +23,7 @@
 | VISUAL_INTERPRETATION (VIS) | 6 | 4 | 0 | 0 | 0 | 2 |
 | **TOTAL** | **106** | **96** | **0** | **0** | **1** | **9** |
 
-**Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
+**Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: IMG-1-* Human Review UI for chart images (Phase 1)
@@ -36,7 +36,7 @@
 ## Plan Status Overview
 
 ### GOLDMINE_REMEDIATION_PLAN.md
-**Location**: `docs/GOLDMINE_REMEDIATION_PLAN.md`
+**Location**: `docs/archive/improvement-plans-completed/GOLDMINE_REMEDIATION_PLAN.md`
 **Status**: ✅ CLOSED — All 18 tasks complete (GR-16 done 2026-03-16; GR-10 superseded by GR-18)
 **Goal**: Improve goldmine recall from 52% to 70-75% → **ACHIEVED: 80% recall**
 
@@ -51,7 +51,7 @@
 **Goal**: Improve reviewer productivity and UX
 
 ### HUMAN_REVIEW_VALIDATION_PLAN.md
-**Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
+**Location**: `docs/archive/improvement-plans-completed/HUMAN_REVIEW_VALIDATION_PLAN.md`
 **Status**: ✅ CLOSED — All 19 tasks complete (HRV-6 done 2026-03-16; deliverable: `docs/analysis/HRV-6_VALIDATION_ANALYSIS.md`)
 **Goal**: Build confidence in segmentation and metric identification, then implement system improvements
 
@@ -114,11 +114,11 @@
 
 | ID | Name | Size | Time | Risk | Status | Dependencies |
 |----|------|------|------|------|--------|--------------|
-| **GR-16** | Label Snowflake & DocuSign filings | S | 2h | NONE | 🔴 BLOCKED | Data integrity fix |
+| **GR-16** | Label Snowflake & DocuSign filings | S | 2h | NONE | ✅ COMPLETE | Data integrity fix |
 | **GR-17** | Add new industry filings | L | 5h | NONE | ✅ COMPLETE | None |
 | **GR-18** | Final validation report | S | 2h | NONE | ✅ COMPLETE | GR-10, ~~GR-16~~, GR-17 ✅ |
 
-**Phase 3 Total**: ✅ Complete (GR-17, GR-18 done; GR-16 blocked on data integrity issue)
+**Phase 3 Total**: ✅ Complete (GR-16 done 2026-03-16; GR-17, GR-18 done)
 
 ---
 
@@ -175,7 +175,7 @@
 ### HUMAN_REVIEW_VALIDATION Tasks (HRV-Series)
 
 **Goal**: Build confidence in segmentation and metric identification before scaling
-**Plan Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
+**Plan Location**: `docs/archive/improvement-plans-completed/HUMAN_REVIEW_VALIDATION_PLAN.md`
 
 | ID | Name | Size | Time | Risk | Status | Dependencies |
 |----|------|------|------|------|--------|--------------|
@@ -320,7 +320,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 - Performance improvement for ALL filings, not just large ones
 - Farfetch extraction time: ~105s → <30s
 - Design decision documented in CLAUDE.md section 13
-- All worker prompts archived to `docs/archive/worker-prompts-completed/`
+- All worker prompts archived to `docs/archive/worker-prompts/`
 
 ---
 
@@ -459,7 +459,7 @@ evaluation revealed this **duplicates existing functionality**:
 - Root cause: Bootstrap intercepts ArrowDown/ArrowUp events before custom handler could update state
 - Fix approach: Query `document.activeElement` on Enter instead of relying on stale `state.dropdownFocusIndex`
 - Improvement: Added focus event listeners to sync state with Bootstrap's focus management
-- See `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_UXI-1a.md` for full task spec
+- See `docs/archive/worker-prompts/WORKER_PROMPT_TASK_UXI-1a.md` for full task spec
 
 **UXI-3 Completion Note** (2026-01-07): Skip/defer keyboard shortcut complete:
 - S key triggers skip action (sets status to "skipped", navigates to next candidate)
@@ -802,7 +802,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 - Revisit when actual performance data justifies the effort
 - Decision: Optimize when real usage patterns emerge from production image review
 
-**Worker Prompts**: `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_VIS-*.md`
+**Worker Prompts**: `docs/archive/worker-prompts/WORKER_PROMPT_TASK_VIS-*.md`
 
 **Future Tasks** (defined after VIS-2):
 - VIS-3: Review UI Integration for Chart Metrics
@@ -837,7 +837,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 | 3 | GR-12 | Goldmine | 1.5h |
 | 4 | GR-13 | Goldmine | 2.5h |
 | 5 | GR-14 | Goldmine | 1h |
-| ~~6~~ | ~~GR-16~~ | ~~Goldmine~~ | ~~2h~~ 🔴 BLOCKED |
+| ~~6~~ | ~~GR-16~~ | ~~Goldmine~~ | ~~2h~~ ✅ |
 | ~~7~~ | ~~GR-17~~ | ~~Goldmine~~ | ~~5h~~ ✅ |
 | ~~8~~ | ~~EA-1~~ | ~~Extraction~~ | ~~4-6h~~ ✅ |
 
@@ -984,7 +984,7 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     └─────────────────────────────────────────────────────┘
 
 Waves 1-5 Complete: 79/89 tasks (89%)
-Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked
+Remaining: GR-10 pending, HRI-12 blocked
 ```
 
 ---
@@ -1015,7 +1015,7 @@ HRV-16 ← HRV-22                 # Final validation needs data fix
 ### Soft Dependencies (Can Start Early)
 ```
 GR-11,12,13,14 ← (none)  # Code quality tasks are independent
-GR-16 ← Data fix needed  # BLOCKED on data integrity issue
+GR-16 ← Data fix needed  # COMPLETE (done 2026-03-16)
 GR-17 ← (none)           # Labeling tasks are independent
 EA-1 ← EI-7              # Already satisfied (EI-7 complete)
 HRV-1 ← (none)           # CSV schema can start immediately
@@ -1096,7 +1096,7 @@ instructions_orchestrator.md
 ```
 
 Reference the specific task section in the corresponding plan document:
-- GR tasks: `docs/GOLDMINE_REMEDIATION_PLAN.md`
+- GR tasks: `docs/archive/improvement-plans-completed/GOLDMINE_REMEDIATION_PLAN.md`
 - EA tasks: `docs/archive/improvement-plans-completed/EXTRACTION_IMPROVEMENT_PLAN.md`
 
 ---
@@ -1120,7 +1120,7 @@ Reference the specific task section in the corresponding plan document:
 - [x] GR-12: EnrichmentMetadata TypedDict added ✅ 2025-12-26
 - [x] GR-13: Text caching implemented ✅ 2025-12-26
 - [x] GR-14: Image detection skip ✅ 2025-12-26
-- [ ] GR-16: Snowflake/DocuSign labeled 🔴 BLOCKED (data integrity issue)
+- [x] GR-16: Snowflake/DocuSign labeled ✅ 2026-03-16
 - [x] GR-17: New industry filings added ✅ 2025-12-26 (Coinbase, Shopify, Teladoc)
 - [x] EA-1: StructureParser created (completed 2025-12-25)
 

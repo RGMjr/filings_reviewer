@@ -27,7 +27,7 @@ This document specifies the architecture and implementation of the metric extrac
 The V2 pipeline (`src/extraction_v2/`) implements a 13-stage extraction workflow. It is the production pipeline for all SEC filing, transcript, and presentation extraction.
 
 **Module:** `src/extraction_v2/pipeline.py`
-**Class:** `ExtractionPipelineV2`
+**Class:** `V2Pipeline`
 **Status:** Production
 
 ```
@@ -184,6 +184,8 @@ The V2 pipeline (`src/extraction_v2/`) implements a 13-stage extraction workflow
 
 - **`src/extraction_v2/models.py`** — Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
 - **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 13-stage workflow and configuration
+- **`src/extraction_v2/persistence.py`** — Database write layer (V2PersistenceAdapter)
+- **`src/extraction_v2/quality_scoring.py`** — V2 quality scoring (V2QualityScorer)
 - **`src/extraction_v2/table_reconstructor.py`** — Table reconstruction with colspan/rowspan resolution
 - **`src/extraction_v2/stages/ingestion.py`** — HTML parsing with XPath locators and segment extraction
 - **`src/extraction_v2/stages/`** — One module per pipeline stage
@@ -206,7 +208,8 @@ The V2 pipeline (`src/extraction_v2/`) implements a 13-stage extraction workflow
 V2 pipeline is configured via `PipelineConfig` dataclass:
 
 ```python
-from src.extraction_v2.pipeline import ExtractionPipelineV2, PipelineConfig
+from src.extraction_v2.pipeline import V2Pipeline, PipelineConfig
+from pathlib import Path
 
 config = PipelineConfig(
     enable_section_classification=True,
@@ -223,8 +226,8 @@ config = PipelineConfig(
     evidence_screenshot_dir="evidence_v2/"
 )
 
-pipeline = ExtractionPipelineV2(config=config)
-result = pipeline.process_document(document)
+pipeline = V2Pipeline(config=config)
+result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 ```
 
 **Environment Variables:**
@@ -247,7 +250,7 @@ OPENAI_API_KEY=sk-...  # For LLM-enhanced extraction and OCR
 
 ## Appendix: V1 Pipeline (Retired)
 
-> **V1 is retired.** The code in `src/extraction/` is kept for historical reference only. It is not invoked by any production script. See `src/extraction/__init__.py` for the deprecation notice.
+> **V1 is retired and most source files have been deleted.** The following files still exist in `src/extraction/`: `__init__.py`, `exceptions.py`, `html_segmenter.py`, `keyword_config.py`, `models.py`, `validators.py`. All other V1 source files described below (`metric_classifier.py`, `segment_enricher.py`, `enricher_config.py`, `cohort_chart_detector.py`, `value_extractor.py`, `definition_extractor.py`, `quality_scorer.py`, `extraction_pipeline.py`, `structure_parser.py`, `candidate_detector.py`, `context_extractor.py`) have been **deleted** from the repository. The component specifications below are preserved as historical documentation only — the files no longer exist and the code cannot be run.
 
 The V1 pipeline implemented a 5-stage extraction workflow (HTML Segmentation → Metric Classification → Segment Enrichment → Value Extraction → Definition Extraction → Quality Scoring). The stage descriptions below are preserved for historical reference.
 
@@ -259,7 +262,7 @@ The V1 pipeline implemented a 5-stage extraction workflow (HTML Segmentation →
 
 **Module:** `src/extraction/html_segmenter.py`
 **Class:** `HTMLSegmenter`
-**Status:** Retired
+**Status:** Retired (file still present)
 
 **Responsibilities:**
 - Parse filing HTML into semantic segments
@@ -336,9 +339,9 @@ class HTMLSegmenter:
 
 #### 2. Metric Classifier
 
-**Module:** `src/extraction/metric_classifier.py`
+**Module:** `src/extraction/metric_classifier.py` (deleted)
 **Class:** `MetricClassifier`
-**Status:** Retired
+**Status:** Retired — file deleted
 
 **Responsibilities:**
 - Scan source segments for metric-related keywords
@@ -396,9 +399,9 @@ class MetricClassifier:
 
 #### 2.5. Segment Enricher (G4-G8)
 
-**Module:** `src/extraction/segment_enricher.py`
+**Module:** `src/extraction/segment_enricher.py` (deleted)
 **Class:** `SegmentEnricher`
-**Status:** Retired
+**Status:** Retired — file deleted
 
 **Responsibilities:**
 - Compute metric density (unique metrics per 100 characters)
@@ -460,9 +463,9 @@ class SegmentEnricher:
 
 #### 2.6. Cohort Chart Detector
 
-**Module:** `src/extraction/cohort_chart_detector.py`
+**Module:** `src/extraction/cohort_chart_detector.py` (deleted)
 **Class:** `CohortChartDetector`
-**Status:** Retired
+**Status:** Retired — file deleted
 
 **Responsibilities:**
 - Detect cohort analysis charts and visualizations in filing HTML
@@ -518,9 +521,9 @@ class CohortChartDetector:
 
 #### 3. Value Extractor
 
-**Module:** `src/extraction/value_extractor.py`
+**Module:** `src/extraction/value_extractor.py` (deleted)
 **Class:** `ValueExtractor`
-**Status:** Retired
+**Status:** Retired — file deleted
 
 **Responsibilities:**
 - Extract numeric values from classified segments
@@ -565,9 +568,9 @@ class ValueExtractor:
 
 #### 4. Definition Extractor
 
-**Module:** `src/extraction/definition_extractor.py`
+**Module:** `src/extraction/definition_extractor.py` (deleted)
 **Class:** `DefinitionExtractor`
-**Status:** Retired
+**Status:** Retired — file deleted
 
 **Responsibilities:**
 - Extract definition text from definition segments
@@ -601,9 +604,9 @@ class DefinitionExtractor:
 
 #### 5. Quality Scorer
 
-**Module:** `src/extraction/quality_scorer.py`
+**Module:** `src/extraction/quality_scorer.py` (deleted)
 **Class:** `QualityScorer`
-**Status:** Retired
+**Status:** Retired — file deleted
 
 **Responsibilities:**
 - Aggregate filing x metric incidence
@@ -642,9 +645,9 @@ class DefinitionExtractor:
 
 #### V1 Main Extraction Pipeline
 
-**Module:** `src/extraction/extraction_pipeline.py`
+**Module:** `src/extraction/extraction_pipeline.py` (deleted)
 **Class:** `ExtractionPipeline`
-**Status:** Retired
+**Status:** Retired — file deleted
 
 **Interface:**
 
@@ -670,17 +673,17 @@ class ExtractionPipeline:
 #### V1 Supporting Modules
 
 **Structure Parser (EA-1)**
-- **Module:** `src/extraction/structure_parser.py`
+- **Module:** `src/extraction/structure_parser.py` (deleted)
 - Parses HTML while preserving DOM structure for position mapping
 - Tracks table row and cell boundaries during HTML-to-text conversion
 
 **Candidate Detector (EA-2)**
-- **Module:** `src/extraction/candidate_detector.py`
+- **Module:** `src/extraction/candidate_detector.py` (deleted)
 - Unified metric candidate detection consolidating CandidateGenerator and ValueExtractor
 - Integrates FalsePositiveFilter; uses StructureParser for table-aware row validation
 
 **Context Extractor (EA-3)**
-- **Module:** `src/extraction/context_extractor.py`
+- **Module:** `src/extraction/context_extractor.py` (deleted)
 - Extracts clean context around metric values with table awareness
 - Uses StructureParser to respect row boundaries in table segments
 
