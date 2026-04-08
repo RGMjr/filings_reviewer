@@ -55,7 +55,7 @@ GOLD_STANDARD_COMPANIES: dict[str, dict] = {
         "form_type": "F-1",
         "filing_date": "2018-09-21",
         "period_end_date": "2017-12-31",
-        "sec_html_url": "https://www.sec.gov/Archives/edgar/data/1764191/000119312518267302/",
+        "sec_html_url": "https://www.sec.gov/Archives/edgar/data/1740915/000119312518267302/",
     },
     "Flywire_Corp": {
         "company_name": "Flywire Corp",

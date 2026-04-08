@@ -21,7 +21,7 @@ SELECT
     'F-1',
     '2018-09-21',
     '2017-12-31',
-    'https://www.sec.gov/Archives/edgar/data/1740915/000119312518267302/filing-main.htm',
+    'https://www.sec.gov/Archives/edgar/data/1740915/000119312518267302/',
     true,
     'pending'
 FROM companies WHERE cik = '0001740915'
