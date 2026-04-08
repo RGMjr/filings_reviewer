@@ -27,8 +27,7 @@ The **YAML configuration** (`config/metric_keywords.yaml`) is the authoritative 
 |----------|---------|-----|-----------|--------|
 | `config/metric_keywords.yaml` | Patterns, exclusions, aliases | Required | Keep (comment) | Remove |
 | `sql/04_seed_metrics_taxonomy.sql` | Database seed, display names | Required | Update status | Remove |
-| `src/extraction/value_extractor.py` | Name variants mapping | Required | Keep | Remove |
-| `src/web/routes/review.py` | UI dropdown ordering | Required | Remove | Remove |
+| `src/web/routes/_metrics.py` | UI dropdown ordering | Required | Remove | Remove |
 | `docs/development/metrics-taxonomy.md` | Business definitions | Required | Mark deprecated | Remove |
 
 ---
@@ -101,26 +100,13 @@ VALUES (
 - `extended` - Phase 1 extended metrics (secondary priority)
 - `future` - Phase 2+ metrics (anticipated but not active)
 
-### Step 3: Add to METRIC_NAME_MAPPING
+### Step 3: ~~Add to METRIC_NAME_MAPPING~~ (no longer needed)
 
-**File:** `src/extraction/value_extractor.py`
-
-Add all name variants that should map to this metric. These are used when the LLM returns free-form metric names.
-
-```python
-METRIC_NAME_MAPPING = {
-    # ... existing entries ...
-
-    # New metric name variants
-    "new_metric_name": "cm_new_metric_name",
-    "alternate_name": "cm_new_metric_name",
-    "common_abbreviation": "cm_new_metric_name",
-}
-```
+This step is no longer required. The V2 pipeline uses pattern-based cohort classification in `src/extraction_v2/stages/fact_construction.py` and does not rely on a `METRIC_NAME_MAPPING` lookup. No changes to `value_extractor.py` are needed (that file was removed during the V1→V2 migration).
 
 ### Step 4: Add to Dropdown Ordering
 
-**File:** `src/web/routes/review.py`
+**File:** `src/web/routes/_metrics.py`
 
 Add to `METRIC_DISPLAY_ORDER` dict with the appropriate sort order based on category (see Section 5).
 
@@ -132,6 +118,8 @@ METRIC_DISPLAY_ORDER: dict[str, int] = {
     "cm_new_metric_name": 28,  # Revenue category (21-30)
 }
 ```
+
+> **Note:** `METRIC_DISPLAY_ORDER` is defined in `src/web/routes/_metrics.py` at line ~39.
 
 ### Step 5: Update Documentation
 
@@ -219,15 +207,13 @@ cm_old_metric_name:
     - '\bold\s+metric\s+pattern\b'
 ```
 
-### Step 3: Keep in METRIC_NAME_MAPPING
+### Step 3: ~~Keep in METRIC_NAME_MAPPING~~ (no longer applicable)
 
-**File:** `src/extraction/value_extractor.py`
-
-**DO NOT remove** - needed for validation of existing data.
+`src/extraction/value_extractor.py` was removed during the V1→V2 migration. The V2 pipeline uses pattern-based cohort classification in `src/extraction_v2/stages/fact_construction.py`. No action needed for this step.
 
 ### Step 4: Remove from Dropdown Ordering
 
-**File:** `src/web/routes/review.py`
+**File:** `src/web/routes/_metrics.py`
 
 Remove from `METRIC_DISPLAY_ORDER` dict so deprecated metrics don't appear in UI.
 
@@ -289,11 +275,10 @@ SELECT COUNT(*) FROM filing_metric_incidence WHERE metric_id = 'cm_xxx';
 
 Remove in this order to avoid breaking references:
 
-1. **Remove from dropdown ordering** (`src/web/routes/review.py`)
+1. **Remove from dropdown ordering** (`src/web/routes/_metrics.py`)
    - Delete entry from `METRIC_DISPLAY_ORDER`
 
-2. **Remove from name mapping** (`src/extraction/value_extractor.py`)
-   - Delete all entries that map to this metric
+2. ~~**Remove from name mapping** (`src/extraction/value_extractor.py`)~~ — no longer applicable; this file was removed during the V1→V2 migration. No action needed.
 
 3. **Remove INSERT statement** (`sql/04_seed_metrics_taxonomy.sql`)
    - Delete the entire INSERT block
@@ -373,14 +358,9 @@ When adding a new metric, choose a sort order value within the appropriate categ
    );
    ```
 
-3. **value_extractor.py** - Add name variants:
-   ```python
-   "ltv_to_cac_ratio_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
-   "ltv_cac_by_cohort": "cm_ltv_to_cac_ratio_by_cohort",
-   "cohort_ltv_cac": "cm_ltv_to_cac_ratio_by_cohort",
-   ```
+3. ~~**value_extractor.py**~~ - This step is no longer needed. The V2 pipeline handles metric classification in `src/extraction_v2/stages/fact_construction.py`.
 
-4. **review.py** - Add to Unit Economics category:
+4. **_metrics.py** - Add to Unit Economics category:
    ```python
    "cm_ltv_to_cac_ratio_by_cohort": 44,  # After cm_ltv_to_cac_ratio (43)
    ```
@@ -417,9 +397,9 @@ When adding a new metric, choose a sort order value within the appropriate categ
        - '\bgross\s+merchandise\s+value\b'
    ```
 
-3. **review.py** - Remove from `METRIC_DISPLAY_ORDER` dict
+3. **_metrics.py** - Remove from `METRIC_DISPLAY_ORDER` dict
 
-4. **value_extractor.py** - Keep all name mappings (needed for historical data)
+4. ~~**value_extractor.py**~~ - No longer applicable; this file was removed during the V1→V2 migration.
 
 5. **metrics-taxonomy.md** - Mark deprecated:
    ```markdown
@@ -444,8 +424,7 @@ Use this checklist when making metric changes:
 ### Adding a New Metric
 - [ ] Added to `config/metric_keywords.yaml` with patterns
 - [ ] Added INSERT to `sql/04_seed_metrics_taxonomy.sql`
-- [ ] Added name variants to `src/extraction/value_extractor.py`
-- [ ] Added to `METRIC_DISPLAY_ORDER` in `src/web/routes/review.py`
+- [ ] Added to `METRIC_DISPLAY_ORDER` in `src/web/routes/_metrics.py`
 - [ ] Updated `docs/development/metrics-taxonomy.md`
 - [ ] Ran `pytest -m gold_standard --gold-standard-mode=fresh`
 - [ ] Verified metric appears in UI dropdown
@@ -454,15 +433,13 @@ Use this checklist when making metric changes:
 ### Deprecating a Metric
 - [ ] Changed status to `'deprecated'` in SQL
 - [ ] Added deprecation comment in YAML (kept patterns)
-- [ ] Kept entries in value_extractor.py
-- [ ] Removed from `METRIC_DISPLAY_ORDER`
+- [ ] Removed from `METRIC_DISPLAY_ORDER` in `src/web/routes/_metrics.py`
 - [ ] Marked deprecated in documentation
 - [ ] All tests passing
 
 ### Removing a Metric
 - [ ] Verified no existing data in database
-- [ ] Removed from `METRIC_DISPLAY_ORDER`
-- [ ] Removed from value_extractor.py
+- [ ] Removed from `METRIC_DISPLAY_ORDER` in `src/web/routes/_metrics.py`
 - [ ] Removed INSERT from SQL
 - [ ] Removed from YAML
 - [ ] Removed from documentation
@@ -474,7 +451,7 @@ Use this checklist when making metric changes:
 ## 8. Troubleshooting
 
 ### Metric not appearing in dropdown
-1. Check that metric is in `METRIC_DISPLAY_ORDER` in `review.py`
+1. Check that metric is in `METRIC_DISPLAY_ORDER` in `src/web/routes/_metrics.py`
 2. Verify database has metric with `status = 'active'`
 3. Restart Flask app to pick up code changes
 

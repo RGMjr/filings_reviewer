@@ -1,624 +1,476 @@
-# Testing Strategy
+# Testing
 
-**Version:** 2.1
-**Last Updated:** 2026-01-01
+**Last Updated:** 2026-04-08
 
 ---
 
 ## Overview
 
-Testing strategy for ensuring quality extraction at scale with minimal cost.
+The test suite enforces correctness across the extraction pipeline, review system, web API, infrastructure, and gold standard regression framework.
 
-**Key Principles:**
-1. Test components in isolation before integration
-2. Use sample/mock data for unit tests (avoid API costs)
-3. Validate on small real dataset before full scale
-4. Measure both technical metrics (success rate) and business metrics (extraction quality)
+**Test philosophy:**
+1. Rule-based extraction logic is tested in isolation before integration — unit tests cover individual stages and parsers without database or LLM dependencies.
+2. Integration tests require a real PostgreSQL test database (`TEST_DATABASE_URL`). They validate database upsert idempotency, full pipeline runs on cached HTML fixtures, and API transaction integrity.
+3. Gold standard regression tests guard against precision/recall regressions on a curated set of known-good filings.
 
----
+**Coverage requirement:** 75% minimum, enforced by `pytest-cov` (`fail_under = 75` in `pyproject.toml`). The `src/extraction/` (V1, retired) directory is excluded from coverage measurement.
 
-## Testing Pyramid
-
-```
-              ┌─────────────────┐
-              │  Production     │  20,500 filings
-              │  Validation     │  (Full dataset)
-              └─────────────────┘
-                      ▲
-          ┌───────────┴───────────┐
-          │   Pilot Testing       │  1,000 filings
-          │   (1 year S-1s)       │  Manual QA sample
-          └───────────────────────┘
-                      ▲
-              ┌───────┴───────┐
-              │ Integration   │  100 filings
-              │ Testing       │  Automated validation
-              └───────────────┘
-                      ▲
-                  ┌───┴───┐
-                  │ Unit  │  Individual components
-                  │ Tests │  Mock data
-                  └───────┘
-```
+**Type safety:** `src/review/` passes `mypy --strict`. Other modules use permissive mypy settings.
 
 ---
 
-## Unit Tests
+## Running Tests
 
-### Component: Table Extractor
-
-**Goal:** Verify table parsing and metric extraction
-
-**`tests/test_table_extractor.py`:**
-```python
-import pytest
-from core.table_extractor import extract_tables, parse_table_structure
-
-def test_simple_table():
-    """Test basic table with metrics in rows, periods in columns"""
-
-    html = """
-    <table>
-        <caption>Key Metrics</caption>
-        <tr>
-            <th></th>
-            <th>Q1 2023</th>
-            <th>Q2 2023</th>
-        </tr>
-        <tr>
-            <td>Monthly Active Users (millions)</td>
-            <td>4.2</td>
-            <td>4.5</td>
-        </tr>
-        <tr>
-            <td>Paying Customers (thousands)</td>
-            <td>345</td>
-            <td>378</td>
-        </tr>
-    </table>
-    """
-
-    metrics = extract_tables(html, "S-1")
-
-    # Should extract 4 metrics (2 metrics × 2 periods)
-    assert len(metrics) == 4
-
-    # Check MAU Q1
-    mau_q1 = [m for m in metrics if m.metric_name == "Monthly Active Users" and "Q1" in m.period][0]
-    assert mau_q1.value_numeric == 4_200_000
-    assert mau_q1.confidence >= 0.9
-    assert mau_q1.source_type.value == "table"
-
-def test_table_with_units():
-    """Test handling of units in metric names"""
-
-    html = """
-    <tr>
-        <td>Revenue (in thousands, except per share data)</td>
-        <td>$15,234</td>
-    </tr>
-    """
-
-    # Should normalize metric name and handle units
-    pass
-
-def test_missing_data():
-    """Test handling of missing data indicators"""
-
-    html = """
-    <tr>
-        <td>Net Revenue Retention</td>
-        <td>127%</td>
-        <td>—</td>
-        <td>N/A</td>
-    </tr>
-    """
-
-    # Should extract 127% but skip — and N/A
-    pass
-
-def test_nested_tables():
-    """Test that nested tables are handled correctly"""
-    pass
-
-def test_malformed_html():
-    """Test graceful handling of malformed HTML"""
-    pass
-```
-
-### Component: LLM Extractor
-
-**Goal:** Verify prompt construction and response parsing
-
-**`tests/test_llm_extractor.py`:**
-```python
-import pytest
-from unittest.mock import Mock, patch
-import json
-from core.llm_extractor import extract_metrics_llm
-from core.models import KeywordHit, FilingMetadata
-
-@pytest.fixture
-def mock_openai_response():
-    """Mock OpenAI API response"""
-    return {
-        "metrics": [
-            {
-                "metric_name": "Monthly Active Users",
-                "value": "5.2 million",
-                "period": "Q4 2023",
-                "source_type": "text",
-                "source_details": "Test paragraph",
-                "confidence": 0.9
-            }
-        ]
-    }
-
-def test_llm_extraction_basic(mock_openai_response):
-    """Test basic LLM extraction"""
-
-    with patch('openai.OpenAI') as mock_client:
-        # Setup mock
-        mock_client.return_value.chat.completions.create.return_value = Mock(
-            choices=[Mock(message=Mock(content=json.dumps(mock_openai_response)))],
-            usage=Mock(prompt_tokens=1000, completion_tokens=200)
-        )
-
-        # Test data
-        paragraphs = [KeywordHit(
-            paragraph="Our MAU reached 5.2 million in Q4 2023",
-            keywords_matched=["MAU"]
-        )]
-
-        filing = FilingMetadata(
-            cik="0000000000",
-            accession_number="00-000000",
-            filing_id="test",
-            company_name="Test Corp",
-            filing_type="S-1",
-            filing_date=date(2024, 1, 1),
-            url="http://test.com"
-        )
-
-        # Extract
-        metrics, usage = extract_metrics_llm(paragraphs, filing, model="gpt-4o-mini")
-
-        # Verify
-        assert len(metrics) == 1
-        assert metrics[0].metric_name == "Monthly Active Users"
-        assert metrics[0].value_numeric == 5_200_000
-        assert usage.cost_usd < 0.01
-
-def test_llm_extraction_empty_response():
-    """Test handling of response with no metrics"""
-    pass
-
-def test_llm_extraction_invalid_json():
-    """Test handling of invalid JSON response"""
-    pass
-
-def test_llm_cost_estimation():
-    """Test token and cost estimation"""
-    pass
-```
-
-### Component: QA Agent
-
-**`tests/test_qa_agent.py`:**
-```python
-def test_data_validity_negative_values():
-    """QA should flag negative user counts"""
-
-    metric = TableMetric(
-        metric_name="Monthly Active Users",
-        value="-1000",
-        value_numeric=-1000,
-        confidence=0.9
-    )
-
-    result = validate_metrics([metric], filing_metadata)
-
-    assert result.has_critical_warnings
-    assert any("negative" in w.message.lower() for w in result.warnings)
-
-def test_consistency_dau_mau():
-    """QA should flag DAU > MAU"""
-
-    dau = TableMetric(metric_name="Daily Active Users", value_numeric=5_000_000)
-    mau = TableMetric(metric_name="Monthly Active Users", value_numeric=3_000_000)
-
-    result = validate_metrics([dau, mau], filing_metadata)
-
-    assert any(w.warning_type == WarningType.CONSISTENCY for w in result.warnings)
-
-def test_unrealistic_values():
-    """QA should flag unrealistic values"""
-
-    metric = TableMetric(
-        metric_name="Monthly Active Users",
-        value="50 billion",  # More than world population
-        value_numeric=50_000_000_000
-    )
-
-    result = validate_metrics([metric], filing_metadata)
-
-    assert len(result.warnings) > 0
-```
-
----
-
-## Integration Tests
-
-### Test: Full Pipeline on Single Filing
-
-**`tests/test_integration.py`:**
-```python
-def test_full_pipeline_single_filing():
-    """
-    Test entire pipeline on one known filing.
-
-    Uses a specific S-1 with known metrics.
-    """
-
-    # Known good filing: e.g., Airbnb S-1 from 2020
-    filing_metadata = FilingMetadata(
-        cik="1559720",
-        accession_number="0001193125-20-294801",
-        # ...
-    )
-
-    # Process
-    result = process_filing(filing_metadata)
-
-    # Assertions
-    assert result.success == True
-    assert len(result.table_metrics) > 0
-    assert len(result.llm_metrics) >= 0
-    assert result.total_cost_usd < 0.10
-
-    # Validate specific known metrics
-    # (Compare against manually verified ground truth)
-    metrics_by_name = {m.metric_name: m for m in result.all_metrics}
-
-    # Example: Check if known metrics were extracted
-    expected_metrics = ["Monthly Active Users", "Nights Booked"]
-    for metric_name in expected_metrics:
-        assert metric_name in metrics_by_name, f"Missing: {metric_name}"
-
-def test_error_handling_404():
-    """Test handling of missing filing (404 error)"""
-
-    filing = FilingMetadata(
-        cik="0000000000",
-        accession_number="99-999999",  # Invalid
-        filing_id="invalid",
-        url="https://sec.gov/invalid"
-        # ...
-    )
-
-    result = process_filing(filing)
-
-    assert result.success == False
-    assert result.error is not None
-
-def test_retry_on_rate_limit():
-    """Test automatic retry on rate limit error"""
-    pass
-```
-
----
-
-## Pilot Testing (100 Filings)
-
-### Goal
-Validate approach on representative sample before full scale processing.
-
-### Process
-
-1. **Select Sample**
-   ```python
-   # Get 100 recent S-1 filings
-   python main.py --start-date 2024-01-01 --end-date 2024-12-31 --max-results 100
-   ```
-
-2. **Run Extraction**
-   - Monitor progress and costs
-   - Check for patterns in failures
-
-3. **Quality Validation**
-   ```python
-   # Export results
-   python -c "from core.storage import export_to_csv; export_to_csv('metrics', 'pilot_metrics.csv')"
-
-   # Review in Excel/Pandas
-   import pandas as pd
-   df = pd.read_csv('data/exports/pilot_metrics.csv')
-
-   # Quality checks
-   print(f"Total metrics: {len(df)}")
-   print(f"Unique filings: {df['filing_id'].nunique()}")
-   print(f"Avg metrics per filing: {len(df) / df['filing_id'].nunique():.1f}")
-   print(f"Confidence distribution:\n{df['confidence'].describe()}")
-   ```
-
-4. **Manual QA Sample**
-   - Randomly select 10 filings
-   - Manually verify ALL metrics
-   - Calculate precision/recall
-
-   ```python
-   # Generate QA sample
-   sample_filings = df.sample(10)['filing_id'].unique()
-
-   for filing_id in sample_filings:
-       print(f"\n=== {filing_id} ===")
-       filing_metrics = df[df['filing_id'] == filing_id]
-       print(filing_metrics[['metric_name', 'value', 'period', 'confidence']])
-       # Manually review against actual filing
-   ```
-
-5. **Success Criteria**
-   - Success rate > 95%
-   - Avg cost per filing < $0.10
-   - Precision > 90% (few false positives)
-   - Recall > 80% (catch most metrics)
-   - Confidence scores correlate with accuracy
-
----
-
-## Validation Metrics
-
-### Technical Metrics
-
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Success Rate | >95% | `successful / total` |
-| Avg Cost/Filing | <$0.10 | `total_cost / processed` |
-| Processing Speed | >5 filings/min | `filings / time` |
-| Error Rate | <5% | `failed / total` |
-
-### Quality Metrics
-
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Precision | >90% | `true_positives / (true_positives + false_positives)` |
-| Recall | >80% | `true_positives / (true_positives + false_negatives)` |
-| F1 Score | >0.85 | `2 * (precision * recall) / (precision + recall)` |
-| High Confidence % | >70% | `metrics with confidence > 0.8 / total` |
-
-### Manual QA Protocol
-
-For each sampled filing:
-
-1. **Open actual SEC filing** in browser
-2. **Find metrics table/section** manually
-3. **Compare to extracted metrics:**
-   - ✅ Correctly extracted (true positive)
-   - ❌ Incorrectly extracted (false positive)
-   - ⚠️ Missed metric (false negative)
-   - ℹ️ Correctly ignored (true negative)
-
-4. **Record results** in spreadsheet:
-   ```csv
-   filing_id,metric_name,extracted_value,actual_value,status,notes
-   0001...,MAU,5.2M,5.2M,correct,""
-   0001...,DAU,2.1M,,false_positive,"No DAU mentioned"
-   0001...,,,127%,missed,"NRR in paragraph, not table"
-   ```
-
-5. **Calculate accuracy:**
-   ```python
-   results_df = pd.read_csv('qa_results.csv')
-
-   precision = len(results_df[results_df['status'] == 'correct']) / \
-               len(results_df[results_df['status'].isin(['correct', 'false_positive'])])
-
-   recall = len(results_df[results_df['status'] == 'correct']) / \
-            len(results_df[results_df['status'].isin(['correct', 'missed'])])
-
-   print(f"Precision: {precision:.1%}")
-   print(f"Recall: {recall:.1%}")
-   ```
-
----
-
-## Coverage Targets by Module
-
-This section documents coverage targets and current state by module category. These are **visibility targets**, not CI gates - use this as a prioritization guide when writing tests.
-
-### Coverage Target Tiers
-
-| Tier | Target | Rationale |
-|------|--------|-----------|
-| **Critical** | 90-100% | Core business logic, data integrity |
-| **Standard** | 85-95% | Most production code |
-| **Acceptable** | 75-85% | Infrastructure, utilities |
-| **Minimum** | 75% | CI enforcement threshold |
-
-### Module Coverage Dashboard
-
-| Module Category | Target | Current Status | Priority |
-|-----------------|--------|----------------|----------|
-| **Core Extraction** | | | |
-| `src/extraction/` | 90% | Varies by file | High |
-| `src/extraction_v2/` | 85% | Alpha (lower) | Medium |
-| **Review System** | | | |
-| `src/review/` | 95% | ~95% | Maintained |
-| **Web Routes** | | | |
-| `src/web/routes/` | 90% | 30-97% (uneven) | High |
-| **Infrastructure** | | | |
-| `src/infra/db.py` | 90% | ~85% | Medium |
-| `src/infra/sec_client.py` | 80% | Varies | Low |
-| **LLM Integration** | | | |
-| `src/llm/` | 75% | ~75% | Low (expensive to test) |
-| **Universe Builder** | | | |
-| `src/universe/` | 85% | Varies | Medium |
-
-### Quick Wins Identification
-
-Files with high impact but low effort to improve:
-
-1. **Web routes below 85%**: Add validation/error tests
-2. **Database methods without error tests**: Add exception handling tests
-3. **Utility functions without edge case tests**: Add parametrized tests
-
-### Viewing Current Coverage
+### Default run (excludes slow/gold_standard markers)
 
 ```bash
-# Full coverage report with missing lines
-pytest --cov=src --cov-report=term-missing
+pytest -v
+```
 
-# HTML report for detailed exploration
+The default `addopts` in `pyproject.toml` deselects `slow`, `v2_parity`, `gold_standard`, and `transcript_gold_standard` markers. The standard run collects ~4490 of 4529 total tests.
+
+### With coverage
+
+```bash
 pytest --cov=src --cov-report=html
-# Open htmlcov/index.html in browser
+# Open htmlcov/index.html for line-level detail
 
-# Coverage for specific module
-pytest --cov=src/web/routes --cov-report=term-missing tests/unit/web/
+pytest --cov=src --cov-report=term-missing
 ```
 
-### When to Prioritize Coverage
-
-**Do prioritize** increasing coverage when:
-- Adding new features (target 85%+ from start)
-- Fixing bugs (add regression test)
-- Before major refactors (safety net)
-- Module grades below B in code-module-grader
-
-**Don't prioritize** coverage improvements when:
-- Code is scheduled for deprecation
-- Tests would only cover trivial getters/setters
-- Module is stable and well-tested at current level
-
----
-
-## Regression Testing
-
-### Gold Standard Regression Tests (GS-4)
-
-Automated pytest tests that compare extraction metrics against a saved baseline:
+### Single module or subdirectory
 
 ```bash
-# Run gold standard regression tests
-pytest -m gold_standard -v
-
-# Run with custom tolerance (default: 1%)
-pytest -m gold_standard --gold-standard-tolerance=0.02 -v
-
-# Skip gold standard tests (for faster CI)
-pytest -m "not gold_standard"
+pytest tests/unit/extraction_v2/ -v
+pytest tests/unit/review/ -v
+pytest tests/integration/web/ -v
+pytest tests/unit/extraction_v2/test_pipeline.py -v
 ```
 
-**Tests include:**
-- `test_overall_precision_above_baseline` - Fails if precision drops
-- `test_overall_recall_above_baseline` - Fails if recall drops
-- `test_overall_f1_above_baseline` - Fails if F1 drops
-- `test_no_company_recall_regressions` - Fails if any company's recall dropped
-
-**Setup:**
-1. Create baseline: `python scripts/validate_against_gold_standard.py --all --update-baseline`
-2. Baseline saved to: `data/gold_standard/baseline.json`
-3. Tests skip gracefully if baseline doesn't exist
-
-### Manual Regression Testing
-
-After making changes to extraction logic:
+### Filter by test name pattern
 
 ```bash
-# Validate against gold standard CSV
-python scripts/validate_against_gold_standard.py --all
+pytest -k "test_false_positive" -v
+pytest -k "TestCandidateGeneration" -v
+```
 
-# Compare results to baseline
-python scripts/validate_against_gold_standard.py --all --output report.json
+### Gold standard regression (requires cached HTML and baseline)
 
-# Should show:
-# - No decrease in metrics extracted
-# - No decrease in confidence scores
-# - Same or better quality
+```bash
+# Fresh mode — re-extracts from local HTML, no database required (recommended)
+pytest -m gold_standard --gold-standard-mode=fresh -v
+
+# DB mode — uses existing database rows
+pytest -m gold_standard --gold-standard-mode=db -v
+
+# With relaxed tolerance (default 1%)
+pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-tolerance=0.02 -v
+
+# Update baseline instead of comparing
+pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-update-baseline -v
+```
+
+### Transcript gold standard
+
+```bash
+pytest -m transcript_gold_standard --transcript-split=tuning -v
+pytest -m transcript_gold_standard --transcript-split=test -v
+```
+
+### Presentation gold standard
+
+```bash
+pytest tests/unit/test_presentation_gold_standard.py -v
+```
+
+### Performance benchmarks
+
+```bash
+pytest tests/performance/ -v --benchmark-only
+```
+
+### V2 parity (full re-extraction across all gold standard companies — slow)
+
+```bash
+pytest -m v2_parity -v
 ```
 
 ---
 
-## Performance Testing
+## Directory Structure
 
-### Load Test
-
-```python
-# Test with 1000 filings to validate scale
-python main.py \
-    --start-date 2023-01-01 \
-    --end-date 2023-12-31 \
-    --workers 10 \
-    --max-cost 100
-
-# Monitor:
-# - Memory usage (should stay < 4GB)
-# - Processing rate (should be ~5-10 filings/min)
-# - Error rate (should be < 5%)
-# - Cost per filing (should be < $0.10)
 ```
-
-### Stress Test
-
-```python
-# Test rate limiting under load
-python main.py \
-    --workers 20 \  # More than normal
-    --start-date 2024-01-01 \
-    --end-date 2024-01-31
-
-# Should gracefully handle:
-# - OpenAI rate limits (with retry)
-# - SEC throttling (with backoff)
-# - No crashes or data corruption
+tests/
+├── conftest.py                         # Root: CLI options, gold standard fixtures, transcript fixtures
+├── unit/                               # Fast, isolated — no external dependencies
+│   ├── extraction_v2/                  # V2 pipeline stage unit tests
+│   │   ├── test_pipeline.py            # PipelineConfig, PipelineContext, process_filing
+│   │   ├── test_candidate_generation.py # CandidateGenerationStage keyword matching
+│   │   ├── test_false_positive_filter_stage.py # FalsePositiveFilterStage (V2-native + V1 delegate)
+│   │   ├── test_models.py              # V2 dataclass validation (MetricFact, Segment, Table, etc.)
+│   │   ├── test_period_inference.py    # Period parsing and inference
+│   │   ├── test_number_parsing.py      # Number regex and multiplier handling
+│   │   ├── test_deduplication.py       # Fact deduplication logic
+│   │   ├── test_quality_scoring.py     # V2QualityScorer
+│   │   ├── test_presentation_converter.py # Presentation-to-Document converter
+│   │   ├── test_transcript_converter.py   # Transcript-to-Document converter
+│   │   ├── test_batch_runner.py        # BatchRunner logic (no DB)
+│   │   ├── test_image_pipeline_integration.py # Image pipeline stage wiring
+│   │   ├── test_image_triage.py        # Image triage and classification
+│   │   └── ...                         # Additional stage and utility tests
+│   ├── review/                         # Review module unit tests (mypy --strict applies)
+│   │   ├── test_candidate_generator.py # CandidateGenerator, NUMBER_REGEX, keyword matching
+│   │   ├── test_keyword_matching.py    # METRIC_KEYWORDS, SPECIFIC_KEYWORD_PATTERNS
+│   │   ├── test_false_positive_filter.py # FP filter rules
+│   │   ├── test_confidence_scoring.py  # ConfidenceScorer
+│   │   ├── test_pattern_analyzer.py    # PatternAnalyzer
+│   │   ├── test_number_parsing.py      # NumberMatch parsing
+│   │   └── ...                         # Additional review subsystem tests
+│   ├── gold_standard/                  # Gold standard module unit tests (no DB)
+│   │   ├── test_baseline.py            # BaselineMetrics, compare_to_baseline, load_baseline
+│   │   ├── test_v2_validator.py        # V2GoldStandardValidator logic
+│   │   ├── test_fresh_extractor.py     # FreshExtractor (file-based extraction)
+│   │   └── test_unified_comparison.py  # UnifiedComparisonRunner
+│   ├── infra/                          # Infrastructure unit tests
+│   │   ├── test_db_validation.py       # DatabaseAdapter validation
+│   │   ├── test_http_client.py         # HTTP client and retry logic
+│   │   ├── test_sec_client.py          # SEC EDGAR client
+│   │   ├── test_validation.py          # Input validation helpers
+│   │   └── ...
+│   ├── web/                            # Flask route unit tests (mocked DB)
+│   │   ├── test_api_routes.py          # Core review API endpoints
+│   │   ├── test_api_bulk.py            # Bulk decision endpoints
+│   │   ├── test_review_v2_routes.py    # V2 review routes and pagination
+│   │   ├── test_api_images_routes.py   # Image review routes
+│   │   ├── test_auth.py                # Authentication middleware
+│   │   └── ...
+│   ├── llm/                            # LLM module unit tests
+│   │   ├── test_openai_client.py       # OpenAI client wrapping
+│   │   ├── test_cache.py               # PostgreSQL-backed LLM cache
+│   │   ├── test_prompts.py             # Prompt construction
+│   │   └── test_vision_client.py       # Vision/image LLM client
+│   ├── universe/                       # Universe builder unit tests
+│   ├── filing_fetcher/                 # FilingFetcher unit tests
+│   ├── scripts/                        # Script entry-point unit tests
+│   └── test_presentation_gold_standard.py  # Presentation GS evaluation
+│
+├── integration/                        # Requires TEST_DATABASE_URL
+│   ├── conftest.py                     # DB fixtures: test_db_adapter, clean_db, fixture helpers
+│   ├── extraction_v2/                  # V2 pipeline integration tests
+│   │   ├── test_e2e_pipeline.py        # Full V2 run on cached gold standard filings
+│   │   ├── test_persistence.py         # V2PersistenceAdapter DB writes
+│   │   ├── test_batch_runner_db.py     # BatchRunner with real DB
+│   │   ├── test_presentation_e2e.py    # Presentation pipeline end-to-end
+│   │   ├── test_transcript_e2e.py      # Transcript pipeline end-to-end
+│   │   ├── test_transcript_gold_standard.py  # Transcript GS regression
+│   │   └── test_quality_scoring_integration.py
+│   ├── web/                            # Web API integration tests (real DB + Flask test client)
+│   │   ├── test_api_integration.py     # Review API transaction integrity
+│   │   ├── test_review_workflow.py     # Full accept/reject/reclassify workflow
+│   │   ├── test_v2_review_workflow.py  # V2 review workflow
+│   │   ├── test_bulk_workflow.py       # Bulk decision workflow
+│   │   └── test_image_review_workflow.py
+│   ├── universe/
+│   │   └── test_universe_builder_integration.py
+│   ├── filing_fetcher/
+│   │   └── test_filing_fetcher_db.py
+│   ├── test_gold_standard_regression.py  # Gold standard regression tests (pytest -m gold_standard)
+│   ├── test_gold_standard_coverage.py
+│   ├── test_db_upsert.py               # DB upsert idempotency
+│   ├── test_migration_safety.py        # Migration ordering and safety
+│   └── ...
+│
+├── performance/                        # Benchmark tests (pytest-benchmark)
+│   ├── conftest.py                     # benchmark_db, realistic_segments_100/500 fixtures
+│   └── test_candidate_generation_benchmark.py  # CandidateGenerator throughput benchmarks
+│
+├── e2e/                                # Browser-level end-to-end tests
+│   └── test_metric_dropdown_search.py
+│
+└── ui/                                 # Local UI test servers (not collected by pytest)
+    ├── test_server.py
+    └── unified_test_server.py
 ```
 
 ---
 
-## Test Data
+## Test Markers
 
-### Sample Filings for Testing
+Defined in `pyproject.toml` under `[tool.pytest.ini_options]`:
 
-Known good filings for testing (replace with actual):
+| Marker | Description | Default run |
+|--------|-------------|-------------|
+| `unit` | Fast, no external dependencies | Included |
+| `integration` | Requires database connection | Included |
+| `slow` | Slow-running tests | **Excluded** |
+| `benchmark` | Performance benchmark tests | Included |
+| `gold_standard` | GS regression tests — require baseline file and cached HTML | **Excluded** |
+| `transcript_gold_standard` | Transcript GS regression tests | **Excluded** |
+| `performance` | Performance tests | Included |
+| `v2_parity` | Full V2 vs V1 extraction across all GS companies | **Excluded** |
 
-```python
-TEST_FILINGS = [
-    {
-        "cik": "1559720",
-        "company": "Airbnb",
-        "filing_type": "S-1",
-        "url": "https://www.sec.gov/...",
-        "expected_metrics": ["Nights Booked", "Gross Booking Value", "Active Listings"]
-    },
-    {
-        "cik": "1764925",
-        "company": "Snowflake",
-        "filing_type": "S-1",
-        "url": "https://www.sec.gov/...",
-        "expected_metrics": ["Customers", "Net Revenue Retention", "Revenue"]
-    },
-    # Add more...
-]
+The default `addopts` excludes: `not slow and not v2_parity and not gold_standard and not transcript_gold_standard`.
+
+Run excluded markers explicitly:
+```bash
+pytest -m gold_standard --gold-standard-mode=fresh -v
+pytest -m slow -v
+pytest -m v2_parity -v
 ```
 
 ---
 
-## Continuous Monitoring
+## Writing Tests
 
-After deployment, monitor:
+### Conventions
+
+- Test files are named `test_*.py`. Test classes are named `Test*`. Test functions are named `test_*`.
+- Unit tests under `tests/unit/` must not require `TEST_DATABASE_URL`. Use mocks for DB/HTTP/LLM calls.
+- Integration tests under `tests/integration/` use the `clean_db` fixture (function-scoped) which truncates all tables before and after each test.
+- Use `pytest.mark.integration` on integration test modules.
+
+### Key fixtures
+
+**From `tests/integration/conftest.py`:**
 
 ```python
-# Daily stats
-python -c "
-from core.storage import get_processing_stats
-stats = get_processing_stats()
-print(f'Last 24h: {stats['filings_processed']} filings, ${stats['total_cost']:.2f}')
-print(f'Avg confidence: {stats['avg_confidence']:.2f}')
-print(f'Warning rate: {stats['warnings'] / stats['metrics']:.1%}')
-"
+# session-scoped — one DB adapter shared across all tests in a session
+def test_db_adapter(test_db_url, _terminate_stale_connections): ...
+
+# function-scoped — truncates all tables before and after each test
+def clean_db(test_db_adapter): ...
+
+# Filing/company factory helpers (not fixtures — call directly with db)
+create_test_company(db, cik="0001234567", company_name="Test Corp")
+create_test_company_and_filing(db, cik="...", accession_number="...", form_type="S-1")
+create_test_candidate(db, filing_id=..., context_text="We have 10,000 customers.")
+create_test_decision(db, candidate_id=..., decision="accept")
+create_test_v2_document(db, filing_id=...)
+create_test_v2_fact(db, filing_id=..., canonical_metric_id="cm_customers_period_end")
+create_test_v2_decision(db, fact_id=..., decision="accept")
+create_test_image_candidate(db, filing_id=...)
+create_test_image_decision(db, image_candidate_id=...)
+
+# Filing fixture metadata (loads from data/fixtures/*.json)
+fixture_shopify    # Shopify S-1 2015
+fixture_datadog    # Datadog F-1 2019
+fixture_spac       # dMY SPAC 2020
+mock_sec_client_with_fixtures   # MockSECClient preloaded with all three
+```
+
+**From `tests/performance/conftest.py`:**
+
+```python
+benchmark_db              # function-scoped clean DB for benchmarks
+realistic_segments_100    # 100-segment filing with realistic metric text
+realistic_segments_500    # 500-segment filing
+db_with_1000_patterns     # DB seeded with 1000 synthetic learned patterns
+```
+
+**From `tests/unit/llm/conftest.py`:**
+
+```python
+mock_openai_response      # MagicMock with choices[0].message.content set
+mock_openai_client        # Patches src.llm.openai_client.OpenAI
+mock_tiktoken             # Patches src.llm.openai_client.tiktoken
+disabled_cache_config     # CacheConfig(enabled=False)
+```
+
+### Typical unit test structure
+
+```python
+# tests/unit/extraction_v2/test_pipeline.py
+from src.extraction_v2.models import EvidencePack, MetricFact, SourceLocator, Unit
+from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline, process_filing
+
+def _create_valid_fact(confidence: float) -> MetricFact:
+    return MetricFact(
+        canonical_metric_id="cm_test_metric",
+        value=100.0,
+        value_raw="100",
+        unit=Unit.COUNT,
+        confidence=confidence,
+        requires_review=True,
+        source_locator=SourceLocator(segment_id="test-segment"),
+        evidence_pack=EvidencePack(snippet_html="<span>test</span>"),
+    )
+```
+
+```python
+# tests/unit/review/test_candidate_generator.py
+from src.review.candidate_generator import CandidateGenerator
+from src.review.keyword_matching import METRIC_KEYWORDS, KeywordMatch
+from src.review.models import ReviewCandidate
+from src.review.number_parsing import NUMBER_REGEX, NumberMatch
+
+class TestNumberRegex:
+    def test_integer_with_commas(self):
+        text = "We have 10,000 customers"
+        matches = list(NUMBER_REGEX.finditer(text))
+        assert matches[0].group("number") == "10,000"
+```
+
+```python
+# tests/integration/extraction_v2/test_e2e_pipeline.py
+from src.extraction_v2.persistence import V2PersistenceAdapter
+from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
+from src.infra.db import DatabaseAdapter
+
+pytestmark = pytest.mark.integration
+
+@pytest.fixture(scope="module")
+def db_adapter():
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL not set")
+    return DatabaseAdapter(url)
+```
+
+### Marking integration tests
+
+```python
+import pytest
+pytestmark = pytest.mark.integration
+```
+
+Or on individual tests:
+```python
+@pytest.mark.integration
+def test_db_upsert_is_idempotent(clean_db): ...
 ```
 
 ---
 
-## Next: Deployment
+## Coverage Dashboard
 
-See **08_DEPLOYMENT_GUIDE.md** for production deployment instructions.
+Run `pytest --cov=src --cov-report=term-missing` to get current numbers. The global minimum is 75% (`fail_under = 75`). `src/extraction/` (V1, retired) is excluded from measurement via `omit` in `pyproject.toml`.
+
+| Module | Notes |
+|--------|-------|
+| `src/extraction_v2/` | Production pipeline — highest test investment |
+| `src/review/` | Strict mypy coverage, well-tested |
+| `src/web/routes/` | Mix of unit (mocked DB) and integration tests |
+| `src/infra/` | DB, pool, SEC client, HTTP client |
+| `src/llm/` | Tested with mocked OpenAI client |
+| `src/universe/` | Universe builder and classifier tests |
+| `src/gold_standard/` | Baseline, validator, fresh extractor |
+
+To check coverage for a specific module:
+
+```bash
+pytest --cov=src/extraction_v2 --cov-report=term-missing tests/unit/extraction_v2/
+pytest --cov=src/review --cov-report=term-missing tests/unit/review/
+```
+
+---
+
+## Gold Standard Validation
+
+### What it is
+
+The gold standard is a hand-labeled CSV (`data/gold_standard/golden_set_260407.csv`) of known metric extractions for a set of real filings. The baseline file (`data/gold_standard/baseline.json`) records precision/recall/F1 at the last accepted state. Regression tests fail CI if any of those scores drops below the baseline threshold.
+
+### Baseline file location
+
+```
+data/gold_standard/baseline.json
+```
+
+### Modes
+
+**Fresh mode** (recommended, no database required): Re-extracts from cached HTML files in `data/gold_standard/{Company_Name}/filing.html` on each run.
+
+**DB mode**: Reads extraction results already stored in the test database.
+
+### Running regression tests
+
+```bash
+# Standard regression check
+pytest -m gold_standard --gold-standard-mode=fresh -v
+
+# With 2% tolerance instead of 1% default
+pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-tolerance=0.02 -v
+
+# Parallel workers (default 4)
+pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-workers=8 -v
+```
+
+### Updating the baseline
+
+Run when extraction improvements intentionally raise the bar:
+
+```bash
+pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-update-baseline -v
+```
+
+Or via script:
+
+```bash
+python3 scripts/validate_against_gold_standard.py \
+    --all --mode fresh \
+    --update-baseline \
+    --baseline-path data/gold_standard/baseline.json
+```
+
+### What the tests check
+
+Defined in `tests/integration/test_gold_standard_regression.py`:
+
+- `test_overall_precision_above_baseline` — overall precision must not drop below baseline
+- `test_overall_recall_above_baseline` — overall recall must not drop below baseline
+- `test_overall_f1_above_baseline` — overall F1 must not drop below baseline
+- `test_no_company_recall_regressions` — per-company recall must not drop on any single company
+
+Tests skip gracefully if `data/gold_standard/baseline.json` does not exist.
+
+### Transcript gold standard
+
+Transcript baselines are stored in `data/spike_results/`:
+- `transcript_baseline_tuning.json` — tuning split (default)
+- `transcript_baseline_test.json` — held-out test split
+
+```bash
+pytest -m transcript_gold_standard --transcript-split=tuning -v
+pytest -m transcript_gold_standard --transcript-update-baseline -v
+```
+
+### Presentation gold standard
+
+```bash
+pytest tests/unit/test_presentation_gold_standard.py -v
+```
+
+---
+
+## Type Checking
+
+`src/review/` is the only module with strict mypy enforcement:
+
+```bash
+mypy src/review/ --strict
+```
+
+The `pyproject.toml` overrides apply `disallow_untyped_defs`, `disallow_any_generics`, `warn_return_any`, and `no_implicit_reexport` to `src.review.*`.
+
+All other modules use relaxed settings (`disallow_untyped_defs = false`). `src/infra/` and `src/extraction/` imports are skipped entirely (`follow_imports = "skip"`).
+
+For a broader check without strict mode:
+
+```bash
+mypy src/
+```
+
+---
+
+## Pre-Commit Checklist
+
+Before committing changes that touch `src/`, `tests/`, `scripts/`, `config/`, `sql/`, or `pyproject.toml`:
+
+```bash
+pytest -x -q          # fast fail — stop on first failure
+black src/ tests/      # format
+ruff check src/ tests/ # lint
+mypy src/review/ --strict  # type check (review module only)
+```
+
+Documentation-only or `.claude/`-only commits may skip lint and tests.

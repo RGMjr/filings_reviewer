@@ -89,7 +89,7 @@ psql "$NEON_DIRECT_URL" -f sql/16_add_8k_form_type.sql
 DATABASE_URL="$NEON_DIRECT_URL" python3 scripts/apply_all_migrations.py
 ```
 
-> **Migration ordering note:** `scripts/apply_all_migrations.py` encodes the canonical order for all 16 migrations, including files with duplicate numeric prefixes (`04`, `08`, `09`, `10`, `11`, `12`). Use it instead of a manual shell loop to avoid ordering mistakes.
+> **Migration ordering note:** `scripts/apply_all_migrations.py` encodes the canonical order for all 18 migrations, including files with duplicate numeric prefixes (`04`, `08`, `09`, `10`, `11`, `12`). Use it instead of a manual shell loop to avoid ordering mistakes.
 >
 > If you need to apply a single migration manually, use `psql "$NEON_DIRECT_URL" -f sql/<filename>.sql`.
 

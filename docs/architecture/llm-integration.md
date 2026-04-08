@@ -1,53 +1,61 @@
-# LLM Integration - OpenAI GPT-4o-mini
+# LLM Integration - OpenAI GPT-4o / GPT-4o-mini
 
-**Date:** 2025-12-09
-**Status:** ✅ All Phases Complete - Production Ready
-**Sprint:** Sprint 3 - LLM Integration (Complete)
+**Date:** 2026-04-08
+**Status:** Production
+**Pipeline:** V2 (sole production pipeline)
 
 ---
 
 ## Overview
 
-This document describes the integration of OpenAI's GPT-4o-mini model for enhanced metric extraction from SEC S-1 and F-1 filings. The LLM integration augments the existing rule-based extraction pipeline with AI-powered semantic understanding.
+This document describes the LLM integration in the V2 extraction pipeline. The integration uses two OpenAI models with distinct roles: GPT-4o-mini for text-based extraction tasks and GPT-4o for vision/chart analysis. A PostgreSQL-backed cache reduces costs and latency for repeated prompts.
 
 ## Architecture
 
 ### Integration Approach
 
-**Hybrid Model: Rule-Based + LLM Enhancement**
+**Hybrid Model: Rule-Based First, LLM for Vision**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                   EXTRACTION PIPELINE                        │
+│                   V2 EXTRACTION PIPELINE                     │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
-│  Stage 1: HTML Segmentation (Rule-Based) ✓                 │
-│  Stage 2: Metric Classification (Keyword-Based) ✓           │
+│  Stage 1: Ingestion (lxml parsing, segmentation)            │
+│  Stage 2: Candidate Generation (keyword matching)           │
+│  Stage 3: Section Classification (rule-based)               │
 │                                                              │
 │  ┌────────────────────────────────────────────────┐        │
-│  │ Stage 3: Value Extraction                      │        │
-│  │  • Rule-based (regex, tables) ✓                │        │
-│  │  • LLM-enhanced (GPT-4o-mini) ← NEW            │        │
-│  │  • Fallback: rules if LLM fails                │        │
+│  │ Stage 4: Image Triage (rule-based)             │        │
+│  │  • Classify images: CHART, TABLE_IMAGE, etc.   │        │
+│  │  • Score relevance from section context        │        │
+│  │  • Queue high-relevance images for Stage 5     │        │
 │  └────────────────────────────────────────────────┘        │
 │                                                              │
 │  ┌────────────────────────────────────────────────┐        │
-│  │ Stage 4: Definition Extraction                 │        │
-│  │  • Rule-based (keyword proximity) ✓            │        │
-│  │  • LLM-enhanced (GPT-4o-mini) ← NEW            │        │
-│  │  • Fallback: rules if LLM fails                │        │
+│  │ Stage 5: OCR & Chart Extraction         ← LLM  │        │
+│  │  • TABLE_IMAGE: OCR API to extract text        │        │
+│  │  • CHART: VisionClient (GPT-4o) for labeled    │        │
+│  │    data values only (no interpolation)         │        │
 │  └────────────────────────────────────────────────┘        │
 │                                                              │
-│  Stage 5: Quality Scoring (Rule-Based) ✓                   │
+│  Stage 6:  Value Binding (rule-based)                       │
+│  Stage 7:  Period Inference (rule-based)                    │
+│  Stage 8:  Deduplication (rule-based)                       │
+│  Stage 9:  False Positive Filter (rule-based, 13 rules)     │
+│  Stage 9.5: Definition Extraction (rule-based, no LLM)      │
+│  Stage 10: Fact Construction (rule-based)                   │
+│  Stage 11: Validation (rule-based)                          │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Benefits of Hybrid Approach:**
-- ✅ Better accuracy with LLM semantic understanding
-- ✅ Graceful degradation if LLM unavailable
-- ✅ Cost control (use LLM only when needed)
-- ✅ Gradual rollout and A/B testing capability
+**Key design points:**
+- LLM is invoked only in Stage 5, and only when `enable_image_extraction=True` in `PipelineConfig`
+- Definition extraction (Stage 9.5) is pure rule-based in V2 — no LLM calls
+- Value binding (Stage 6) is pure rule-based — no LLM calls
+- Text-based stages use `OpenAIClient` (GPT-4o-mini) when needed; image stages use `VisionClient` (GPT-4o)
+- All `OpenAIClient` calls pass through the PostgreSQL-backed `LLMCache` automatically
 
 ---
 
@@ -58,12 +66,13 @@ This document describes the integration of OpenAI's GPT-4o-mini model for enhanc
 **Class:** `OpenAIClient`
 
 **Features:**
-- ✅ Automatic retry with exponential backoff (3 retries)
-- ✅ Token counting using tiktoken
-- ✅ Real-time cost tracking per request
-- ✅ Cumulative cost statistics
-- ✅ Rate limiting support
-- ✅ Comprehensive error handling
+- Automatic retry with exponential backoff (3 retries)
+- Token counting using tiktoken
+- Real-time cost tracking per request
+- Cumulative cost statistics
+- Rate limiting support
+- Comprehensive error handling
+- Transparent PostgreSQL-backed response caching (via `LLMCache`)
 
 **Configuration:**
 ```python
@@ -72,23 +81,81 @@ client = OpenAIClient(
     temperature=0.1,                # Deterministic (low randomness)
     max_tokens=4096,                # Max response length
     max_retries=3,                  # Retry failed requests
-    retry_delay=1.0                 # Initial delay (exponential)
+    retry_delay=1.0,                # Initial delay (exponential)
+    cache_config=None,              # Uses LLM_CACHE_ENABLED env var by default
 )
 ```
 
 **Key Methods:**
-- `complete(prompt, system_message)` - Single completion request
+- `complete(prompt, system_message)` - Single completion request (checks cache first, stores on miss)
 - `complete_batch(prompts, ...)` - Batch processing with rate limiting
 - `count_tokens(text)` - Count tokens in text
 - `calculate_cost(input, output)` - Calculate request cost
 - `get_cost_summary()` - Get cumulative statistics
+- `get_cache_stats()` - Get cache hit rate and savings statistics
+- `clear_cache()` - Clear cached responses for the current cache version
 
 **Error Handling:**
 - `RateLimitError` - Automatic retry with backoff
 - `APIConnectionError` - Retry network failures
 - `APIError` - Retry 5xx errors, fail on 4xx
 
-### 2. Prompt Templates (`src/llm/prompts.py`)
+### 2. Vision Client (`src/llm/vision_client.py`)
+
+**Class:** `VisionClient`
+
+**Purpose:** Sends chart and table images to GPT-4o Vision to extract structured data. Used exclusively in Stage 5 (OCR & Chart Extraction) when image extraction is enabled.
+
+**Design principle:** "Charts only when labeled" — the client extracts only data values explicitly labeled on a chart. It never interpolates values from axis positions.
+
+**Features:**
+- MIME type detection from magic bytes (JPEG, PNG, GIF, WebP)
+- Configurable image detail level (`high` for accuracy, `low` for speed/cost)
+- Retry logic with exponential backoff (same error handling as `OpenAIClient`)
+- Per-request cost tracking
+
+**Configuration:**
+```python
+client = VisionClient(model="gpt-4o")  # Default: gpt-4o
+```
+
+**Key Methods:**
+- `analyze_image(image_bytes, prompt, *, detail, max_tokens, max_retries)` - Send image bytes to GPT-4o Vision and return a `VisionResponse`
+
+**Response dataclass (`VisionResponse`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | `str` | LLM response text |
+| `model` | `str` | Model identifier used |
+| `prompt_tokens` | `int` | Tokens in prompt (including image encoding) |
+| `completion_tokens` | `int` | Tokens in completion |
+| `cost_usd` | `float` | Estimated cost for this request |
+| `latency_ms` | `int` | Request latency in milliseconds |
+
+**Error Handling:**
+- `ValueError` - Empty image bytes or empty prompt (fails immediately, no retry)
+- `RateLimitError` - Automatic retry with exponential backoff
+- `APIConnectionError` - Retry with backoff
+- `APIError` (5xx) - Retry with backoff; 4xx errors raise immediately
+
+**Supported image formats:**
+- JPEG, PNG, GIF, WebP (detected from magic bytes; defaults to PNG if unknown)
+
+**Pipeline integration (Stage 5):**
+```python
+# Lazily imported in OCRExtractionStage to avoid hard dependency
+from src.llm.vision_client import VisionClient
+
+client = VisionClient()
+response = client.analyze_image(
+    image_bytes=image_data,
+    prompt="Extract labeled data values from this chart...",
+    detail="high",
+)
+```
+
+### 3. Prompt Templates (`src/llm/prompts.py`)
 
 **Class:** `PromptTemplates`
 
@@ -100,8 +167,8 @@ client = OpenAIClient(
 
 | Method | Purpose | Input | Output |
 |--------|---------|-------|--------|
-| `value_extraction_from_text()` | Extract values from text segments | segment_text, metric_names | JSON array of values |
-| `value_extraction_from_table()` | Extract values from table segments | table_text, table_html, metric_names | JSON array with row/col labels |
+| `value_extraction_from_text()` | Extract values from text segments | segment_text, metric_names, context_text | JSON array of values |
+| `value_extraction_from_table()` | Extract values from table segments | table_text, table_html, metric_names, context_text | JSON array with row/col labels |
 | `definition_extraction()` | Extract metric definitions | segment_text, metric_names | JSON array of definitions |
 | `classification_prompt()` | Classify segment content | segment_text | JSON with classification flags |
 
@@ -138,164 +205,103 @@ All prompts return structured JSON for easy parsing:
 - `validate_value_extraction_response(data)` - Schema validation
 - `validate_definition_extraction_response(data)` - Schema validation
 
+### 4. LLM Response Cache (`src/llm/cache.py`)
+
+**Class:** `LLMCache`
+
+**Purpose:** PostgreSQL-backed cache for LLM API responses. Reduces costs and latency when the same prompt is submitted multiple times (e.g., reprocessing a filing after a bug fix). Integrated transparently into `OpenAIClient.complete()`.
+
+**Cache key:** SHA-256 hash of `{model, system_message, prompt, temperature, max_tokens}` (normalized: whitespace stripped, kwargs sorted).
+
+**Configuration via environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_CACHE_ENABLED` | `true` | Set to `false` to disable caching entirely |
+| `DATABASE_URL` | (required) | PostgreSQL connection string |
+| `LLM_CACHE_VERSION` | `v1` | Cache namespace; increment to invalidate all entries without deleting rows |
+
+**Configuration dataclass (`CacheConfig`):**
+```python
+config = CacheConfig(
+    enabled=True,           # Read from LLM_CACHE_ENABLED
+    connection_string="...",# Read from DATABASE_URL
+    cache_version="v1",     # Read from LLM_CACHE_VERSION
+    max_age_days=30,        # Entries older than this are ignored on read
+)
+```
+
+**Database schema (auto-created on init):**
+```sql
+CREATE TABLE IF NOT EXISTS llm_cache (
+    cache_key         TEXT PRIMARY KEY,
+    cache_version     TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    response_content  TEXT NOT NULL,
+    input_tokens      INTEGER NOT NULL,
+    output_tokens     INTEGER NOT NULL,
+    created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `get(model, system_message, prompt, temperature, max_tokens)` | Returns `CachedResponse` on hit, `None` on miss |
+| `set(model, system_message, prompt, ..., response_content, input_tokens, output_tokens)` | Stores response (upserts on conflict) |
+| `stats()` | Returns hit rate, total entries, and token savings for current session |
+| `clear(version_only=True)` | Deletes entries for current version (or all entries if `version_only=False`) |
+| `cleanup_expired()` | Removes entries older than `max_age_days` |
+
+**Thread safety:** All database operations use a threading lock. The cache maintains a single persistent connection and reconnects automatically on `OperationalError`.
+
+**Invalidating the cache:**
+
+To invalidate all cached responses without dropping rows (e.g., after a prompt change):
+```bash
+LLM_CACHE_VERSION=v2  # Increment in .env or environment
+```
+
+Entries from the old version remain in the table but are ignored on reads.
+
 ---
 
 ## Cost Analysis
 
-### Model Pricing (GPT-4o-mini)
+### Model Pricing
 
-| Type | Cost per 1M Tokens |
-|------|-------------------|
-| Input | $0.15 |
-| Output | $0.60 |
-
-### Test Results
-
-**Simple Completion Test:**
-- Input: 13 tokens
-- Output: 1 token
-- Cost: **$0.000003**
-
-**Metric Extraction Test:**
-- Input: 421 tokens (segment + prompt)
-- Output: 76 tokens (JSON response)
-- Cost: **$0.000109**
+| Model | Input (per 1M tokens) | Output (per 1M tokens) | Use case |
+|-------|----------------------|------------------------|----------|
+| GPT-4o-mini | $0.15 | $0.60 | Text extraction prompts |
+| GPT-4o | $2.50 | $10.00 | Vision/chart extraction |
 
 ### Projected Costs
 
-**Assumptions:**
+**Text extraction (GPT-4o-mini):**
 - Average S-1 filing: ~50,000 words = ~67,000 tokens
-- 10 LLM calls per filing (different segments)
+- 10 LLM calls per filing
 - Average output: ~100 tokens per call
-
-**Cost per Filing:**
-- Input: ~67,000 tokens × 10 calls = 670,000 tokens
-- Output: ~100 tokens × 10 calls = 1,000 tokens
 - **Total: ~$0.10 per filing**
 
-**Corpus of 106 Filings:**
-- Total cost: **~$10.60**
-- Within budget ✓
+**Vision extraction (GPT-4o):**
+- Cost depends on image count and detail level
+- `detail="high"` uses significantly more tokens than `detail="low"`
+- Only incurred when `enable_image_extraction=True` in `PipelineConfig`
 
-**Comparison to Other Models:**
-
-| Model | Cost per Filing | 106 Filings | Notes |
-|-------|----------------|-------------|-------|
-| **GPT-4o-mini** | **$0.10** | **$10.60** | ✓ Selected |
-| GPT-4o | $1.65 | $175.00 | 17x more expensive |
-| o1 | $9.90 | $1,049.00 | Overkill for extraction |
-
----
-
-## Testing
-
-### Test Script: `scripts/test_llm_client.py`
-
-**Tests Performed:**
-
-1. ✅ **Client Initialization**
-   - API key validation
-   - Model configuration
-   - Tokenizer initialization
-
-2. ✅ **Simple Completion**
-   - Basic prompt-response cycle
-   - Token counting verification
-   - Cost calculation validation
-
-3. ✅ **Metric Extraction**
-   - Value extraction from sample text
-   - JSON parsing and validation
-   - Cost tracking
-
-4. ✅ **Cost Summary**
-   - Cumulative statistics
-   - Average cost per request
-
-**Test Results:**
-```
-================================================================================
-Testing OpenAI Client with GPT-4o-mini
-================================================================================
-
-1. Initializing OpenAI client...
-   ✓ Client initialized successfully
-   Model: gpt-4o-mini
-   Temperature: 0.1
-
-2. Testing simple completion...
-   ✓ Response: 4
-   Input tokens: 13
-   Output tokens: 1
-   Cost: $0.000003
-   Latency: 1279ms
-
-3. Testing metric extraction prompt...
-   ✓ Response received (76 tokens)
-   Cost: $0.000109
-
-   Extracted data:
-   ----------------------------------------------------------------------------
-     • monthly_active_users: 125 millions
-       Period: December 31, 2023
-
-4. Cost summary:
-   ----------------------------------------------------------------------------
-   Total requests: 2
-   Total tokens: 511
-   Total cost: $0.000100
-   Avg cost/request: $0.000100
-
-================================================================================
-✓ All tests passed!
-================================================================================
-```
-
----
-
-## Integration Status
-
-### Phase 1: Infrastructure ✅ COMPLETE
-
-| Component | Status | Files |
-|-----------|--------|-------|
-| OpenAI Client | ✅ Complete | `src/llm/openai_client.py` |
-| Prompt Templates | ✅ Complete | `src/llm/prompts.py` |
-| Token Counting | ✅ Complete | tiktoken integration |
-| Cost Tracking | ✅ Complete | `CostTracker` class |
-| Error Handling | ✅ Complete | Retry logic with backoff |
-| Testing | ✅ Complete | `scripts/test_llm_client.py` |
-
-### Phase 2: Pipeline Integration ✅ COMPLETE
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| ValueExtractor | ✅ Complete | LLM extraction with quote verification |
-| DefinitionExtractor | ✅ Complete | LLM extraction with quote verification |
-| Pipeline Orchestration | ✅ Complete | Hybrid rule-based + LLM fallback |
-| Real Filing Tests | ✅ Complete | Tested with corpus filings |
-| Quote Verification | ✅ Complete | Validates LLM-extracted quotes against source |
-
-### Phase 3: Validation & Tuning ✅ COMPLETE
-
-| Task | Status | Description |
-|------|--------|-------------|
-| Manual Validation | ✅ Complete | Validated against real filings |
-| Prompt Tuning | ✅ Complete | Improved prompts for extraction quality |
-| Quote Verification | ✅ Complete | Ensures extracted quotes exist in source text |
-| Metric Name Mapping | ✅ Complete | Maps LLM responses to standardized metric names |
+**Cache impact:** Reprocessing a filing after a bug fix costs $0 for any prompt that was already cached, provided the prompt text, model, and temperature are unchanged and the cache version has not been incremented.
 
 ---
 
 ## Usage Examples
 
-### Basic Usage
+### Basic Text Extraction
 
 ```python
 from src.llm.openai_client import OpenAIClient
 from src.llm.prompts import PromptTemplates
 
-# Initialize client
+# Initialize client (cache enabled by default via LLM_CACHE_ENABLED)
 client = OpenAIClient(model="gpt-4o-mini")
 
 # Extract values from text
@@ -318,6 +324,29 @@ for item in data:
 # Check costs
 summary = client.get_cost_summary()
 print(f"Total cost: ${summary['total_cost_usd']}")
+print(f"Cache stats: {client.get_cache_stats()}")
+```
+
+### Vision / Chart Extraction
+
+```python
+from src.llm.vision_client import VisionClient
+
+client = VisionClient()  # Uses gpt-4o by default
+
+with open("chart.png", "rb") as f:
+    image_bytes = f.read()
+
+response = client.analyze_image(
+    image_bytes=image_bytes,
+    prompt="Extract all explicitly labeled data values from this chart. "
+           "Return a JSON array of {label, value, period} objects. "
+           "Do not interpolate any values.",
+    detail="high",
+)
+
+print(response.content)
+print(f"Cost: ${response.cost_usd:.4f}, latency: {response.latency_ms}ms")
 ```
 
 ### Batch Processing
@@ -350,54 +379,32 @@ for response in responses:
 
 ### 1. Token Management
 
-✅ **DO:**
 - Chunk large filings into segments (~8,000 chars)
 - Count tokens before sending to estimate costs
 - Use tiktoken for accurate token counting
-
-❌ **DON'T:**
-- Send entire filing in one request (context limit)
-- Ignore token counts (cost overruns)
-- Use character counts as proxy (inaccurate)
+- Do not send entire filings in one request
 
 ### 2. Error Handling
 
-✅ **DO:**
-- Always have rule-based fallback
+- Always have a rule-based fallback path
 - Log all LLM failures for analysis
 - Retry on transient errors (rate limits, network)
-
-❌ **DON'T:**
-- Retry on 4xx errors (client errors)
-- Fail entire pipeline on LLM errors
-- Ignore cost tracking
+- Do not retry on 4xx errors
 
 ### 3. Prompt Engineering
 
-✅ **DO:**
 - Use structured JSON output format
 - Provide clear examples in prompts
 - Specify units and formats explicitly
 - Include relevant context in prompts
 
-❌ **DON'T:**
-- Use vague or ambiguous instructions
-- Expect LLM to infer formatting
-- Omit important context
-
 ### 4. Cost Optimization
 
-✅ **DO:**
-- Use GPT-4o-mini for extraction tasks
-- Batch similar requests together
-- Monitor cumulative costs
-- Set cost thresholds/alerts
-
-❌ **DON'T:**
-- Use GPT-4o unless necessary
-- Process segments multiple times
-- Ignore cost tracking
-- Use reasoning models (o1) for extraction
+- Use GPT-4o-mini for text extraction tasks
+- Use GPT-4o only for vision/chart extraction
+- Keep `LLM_CACHE_ENABLED=true` in all environments to avoid duplicate API calls
+- Monitor cumulative costs via `get_cost_summary()`
+- Set `detail="low"` for image triage; `detail="high"` only for final extraction
 
 ---
 
@@ -412,6 +419,11 @@ print(f"Requests: {summary['total_requests']}")
 print(f"Tokens: {summary['total_tokens']:,}")
 print(f"Cost: ${summary['total_cost_usd']}")
 print(f"Avg/request: ${summary['avg_cost_per_request']}")
+
+# Check cache performance
+cache_stats = client.get_cache_stats()
+print(f"Cache hit rate: {cache_stats['hit_rate']}%")
+print(f"Cached entries: {cache_stats['total_entries']}")
 
 # Alert if cost exceeds threshold
 if summary['total_cost_usd'] > 5.0:
@@ -446,27 +458,14 @@ except Exception as e:
 
 ---
 
-## Completed Milestones
+## Component Summary
 
-### Phase 1: Infrastructure ✅
-
-1. ✅ Create LLM client infrastructure
-2. ✅ Create prompt templates
-3. ✅ Test client with sample data
-
-### Phase 2: Integration ✅
-
-4. ✅ Integrate with ValueExtractor (LLM extraction)
-5. ✅ Integrate with DefinitionExtractor (LLM extraction)
-6. ✅ Test with real filings from corpus
-7. ✅ Compare LLM vs rule-based accuracy
-
-### Phase 3: Quality Improvements ✅
-
-8. ✅ Add quote verification for LLM-extracted quotes
-9. ✅ Add metric name mapping for standardization
-10. ✅ Tune prompts for better extraction quality
-11. ✅ Add stride optimization for large document performance
+| Component | File | Model | Used in |
+|-----------|------|-------|---------|
+| `OpenAIClient` | `src/llm/openai_client.py` | gpt-4o-mini | Text extraction (when called explicitly) |
+| `VisionClient` | `src/llm/vision_client.py` | gpt-4o | V2 Stage 5 — OCR & Chart Extraction |
+| `LLMCache` | `src/llm/cache.py` | n/a | Transparently via `OpenAIClient.complete()` |
+| `PromptTemplates` | `src/llm/prompts.py` | n/a | Prompt construction and response parsing |
 
 ---
 
@@ -476,16 +475,15 @@ except Exception as e:
 # requirements.txt
 openai>=1.0.0      # OpenAI API client
 tiktoken>=0.5.0    # Token counting
-```
-
-**Installation:**
-```bash
-pip install openai tiktoken
+psycopg[binary]    # PostgreSQL (for LLMCache)
 ```
 
 **Environment:**
 ```bash
 export OPENAI_API_KEY="sk-..."
+export DATABASE_URL="postgresql://..."    # Required for LLMCache
+export LLM_CACHE_ENABLED="true"          # Default: true
+export LLM_CACHE_VERSION="v1"            # Increment to invalidate cache
 ```
 
 ---
@@ -493,28 +491,6 @@ export OPENAI_API_KEY="sk-..."
 ## References
 
 - **OpenAI API Docs:** https://platform.openai.com/docs/api-reference
-- **GPT-4o-mini Pricing:** https://openai.com/api/pricing/
+- **GPT-4o Pricing:** https://openai.com/api/pricing/
 - **tiktoken:** https://github.com/openai/tiktoken
-- **Development Plan:** `DEVELOPMENT_PLAN.md` Sprint 3
-
----
-
-## Summary
-
-**Status:** ✅ **All Phases Complete - Production Ready**
-
-**Key Achievements:**
-- Robust OpenAI client with error handling and retry logic
-- Structured prompt templates for value and definition extraction
-- Token counting and cost tracking
-- Quote verification to validate LLM-extracted quotes against source text
-- Metric name mapping for standardized responses
-- Stride optimization for large document performance (10x faster)
-- Comprehensive test coverage (88-95%)
-
-**Projected Costs:**
-- Per filing: ~$0.10
-- 106 filings: ~$10.60
-- Well within budget ✓
-
-**Integration Complete:** ValueExtractor and DefinitionExtractor fully enhanced with LLM methods
+- **V2 Pipeline:** `docs/architecture/extraction-v2-pipeline.md`

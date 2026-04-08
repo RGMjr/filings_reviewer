@@ -2,6 +2,8 @@
 
 **Last Updated:** 2024-12-24
 
+> **Note:** This runbook was originally written for the V1 extraction pipeline and has been partially updated for V2. The V2 extraction pipeline (`src/extraction_v2/`) is now the sole production pipeline. V1 (`src/extraction/`) is retained for historical reference only. Where this document references V1 modules directly, treat those references as informational context rather than actionable instructions.
+
 This runbook documents the correct procedures for re-extracting and re-segmenting filings. **Following these procedures is critical** to avoid stale data issues.
 
 ---
@@ -10,10 +12,10 @@ This runbook documents the correct procedures for re-extracting and re-segmentin
 
 | Task | Command |
 |------|---------|
-| Re-extract single filing (full pipeline) | `DATABASE_URL="..." python scripts/reextract_all_filings.py --filing-id <ID>` |
-| Re-extract all filings | `DATABASE_URL="..." python scripts/reextract_all_filings.py` |
-| Regenerate candidates only (keeps segments) | `DATABASE_URL="..." python scripts/generate_review_candidates.py --filing-ids <ID>` |
-| Diagnose segmentation issues | `DATABASE_URL="..." python scripts/debug_segmentation.py --filing-id <ID>` |
+| Re-extract single filing (V2 pipeline) | `DATABASE_URL="..." python3 scripts/run_v2_extraction.py --filing-id <ID>` |
+| Batch re-extract all filings (V2 pipeline) | `DATABASE_URL="..." python3 scripts/batch_v2_extraction.py` |
+| Regenerate candidates only (keeps segments) | `DATABASE_URL="..." python3 scripts/generate_review_candidates.py --filing-ids <ID>` |
+| Diagnose extraction issues | Run `scripts/run_v2_extraction.py --filing-id <ID>` with logging enabled (see Procedure 4) |
 
 ---
 
@@ -29,10 +31,10 @@ HTML File → Segmenter → source_segments (DB) → Classifier → Candidate Ge
 
 | If you modify... | You must re-run... |
 |------------------|-------------------|
-| `html_segmenter.py` | Full re-extraction (`reextract_all_filings.py`) |
-| `metric_classifier.py` keywords | Delete old candidates, run `generate_review_candidates.py` |
+| `html_segmenter.py` | Full re-extraction (`scripts/batch_v2_extraction.py`) |
+| `config/metric_keywords.yaml` (keyword patterns) | Delete old candidates, run `generate_review_candidates.py` |
 | `keyword_matching.py` | Delete old candidates, run `generate_review_candidates.py` |
-| LLM prompts | Full re-extraction (`reextract_all_filings.py`) |
+| LLM prompts | Full re-extraction (`scripts/batch_v2_extraction.py`) |
 
 ---
 
@@ -41,22 +43,17 @@ HTML File → Segmenter → source_segments (DB) → Classifier → Candidate Ge
 Use when: Segmenter logic changed, or you want to ensure fresh data.
 
 ```bash
-# 1. Check current state (dry run)
+# 1. Run V2 extraction for a single filing
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/reextract_all_filings.py --filing-id <FILING_ID> --dry-run
+    python3 scripts/run_v2_extraction.py --filing-id <FILING_ID>
 
-# 2. Run full re-extraction (deletes segments, metric_values, re-runs pipeline)
+# 2. Regenerate review candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/reextract_all_filings.py --filing-id <FILING_ID>
-
-# 3. Regenerate review candidates
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/generate_review_candidates.py --filing-ids <FILING_ID>
+    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
 ```
 
 **What this does:**
-- Deletes existing `metric_values` for the filing
-- Deletes existing `source_segments` for the filing
+- Runs the V2 unified extraction pipeline (`src/extraction_v2/`) on the specified filing
 - Re-runs HTML segmentation with current segmenter
 - Re-runs LLM extraction
 - You must then regenerate candidates separately
@@ -79,7 +76,7 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 
 **What this does:**
 - Uses existing `source_segments` (does NOT re-segment)
-- Applies current keyword patterns from `metric_classifier.py`
+- Applies current keyword patterns from `config/metric_keywords.yaml`
 - Generates new `review_candidates`
 
 ---
@@ -139,22 +136,22 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 
 ---
 
-## Procedure 4: Diagnose Segmentation Issues
+## Procedure 4: Diagnose Extraction Issues
 
 Use when: A filing has missing or incorrect data and you need to investigate.
 
+> **Note:** `scripts/debug_segmentation.py` no longer exists. For V2 pipeline debugging, run `scripts/run_v2_extraction.py` with verbose logging enabled via the `LOG_LEVEL` environment variable.
+
 ```bash
-# Run diagnostic script
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/debug_segmentation.py --filing-id <FILING_ID>
+# Run V2 extraction with debug-level logging for a single filing
+LOG_LEVEL=DEBUG DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
+    python3 scripts/run_v2_extraction.py --filing-id <FILING_ID>
 ```
 
-**Output includes:**
-- File size and total visible text
-- Number of elements considered/extracted/skipped
-- Skip reasons breakdown (nested_in_table, too_short, in_composite_div)
-- Search for specific values to confirm they're captured
-- Coverage ratio (segment chars / visible text chars)
+**To investigate missing data:**
+- Check segment counts using the verification queries below
+- Use `raw_text ILIKE` queries to confirm whether target values are present in segments
+- If segments look stale (low count), re-run Procedure 1 to re-segment
 
 ---
 
@@ -163,25 +160,21 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 Use when: Re-extracting multiple filings (e.g., after major segmenter changes).
 
 ```bash
-# 1. Test with dry run
+# 1. Run a limited batch first to verify behavior
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/reextract_all_filings.py --limit 5 --dry-run
+    python3 scripts/batch_v2_extraction.py --limit 5
 
-# 2. Run limited batch first
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/reextract_all_filings.py --limit 5
-
-# 3. Verify results before full run
+# 2. Verify results before full run
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
     -c "SELECT COUNT(*) FROM source_segments;"
 
-# 4. Full re-extraction (can take hours)
+# 3. Full re-extraction (can take hours)
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/reextract_all_filings.py --batch-size 10
+    python3 scripts/batch_v2_extraction.py
 
-# 5. Regenerate all candidates
+# 4. Regenerate all candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/generate_review_candidates.py
+    python3 scripts/generate_review_candidates.py
 ```
 
 ---
@@ -195,9 +188,9 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 
 ### Pitfall 2: Missing Keywords
 **Symptom:** Values are in segments but not matched to correct metric.
-**Cause:** Keyword patterns in `metric_classifier.py` don't include company-specific terminology.
+**Cause:** Keyword patterns in `config/metric_keywords.yaml` don't include company-specific terminology.
 **Fix:**
-1. Add keywords to `src/extraction/metric_classifier.py`
+1. Add keywords to `config/metric_keywords.yaml` (the authoritative keyword source)
 2. Run Procedure 2 to regenerate candidates
 
 ### Pitfall 3: Regenerating Candidates Without Deleting Old Ones
@@ -276,13 +269,13 @@ GROUP BY f.filing_id, c.company_name;
 
 **Resolution:**
 1. Re-segmented both filings using current segmenter
-2. Added missing keywords to `metric_classifier.py`
+2. Added missing keywords to `config/metric_keywords.yaml`
 3. Regenerated candidates
 
 **Prevention:**
 - After ANY segmenter changes, re-segment affected filings
-- After keyword changes, regenerate candidates
-- Use `debug_segmentation.py` to diagnose before assuming code bugs
+- After keyword changes in `config/metric_keywords.yaml`, regenerate candidates
+- Use verbose V2 extraction logging (Procedure 4) to diagnose before assuming code bugs
 
 ---
 

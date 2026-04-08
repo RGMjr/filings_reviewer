@@ -397,7 +397,7 @@ CREATE INDEX idx_values_source ON metric_values(source_segment_id);
 
 **Extraction Methods:**
 - `rule_table` - Rule-based table extraction
-- `rule_text` - Rule-based text extraction
+- `rule_text_smart` - Rule-based text extraction
 - `llm_text` - LLM-based text extraction (GPT-4o-mini)
 - `llm_table` - LLM-enhanced table extraction
 - `manual_review` - Manual correction/addition
@@ -676,7 +676,7 @@ When metric definition changes that affect comparability:
 
 ## Schema 09: Image Review and V2 Extraction Tables
 
-Two additional schema files extend the core data model. Both are applied. The V2 tables are populated by the V2 pipeline, which is active for transcript and presentation ingestion.
+Two additional schema files extend the core data model. Both are applied. The V2 tables are populated by the V2 pipeline, which is the sole production pipeline for all document types (SEC filings, transcripts, and presentations).
 
 ### Image Review Tables (`sql/09_create_image_review_schema.sql`)
 
@@ -710,7 +710,7 @@ Supports human-in-the-loop classification of chart images found in filings.
 
 ### V2 Extraction Tables (`sql/09_v2_schema.sql`)
 
-Schema for the V2 unified extraction pipeline. Tables are populated by the V2 pipeline, which is active for transcript and presentation document types.
+Schema for the V2 unified extraction pipeline. Tables are populated by the V2 pipeline, which is the sole production pipeline for all document types.
 
 | Table | Purpose |
 |-------|---------|
@@ -743,6 +743,20 @@ Renames the `cohort_heatmap` chart type to `cohort_parfait` in the `check_chart_
 ### Migration 16 (`sql/16_add_8k_form_type.sql`)
 
 Adds `'8-K'` to the `check_form_type` constraint on the `filings` table. Investor presentations are filed as SEC 8-K exhibits, so `ingest_presentations.py` inserts rows with `form_type = '8-K'`. Without this migration, every presentation ingestion fails with a CHECK constraint violation. The full allowed set is now: `S-1`, `S-1/A`, `F-1`, `F-1/A`, `10-K`, `10-K/A`, `8-K`, `earnings_call`, `investor_presentation`.
+
+### Migration 17 (`sql/17_add_cohort_type_to_v2.sql`)
+
+Adds a `cohort_type` column to `v2_metric_facts`. The column is nullable text with a CHECK constraint that restricts values to `'acquisition'`, `'tenure'`, `'other'`, or NULL. This brings V2 fact rows into alignment with the cohort dimension already present on the V1 `metric_values` table.
+
+```sql
+ALTER TABLE v2_metric_facts ADD COLUMN cohort_type TEXT;
+ALTER TABLE v2_metric_facts ADD CONSTRAINT chk_cohort_type
+  CHECK (cohort_type IN ('acquisition', 'tenure', 'other') OR cohort_type IS NULL);
+```
+
+### Migration 18 (`sql/18_add_presentation_detection_tier.sql`)
+
+Adds `'presentation'` to the `check_detection_tier` constraint on `image_review_candidates`. This allows image candidates discovered from investor presentation filings to record `'presentation'` as their detection tier. The migration drops and recreates the constraint. The full allowed set is now: `tier_1_cohort`, `tier_2_large`, `tier_3_all`, `seed_list`, `presentation` (or NULL).
 
 ---
 
