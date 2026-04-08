@@ -323,7 +323,7 @@ def review_filing(filing_id: int):
         image_candidates = db.get_image_review_candidates_for_filing(
             filing_id=filing_id,
             status=db_image_status,
-            sort_by="tier",
+            sort_by="relevance",
             limit=1000,
         )
 

@@ -3482,7 +3482,7 @@ class DatabaseAdapter:
         if status is not None:
             validate_enum(status, IMAGE_REVIEW_STATUSES, "review_status")
 
-        valid_sort_options = ("tier", "confidence", "position")
+        valid_sort_options = ("tier", "confidence", "position", "relevance")
         if sort_by not in valid_sort_options:
             raise ValidationError(
                 f"Invalid sort_by '{sort_by}'. Must be one of: {valid_sort_options}"
@@ -3500,7 +3500,9 @@ class DatabaseAdapter:
             params["status"] = status
 
         # Build ORDER BY based on sort_by
-        if sort_by == "tier":
+        if sort_by == "relevance":
+            order_by = "irc.predicted_relevance DESC NULLS LAST, irc.image_candidate_id ASC"
+        elif sort_by == "tier":
             order_by = """
                 CASE irc.detection_tier
                     WHEN 'seed_list' THEN 0
@@ -3604,11 +3606,33 @@ class DatabaseAdapter:
             else "AND irc.review_status = 'pending'"
         )
 
-        # Simple "after current" filter using ID ordering
-        after_condition = ""
         if current_candidate_id is not None:
-            after_condition = "AND irc.image_candidate_id > %(current_candidate_id)s"
+            # Navigate in predicted_relevance DESC order. Find the next candidate
+            # whose (predicted_relevance DESC, image_candidate_id ASC) rank is lower
+            # than the current one. We do this by looking up the current score first,
+            # then finding the next candidate that is "after" it in the sort order.
+            current = self.query(
+                "SELECT predicted_relevance FROM image_review_candidates WHERE image_candidate_id = %(id)s",
+                {"id": current_candidate_id},
+            )
+            current_score = current[0]["predicted_relevance"] if current else None
             params["current_candidate_id"] = current_candidate_id
+            params["current_score"] = current_score
+
+            if current_score is not None:
+                after_condition = """
+                    AND (
+                        irc.predicted_relevance < %(current_score)s
+                        OR (irc.predicted_relevance = %(current_score)s
+                            AND irc.image_candidate_id > %(current_candidate_id)s)
+                        OR irc.predicted_relevance IS NULL
+                    )
+                """
+            else:
+                # Current candidate is unscored — fall back to ID-based navigation
+                after_condition = "AND irc.image_candidate_id > %(current_candidate_id)s"
+        else:
+            after_condition = ""
 
         sql = f"""
             SELECT
@@ -3617,12 +3641,13 @@ class DatabaseAdapter:
                 irc.image_url,
                 irc.detection_tier,
                 irc.cohort_confidence,
+                irc.predicted_relevance,
                 irc.image_index
             FROM image_review_candidates irc
             WHERE irc.filing_id = %(filing_id)s
               {status_condition}
               {after_condition}
-            ORDER BY irc.image_candidate_id ASC
+            ORDER BY irc.predicted_relevance DESC NULLS LAST, irc.image_candidate_id ASC
             LIMIT 1
         """
 

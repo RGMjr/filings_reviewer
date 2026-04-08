@@ -7,10 +7,11 @@ data/presentation_gold_standard/{key}_image_candidates.json.
 
 import logging
 
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, jsonify, render_template, request
 
 from src.web.pres_image_store import (
     get_edgar_url,
+    get_filing_keys,
     load_candidates,
     load_decisions,
     save_decision,
@@ -55,10 +56,31 @@ def _progress_from_candidates(key: str, candidates: list[dict], decisions: dict)
 
 @review_pres_images_bp.route("/")
 def index():
-    """Redirect to unified filing list (presentations)."""
-    return redirect(
-        url_for("review_unified.filing_list", document_type="investor_presentation"), 301
-    )
+    """List all presentation filings available for image review."""
+    keys = get_filing_keys()
+    decisions = load_decisions()
+
+    filings = []
+    for key in keys:
+        candidates = load_candidates(key)
+        progress = _progress_from_candidates(key, candidates, decisions)
+        relevant = sum(
+            1 for c in candidates
+            if decisions.get(f"{key}:{c['img_id']}", {}).get("decision") == "relevant"
+        )
+        filings.append({
+            "key": key,
+            "ticker": _ticker_from_key(key),
+            "total": progress["total"],
+            "reviewed": progress["reviewed"],
+            "skipped": progress["skipped"],
+            "pending": progress["pending"],
+            "relevant": relevant,
+        })
+
+    filings.sort(key=lambda f: (f["pending"] == 0, f["key"]))
+
+    return render_template("pres_image_filing_list.html", filings=filings)
 
 
 @review_pres_images_bp.route("/<key>")
