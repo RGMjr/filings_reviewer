@@ -740,7 +740,7 @@ def mock_sec_client_with_fixtures(all_fixtures):
 # =============================================================================
 
 # Default baseline path
-GOLD_STANDARD_BASELINE_PATH = Path(__file__).parent.parent.parent / "data" / "gold_standard" / "baseline.json"
+GOLD_STANDARD_BASELINE_PATH = Path(__file__).parent.parent.parent / "data" / "gold_standard" / "baseline_metrics.json"
 
 
 @pytest.fixture(scope="module")

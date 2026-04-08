@@ -1,10 +1,12 @@
 # Gold Standard Specification
 
-This document defines the rules for creating and maintaining gold standard entries in `data/gold_standard/golden_set_251218.csv`. It resolves the methodology questions raised in Known Issue #3.
+This document defines the rules for creating and maintaining gold standard entries in `data/gold_standard/golden_set_260408.csv`. It resolves the methodology questions raised in Known Issue #3.
 
 **Authoritative sources referenced:**
 - `config/metric_keywords.yaml` — metric taxonomy
 - `scripts/validate_against_gold_standard.py` — matching and normalization logic
+
+**Baseline update procedures:** See [Gold Standard Runbook](operations/gold-standard-runbook.md).
 
 ---
 

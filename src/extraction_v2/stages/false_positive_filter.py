@@ -255,6 +255,17 @@ def _is_percent_in_keyword_clause(
     return kw_clause == val_clause
 
 
+def _locate_value(bv: BoundValue, source_text: str) -> tuple[str, int] | None:
+    """Return (raw_value, position) or None if value cannot be located."""
+    raw = (bv.value_raw or "").strip()
+    if not raw:
+        return None
+    pos = source_text.find(raw)
+    if pos < 0:
+        return None
+    return raw, pos
+
+
 # =============================================================================
 # Individual FP Rule Functions
 # Each returns a reason string if it fires, None otherwise.
@@ -394,14 +405,13 @@ def _rule_developer_count(bv: BoundValue, source_text: str, metric_id: str) -> s
     """Developer/engineer count mistaken for cm_daily_active_users."""
     if not source_text or metric_id != "cm_daily_active_users":
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
+    _, value_pos = loc
     dev_match = _DEVELOPER_COUNT_RE.search(source_text)
-    if dev_match:
-        value_pos = source_text.find(raw)
-        if value_pos >= 0 and abs(dev_match.start() - value_pos) <= 150:
-            return "v2_developer_count"
+    if dev_match and abs(dev_match.start() - value_pos) <= 150:
+        return "v2_developer_count"
     return None
 
 
@@ -415,18 +425,17 @@ def _rule_fortune_subset(bv: BoundValue, source_text: str, metric_id: str) -> st
     """
     if not source_text or metric_id != "cm_customers_period_end":
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
+    _, value_pos = loc
     fortune_match = _FORTUNE_SUBSET_RE.search(source_text)
-    if fortune_match:
-        value_pos = source_text.find(raw)
-        if value_pos >= 0 and abs(fortune_match.start() - value_pos) <= 100:
-            # Only block if the extracted value is plausibly the ranking number itself
-            # (i.e., small — Fortune 100, 500, 1000). A value like 230,000 is clearly
-            # a separate customer count, not a Fortune subset ordinal.
-            if bv.value is not None and bv.value <= 2000:
-                return "v2_fortune_subset"
+    if fortune_match and abs(fortune_match.start() - value_pos) <= 100:
+        # Only block if the extracted value is plausibly the ranking number itself
+        # (i.e., small — Fortune 100, 500, 1000). A value like 230,000 is clearly
+        # a separate customer count, not a Fortune subset ordinal.
+        if bv.value is not None and bv.value <= 2000:
+            return "v2_fortune_subset"
     return None
 
 
@@ -481,14 +490,13 @@ def _rule_dollar_threshold_customer(
         return None
     if bv.unit == Unit.PERCENT:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
+    _, value_pos = loc
     threshold_match = _DOLLAR_THRESHOLD_CUSTOMER_RE.search(source_text)
-    if threshold_match:
-        value_pos = source_text.find(raw)
-        if value_pos >= 0 and abs(threshold_match.start() - value_pos) <= 400:
-            return "v2_dollar_threshold_customer"
+    if threshold_match and abs(threshold_match.start() - value_pos) <= 400:
+        return "v2_dollar_threshold_customer"
     return None
 
 
@@ -587,14 +595,13 @@ def _rule_content_engagement(bv: BoundValue, source_text: str, metric_id: str) -
         return None
     if not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
+    _, value_pos = loc
     engagement_match = _CONTENT_ENGAGEMENT_RE.search(source_text)
-    if engagement_match:
-        value_pos = source_text.find(raw)
-        if value_pos >= 0 and abs(engagement_match.start() - value_pos) <= 60:
-            return "v2_content_engagement"
+    if engagement_match and abs(engagement_match.start() - value_pos) <= 60:
+        return "v2_content_engagement"
     return None
 
 
@@ -618,12 +625,10 @@ def _rule_transactions_per_account(
         return None
     if not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos == -1:
-        return None
+    _, value_pos = loc
     match = _TRANSACTIONS_PER_ACCOUNT_RE.search(source_text)
     if match and abs(match.start() - value_pos) <= 150:
         return "v2_transactions_per_account"
@@ -652,12 +657,10 @@ def _rule_delta_count_value(bv: BoundValue, source_text: str, metric_id: str) ->
         return None
     if not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos < 0:
-        return None
+    _, value_pos = loc
     # Check 60-char pre-window for primary delta patterns
     pre_start = max(0, value_pos - 60)
     pre_window = source_text[pre_start:value_pos]
@@ -696,12 +699,10 @@ def _rule_growth_rate_percent(bv: BoundValue, source_text: str, metric_id: str) 
         return None
     if not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos < 0:
-        return None
+    _, value_pos = loc
     # Check for growth-rate prefix immediately before the percent value
     window_start = max(0, value_pos - 25)
     window = source_text[window_start:value_pos]
@@ -757,12 +758,10 @@ def _rule_arpu_as_aov(bv: BoundValue, source_text: str, metric_id: str) -> str |
     """
     if metric_id != "cm_average_order_value" or not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos < 0:
-        return None
+    raw, value_pos = loc
     window_start = max(0, value_pos - 30)
     window_end = min(len(source_text), value_pos + len(raw) + 30)
     window = source_text[window_start:window_end]
@@ -820,12 +819,10 @@ def _rule_revenue_as_arr(bv: BoundValue, source_text: str, metric_id: str) -> st
     """
     if metric_id != "cm_arr" or not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos < 0:
-        return None
+    raw, value_pos = loc
     # ±35-char window: "revenue" must be within 35 chars of the value.
     # This captures "document cloud revenue" (revenue ~30 chars after value).
     rev_start = max(0, value_pos - 35)
@@ -971,16 +968,29 @@ _NRR_CONTEXT_RE = re.compile(
 def _rule_retention_rate_over_100(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
-    """Block cm_customer_retention_rate for values >100 or in NRR context.
+    """Block cm_customer_retention_rate for values >=130 or in NRR context.
 
-    Customer retention rate is 0-100%. Values above 100 are NRR, not
-    retention rate. Also blocks when source text contains NRR keywords.
+    Customer retention rate is 0-100%. Values above 130 are NRR, not
+    retention rate. Also blocks when NRR keywords appear within 80 chars
+    of the value position (proximity-scoped to avoid false blocks when
+    NRR language appears elsewhere in the same segment).
     """
     if metric_id != "cm_customer_retention_rate":
         return None
     if bv.value is not None and bv.value >= 130:
         return "v2_retention_rate_over_100"
     if source_text and _NRR_CONTEXT_RE.search(source_text):
+        raw = (bv.value_raw or "").strip()
+        if raw:
+            value_pos = source_text.find(raw)
+            if value_pos >= 0:
+                window_start = max(0, value_pos - 80)
+                window_end = min(len(source_text), value_pos + len(raw) + 80)
+                window = source_text[window_start:window_end]
+                if _NRR_CONTEXT_RE.search(window):
+                    return "v2_retention_rate_nrr_context"
+                return None  # NRR context exists but far from value — not a block
+        # Fallback: value_raw not locatable in source — use full-text check
         return "v2_retention_rate_nrr_context"
     return None
 
@@ -1216,6 +1226,15 @@ def _rule_financial_context_on_customer_metric(
         return None
     if not source_text:
         return None
+    # Large customer counts in table bindings are unambiguously customer counts
+    # and cannot be confused with financial line items regardless of table context.
+    if (
+        metric_id == "cm_large_customers_period_end"
+        and bv.source_locator.table_id is not None
+        and bv.value is not None
+        and 100 <= bv.value <= 1_000_000
+    ):
+        return None
     # Table-sourced: header/stub path directly labels the cell — always fire
     # if any financial keyword appears anywhere in source_text.
     if bv.source_locator.table_id is not None:
@@ -1227,12 +1246,10 @@ def _rule_financial_context_on_customer_metric(
     # text.  Using the pre-window (not a symmetric window) prevents blocking
     # legitimate customer counts that appear before a financial row in the same
     # segment (e.g., "Customers 255 … Non-GAAP loss $(219,609)").
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos < 0:
-        return None
+    _, value_pos = loc
     pre_window = source_text[max(0, value_pos - 100):value_pos]
     if _FINANCIAL_CONTEXT_KEYWORD_RE.search(pre_window):
         return "v2_financial_context_customer_metric"
@@ -1278,12 +1295,10 @@ def _rule_metric_definition_value(
         return None
     if not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos < 0:
-        return None
+    _, value_pos = loc
     pre_start = max(0, value_pos - 120)
     pre_window = source_text[pre_start:value_pos]
     if _METRIC_DEFINITION_THRESHOLD_RE.search(pre_window):
@@ -1369,12 +1384,10 @@ def _rule_tam_market_size(bv: BoundValue, source_text: str, metric_id: str) -> s
         return None
     if not source_text:
         return None
-    raw = (bv.value_raw or "").strip()
-    if not raw:
+    loc = _locate_value(bv, source_text)
+    if loc is None:
         return None
-    value_pos = source_text.find(raw)
-    if value_pos < 0:
-        return None
+    raw, value_pos = loc
     window_start = max(0, value_pos - 200)
     window_end = min(len(source_text), value_pos + len(raw) + 200)
     window = source_text[window_start:window_end]

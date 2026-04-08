@@ -7,7 +7,7 @@ ACCEPT/EDIT rows, and writes:
   - data/gold_standard/{CompanyDir}/filing.html  (copied from local presentations cache)
   - data/gold_standard/{CompanyDir}/metadata.json
   - data/gold_standard/{CompanyDir}/extracted_values.csv
-  - Appends rows to data/gold_standard/golden_set_251218.csv
+  - Appends rows to data/gold_standard/golden_set_260408.csv
 
 Usage:
     # Convert a specific reviewed file
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).parent.parent
 PRES_GS_DIR = REPO_ROOT / "data" / "presentation_gold_standard"
 MAIN_GS_DIR = REPO_ROOT / "data" / "gold_standard"
-GOLDEN_SET_CSV = MAIN_GS_DIR / "golden_set_251218.csv"
+GOLDEN_SET_CSV = MAIN_GS_DIR / "golden_set_260408.csv"
 
 GOLDEN_SET_FIELDNAMES = [
     "Document URL",
@@ -227,7 +227,7 @@ def load_json_index(path: Path) -> dict:
 
 
 def get_companies_already_in_golden_set() -> set:
-    """Return set of company names already in golden_set_251218.csv."""
+    """Return set of company names already in golden_set_260408.csv."""
     if not GOLDEN_SET_CSV.exists():
         return set()
     companies = set()
@@ -255,7 +255,7 @@ def load_reviewed_rows(reviewed_csv: Path) -> list[dict]:
 
 
 def build_golden_set_row(row: dict, document_url: str) -> dict:
-    """Map a reviewed CSV row to a golden_set_251218.csv row."""
+    """Map a reviewed CSV row to a golden_set_260408.csv row."""
     period_display, period_start, period_end = parse_period_fields(row.get("period", ""))
     source_type_raw = row.get("source_type", "").strip()
     confidence_raw = row.get("confidence", "").strip().upper()
@@ -398,14 +398,14 @@ def convert_reviewed_file(
         writer.writerows(extracted_rows)
     logger.info(f"  Wrote extracted_values.csv ({len(extracted_rows)} rows)")
 
-    # Append to golden_set_251218.csv
+    # Append to golden_set_260408.csv
     append_mode = GOLDEN_SET_CSV.exists()
     with open(GOLDEN_SET_CSV, "a", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=GOLDEN_SET_FIELDNAMES)
         if not append_mode:
             writer.writeheader()
         writer.writerows(golden_set_rows)
-    logger.info(f"  Appended {len(golden_set_rows)} rows to golden_set_251218.csv")
+    logger.info(f"  Appended {len(golden_set_rows)} rows to golden_set_260408.csv")
 
     return len(rows)
 

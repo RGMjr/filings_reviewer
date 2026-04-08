@@ -368,12 +368,12 @@ pytest --cov=src/review --cov-report=term-missing tests/unit/review/
 
 ### What it is
 
-The gold standard is a hand-labeled CSV (`data/gold_standard/golden_set_260407.csv`) of known metric extractions for a set of real filings. The baseline file (`data/gold_standard/baseline.json`) records precision/recall/F1 at the last accepted state. Regression tests fail CI if any of those scores drops below the baseline threshold.
+The gold standard is a hand-labeled CSV (`data/gold_standard/golden_set_260408.csv`) of known metric extractions for a set of real filings. The baseline file (`data/gold_standard/baseline_metrics.json`) records precision/recall/F1 at the last accepted state. Regression tests fail CI if any of those scores drops below the baseline threshold.
 
 ### Baseline file location
 
 ```
-data/gold_standard/baseline.json
+data/gold_standard/baseline_metrics.json
 ```
 
 ### Modes
@@ -408,8 +408,7 @@ Or via script:
 ```bash
 python3 scripts/validate_against_gold_standard.py \
     --all --mode fresh \
-    --update-baseline \
-    --baseline-path data/gold_standard/baseline.json
+    --update-baseline
 ```
 
 ### What the tests check
@@ -421,7 +420,7 @@ Defined in `tests/integration/test_gold_standard_regression.py`:
 - `test_overall_f1_above_baseline` — overall F1 must not drop below baseline
 - `test_no_company_recall_regressions` — per-company recall must not drop on any single company
 
-Tests skip gracefully if `data/gold_standard/baseline.json` does not exist.
+Tests skip gracefully if `data/gold_standard/baseline_metrics.json` does not exist.
 
 ### Transcript gold standard
 

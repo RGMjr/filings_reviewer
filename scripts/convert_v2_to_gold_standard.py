@@ -4,7 +4,7 @@ Convert V2 review decisions to SEC gold standard CSV format.
 
 Reads accepted/corrected decisions from v2_review_decisions + v2_metric_facts,
 maps them to the gold standard schema, and merges with the existing
-golden_set_251218.csv.
+golden_set_260408.csv.
 
 Merge strategy (--mode replace, the default):
   - For each company that has V2 review decisions: replace their existing
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 GOLD_STANDARD_DIR = ROOT / "data" / "gold_standard"
-DEFAULT_INPUT_CSV = GOLD_STANDARD_DIR / "golden_set_251218.csv"
+DEFAULT_INPUT_CSV = GOLD_STANDARD_DIR / "golden_set_260408.csv"
 
 # Exact column order matching the existing gold standard CSV
 GOLD_STANDARD_COLUMNS = [

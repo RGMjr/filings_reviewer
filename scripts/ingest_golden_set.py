@@ -79,7 +79,7 @@ def parse_period(period_str):
 def main():
     base_dir = Path(__file__).parent.parent
     gold_dir = base_dir / "data" / "gold_standard"
-    input_csv = gold_dir / "golden_set_251218.csv"
+    input_csv = gold_dir / "golden_set_260408.csv"
 
     if not input_csv.exists():
         logger.error(f"Input file not found: {input_csv}")
