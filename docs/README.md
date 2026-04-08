@@ -198,7 +198,7 @@ Use `/task-create` and `/task-run` slash commands for structured task execution.
 
 ```bash
 # See setup-guide.md for detailed instructions
-python scripts/run_extraction_pipeline.py
+python3 scripts/run_v2_extraction.py
 ```
 
 ### Running Tests
