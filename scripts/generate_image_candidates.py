@@ -503,6 +503,25 @@ def main() -> int:
     # Print summary
     print_summary(stats, dry_run=args.dry_run)
 
+    # Score any newly inserted candidates that don't have a predicted_relevance yet
+    if db and not args.dry_run:
+        model_path = Path(__file__).resolve().parent.parent / "data" / "image_model" / "relevance_model.joblib"
+        if model_path.exists():
+            try:
+                import subprocess
+                result = subprocess.run(
+                    [sys.executable, str(Path(__file__).resolve().parent / "score_image_candidates.py")],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    logger.info("Scored new candidates with relevance model")
+                else:
+                    logger.warning("Relevance scoring failed: %s", result.stderr[-200:])
+            except Exception as e:
+                logger.warning("Could not run relevance scoring: %s", e)
+        else:
+            logger.info("No relevance model found — skipping scoring (run scripts/train_image_relevance_model.py to create one)")
+
     # Return error code if there were errors
     return 1 if stats.get("errors", 0) > 0 else 0
 
