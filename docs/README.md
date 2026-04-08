@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.5
+**Version:** 2.6
 **Status:** Production Ready
-**Last Updated:** 2026-03-22
+**Last Updated:** 2026-04-08
 
 ---
 
@@ -373,7 +373,15 @@ Internal prompt templates for consistent, efficient task execution. Skills reduc
 
 ## Version History
 
-### Version 2.5 (Current - 2026-03-30)
+### Version 2.6 (Current - 2026-04-08)
+- ✅ Gold standard expanded to 15 companies (467 GS entries); `golden_set_260408.csv` is now the authoritative CSV
+- ✅ `baseline_metrics.json` updated: P:67.5%, R:80.2%, F1:73.3% (15 companies, `validate_against_gold_standard.py` regression guard)
+- ✅ `v2_baseline.json` updated: P:60.9%, R:64.0%, F1:62.4% (15 companies, V2-only SEC methodology)
+- ✅ FP filter improvements: NRR context check narrowed to 80-char window; magnitude guard for `cm_large_customers_period_end` in tables
+- ✅ Presentation baseline: P:46.6%, R:74.5%, F1:57.3% (230 annotations, 15 companies)
+- ✅ Transcript baseline: P:74.2%, R:75.8%, F1:75.0% (91 annotations, 20 files)
+
+### Version 2.5 (2026-03-30)
 - ✅ Migration 15 (`15_rename_cohort_heatmap_to_parfait.sql`): renames `cohort_heatmap` → `cohort_parfait` in `check_chart_type` constraint
 - ✅ Migration 16 (`16_add_8k_form_type.sql`): adds `'8-K'` to `check_form_type` constraint so presentation ingestion no longer fails
 - ✅ `_is_title_slide()` heuristics simplified — fewer false suppressions of content slides (e.g., "Revenue Discussion", "Customer Metrics")
@@ -382,6 +390,12 @@ Internal prompt templates for consistent, efficient task execution. Skills reduc
 - ✅ `presentation_converter.py`: `fitz_doc` now closed in `try/finally` block (resource safety)
 - ✅ `ingest_transcripts.py` / `ingest_presentations.py`: pipeline now runs once with the real `filing_id` (previously ran twice)
 - ✅ Image review system complete: `/review/images/stats` dashboard, `scripts/export_image_decisions.py`, and 4 new DB stats methods
+
+### Version 2.6 (2026-04-08)
+- ✅ Image relevance model: logistic regression trained on 584 labeled images (AUC-ROC 0.771); review queue now sorted by `predicted_relevance DESC` so likely-relevant images surface first
+- ✅ Migration 19 (`19_add_predicted_relevance.sql`): adds `predicted_relevance` column to `image_review_candidates`
+- ✅ New scripts: `export_image_training_data.py` (unified SEC + presentation label export), `train_image_relevance_model.py`, `score_image_candidates.py` — full retrain pipeline
+- ✅ Fix `/review/pres-images/` index: was redirecting to DB-backed filing list (returned nothing); now renders file-based `pres_image_filing_list.html` with all 21 presentation filings
 
 ### Version 2.4 (2026-03-22)
 - ✅ Fresh mode validation: `test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh` (no DB required)
