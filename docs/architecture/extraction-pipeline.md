@@ -1,8 +1,8 @@
 # Metric Extraction Pipeline
 
-**Version:** 2.5
-**Last Updated:** 2025-12-26
-**Status:** Production Ready
+**Version:** 3.0
+**Last Updated:** 2026-04-07
+**Status:** Production (V2 Pipeline)
 
 ---
 
@@ -10,17 +10,25 @@
 
 This document specifies the architecture and implementation of the metric extraction pipeline. The pipeline transforms SEC filing HTML into structured, analysis-ready metrics data through a series of modular processing stages.
 
+**V2 is the sole production pipeline.** V1 has been retired and its code is kept in `src/extraction/` for historical reference only. See the [Appendix](#appendix-v1-pipeline-retired) at the bottom of this document for V1 stage documentation.
+
 ### Pipeline Principles
 
 1. **Auditability:** Every extracted value must be traceable to its source segment
 2. **Reproducibility:** Re-running extraction on the same filing produces identical results
 3. **Incremental Processing:** Process filings independently; support resume/retry
 4. **Quality Tracking:** Capture confidence, alignment, and quality scores throughout
-5. **Separation of Concerns:** Segmentation → Classification → Extraction → Storage
+5. **Structure-first, LLM-second:** Parse DOM structure before LLM calls
 
 ---
 
-## Pipeline Overview
+## V2 Pipeline Overview
+
+The V2 pipeline (`src/extraction_v2/`) implements a 13-stage extraction workflow. It is the production pipeline for all SEC filing, transcript, and presentation extraction.
+
+**Module:** `src/extraction_v2/pipeline.py`
+**Class:** `ExtractionPipelineV2`
+**Status:** Production
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -29,63 +37,111 @@ This document specifies the architecture and implementation of the metric extrac
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 1: HTML SEGMENTATION                                         │
+│  STAGE 1: INGESTION                                                 │
 │  - Parse HTML structure                                             │
-│  - Extract paragraphs, tables, footnotes                            │
-│  - Normalize text content                                           │
-│  - Generate section paths (e.g., "Item 1. Business > Customers")    │
-│  Output: source_segments table (raw text + metadata)                │
+│  - Extract segments with XPath locators                             │
+│  - Build section paths and document positions                       │
+│  Output: Segments with XPath locators                               │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 2: METRIC CLASSIFICATION                                     │
-│  - Scan segments for metric-related content                         │
-│  - Identify: numeric disclosures, definitions, methodologies        │
-│  - Tag segments with candidate_metric_ids                           │
-│  - Set flags: contains_definition_flag, contains_methodology_flag   │
-│  Output: Updated source_segments with classification metadata       │
+│  STAGE 2: SECTION CLASSIFICATION                                    │
+│  - Classify sections: MD&A, Risk Factors, Business, etc.            │
+│  - Tag segments with section type metadata                          │
+│  Output: Segments with section_type labels                          │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 2.5: SEGMENT ENRICHMENT (G4-G8)                              │
-│  - Compute metric density (metrics per 100 chars)                   │
-│  - Detect temporal trends (multi-period data)                       │
-│  - Detect cohort breakdowns (customer segmentation)                 │
-│  - Count meaningful images/charts                                   │
-│  - Compute richness score (0-10 composite)                          │
-│  - Identify "goldmine" segments (score >= 6.0)                      │
-│  Output: Enriched source_segments with richness metadata            │
+│  STAGE 3: TABLE RECONSTRUCTION                                      │
+│  - Full colspan/rowspan resolution                                  │
+│  - Build header_path and stub_path per cell                         │
+│  - Enables precise value-to-header binding                          │
+│  Output: Reconstructed Table objects with cell coordinates          │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 3: VALUE EXTRACTION                                          │
-│  - Extract numeric values from classified segments                  │
-│  - Parse tables with cohort breakdowns                              │
-│  - Extract period information (dates, fiscal periods)               │
-│  - Parse cohort labels and normalize                                │
-│  Output: metric_values table                                        │
+│  STAGE 4: IMAGE TRIAGE                                              │
+│  - Classify images: chart, table_image, decorative, logo, signature │
+│  - Filter decorative/non-informative images                         │
+│  Output: ImageAsset objects with classification                     │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 4: DEFINITION EXTRACTION                                     │
-│  - Extract definition text from definition segments                 │
-│  - Extract methodology/calculation text                             │
+│  STAGE 5: OCR & CHART EXTRACTION                                    │
+│  - OCR text extraction for table images                             │
+│  - Vision model analysis for charts (labeled values only)           │
+│  - Never interpolates from axes — explicit data labels only         │
+│  Output: ImageAsset objects with extracted values                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 6: CANDIDATE GENERATION                                      │
+│  - Match YAML taxonomy keywords to segments                         │
+│  - Identify metric candidates with positions                        │
+│  Output: Candidate list with metric IDs and positions               │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 7: VALUE BINDING                                             │
+│  - Link candidate keywords to numeric values                        │
+│  - Require structural link (same row/cell for tables)               │
+│  - Apply distance thresholds for text segments                      │
+│  Output: Bound (keyword, value) pairs with confidence               │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 8: FALSE POSITIVE FILTER                                     │
+│  - Filter years, dates, page numbers, fiscal year labels            │
+│  - Apply rule-based false positive detection                        │
+│  Output: Filtered candidate set                                     │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 9: PERIOD INFERENCE                                          │
+│  - Infer reporting period from header_path or surrounding context   │
+│  - Normalize period labels (fiscal quarters, annual, etc.)          │
+│  Output: Candidates with period_start, period_end                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 10: FACT CONSTRUCTION                                        │
+│  - Assemble MetricFact with complete EvidencePack                   │
+│  - Attach XPath locator, cell coordinates, raw quote                │
+│  - Set confidence score                                             │
+│  Output: MetricFact objects with EvidencePack                       │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 11: DEFINITION EXTRACTION                                    │
+│  - Extract definition and methodology text from definition segments │
 │  - Assess alignment with CMASB canonical definitions                │
-│  Output: metric_definitions table                                   │
+│  Output: MetricFact objects with definition fields populated        │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 5: INCIDENCE & QUALITY SCORING                               │
-│  - Aggregate filing x metric incidence                              │
-│  - Count segments by type (numeric, definition, methodology)        │
-│  - Compute quality scores (0-3)                                     │
-│  - Set alignment flags and cohort breakdown flags                   │
-│  Output: filing_metric_incidence table                              │
+│  STAGE 12: DEDUPLICATION                                            │
+│  - Deduplicate by identity tuple (metric, period, cohort, value)    │
+│  - Prefer highest-confidence source when duplicates exist           │
+│  Output: Deduplicated MetricFact list                               │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 13: VALIDATION                                               │
+│  - Route facts by confidence: auto-accept / review / reject         │
+│  - Thresholds: auto-accept ≥ 0.90, review 0.15-0.90, reject < 0.15 │
+│  Output: Validated facts with review_routing label                  │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
@@ -96,13 +152,114 @@ This document specifies the architecture and implementation of the metric extrac
 
 ---
 
-## Component Specifications
+## Core Data Models
 
-### 1. HTML Segmenter
+**MetricFact:** Primary extraction output with full provenance
+- Combines extracted value, metric ID, period, cohort, and evidence
+- Immutable audit trail from detection to acceptance
+- Replaces V1's separate `metric_values` and `metric_definitions` tables
+
+**EvidencePack:** Audit-grade proof for every extracted value
+- Source type (HTML table, OCR table, text, chart)
+- XPath locator for exact DOM position
+- Cell coordinates for table values (header_path, stub_path)
+- Surrounding context with structural markup
+- Raw text quote for verification
+
+**Table:** Reconstructed table with header/stub path binding
+- Full colspan/rowspan resolution
+- header_path: e.g., `"Revenue" > "Q4 2024"`
+- stub_path: e.g., `"Customer Metrics" > "New Customers"`
+- Enables precise value-to-header binding
+
+**ImageAsset:** Extracted image with classification and OCR results
+- Classification: chart, table_image, decorative, logo, signature
+- Chart type: bar, line, pie, stacked_bar, area
+- OCR text extraction for table images
+- Vision model analysis for chart values (labeled values only)
+
+---
+
+## Key Files
+
+- **`src/extraction_v2/models.py`** — Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
+- **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 13-stage workflow and configuration
+- **`src/extraction_v2/table_reconstructor.py`** — Table reconstruction with colspan/rowspan resolution
+- **`src/extraction_v2/stages/ingestion.py`** — HTML parsing with XPath locators and segment extraction
+- **`src/extraction_v2/stages/`** — One module per pipeline stage
+
+---
+
+## Design Principles
+
+1. **Structure-first, LLM-second**: Parse DOM structure before LLM calls
+2. **No value without provenance**: Every MetricFact includes complete EvidencePack
+3. **Fail closed**: Ambiguous cases route to review (never guess)
+4. **Charts only when labeled**: Extract only explicit data labels (never interpolate from axis)
+5. **Complete table reconstruction**: Full colspan/rowspan resolution before extraction
+6. **DOM-native**: XPath locators maintain exact source positions
+
+---
+
+## Configuration
+
+V2 pipeline is configured via `PipelineConfig` dataclass:
+
+```python
+from src.extraction_v2.pipeline import ExtractionPipelineV2, PipelineConfig
+
+config = PipelineConfig(
+    enable_section_classification=True,
+    enable_image_extraction=True,
+    enable_chart_extraction=True,
+    min_confidence_auto_accept=0.90,
+    min_confidence_no_review=0.85,
+    max_confidence_auto_reject=0.15,
+    max_table_rows=1000,
+    max_images_per_document=50,
+    batch_size=10,
+    max_llm_calls_per_document=100,
+    save_evidence_screenshots=True,
+    evidence_screenshot_dir="evidence_v2/"
+)
+
+pipeline = ExtractionPipelineV2(config=config)
+result = pipeline.process_document(document)
+```
+
+**Environment Variables:**
+```bash
+DATABASE_URL=postgresql://user:password@localhost/filings_analysis
+OPENAI_API_KEY=sk-...  # For LLM-enhanced extraction and OCR
+```
+
+---
+
+## Related Documentation
+
+- **System Architecture:** `docs/architecture/system-overview.md` — High-level design
+- **Data Model:** `docs/architecture/data-model.md` — Database schemas
+- **LLM Integration:** `docs/architecture/llm-integration.md` — OpenAI integration details
+- **Quality Model:** `docs/development/quality-model.md` — QA scoring framework
+- **Metrics Taxonomy:** `docs/development/metrics-taxonomy.md` — Canonical metric definitions
+
+---
+
+## Appendix: V1 Pipeline (Retired)
+
+> **V1 is retired.** The code in `src/extraction/` is kept for historical reference only. It is not invoked by any production script. See `src/extraction/__init__.py` for the deprecation notice.
+
+The V1 pipeline implemented a 5-stage extraction workflow (HTML Segmentation → Metric Classification → Segment Enrichment → Value Extraction → Definition Extraction → Quality Scoring). The stage descriptions below are preserved for historical reference.
+
+---
+
+### V1 Component Specifications
+
+#### 1. HTML Segmenter
 
 **Module:** `src/extraction/html_segmenter.py`
 **Class:** `HTMLSegmenter`
-**Status:** Complete (85% test coverage)
+**Status:** Retired
 
 **Responsibilities:**
 - Parse filing HTML into semantic segments
@@ -177,11 +334,11 @@ class HTMLSegmenter:
 
 ---
 
-### 2. Metric Classifier
+#### 2. Metric Classifier
 
 **Module:** `src/extraction/metric_classifier.py`
 **Class:** `MetricClassifier`
-**Status:** Complete (98% test coverage)
+**Status:** Retired
 
 **Responsibilities:**
 - Scan source segments for metric-related keywords
@@ -237,11 +394,11 @@ class MetricClassifier:
 
 ---
 
-### 2.5. Segment Enricher (G4-G8)
+#### 2.5. Segment Enricher (G4-G8)
 
 **Module:** `src/extraction/segment_enricher.py`
 **Class:** `SegmentEnricher`
-**Status:** Complete (98% test coverage)
+**Status:** Retired
 
 **Responsibilities:**
 - Compute metric density (unique metrics per 100 characters)
@@ -287,26 +444,6 @@ class SegmentEnricher:
         """
 ```
 
-**Configuration (GR-11):**
-
-The `FormulaWeights` dataclass in `src/extraction/enricher_config.py` allows configuring
-all richness score formula weights. This enables A/B testing different weight combinations
-without code changes.
-
-```python
-# Use default production weights
-enricher = SegmentEnricher()
-
-# Use custom weights for higher precision
-enricher = SegmentEnricher(weights=FormulaWeights.high_precision())
-
-# Or customize individual weights
-enricher = SegmentEnricher(weights=FormulaWeights(
-    confidence_multiplier=4.0,
-    goldmine_threshold=6.0,
-))
-```
-
 **Richness Score Formula (0-10 points):**
 
 | Component | Points | Calculation |
@@ -319,42 +456,19 @@ enricher = SegmentEnricher(weights=FormulaWeights(
 | Images | 0-1.5 | `min(image_count * 0.5, 1.5)` |
 | Cohort charts | 0-1.0 | `0.5 per cohort chart candidate (max 1.0)` |
 
-**Goldmine Identification:**
-- Segments with `richness_score >= 6.0` are "goldmines"
-- Goldmines represent high-value disclosure sections
-- Typically 5-10% of segments in a filing qualify
-- Enables prioritized extraction and human review
-
-**Enrichment Methods:**
-- `_compute_metric_density()`: G4 - metrics per 100 chars
-- `_compute_distinct_metric_count()`: G4 - unique metric count
-- `_detect_temporal_trends()`: G5 - multi-year/period detection
-- `_detect_cohort_breakdowns()`: G6 - cohort analysis patterns
-- `_detect_images()`: G7 - meaningful image/chart count
-- `_detect_cohort_chart_images()`: Cohort chart candidate detection with confidence scoring
-- `_compute_richness_score()`: G8 - composite scoring
-
-**Design Notes:**
-- Operates on in-memory SourceSegment objects (no database access)
-- Mutates segments in place for efficiency
-- Richness score computed LAST (depends on other enrichments)
-- Logs goldmine statistics after batch processing
-- All methods are stateless (patterns compiled at class level)
-
 ---
 
-### 2.6. Cohort Chart Detector
+#### 2.6. Cohort Chart Detector
 
 **Module:** `src/extraction/cohort_chart_detector.py`
 **Class:** `CohortChartDetector`
-**Status:** Complete (21 tests covering detection and confidence scoring)
+**Status:** Retired
 
 **Responsibilities:**
 - Detect cohort analysis charts and visualizations in filing HTML
 - Find images with "cohort" keywords in surrounding text (within 1500 chars)
 - Calculate confidence scores based on context quality
 - Filter decorative images (icons, logos, bullets)
-- Complement segment-level detection by analyzing standalone images
 
 **Interface:**
 
@@ -384,12 +498,6 @@ class CohortChartDetector:
         4. Search for cohort keywords in context
         5. Calculate confidence scores
         6. Return candidates sorted by confidence
-
-        Args:
-            html_content: Raw HTML from SEC filing
-
-        Returns:
-            List of CohortChartCandidate objects
         """
 
     def detect_from_file(self, html_path: str) -> List[CohortChartCandidate]:
@@ -406,48 +514,13 @@ class CohortChartDetector:
 | Multiple keywords | +0.10 | 2+ cohort keyword matches |
 | **Maximum** | **0.95** | All bonuses applied |
 
-**Decorative Image Filtering:**
-
-Images are excluded if they match any pattern:
-- Size: `width < 50px` or `height < 50px`
-- Filename: Contains "icon", "logo", "bullet", "arrow", "spacer"
-- Alt text: Generic terms like "bullet point", "decorative"
-
-**Use Cases:**
-
-1. **ARR by Cohort Charts**: Revenue retention visualizations (e.g., Slack S-1)
-2. **LTV/CAC by Cohort**: Customer economics charts (e.g., Farfetch F-1)
-3. **Retention Curves**: Cohort retention over time
-4. **Net Revenue Retention**: NRR breakdowns by customer cohort
-
-**Design Notes:**
-- Complements segment-level detection (which misses standalone images)
-- HTMLSegmenter captures images within segments, but not all images are segmented
-- Stores results in `extra_metadata["cohort_chart_candidates"]` at segment level
-- Filing-level detector provides comprehensive image analysis
-- No database access - operates on HTML strings
-
-**Example Output:**
-
-```python
-# Slack S-1: ARR by Cohort chart
-CohortChartCandidate(
-    image_src="mdaa2.jpg",
-    image_alt="ARR by Cohort",
-    keyword_matches=["cohort"],
-    context_text="The following chart shows our annual recurring revenue by customer cohort...",
-    confidence=0.85,
-    position_in_doc=125000
-)
-```
-
 ---
 
-### 3. Value Extractor
+#### 3. Value Extractor
 
 **Module:** `src/extraction/value_extractor.py`
 **Class:** `ValueExtractor`
-**Status:** Complete (66% test coverage)
+**Status:** Retired
 
 **Responsibilities:**
 - Extract numeric values from classified segments
@@ -461,15 +534,7 @@ CohortChartCandidate(
 ```python
 class ValueExtractor:
     def extract_from_segment(self, segment: SourceSegment) -> List[MetricValue]:
-        """
-        Extract all metric values from a segment.
-
-        Args:
-            segment: Classified source segment
-
-        Returns:
-            List of MetricValue objects (may be multiple values per segment)
-        """
+        """Extract all metric values from a segment."""
 
     def extract_from_table(self, segment: SourceSegment) -> List[MetricValue]:
         """Extract structured data from table segments."""
@@ -478,38 +543,11 @@ class ValueExtractor:
         """
         Parse cohort label into type and normalized bucket.
 
-        Args:
-            raw_label: Raw cohort label from filing
-
-        Returns:
-            (cohort_type, cohort_bucket_normalized)
-
         Examples:
             "2021 Cohort" -> ("acquisition", "2021")
             "0-12 months" -> ("tenure", "0-1y")
         """
 ```
-
-**Extraction Strategies:**
-
-1. **Table Extraction (Priority):**
-   - Most reliable for cohort breakdowns
-   - Parse table headers to identify: metric, period, cohort dimension
-   - Parse rows to extract values
-   - Example table structure:
-     ```
-     Cohort          | Q1 2024 | Q2 2024
-     ---------------|---------|--------
-     2021 Cohort    | 1,234   | 1,456
-     2022 Cohort    | 2,345   | 2,567
-     ```
-
-2. **LLM-Enhanced Text Extraction (Fallback):**
-   - Use GPT-4o-mini for unstructured text
-   - Prompt with metric names and context
-   - Parse JSON response with validation
-   - Lower confidence than table extraction
-   - Quote verification ensures accuracy
 
 **Cohort Label Normalization:**
 ```python
@@ -525,11 +563,11 @@ class ValueExtractor:
 
 ---
 
-### 4. Definition Extractor
+#### 4. Definition Extractor
 
 **Module:** `src/extraction/definition_extractor.py`
 **Class:** `DefinitionExtractor`
-**Status:** Complete (89% test coverage)
+**Status:** Retired
 
 **Responsibilities:**
 - Extract definition text from definition segments
@@ -542,49 +580,30 @@ class ValueExtractor:
 ```python
 class DefinitionExtractor:
     def extract_definition(self, segment: SourceSegment, metric_id: str) -> MetricDefinition:
-        """
-        Extract definition for a specific metric from a segment.
-
-        Args:
-            segment: Source segment containing definition
-            metric_id: Canonical metric ID
-
-        Returns:
-            MetricDefinition object
-        """
+        """Extract definition for a specific metric from a segment."""
 
     def assess_alignment(self, issuer_definition: str, canonical_definition: str) -> str:
         """
         Assess alignment between issuer and CMASB definitions.
-
-        Args:
-            issuer_definition: Definition from filing
-            canonical_definition: CMASB standard definition
 
         Returns:
             'aligned', 'partial', 'not_aligned', or 'unknown'
         """
 ```
 
-**Alignment Assessment (Current - Simple):**
+**Alignment Assessment:**
 - Keyword overlap between issuer and canonical definitions
 - High overlap (>70%) → 'aligned'
 - Medium overlap (30-70%) → 'partial'
 - Low overlap (<30%) → 'not_aligned'
 
-**LLM-Enhanced Extraction:**
-- Uses GPT-4o-mini for semantic extraction
-- Prompt asks for definition text, methodology, and calculation details
-- Structured JSON response with quote verification
-- Fallback to rule-based if LLM fails
-
 ---
 
-### 5. Quality Scorer
+#### 5. Quality Scorer
 
 **Module:** `src/extraction/quality_scorer.py`
 **Class:** `QualityScorer`
-**Status:** Complete (100% test coverage)
+**Status:** Retired
 
 **Responsibilities:**
 - Aggregate filing x metric incidence
@@ -592,36 +611,6 @@ class DefinitionExtractor:
 - Compute quality scores (0-3 scale)
 - Identify primary definition/methodology segments
 - Set cohort breakdown flags
-
-**Interface:**
-
-```python
-class QualityScorer:
-    def score_filing_metric(
-        self,
-        filing_id: int,
-        metric_id: str,
-        segments: List[SourceSegment],
-        values: List[MetricValue],
-        definitions: List[MetricDefinition]
-    ) -> FilingMetricIncidence:
-        """
-        Compute incidence and quality scores for a filing x metric pair.
-
-        Args:
-            filing_id: Database ID of filing
-            metric_id: Canonical metric ID
-            segments: All segments for this filing-metric
-            values: All extracted values
-            definitions: All extracted definitions
-
-        Returns:
-            FilingMetricIncidence object with scores
-        """
-
-    def compute_overall_quality(self, ...) -> int:
-        """Compute overall quality score 0-3."""
-```
 
 **Quality Scoring Rubric (0-3 scale):**
 
@@ -649,27 +638,13 @@ class QualityScorer:
 - 2: Breakdowns by period OR cohort
 - 3: Breakdowns by both period AND cohort
 
-**Comparability:**
-- 0: Not disclosed
-- 1: Definition differs significantly from CMASB
-- 2: Definition partially aligned
-- 3: Definition fully aligned with CMASB
-
 ---
 
-## Processing Orchestration
-
-### Main Extraction Pipeline
+#### V1 Main Extraction Pipeline
 
 **Module:** `src/extraction/extraction_pipeline.py`
 **Class:** `ExtractionPipeline`
-**Status:** Complete (91% test coverage)
-
-**Responsibilities:**
-- Orchestrate all extraction stages
-- Manage database transactions
-- Handle errors and logging
-- Support batch processing
+**Status:** Retired
 
 **Interface:**
 
@@ -684,573 +659,41 @@ class ExtractionPipeline:
         self.quality_scorer = QualityScorer()
 
     def process_filing(self, filing_id: int) -> ProcessingResult:
-        """
-        Run full extraction pipeline for a single filing.
-
-        Steps:
-            1. Segment HTML
-            2. Classify segments
-            3. Extract values
-            4. Extract definitions
-            5. Compute quality scores
-            6. Write all to database
-
-        Args:
-            filing_id: Database ID of filing to process
-
-        Returns:
-            ProcessingResult with status and statistics
-        """
+        """Run full V1 extraction pipeline for a single filing (retired)."""
 
     def process_batch(self, filing_ids: List[int]) -> BatchResult:
-        """Process multiple filings."""
-```
-
-**Transaction Strategy:**
-- Each filing processed in a single transaction
-- Rollback entire filing if any stage fails
-- Track processing status in filings table
-- Statuses: `pending`, `fetched`, `segmented`, `processed`, `failed`
-
-**Error Handling:**
-- Log all errors with full context
-- Continue batch processing after individual failures
-- Store error details in `processing_notes` column
-- Classify errors: transient (retry), permanent (skip), extraction (manual review)
-
----
-
-## Data Flow Example
-
-For a filing containing:
-
-```
-Section: Item 1. Business
-
-"We define a new customer as an individual or organization that completes
-their first purchase transaction during the reporting period. New customers
-acquired during Q1 2024 totaled 12,345."
-
-[TABLE]
-Revenue by Customer Cohort (in thousands)
-Cohort          | Q1 2024 | Q4 2023
-----------------|---------|--------
-2021 Cohort     | $1,234  | $1,189
-2022 Cohort     | $2,345  | $2,201
-2023 Cohort     | $3,456  | $3,123
-```
-
-**Stage 1 Output (source_segments):**
-
-```
-segment_id | segment_type | raw_text                          | sequence_index | section_path
------------|--------------|-----------------------------------|----------------|-------------------
-101        | paragraph    | "We define a new customer..."     | 15             | "Item 1. Business"
-102        | table        | [table content]                   | 16             | "Item 1. Business"
-```
-
-**Stage 2 Output (classified segments):**
-
-```
-segment_id | contains_definition | contains_numeric | candidate_metric_ids
------------|--------------------|-----------------|---------------------------------
-101        | TRUE               | TRUE            | ['cm_new_customers_acquired']
-102        | FALSE              | TRUE            | ['cm_revenue_by_cohort']
-```
-
-**Stage 3 Output (metric_values):**
-
-```
-metric_id                    | value_numeric | period_end  | cohort_type | cohort_bucket | source_segment_id
------------------------------|---------------|-------------|-------------|---------------|------------------
-cm_new_customers_acquired    | 12345         | 2024-03-31  | NULL        | NULL          | 101
-cm_revenue_by_cohort         | 1234000       | 2024-03-31  | acquisition | 2021          | 102
-cm_revenue_by_cohort         | 2345000       | 2024-03-31  | acquisition | 2022          | 102
-cm_revenue_by_cohort         | 3456000       | 2024-03-31  | acquisition | 2023          | 102
-```
-
-**Stage 4 Output (metric_definitions):**
-
-```
-metric_id                    | definition_text_normalized          | alignment_flag | definition_segment_id
------------------------------|-------------------------------------|----------------|---------------------
-cm_new_customers_acquired    | "an individual or organization..."  | aligned        | 101
-```
-
-**Stage 5 Output (filing_metric_incidence):**
-
-```
-metric_id                    | metric_disclosed | num_numeric_segments | num_definition_segments | quality_overall | has_cohort_breakdown
------------------------------|------------------|----------------------|-------------------------|-----------------|---------------------
-cm_new_customers_acquired    | TRUE             | 1                    | 1                       | 2               | FALSE
-cm_revenue_by_cohort         | TRUE             | 1                    | 0                       | 2               | TRUE
+        """Process multiple filings (retired)."""
 ```
 
 ---
 
-## Component Testing
+#### V1 Supporting Modules
 
-### Test Strategy
+**Structure Parser (EA-1)**
+- **Module:** `src/extraction/structure_parser.py`
+- Parses HTML while preserving DOM structure for position mapping
+- Tracks table row and cell boundaries during HTML-to-text conversion
 
-1. **Unit Tests:** Each component tested independently
-2. **Integration Tests:** Full pipeline on sample filings
-3. **Golden Set:** Manually annotated filings for validation
+**Candidate Detector (EA-2)**
+- **Module:** `src/extraction/candidate_detector.py`
+- Unified metric candidate detection consolidating CandidateGenerator and ValueExtractor
+- Integrates FalsePositiveFilter; uses StructureParser for table-aware row validation
 
-**Coverage:**
-- Segmentation: Count accuracy (manual count vs. automated)
-- Classification: Precision/recall on metric detection
-- Extraction: Value accuracy (compare to manual extraction)
-- Quality: Inter-rater agreement on scores
-
-**Test Files:**
-- `tests/unit/extraction/test_html_segmenter.py`
-- `tests/unit/extraction/test_metric_classifier.py`
-- `tests/unit/extraction/test_value_extractor.py`
-- `tests/unit/extraction/test_definition_extractor.py`
-- `tests/unit/extraction/test_quality_scorer.py`
-- `tests/unit/extraction/test_extraction_pipeline.py`
+**Context Extractor (EA-3)**
+- **Module:** `src/extraction/context_extractor.py`
+- Extracts clean context around metric values with table awareness
+- Uses StructureParser to respect row boundaries in table segments
 
 ---
 
-## Configuration
-
-**Environment Variables:**
-```bash
-DATABASE_URL=postgresql://user:password@localhost/filings_analysis
-OPENAI_API_KEY=sk-...  # For LLM-enhanced extraction
-```
-
-**Config File (`config/extraction.yaml`):**
-```yaml
-segmentation:
-  min_paragraph_length: 50
-  max_segment_length: 10000
-  table_max_length: 25000  # Higher limit for tables
-  enable_sentence_detection: true
-  enable_definition_merging: true
-  definition_lookahead_max: 3  # Max segments to merge
-  definition_max_combined_length: 2000
-  context_overlap_sentences: 1  # Sentences from prev segment
-  calculate_document_position: true
-
-classification:
-  confidence_threshold: 0.5
-
-extraction:
-  table_parser_mode: "pandas"  # or "beautifulsoup"
-  llm_enabled: true
-  llm_model: "gpt-4o-mini"
-
-quality:
-  alignment_threshold: 0.7
-```
-
----
-
-## Performance Characteristics
-
-**Processing Time (per filing):**
-- Segmentation: ~1-2 seconds
-- Classification: ~0.5-1 seconds
-- Table extraction: ~2-3 seconds
-- LLM extraction: ~5-10 seconds (if used)
-- Quality scoring: ~0.5 seconds
-- **Total: ~9-17 seconds per filing**
-
-**Memory Usage:**
-- Average filing: ~5-10 MB in memory
-- Peak during large table processing: ~50 MB
-
-**Database Operations:**
-- Segments per filing: 100-500 average
-- Values per filing: 10-100 average
-- Definitions per filing: 5-20 average
-
----
-
-## Supporting Modules (EA-1, EA-3)
-
-### Structure Parser (EA-1)
-
-**Module:** `src/extraction/structure_parser.py`
-**Status:** Complete (98% test coverage)
-
-**Responsibilities:**
-- Parse HTML while preserving DOM structure for position mapping
-- Track table row and cell boundaries during HTML-to-text conversion
-- Map text positions back to source DOM elements
-- Support table-aware candidate detection and context extraction
-
-**Interface:**
-
-```python
-class StructureParser:
-    CELL_MARKER = " [CELL] "
-    ROW_MARKER = " [ROW] "
-
-    def __init__(self, html: str):
-        """Parse HTML and build position mappings."""
-
-    def get_text(self) -> str:
-        """Return normalized text with [CELL] and [ROW] markers."""
-
-    def are_in_same_row(self, pos1: int, pos2: int) -> bool:
-        """Check if two text positions are in the same table row."""
-
-    def are_in_same_cell(self, pos1: int, pos2: int) -> bool:
-        """Check if two text positions are in the same table cell."""
-
-    def get_row_at_position(self, position: int) -> Optional[RowSpan]:
-        """Get the table row containing a given position."""
-
-    def get_element_at_position(self, text_pos: int) -> Optional[Tag]:
-        """Get DOM element containing a given text position."""
-```
-
-**Design Notes:**
-- Preserves structural information during HTML-to-text conversion
-- Enables accurate position mapping between text and DOM
-- Foundation for table-aware extraction (EA-2) and context extraction (EA-3)
-- Does NOT modify existing extraction pipelines (integration in future tasks)
-
----
-
-### Candidate Detector (EA-2)
-
-**Module:** `src/extraction/candidate_detector.py`
-**Status:** Complete (97% test coverage, 47 tests)
-
-**Responsibilities:**
-- Unified metric candidate detection for extraction and review
-- Consolidates detection logic from CandidateGenerator and ValueExtractor
-- Integrates FalsePositiveFilter for filtering years, dates, page numbers
-- Uses StructureParser (EA-1) for table-aware row validation
-- Provides configurable keyword lists and distance thresholds
-- Calculates confidence scores based on proximity and structure
-
-**Interface:**
-
-```python
-from src.extraction.candidate_detector import CandidateDetector, DetectedCandidate
-
-class CandidateDetector:
-    MAX_KEYWORD_DISTANCE: int = 100  # Max chars between keyword and value
-
-    def __init__(
-        self,
-        use_false_positive_filter: bool = True,
-        use_row_validation: bool = True,
-        keywords: Optional[List[str]] = None,
-        max_keyword_distance: int = 100,
-    ):
-        """
-        Initialize the candidate detector.
-
-        Args:
-            use_false_positive_filter: Filter years, dates, page numbers
-            use_row_validation: Require same table row for matches
-            keywords: Custom keywords (default: DEFAULT_KEYWORDS)
-            max_keyword_distance: Max distance for keyword-value match
-        """
-
-    def detect(
-        self,
-        text: str,
-        html: Optional[str] = None,
-        segment_type: str = "paragraph",
-    ) -> List[DetectedCandidate]:
-        """
-        Detect metric candidates in text.
-
-        Args:
-            text: The text content to analyze
-            html: Optional HTML for structure-aware detection in tables
-            segment_type: Type of segment ("paragraph", "table", etc.)
-
-        Returns:
-            List of detected candidates with positions and confidence
-        """
-
-    def detect_in_segment(self, segment: Dict[str, Any]) -> List[DetectedCandidate]:
-        """Convenience method to detect from segment dict."""
-```
-
-**DetectedCandidate Dataclass:**
-
-```python
-@dataclass
-class DetectedCandidate:
-    keyword: str              # Matched keyword text
-    keyword_position: int     # Character position of keyword
-    value: Decimal           # Parsed numeric value
-    value_position: int       # Character position of value
-    unit: Optional[str]       # Detected unit (count, currency, %)
-    confidence: float         # Score 0.0-1.0
-    same_row: bool           # True if in same table row
-    same_cell: bool          # True if in same table cell
-    raw_text: str            # Surrounding context
-```
-
-**Confidence Scoring:**
-
-| Factor | Points |
-|--------|--------|
-| Base score | 0.5 |
-| Distance < 20 chars | +0.3 |
-| Distance < 50 chars | +0.15 |
-| Same cell (tables) | +0.15 |
-| Same row (tables) | +0.05 |
-
-**Design Notes:**
-- Integrates with StructureParser for table-aware detection
-- Only applies row validation when table structure is detected
-- Falls back gracefully on invalid/missing HTML
-- Does NOT modify existing CandidateGenerator or ValueExtractor (integration in future tasks)
-- mypy --strict compliant
-
----
-
-### Context Extractor (EA-3)
-
-**Module:** `src/extraction/context_extractor.py`
-**Status:** Complete (97% test coverage)
-
-**Responsibilities:**
-- Extract clean context around metric values with table awareness
-- Use StructureParser to respect row boundaries in table segments
-- Remove [CELL] and [ROW] markers from output
-- Extract column and row headers for table values
-- Provide character-based context windows for paragraphs
-
-**Interface:**
-
-```python
-from src.extraction.context_extractor import ContextExtractor, ExtractedContext
-
-class ContextExtractor:
-    def __init__(
-        self,
-        context_chars: int = 100,
-        include_headers: bool = True,
-    ):
-        """Initialize context extractor with configuration."""
-
-    def extract(
-        self,
-        text: str,
-        position: int,
-        html: Optional[str] = None,
-        segment_type: str = "paragraph",
-    ) -> ExtractedContext:
-        """
-        Extract context around a position in text.
-
-        For table segments with HTML, uses row-based extraction.
-        For paragraphs, uses character-based windows.
-        """
-
-    def extract_row_context(
-        self,
-        text: str,
-        position: int,
-        parser: StructureParser,
-    ) -> ExtractedContext:
-        """Extract full row as context for table values."""
-
-    def format_table_context(
-        self,
-        row_text: str,
-        column_header: Optional[str] = None,
-        row_header: Optional[str] = None,
-    ) -> str:
-        """Format table context for display with headers."""
-```
-
-**ExtractedContext Dataclass:**
-
-```python
-@dataclass
-class ExtractedContext:
-    text: str                       # Clean text without markers
-    row_text: Optional[str]         # Full row text (with markers)
-    column_header: Optional[str]    # Column header from first row
-    row_header: Optional[str]       # Row header from first cell
-    position_start: int             # Start position in original text
-    position_end: int               # End position in original text
-```
-
-**Performance:**
-- Average extraction time: 0.32ms (31x faster than 10ms requirement)
-- Minimal memory allocation
-- Efficient with cached StructureParser instances
-
-**Design Notes:**
-- Replaces [CELL] markers with ` | ` separators
-- Removes [ROW] markers completely
-- Normalizes whitespace in output
-- Graceful fallback to character-based extraction on errors
-- Does NOT integrate with ValueExtractor yet (Phase 2 integration task)
-
----
-
-## Related Documentation
-
-- **System Architecture:** `docs/architecture/system-overview.md` - High-level design
-- **Data Model:** `docs/architecture/data-model.md` - Database schemas
-- **LLM Integration:** `docs/architecture/llm-integration.md` - OpenAI integration details
-- **Quality Model:** `docs/development/quality-model.md` - QA scoring framework
-- **Metrics Taxonomy:** `docs/development/metrics-taxonomy.md` - Canonical metric definitions
-
----
-
-## Extraction V2 Pipeline (Experimental)
-
-### Overview
-
-The V2 extraction pipeline (`src/extraction_v2/`) is an **experimental, research-focused** implementation that explores structure-first extraction approaches. It is **NOT** a replacement for V1 and is not used in production.
-
-**Status:** Alpha (experimental research implementation)
-**Production Use:** None (V1 remains the production pipeline)
-**Purpose:** Research and experimentation with advanced extraction techniques
-
-### Key Architectural Differences
-
-| Aspect | V1 (Production) | V2 (Research) |
-|--------|----------------|---------------|
-| **Approach** | Text-first, keyword-based | Structure-first, DOM-native |
-| **Table Handling** | Text extraction with markers | Full reconstruction (colspan/rowspan) |
-| **Image Processing** | Basic detection | OCR + chart extraction via vision models |
-| **Provenance** | Segment ID linkage | Complete audit trail (XPath, cell coordinates, EvidencePack) |
-| **Data Model** | Normalized database tables | MetricFact + EvidencePack dataclasses |
-| **LLM Usage** | Selective (definitions, unstructured text) | Structure-first, LLM fallback only |
-| **Status** | Production ready (87% coverage) | Alpha (not production ready) |
-
-### V2 Pipeline Stages
-
-The V2 pipeline implements an 11-stage extraction workflow:
-
-```
-1. Ingestion & Parsing       → Segments with XPath locators
-2. Section Classification    → MD&A, Risk Factors, Business, etc.
-3. Table Reconstruction      → header_path, stub_path per cell
-4. Image Triage              → chart, table_image, decorative
-5. OCR & Chart Extraction    → labeled values only (never interpolate)
-6. Metric Candidate Generation → YAML taxonomy matching
-7. Value Binding             → structural link required
-8. Period Inference          → from header_path or context
-9. MetricFact Construction   → with complete evidence_pack
-10. Deduplication            → by identity tuple (metric, period, cohort, value)
-11. Validation & Review Routing → confidence-based (auto-accept/review/reject)
-```
-
-### Core Data Models
-
-**MetricFact:** Primary extraction output with full provenance
-- Combines extracted value, metric ID, period, cohort, and evidence
-- Immutable audit trail from detection to acceptance
-- Replaces V1's separate `metric_values` and `metric_definitions` tables
-
-**EvidencePack:** Audit-grade proof for every extracted value
-- Source type (HTML table, OCR table, text, chart)
-- XPath locator for exact DOM position
-- Cell coordinates for table values (header_path, stub_path)
-- Surrounding context with structural markup
-- Raw text quote for verification
-
-**Table:** Reconstructed table with header/stub path binding
-- Full colspan/rowspan resolution
-- header_path: e.g., `"Revenue" > "Q4 2024"`
-- stub_path: e.g., `"Customer Metrics" > "New Customers"`
-- Enables precise value-to-header binding
-
-**ImageAsset:** Extracted image with classification and OCR results
-- Classification: chart, table_image, decorative, logo, signature
-- Chart type: bar, line, pie, stacked_bar, area
-- OCR text extraction for table images
-- Vision model analysis for chart values (labeled values only)
-
-### Key Files
-
-- **`models.py`** - Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
-- **`pipeline.py`** - Pipeline orchestrator with 11-stage workflow and configuration
-- **`table_reconstructor.py`** - Table reconstruction with colspan/rowspan resolution
-- **`stages/ingestion.py`** - HTML parsing with XPath locators and segment extraction
-
-### Design Principles (V2)
-
-1. **Structure-first, LLM-second**: Parse DOM structure before LLM calls (opposite of V1)
-2. **No value without provenance**: Every MetricFact includes complete EvidencePack
-3. **Fail closed**: Ambiguous cases route to review (never guess)
-4. **Charts only when labeled**: Extract only explicit data labels (never interpolate from axis)
-5. **Complete table reconstruction**: Full colspan/rowspan resolution before extraction
-6. **DOM-native**: XPath locators maintain exact source positions
-
-### When to Use V1 vs V2
-
-**Use V1 (Production Pipeline):**
-- All production extraction tasks
-- Bulk filing processing
-- Any task requiring proven, stable extraction
-- When results need to be written to production database
-
-**Use V2 (Research Only):**
-- Exploring structure-first extraction approaches
-- Testing advanced table reconstruction techniques
-- Experimenting with image/chart extraction via OCR/vision models
-- Research on complete provenance tracking
-- When evaluating alternative extraction strategies
-
-**Do NOT use V2 for:**
-- Production data extraction
-- Any task where results must be reliable
-- Bulk processing of filings for analysis
-- Integration with existing review/quality systems
-
-### Configuration
-
-V2 pipeline is configured via `PipelineConfig` dataclass:
-
-```python
-from src.extraction_v2.pipeline import ExtractionPipelineV2, PipelineConfig
-
-config = PipelineConfig(
-    enable_section_classification=True,
-    enable_image_extraction=True,
-    enable_chart_extraction=True,
-    min_confidence_auto_accept=0.90,
-    min_confidence_no_review=0.85,
-    max_confidence_auto_reject=0.15,
-    max_table_rows=1000,
-    max_images_per_document=50,
-    batch_size=10,
-    max_llm_calls_per_document=100,
-    save_evidence_screenshots=True,
-    evidence_screenshot_dir="evidence_v2/"
-)
-
-pipeline = ExtractionPipelineV2(config=config)
-result = pipeline.process_document(document)
-```
-
-### Testing Status
-
-V2 is in alpha status with limited test coverage. The module is not integrated with:
-- Production database schema
-- Human review system
-- Gold standard validation
-- Bulk processing scripts
-
-V2 is maintained separately from V1 and does not replace any V1 functionality.
-
----
-
-**Last Updated:** 2026-02-03
-**Version:** 2.5
-**Status:** Production Ready (V1), Alpha (V2)
+**Last Updated:** 2026-04-07
+**Version:** 3.0
+**Status:** Production (V2), Retired (V1)
 
 **Changelog:**
+- v3.0 (2026-04-07): V2 promoted to production; V1 pipeline moved to retired appendix
 - v2.5 (2026-02-03): Added Extraction V2 Pipeline documentation (experimental research implementation)
-- v2.4 (2025-12-26): Added CandidateDetector (EA-2) - unified candidate detection module
+- v2.4 (2025-12-26): Added CandidateDetector (EA-2) — unified candidate detection module
 - v2.3 (2025-12-26): Added StructureParser (EA-1) and ContextExtractor (EA-3) documentation
 - v2.2 (2025-12-17): Added SegmentEnricher configuration system (GR-11)
 - v2.1 (2025-12-16): Enhanced HTML segmentation with sentence detection, definition merging, 25K table limit, context enrichment, and list handling

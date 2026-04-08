@@ -39,7 +39,7 @@ Shows the Filings Reviewer system as a black box with external systems and users
 ### L2: Container Diagram (One Level Down)
 Would show major containers within Filings Reviewer:
 - Web Application (Flask)
-- Extraction Engine (V1/V2)
+- Extraction Engine (V2)
 - Database (PostgreSQL)
 - Batch Processing (Universe Builder, Filing Fetcher)
 
@@ -62,9 +62,9 @@ Shows implementation details within components.
 - Provides human review interface for validation
 
 ### Key Features
-1. **Dual Extraction Pipelines**
-   - V1: Production pipeline for standard filings
-   - V2: Unified pipeline for transcripts and presentations
+1. **V2 Extraction Pipeline**
+   - Unified production pipeline for SEC filings, transcripts, and presentations
+   - V1 is retired (kept for historical reference in `src/extraction/`)
 
 2. **Multi-Stage Processing**
    - Rule-based keyword matching (primary)
@@ -93,7 +93,7 @@ SEC Edgar
    ↓
 [FilingFetcher] → [UniverseBuilder]
    ↓
-[Extraction V1/V2] → [Processing Stages]
+[V2 Pipeline] → [Processing Stages]
    ↓
 [Database] ← [LLM Integration]
    ↓
