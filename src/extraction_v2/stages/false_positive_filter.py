@@ -452,6 +452,13 @@ def _rule_tier_qualifier(bv: BoundValue, source_text: str, metric_id: str) -> st
     tier_match = _TIER_QUALIFIER_RE.search(source_text)
     if not tier_match:
         return None
+    # Exception: "Number of [tier] Customers" labels are primary metrics, not
+    # sub-segment counts.  E.g., Kingsoft's "Number of Public Cloud Service
+    # Premium Customers" row — "Premium" is the main customer category, not a
+    # tier sub-segment.  When "Number of" appears before the tier keyword in the
+    # source text, treat the value as legitimate.
+    if re.search(r"\bnumber\s+of\b", source_text[: tier_match.start()], re.IGNORECASE):
+        return None
     # For text-sourced values, require the tier keyword to be within 150
     # characters of the value position to avoid false suppression on long
     # segments that mention tier names in passing.
@@ -2008,10 +2015,18 @@ class FalsePositiveFilterStage:
                 result.extend(group)
                 continue
 
-            # Multiple unrelated metrics for same value+segment: keep the best
+            # Multiple unrelated metrics for same value+segment: keep the best.
+            # Tie-break with stable content-derived keys (segment_id, cell position, raw
+            # value) instead of random UUIDs so results are deterministic across runs.
             best = max(
                 group,
-                key=lambda bv: (bv.binding_confidence, bv.candidate_id),
+                key=lambda bv: (
+                    bv.binding_confidence,
+                    bv.source_locator.segment_id or "",
+                    bv.source_locator.cell_row or 0,
+                    bv.source_locator.cell_col or 0,
+                    bv.value_raw,
+                ),
             )
             result.append(best)
             removed += len(group) - 1

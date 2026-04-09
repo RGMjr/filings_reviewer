@@ -520,7 +520,23 @@ class PeriodInferenceStage:
             search_text = text[: self.context_chars * 2]
             same_sentence_text = ""
 
-        # Try to find period in same sentence first (higher confidence)
+        # Try to find period in same sentence first (higher confidence).
+        # When the sentence contains multiple dates (e.g., "as of June 30, 2018 ... up from X as
+        # of June 30, 2017"), searching the full sentence returns the first date found which may
+        # belong to a different value.  Searching a narrow window around the value first finds
+        # the date that is actually closest to the value position.
+        if same_sentence_text and text_span:
+            # Narrow window: up to 150 chars before/after the value, clipped to sentence bounds
+            narrow_start = max(sentence_start, start - 150)
+            narrow_end = min(sentence_end, end + 150)
+            narrow_text = text[narrow_start:narrow_end]
+            period = self._try_parse_all_patterns(narrow_text)
+            if period:
+                period.source = "text_context"
+                period.confidence = self.SAME_SENTENCE_CONFIDENCE
+                return period
+
+        # Fall back to full-sentence search (still higher confidence than extended window)
         if same_sentence_text:
             period = self._try_parse_all_patterns(same_sentence_text)
             if period:

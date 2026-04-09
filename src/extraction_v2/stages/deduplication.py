@@ -216,12 +216,17 @@ class DeduplicationStage:
         if len(group) == 1:
             return group[0]
 
-        # Sort by source quality (desc), then confidence (desc)
+        # Sort by source quality (desc), then confidence (desc).
+        # Tie-break with stable content-derived keys (dom_locator provides document
+        # position ordering; value_raw breaks remaining ties) so results are
+        # deterministic across runs regardless of UUID or dict iteration order.
         return max(
             group,
             key=lambda f: (
                 SOURCE_QUALITY_RANK.get(f.source_type, 0),
                 f.confidence,
+                f.source_locator.dom_locator or "",
+                f.value_raw,
             ),
         )
 
@@ -257,6 +262,20 @@ class DeduplicationStage:
             if len(bucket_facts) == 1:
                 result.append(bucket_facts[0])
                 continue
+
+            # Sort bucket_facts by a stable key before chaining so that which
+            # fact becomes the group seed (and therefore which facts merge together)
+            # is deterministic regardless of dict iteration order.
+            bucket_facts = sorted(
+                bucket_facts,
+                key=lambda f: (
+                    SOURCE_QUALITY_RANK.get(f.source_type, 0),
+                    f.confidence,
+                    f.source_locator.dom_locator or "",
+                    f.value_raw,
+                ),
+                reverse=True,
+            )
 
             # Within bucket, group by value tolerance
             value_groups: list[list[MetricFact]] = []

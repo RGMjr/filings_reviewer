@@ -153,6 +153,12 @@ cm_customers_period_end:
     # Transcript: gaming vocabulary — "players have signed up" (EA Labs)
     - '\bplayers?\s+(?:have\s+)?signed\s+up\b'
     - '\bsigned\s+up\b[^.;]{0,30}\bplayers?\b'
+    # Gitlab-style: "Base Customers" is the company's term for their primary paid customer cohort
+    - '\bbase customers?\b'
+    # Kingsoft-style: "Number of Premium Customers" / "Number of Public Cloud Service Premium Customers"
+    # Uses "number of" prefix to avoid matching running-text mentions of "premium customers" that
+    # appear near revenue figures. Paired with removal of "premium" from the exclusion list below.
+    - '\bnumber\s+of\s+(?:\w+\s+)*premium\s+customers?\b'
   exclusions:
     - '\bretention\s+rate\b'
     - '\bnet\s+dollar\s+retention\b'
@@ -175,7 +181,8 @@ cm_customers_period_end:
     - 'fortune\s+\d+'
     # FIX-FP-FEATURESUBSET: Product/feature-qualified subset counts are not total customer counts
     # e.g. "1.6M Gold customers", "16.4M crypto customers" (Robinhood)
-    - '\b(?:gold|premium|crypto)\s+(?:customers?|users?|subscribers?)\b'
+    # Note: "premium" removed — Kingsoft uses "Premium Customers" as their main customer category
+    - '\b(?:gold|crypto)\s+(?:customers?|users?|subscribers?)\b'
     - '\b(?:newsfeeds?|watchlists?|cash\s+management)\s+(?:users?|customers?)\b'
     # FIX-FP-NPS: Net Promoter Score values are satisfaction scores, not customer counts
     - '\bnet\s+promoter\s+score\b'
@@ -187,6 +194,9 @@ cm_customers_period_end:
     # FIX-FP-FEATURESUBSET2: Feature user counts by name (Robinhood newsfeeds, watchlists)
     - '\bnewsfeed\b'
     - '\bwatchlists?\b'
+    # FIX-FP-ARR-THRESHOLD: "$1.0 million ARR customers" — "million" is a $ threshold, not a count magnitude
+    # Prevents the magnitude pattern above from firing on ARR-tier customer descriptions (Gitlab)
+    - '\$\d+(?:\.\d+)?\s+(?:million|billion)\s+arr\b'
   specific_patterns:
     - 'paid\s+customers?'
     - 'paying\s+customers?'
