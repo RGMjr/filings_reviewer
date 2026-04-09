@@ -146,7 +146,7 @@ PATTERN_STATUSES = ("candidate", "approved", "rejected", "deprecated")
 # =============================================================================
 
 # ImageReviewCandidate.review_status
-IMAGE_REVIEW_STATUSES = ("pending", "reviewed", "skipped")
+IMAGE_REVIEW_STATUSES = ("pending", "reviewed", "skipped", "auto_rejected")
 
 # ImageReviewCandidate.detection_tier
 IMAGE_DETECTION_TIERS = ("tier_1_cohort", "tier_2_large", "tier_3_all", "seed_list", "presentation")
