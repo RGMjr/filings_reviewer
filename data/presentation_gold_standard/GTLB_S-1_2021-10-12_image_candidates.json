@@ -1,6 +1,6 @@
 [
   {
-    "img_id": "3e3dff34-cceb-4718-a9d3-17d01f93a7ba",
+    "img_id": "fc56eed6-69f9-532f-8522-e815605d7760",
     "filename": "logoa.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/logoa.jpg",
     "classification": "unknown",
@@ -13,7 +13,7 @@
     "height": 0
   },
   {
-    "img_id": "527c5625-b4a6-4042-9d24-89ea05c83d79",
+    "img_id": "a274097a-1f10-51c6-a1c7-cb85b5c4d960",
     "filename": "gitlab-s1xartworkcoverart1a.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/gitlab-s1xartworkcoverart1a.jpg",
     "classification": "table_image",
@@ -26,7 +26,7 @@
     "height": 0
   },
   {
-    "img_id": "ca4c804a-6152-4495-84c3-e43c46e9cf7f",
+    "img_id": "c91ae293-eff6-5242-a62a-4d7b55706e26",
     "filename": "gitlab-s1xartworkcoverart2a.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/gitlab-s1xartworkcoverart2a.jpg",
     "classification": "table_image",
@@ -39,7 +39,7 @@
     "height": 0
   },
   {
-    "img_id": "b6da753a-3fd9-4d50-941d-ce992c986c2e",
+    "img_id": "31401c57-1f63-5ae3-9b85-bc9a47f8ea73",
     "filename": "gitlab-s1xartworkcoverart3a.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/gitlab-s1xartworkcoverart3a.jpg",
     "classification": "table_image",
@@ -52,7 +52,7 @@
     "height": 0
   },
   {
-    "img_id": "161ba2c6-595d-4570-953c-c61929ad4cc6",
+    "img_id": "229d0fc9-a485-50f5-bf50-ca66f2cce4c2",
     "filename": "coverart4ba.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/coverart4ba.jpg",
     "classification": "table_image",
@@ -65,7 +65,7 @@
     "height": 0
   },
   {
-    "img_id": "9898e0f5-0a2b-42f9-8ca5-5877a04db17f",
+    "img_id": "b558c667-ab47-5414-94be-254a4c360ed4",
     "filename": "coverart5ba.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/coverart5ba.jpg",
     "classification": "table_image",
@@ -78,7 +78,7 @@
     "height": 0
   },
   {
-    "img_id": "a7a9a175-b0c4-459e-ac11-bdc8ed5f9a1b",
+    "img_id": "fb5707f1-3f16-5112-9422-213c81d4f85f",
     "filename": "mda2aa.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/mda2aa.jpg",
     "classification": "chart",
@@ -91,7 +91,7 @@
     "height": 0
   },
   {
-    "img_id": "3eeb58eb-7197-4fce-861e-ecde88631eeb",
+    "img_id": "d87c573e-a2e5-540a-b2a8-c04adaab62c8",
     "filename": "mda3aa.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/mda3aa.jpg",
     "classification": "chart",
@@ -104,7 +104,7 @@
     "height": 0
   },
   {
-    "img_id": "7e697517-5f56-4f99-b207-b37edbeb91fe",
+    "img_id": "fa183464-9dc9-50a6-a8ed-bc14039e7794",
     "filename": "backcover1aa.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1653482/000162828021019971/backcover1aa.jpg",
     "classification": "unknown",

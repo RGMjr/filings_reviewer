@@ -1,6 +1,6 @@
 [
   {
-    "img_id": "5695240f-cce5-407b-a32b-98a80ac16a4b",
+    "img_id": "e9c03300-4df3-54ab-b032-71654324f128",
     "filename": "coverart1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/coverart1b.jpg",
     "classification": "table_image",
@@ -13,7 +13,7 @@
     "height": 0
   },
   {
-    "img_id": "62aa359a-a186-427b-902f-7cfef901eb10",
+    "img_id": "401ac720-96f8-5a92-b8b2-fc68c04d9cac",
     "filename": "coverart2b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/coverart2b.jpg",
     "classification": "table_image",
@@ -26,7 +26,7 @@
     "height": 0
   },
   {
-    "img_id": "77367953-07c1-4c99-83ae-75a189dc027b",
+    "img_id": "d685c449-3fe1-55d8-8cfc-175ef5d945ec",
     "filename": "coverart3b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/coverart3b.jpg",
     "classification": "table_image",
@@ -39,7 +39,7 @@
     "height": 0
   },
   {
-    "img_id": "40214b54-2b40-4195-bbaf-793a50aab617",
+    "img_id": "c78706cb-f4fd-52d2-84c9-5f7ec9bb9654",
     "filename": "prosummary_1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/prosummary_1b.jpg",
     "classification": "chart",
@@ -52,7 +52,7 @@
     "height": 0
   },
   {
-    "img_id": "42101af1-134f-441b-b04f-6a46a55d4de8",
+    "img_id": "5f688fc5-f5c3-570a-b2dc-07956f92f7b0",
     "filename": "riskfactors_2b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/riskfactors_2b.jpg",
     "classification": "table_image",
@@ -65,7 +65,7 @@
     "height": 0
   },
   {
-    "img_id": "30168c26-581e-4876-bf39-29189d443970",
+    "img_id": "fcf10f96-bac9-5aec-9e61-10223a173d82",
     "filename": "mda_3b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/mda_3b.jpg",
     "classification": "table_image",
@@ -78,7 +78,7 @@
     "height": 0
   },
   {
-    "img_id": "3c285c50-a286-4fb3-9129-c87d42e6428c",
+    "img_id": "e99624fa-122a-5a49-b5df-1c0aef83f6c9",
     "filename": "mda1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/mda1b.jpg",
     "classification": "chart",
@@ -91,7 +91,7 @@
     "height": 0
   },
   {
-    "img_id": "68e56a87-26a8-4c0f-8df7-a35a14c1da4c",
+    "img_id": "38a89009-5b40-51f6-a52a-b2d079e6198d",
     "filename": "mdsa2b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/mdsa2b.jpg",
     "classification": "chart",
@@ -104,7 +104,7 @@
     "height": 0
   },
   {
-    "img_id": "49551d2f-06c8-4801-b944-ad4d2f5b06c8",
+    "img_id": "443a355e-1f22-5f89-9e0c-4fba1f11077f",
     "filename": "keymeas.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/keymeas.jpg",
     "classification": "unknown",
@@ -117,7 +117,7 @@
     "height": 0
   },
   {
-    "img_id": "df77b804-7d4b-45c4-a50b-9452face846c",
+    "img_id": "ae782fbd-b905-5daa-bb23-7c4aeae513a7",
     "filename": "keymeas2.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/keymeas2.jpg",
     "classification": "table_image",
@@ -130,7 +130,7 @@
     "height": 0
   },
   {
-    "img_id": "2294a390-a1e9-4689-90a4-62c1132a3a96",
+    "img_id": "18b16b7c-99c3-53fb-aa71-19adc849a6b1",
     "filename": "image2.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/image2.jpg",
     "classification": "chart",
@@ -143,7 +143,7 @@
     "height": 0
   },
   {
-    "img_id": "44939e71-c1e8-4a4c-8bc6-cc65ed8f92ca",
+    "img_id": "57ab1ee1-71e2-56ad-856d-0cadea7c1f7c",
     "filename": "keymeas4.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/keymeas4.jpg",
     "classification": "chart",
@@ -156,7 +156,7 @@
     "height": 0
   },
   {
-    "img_id": "63952ae4-c868-45bc-a674-7fc806ca7a6e",
+    "img_id": "1ce7b473-61a1-5448-83c1-b775ca1911af",
     "filename": "mda7a.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/mda7a.jpg",
     "classification": "chart",
@@ -169,7 +169,7 @@
     "height": 0
   },
   {
-    "img_id": "ded4bdba-3c70-4aab-b257-e8828c322990",
+    "img_id": "c2879b04-b025-501b-843e-0866577d7ec3",
     "filename": "mda8b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/mda8b.jpg",
     "classification": "table_image",
@@ -182,7 +182,7 @@
     "height": 0
   },
   {
-    "img_id": "04903e97-2fe8-4696-93a1-96f0ac506ec5",
+    "img_id": "b6825a0e-dec4-599e-9610-b14827f93b7a",
     "filename": "ceoletter2a.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/ceoletter2a.jpg",
     "classification": "chart",
@@ -195,7 +195,7 @@
     "height": 0
   },
   {
-    "img_id": "04f7b233-3329-4329-b6e1-83b6631e8479",
+    "img_id": "35d54f08-7de0-5b06-a1bf-6f6631d702aa",
     "filename": "ceoletter1a.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/ceoletter1a.jpg",
     "classification": "chart",
@@ -208,7 +208,7 @@
     "height": 0
   },
   {
-    "img_id": "8adfbeed-04e3-4804-99a3-cfc3d3413803",
+    "img_id": "3c2827c1-f0d1-5446-84d8-2c49c1be24d3",
     "filename": "business_4b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business_4b.jpg",
     "classification": "chart",
@@ -221,7 +221,7 @@
     "height": 0
   },
   {
-    "img_id": "7efcff40-6607-4460-9a59-d2edc6f3ec81",
+    "img_id": "67e44bac-e2bd-5d4e-8303-0522d06bf18d",
     "filename": "business1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business1b.jpg",
     "classification": "table_image",
@@ -234,7 +234,7 @@
     "height": 0
   },
   {
-    "img_id": "20f6a8b3-1f7e-4074-b64f-35354a0efede",
+    "img_id": "84f50c3a-3756-5fb2-8d19-fecc70400a8b",
     "filename": "business2c.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business2c.jpg",
     "classification": "chart",
@@ -247,7 +247,7 @@
     "height": 0
   },
   {
-    "img_id": "4610281e-ce50-43ed-9dea-989cec2ee8f9",
+    "img_id": "ec986da9-4387-57a9-8dd8-13c27b8d71ae",
     "filename": "mark1c.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/mark1c.jpg",
     "classification": "chart",
@@ -260,7 +260,7 @@
     "height": 0
   },
   {
-    "img_id": "962ffec1-1a04-40a1-94db-7dfdd9920b47",
+    "img_id": "daad9b80-2ec6-55e6-a4f1-c2e058e7c6fa",
     "filename": "mark2b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/mark2b.jpg",
     "classification": "chart",
@@ -273,7 +273,7 @@
     "height": 0
   },
   {
-    "img_id": "66fd0c1a-1508-4d42-9f4b-859ad3ed5adb",
+    "img_id": "5410094b-1e39-53d2-8e27-391a3686831c",
     "filename": "pilar1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/pilar1b.jpg",
     "classification": "chart",
@@ -286,7 +286,7 @@
     "height": 0
   },
   {
-    "img_id": "b9343b07-0a88-4989-9303-ef7b5d1fd1b5",
+    "img_id": "9bc13b28-b8fa-577b-a4c4-c51b505f3396",
     "filename": "pilar2b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/pilar2b.jpg",
     "classification": "chart",
@@ -299,7 +299,7 @@
     "height": 0
   },
   {
-    "img_id": "056ebaec-61ab-4065-ba1a-ae252c5ae733",
+    "img_id": "37dc762c-ba34-525b-bd49-93d078443cf8",
     "filename": "alexandre1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/alexandre1b.jpg",
     "classification": "chart",
@@ -312,7 +312,7 @@
     "height": 0
   },
   {
-    "img_id": "959c4645-4ab8-4c12-8662-1478c28f846c",
+    "img_id": "79f33a46-fc1f-57cd-8f52-8955ed850453",
     "filename": "alexandre2b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/alexandre2b.jpg",
     "classification": "chart",
@@ -325,7 +325,7 @@
     "height": 0
   },
   {
-    "img_id": "6d764b82-5ee0-4bf3-9597-5925f9b81640",
+    "img_id": "b70aad83-f58c-5cfa-9766-d3bd4860c3f0",
     "filename": "ming1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/ming1b.jpg",
     "classification": "chart",
@@ -338,7 +338,7 @@
     "height": 0
   },
   {
-    "img_id": "5f18088c-656d-4005-a5c8-845b0c2c6e85",
+    "img_id": "8f7ae028-62e5-5025-b43b-5f967279a918",
     "filename": "ming2b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/ming2b.jpg",
     "classification": "chart",
@@ -351,7 +351,7 @@
     "height": 0
   },
   {
-    "img_id": "cd633f9c-92a0-40d3-a875-5b9b0dfc9cd9",
+    "img_id": "392997d8-5d6b-5f2a-9f82-1a2a51fc94e1",
     "filename": "business3e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business3e.jpg",
     "classification": "unknown",
@@ -364,7 +364,7 @@
     "height": 0
   },
   {
-    "img_id": "daeae283-fc2b-49cd-8d48-7baf6f4346de",
+    "img_id": "ae2bdd99-b122-53c1-8045-6be078f609ff",
     "filename": "business4e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business4e.jpg",
     "classification": "table_image",
@@ -377,7 +377,7 @@
     "height": 0
   },
   {
-    "img_id": "901bed2f-0e1c-4cf8-b7bc-0780ff053271",
+    "img_id": "97746f23-9e1a-568c-9eff-67f331198171",
     "filename": "business5e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business5e.jpg",
     "classification": "table_image",
@@ -390,7 +390,7 @@
     "height": 0
   },
   {
-    "img_id": "e28d81b1-5c37-479d-9c69-04aaf04ff364",
+    "img_id": "0143c307-65cc-5863-b1d7-9ded465eab4c",
     "filename": "business6e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business6e.jpg",
     "classification": "table_image",
@@ -403,7 +403,7 @@
     "height": 0
   },
   {
-    "img_id": "907ba0a8-5726-4a0b-9404-042554509aa5",
+    "img_id": "7edcac92-564a-5b12-ba65-a584d5580d66",
     "filename": "worldsection1a.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/worldsection1a.jpg",
     "classification": "table_image",
@@ -416,7 +416,7 @@
     "height": 0
   },
   {
-    "img_id": "01d905aa-a320-44b2-8995-7e39315b4de0",
+    "img_id": "c41d0310-0188-5b73-b4a8-91db206d5c44",
     "filename": "business9b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business9b.jpg",
     "classification": "table_image",
@@ -429,7 +429,7 @@
     "height": 0
   },
   {
-    "img_id": "4a9a7176-ada1-4474-b815-b6ea19ad4fb7",
+    "img_id": "c5573456-27ea-5115-a7fb-6281bea64389",
     "filename": "business10e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business10e.jpg",
     "classification": "table_image",
@@ -442,7 +442,7 @@
     "height": 0
   },
   {
-    "img_id": "93ac6eba-f4b5-4665-b1c5-c2afffe822d2",
+    "img_id": "aa6135b1-abfe-5256-ab19-871680bb3e64",
     "filename": "business11e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business11e.jpg",
     "classification": "table_image",
@@ -455,7 +455,7 @@
     "height": 0
   },
   {
-    "img_id": "676db242-7e90-44a8-878b-83e8e57dea17",
+    "img_id": "370f95aa-4f76-592e-b0b1-ec0b63b1e838",
     "filename": "business12e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business12e.jpg",
     "classification": "table_image",
@@ -468,7 +468,7 @@
     "height": 0
   },
   {
-    "img_id": "4dc5e5e3-d474-435b-a12a-417541ca6cd4",
+    "img_id": "502dde01-c9fe-5ed2-9058-bc189f9300cb",
     "filename": "business13e.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/business13e.jpg",
     "classification": "table_image",
@@ -481,7 +481,7 @@
     "height": 0
   },
   {
-    "img_id": "60482da6-0036-40d9-96a3-8d6053fbb6e1",
+    "img_id": "c4e7d4c5-58cd-5250-9924-1e943319ddf5",
     "filename": "peopleandculture1b.jpg",
     "image_url": "https://www.sec.gov/Archives/edgar/data/1562088/000162828021014402/peopleandculture1b.jpg",
     "classification": "table_image",

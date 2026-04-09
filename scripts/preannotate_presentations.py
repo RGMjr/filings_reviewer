@@ -37,6 +37,7 @@ import logging
 import re
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
 # Add project root to sys.path
@@ -231,8 +232,10 @@ def _serialize_images(
     for img in images:
         if img.relevance_score <= 0.0:
             continue
+        seed = img.dom_locator if img.dom_locator else img.filename
+        stable_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{cik}:{accession_number}:{seed}"))
         result.append({
-            "img_id": img.img_id,
+            "img_id": stable_id,
             "filename": img.filename,
             "image_url": base_url + img.filename if base_url and img.filename else "",
             "classification": img.classification.value if img.classification else "unknown",
@@ -384,6 +387,7 @@ def run_preannotation(
     date: str | None = None,
     cik: str = "",
     accession_number: str = "",
+    images_only: bool = False,
 ) -> dict[str, str]:
     """
     Fetch and pre-annotate presentations or filings for the given tickers.
@@ -437,8 +441,11 @@ def run_preannotation(
         index_key = f"{ticker}_{filing_type}_{date_str}"
         csv_path = OUTPUT_DIR / f"{index_key}_preannotated.csv"
 
-        if csv_path.exists():
-            print(f"[{ticker}] Skipping {index_key} — CSV already exists", file=sys.stderr)
+        img_json_path = OUTPUT_DIR / f"{index_key}_image_candidates.json"
+        skip_exists = img_json_path.exists() if images_only else csv_path.exists()
+        skip_label = "_image_candidates.json" if images_only else "CSV"
+        if skip_exists:
+            print(f"[{ticker}] Skipping {index_key} — {skip_label} already exists", file=sys.stderr)
             return file_index
 
         all_rows: list[dict[str, str]] = []
@@ -497,13 +504,12 @@ def run_preannotation(
                 )
                 continue
 
-        # Write combined CSV for all local files
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(all_rows)
-
-        print(f"[{ticker}] Wrote {len(all_rows)} rows to {csv_path}", file=sys.stderr)
+        if not images_only:
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(all_rows)
+            print(f"[{ticker}] Wrote {len(all_rows)} rows to {csv_path}", file=sys.stderr)
 
         if last_cache_path:
             file_index[index_key] = last_cache_path
@@ -543,9 +549,12 @@ def run_preannotation(
 
             # Idempotency check
             csv_path = OUTPUT_DIR / f"{index_key}_preannotated.csv"
-            if csv_path.exists():
+            img_json_path = OUTPUT_DIR / f"{index_key}_image_candidates.json"
+            skip_exists = img_json_path.exists() if images_only else csv_path.exists()
+            skip_label = "_image_candidates.json" if images_only else "CSV"
+            if skip_exists:
                 print(
-                    f"[{ticker_upper}] Skipping {index_key} — CSV already exists",
+                    f"[{ticker_upper}] Skipping {index_key} — {skip_label} already exists",
                     file=sys.stderr,
                 )
                 continue
@@ -575,13 +584,12 @@ def run_preannotation(
                 )
                 continue
 
-            # Write CSV
-            with open(csv_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES, extrasaction="ignore")
-                writer.writeheader()
-                writer.writerows(rows)
-
-            print(f"[{ticker_upper}] Wrote {len(rows)} rows to {csv_path}", file=sys.stderr)
+            if not images_only:
+                with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES, extrasaction="ignore")
+                    writer.writeheader()
+                    writer.writerows(rows)
+                print(f"[{ticker_upper}] Wrote {len(rows)} rows to {csv_path}", file=sys.stderr)
 
             file_index[index_key] = html_cache_path_str
             index_path.write_text(
@@ -621,10 +629,13 @@ def run_preannotation(
             index_key = f"{ticker}_{date_str}"
             company = meta.company_name or ticker
 
-            # Idempotency check — skip if CSV already exists
+            # Idempotency check
             csv_path = OUTPUT_DIR / f"{index_key}_preannotated.csv"
-            if csv_path.exists():
-                print(f"[{ticker}] Skipping {index_key} — CSV already exists", file=sys.stderr)
+            img_json_path = OUTPUT_DIR / f"{index_key}_image_candidates.json"
+            skip_exists = img_json_path.exists() if images_only else csv_path.exists()
+            skip_label = "_image_candidates.json" if images_only else "CSV"
+            if skip_exists:
+                print(f"[{ticker}] Skipping {index_key} — {skip_label} already exists", file=sys.stderr)
                 continue
 
             print(f"[{ticker}] Fetching {source_id} (date={date_str})...", file=sys.stderr)
@@ -667,14 +678,14 @@ def run_preannotation(
                 print(f"[{ticker}] ERROR running pipeline on {source_id}: {exc}", file=sys.stderr)
                 continue
 
-            # Write CSV
-            csv_path = OUTPUT_DIR / f"{index_key}_preannotated.csv"
-            with open(csv_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES, extrasaction="ignore")
-                writer.writeheader()
-                writer.writerows(rows)
-
-            print(f"[{ticker}] Wrote {len(rows)} rows to {csv_path}", file=sys.stderr)
+            if not images_only:
+                # Write CSV
+                csv_path = OUTPUT_DIR / f"{index_key}_preannotated.csv"
+                with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES, extrasaction="ignore")
+                    writer.writeheader()
+                    writer.writerows(rows)
+                print(f"[{ticker}] Wrote {len(rows)} rows to {csv_path}", file=sys.stderr)
 
             # Update file index
             file_index[index_key] = str(html_cache_path)
@@ -767,6 +778,16 @@ def main() -> int:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--images-only",
+        action="store_true",
+        dest="images_only",
+        help=(
+            "Skip CSV generation; only write _image_candidates.json files. "
+            "Use to regenerate candidate files for presentations already preannotated "
+            "before image candidate export was added."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -804,6 +825,7 @@ def main() -> int:
         date=args.date,
         cik=args.cik,
         accession_number=args.accession,
+        images_only=args.images_only,
     )
 
     print(

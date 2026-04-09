@@ -230,6 +230,13 @@ def export_pres_rows() -> list[dict]:
             "chart_type": dec.get("chart_type") or "",
             "rejection_reason": dec.get("rejection_reason") or "",
         })
+    skipped = len(decisions) - len(out)
+    if skipped > 0:
+        logger.warning(
+            "%d presentation decision(s) had no matching candidate JSON — "
+            "run: preannotate_presentations.py --images-only for affected tickers",
+            skipped,
+        )
     return out
 
 
