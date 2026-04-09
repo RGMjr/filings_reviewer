@@ -335,6 +335,7 @@ def review_filing(filing_id: int):
         image_pending = sum(1 for c in all_image_candidates if c["review_status"] == "pending")
         image_reviewed = sum(1 for c in all_image_candidates if c["review_status"] == "reviewed")
         image_skipped = sum(1 for c in all_image_candidates if c["review_status"] == "skipped")
+        image_auto_rejected = sum(1 for c in all_image_candidates if c["review_status"] == "auto_rejected")
 
         # SEC directory URL for image linking
         sec_url = _build_sec_directory_url(
@@ -376,6 +377,7 @@ def review_filing(filing_id: int):
             image_pending=image_pending,
             image_reviewed=image_reviewed,
             image_skipped=image_skipped,
+            image_auto_rejected=image_auto_rejected,
             image_filters={"status": image_status},
             chart_types=chart_types,
             rejection_reasons=rejection_reasons,

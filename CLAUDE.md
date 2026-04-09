@@ -6,21 +6,7 @@ Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclo
 
 ## Architecture
 
-```
-src/
-├── infra/          # db.py, sec_client.py, http_client.py, logging_config.py, pool.py, validation.py, exceptions.py, company_mapping.py, document_source.py, fmp_source.py, huggingface_source.py, sec_presentation_source.py
-├── universe/       # Filing discovery: classifiers.py, universe_builder.py
-├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction (V1 - retired; code kept for historical reference)
-├── extraction_v2/  # V2 unified extraction pipeline (active — SEC filings, transcripts, presentations)
-├── review/         # Human review: candidate_generator, pattern_analyzer
-├── shared/         # Shared models and keyword config loader (models.py, keyword_config.py)
-├── web/            # Flask app: routes/, templates/, static/
-├── llm/            # OpenAI integration with PostgreSQL-backed caching; includes vision_client.py and prompts.py
-└── gold_standard/  # Validation: baseline.py, fresh_extractor.py, v2_validator.py, unified_comparison.py
-config/
-└── metric_keywords.yaml  # Metric keyword patterns (authoritative source)
-```
+Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, shared, web, llm, gold_standard). Config in `config/metric_keywords.yaml`. See `docs/README.md` for full index.
 
 **Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → V2QualityScorer → Database
 
@@ -35,17 +21,9 @@ ruff check src/ tests/             # Lint
 mypy src/review/ --strict          # Type checking
 ```
 
-## Environment Setup
-
-```bash
-# .env file (see .env.template)
-DATABASE_URL=postgresql://user:password@localhost/filings_analysis
-SEC_USER_AGENT="YourName contact@example.com"
-```
-
 ## Database
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-18). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-20). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 ## Testing Standards
 
@@ -60,10 +38,6 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 2. **Provenance tracking**: Every extracted value links to source segment
 3. **Idempotent operations**: Re-running any stage is safe (upserts)
 4. **Conservative classification**: "Require BOTH" signals to minimize false positives
-
-## Documentation
-
-See `docs/README.md` for complete index.
 
 ## Implementation Rules
 

@@ -69,6 +69,7 @@ def engineer_features(rows: list[dict]) -> np.ndarray:
         classification = (r.get("classification") or "").lower()
         is_chart_classification = int(classification == "chart")
         is_unknown_classification = int(classification == "unknown")
+        is_table_image_classification = int(classification == "table_image")
 
         tier = r.get("detection_tier") or ""
         is_tier_1 = int(tier == "tier_1_cohort")
@@ -85,6 +86,13 @@ def engineer_features(rows: list[dict]) -> np.ndarray:
         text_medium = int(100 <= text_length < 500)
         text_long = int(text_length >= 500)
 
+        # SEC candidates come from the database; presentation candidates are not in this table.
+        # All rows in image_review_candidates are SEC images.
+        is_source_sec = 1
+
+        # Log-transform keyword count: marginal value of extra keywords is sublinear
+        log_keyword_count = float(np.log1p(keyword_count))
+
         X.append([
             cohort_confidence,
             cohort_keyword_nearby,
@@ -99,6 +107,9 @@ def engineer_features(rows: list[dict]) -> np.ndarray:
             is_tier_1,
             is_tier_2,
             filename_has_chart_hint,
+            is_source_sec,
+            is_table_image_classification,
+            log_keyword_count,
         ])
     return np.array(X, dtype=float)
 
@@ -113,6 +124,12 @@ def main() -> None:
                         help="Rescore all candidates, not just unscored ones")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print scores without writing to DB")
+    parser.add_argument(
+        "--auto-reject-threshold", type=float, default=None, metavar="THRESHOLD",
+        help="Candidates scoring below this threshold are marked review_status='auto_rejected'. "
+             "Only applied to pending candidates. Requires migration 20 to be applied first. "
+             "Example: --auto-reject-threshold 0.05",
+    )
     parser.add_argument("--database-url", type=str)
     args = parser.parse_args()
 
@@ -162,6 +179,15 @@ def main() -> None:
         n = (scores >= t).sum()
         logger.info("  >= %.1f: %d candidates (%.1f%%)", t, n, 100 * n / len(scores))
 
+    auto_reject_threshold = args.auto_reject_threshold
+    if auto_reject_threshold is not None:
+        n_would_reject = sum(
+            1 for s, c in zip(scores, candidates, strict=True)
+            if s < auto_reject_threshold and c.get("review_status") == "pending"
+        )
+        logger.info("Auto-reject threshold: %.3f — would reject %d pending candidates",
+                    auto_reject_threshold, n_would_reject)
+
     if args.dry_run:
         logger.info("Dry run — not writing to DB")
         # Print top candidates
@@ -171,23 +197,47 @@ def main() -> None:
             logger.info("  %.3f | %s | %s | tier=%s",
                         score, c.get("image_candidate_id"),
                         c.get("image_src", ""), c.get("detection_tier", ""))
+        if auto_reject_threshold is not None:
+            logger.info("\nCandidates that would be auto-rejected (score < %.3f, pending only):",
+                        auto_reject_threshold)
+            reject_ranked = sorted(
+                [(s, c) for s, c in zip(scores, candidates, strict=True)
+                 if s < auto_reject_threshold and c.get("review_status") == "pending"],
+                key=lambda x: x[0],
+            )
+            for score, c in reject_ranked[:20]:
+                logger.info("  %.4f | %s | tier=%s",
+                            score, c.get("image_src", ""), c.get("detection_tier", ""))
         return
 
-    # Batch update
+    # Batch update: write predicted_relevance and optionally auto-reject pending candidates
     update_sql = """
         UPDATE image_review_candidates
         SET predicted_relevance = %(score)s
         WHERE image_candidate_id = %(candidate_id)s
     """
+    auto_reject_sql = """
+        UPDATE image_review_candidates
+        SET review_status = 'auto_rejected'
+        WHERE image_candidate_id = %(candidate_id)s
+          AND review_status = 'pending'
+    """
     updated = 0
+    auto_rejected = 0
     for cand, score in zip(candidates, scores, strict=True):
         db.execute(update_sql, {
             "score": round(float(score), 4),
             "candidate_id": cand["image_candidate_id"],
         })
         updated += 1
+        if auto_reject_threshold is not None and score < auto_reject_threshold:
+            db.execute(auto_reject_sql, {"candidate_id": cand["image_candidate_id"]})
+            auto_rejected += 1
 
     logger.info("Updated %d candidates with predicted_relevance scores", updated)
+    if auto_reject_threshold is not None:
+        logger.info("Auto-rejected %d pending candidates (score < %.3f)",
+                    auto_rejected, auto_reject_threshold)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import joblib
 import numpy as np
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
@@ -61,6 +62,7 @@ def engineer_features(rows: list[dict]) -> np.ndarray:
         classification = (r.get("classification") or "").lower()
         is_chart_classification = int(classification == "chart")
         is_unknown_classification = int(classification == "unknown")
+        is_table_image_classification = int(classification == "table_image")
 
         tier = r.get("detection_tier") or ""
         is_tier_1 = int(tier == "tier_1_cohort")
@@ -78,20 +80,29 @@ def engineer_features(rows: list[dict]) -> np.ndarray:
         text_medium = int(100 <= text_length < 500)
         text_long = int(text_length >= 500)
 
+        # Explicit source indicator (replaces the accidental signal in has_dimensions)
+        is_source_sec = int((r.get("source") or "").lower() == "sec")
+
+        # Log-transform keyword count: marginal value of extra keywords is sublinear
+        log_keyword_count = float(np.log1p(keyword_count))
+
         X.append([
-            cohort_confidence,           # 0
-            cohort_keyword_nearby,       # 1  (strongest signal)
-            keyword_count,               # 2  (strongest signal)
-            text_long,                   # 3
-            text_medium,                 # 4
-            text_short,                  # 5
-            has_dimensions,              # 6
-            image_area_clipped,          # 7
-            is_chart_classification,     # 8
-            is_unknown_classification,   # 9
-            is_tier_1,                   # 10
-            is_tier_2,                   # 11
-            filename_has_chart_hint,     # 12
+            cohort_confidence,                # 0
+            cohort_keyword_nearby,            # 1  (strongest signal)
+            keyword_count,                    # 2  (strongest signal)
+            text_long,                        # 3
+            text_medium,                      # 4
+            text_short,                       # 5
+            has_dimensions,                   # 6
+            image_area_clipped,               # 7
+            is_chart_classification,          # 8
+            is_unknown_classification,        # 9
+            is_tier_1,                        # 10
+            is_tier_2,                        # 11
+            filename_has_chart_hint,          # 12
+            is_source_sec,                    # 13
+            is_table_image_classification,    # 14
+            log_keyword_count,                # 15
         ])
     return np.array(X, dtype=float)
 
@@ -110,6 +121,9 @@ FEATURE_NAMES = [
     "is_tier_1",
     "is_tier_2",
     "filename_has_chart_hint",
+    "is_source_sec",
+    "is_table_image_classification",
+    "log_keyword_count",
 ]
 
 
@@ -123,11 +137,16 @@ def precision_at_recall(precisions, recalls, target_recall: float) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Train image relevance logistic regression model"
+        description="Train image relevance model"
     )
     parser.add_argument("--input", type=str, default=str(DEFAULT_INPUT))
     parser.add_argument("--output", type=str, default=str(DEFAULT_MODEL))
     parser.add_argument("--report", type=str, default=str(DEFAULT_REPORT))
+    parser.add_argument(
+        "--model-type", choices=["logistic", "gbt"], default="logistic",
+        help="Model class to train (default: logistic). Use 'gbt' to evaluate "
+             "HistGradientBoostingClassifier. Adopt gbt only if AUC>=+0.03 or AP>=+0.05 vs logistic.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -152,16 +171,33 @@ def main() -> None:
     logger.info("Class distribution: %d relevant (%.1f%%), %d not_relevant",
                 n_pos, 100 * n_pos / len(y), n_neg)
 
-    # Logistic regression with class weighting to handle imbalance
-    pipeline = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", LogisticRegression(
-            class_weight="balanced",
-            max_iter=1000,
-            C=1.0,
-            solver="lbfgs",
-        )),
-    ])
+    model_type = args.model_type
+    logger.info("Model type: %s", model_type)
+
+    if model_type == "gbt":
+        # HistGradientBoostingClassifier: no scaling needed, handles mixed features well.
+        # Conservative hyperparams to avoid overfitting on ~600 samples.
+        pipeline = Pipeline([
+            ("clf", HistGradientBoostingClassifier(
+                max_iter=200,
+                max_depth=4,
+                min_samples_leaf=10,
+                learning_rate=0.1,
+                class_weight="balanced",
+                random_state=42,
+            )),
+        ])
+    else:
+        # Logistic regression with class weighting to handle imbalance
+        pipeline = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(
+                class_weight="balanced",
+                max_iter=1000,
+                C=1.0,
+                solver="lbfgs",
+            )),
+        ])
 
     # Cross-validation to get unbiased probability estimates
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
@@ -194,12 +230,24 @@ def main() -> None:
     # Fit on all data for deployment
     pipeline.fit(X, y)
 
-    # Feature coefficients (from the logistic regression step)
-    coef = pipeline.named_steps["clf"].coef_[0]
-    logger.info("\nFeature importances (logistic regression coefficients):")
-    feat_imp = sorted(zip(FEATURE_NAMES, coef, strict=True), key=lambda x: abs(x[1]), reverse=True)
-    for name, c in feat_imp:
-        logger.info("  %s: %+.3f", name, c)
+    # Feature importances
+    clf = pipeline.named_steps["clf"]
+    if model_type == "gbt":
+        # HistGradientBoostingClassifier removed feature_importances_ in recent sklearn;
+        # use permutation importance on the full training set as a proxy.
+        from sklearn.inspection import permutation_importance
+        perm = permutation_importance(pipeline, X, y, n_repeats=10, random_state=42, scoring="average_precision")
+        importances = perm.importances_mean
+        logger.info("\nFeature importances (GBT, permutation on train set):")
+        feat_imp = sorted(zip(FEATURE_NAMES, importances, strict=True), key=lambda x: x[1], reverse=True)
+        for name, imp in feat_imp:
+            logger.info("  %s: %.4f", name, imp)
+    else:
+        coef = clf.coef_[0]
+        logger.info("\nFeature importances (logistic regression coefficients):")
+        feat_imp = sorted(zip(FEATURE_NAMES, coef, strict=True), key=lambda x: abs(x[1]), reverse=True)
+        for name, c in feat_imp:
+            logger.info("  %s: %+.3f", name, c)
 
     # Baseline comparison: what does the current tier system achieve?
     tier_1_mask = np.array([
@@ -237,9 +285,15 @@ def main() -> None:
     report.write(f"  Precision: {tier_1_precision:.3f}\n")
     report.write(f"  Recall:    {tier_1_recall:.3f}\n")
     report.write(f"  Coverage:  {tier_1_mask.sum()}/{len(rows)} candidates reviewed\n\n")
-    report.write("Feature coefficients:\n")
-    for name, c in feat_imp:
-        report.write(f"  {name:35s}: {c:+.3f}\n")
+    report.write(f"Model type: {model_type}\n\n")
+    if model_type == "gbt":
+        report.write("Feature importances (GBT, permutation on train set):\n")
+        for name, imp in feat_imp:
+            report.write(f"  {name:35s}: {imp:.4f}\n")
+    else:
+        report.write("Feature coefficients:\n")
+        for name, c in feat_imp:
+            report.write(f"  {name:35s}: {c:+.3f}\n")
 
     report_path = Path(args.report)
     report_path.write_text(report.getvalue())
