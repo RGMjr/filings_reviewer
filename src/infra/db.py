@@ -3667,6 +3667,7 @@ class DatabaseAdapter:
                 COUNT(*) FILTER (WHERE review_status = 'pending') as pending_count,
                 COUNT(*) FILTER (WHERE review_status = 'reviewed') as reviewed_count,
                 COUNT(*) FILTER (WHERE review_status = 'skipped') as skipped_count,
+                COUNT(*) FILTER (WHERE review_status = 'auto_rejected') as auto_rejected_count,
                 COUNT(DISTINCT filing_id) as total_filings,
                 COUNT(DISTINCT filing_id) FILTER (WHERE review_status = 'pending') as filings_with_pending
             FROM image_review_candidates
@@ -3679,6 +3680,7 @@ class DatabaseAdapter:
                 "pending_count": 0,
                 "reviewed_count": 0,
                 "skipped_count": 0,
+                "auto_rejected_count": 0,
                 "review_pct": 0.0,
                 "total_filings": 0,
                 "filings_with_pending": 0,
@@ -3722,6 +3724,7 @@ class DatabaseAdapter:
             "pending_count": row["pending_count"] or 0,
             "reviewed_count": reviewed,
             "skipped_count": row["skipped_count"] or 0,
+            "auto_rejected_count": row["auto_rejected_count"] or 0,
             "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
             "total_filings": row["total_filings"] or 0,
             "filings_with_pending": row["filings_with_pending"] or 0,
