@@ -690,8 +690,27 @@ class V2PersistenceAdapter:
         """
 
         params_list = [self._fact_to_params(fact, filing_id) for fact in facts]
-        cur.executemany(sql, params_list)
-        return len(params_list)
+
+        # Deduplicate by identity key to avoid unique constraint violations when
+        # the pipeline produces two facts with the same (metric, period, unit,
+        # scope, cohort) tuple. Keep the last occurrence (highest confidence).
+        seen: dict[tuple, dict] = {}
+        for p in params_list:
+            key = (
+                p["doc_id"],
+                p["canonical_metric_id"],
+                p["period_start"],
+                p["period_end"],
+                p["unit"],
+                p["scope"],
+                p["cohort_def"] or "",
+                p["customer_type"] or "",
+            )
+            seen[key] = p
+        deduped = list(seen.values())
+
+        cur.executemany(sql, deduped)
+        return len(deduped)
 
     def persist_definitions(
         self,

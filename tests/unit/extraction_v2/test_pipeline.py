@@ -594,7 +594,7 @@ class TestDocumentTypeSupport:
         """Document type constants are plain strings."""
         assert DOC_TYPE_SEC_FILING == "sec_filing"
         assert DOC_TYPE_TRANSCRIPT == "transcript"
-        assert DOC_TYPE_PRESENTATION == "presentation"
+        assert DOC_TYPE_PRESENTATION == "investor_presentation"
 
     def test_default_config_is_sec_filing(self) -> None:
         """Default PipelineConfig uses sec_filing document type."""
