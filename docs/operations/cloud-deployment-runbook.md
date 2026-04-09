@@ -1,7 +1,27 @@
 # Cloud Deployment Runbook
 
 **Infrastructure:** Render (web service) + Neon (PostgreSQL)
-**Last updated:** 2026-03-15
+**Last updated:** 2026-04-08
+
+---
+
+## Deployment Status
+
+**Status: LIVE**
+
+| Item | Detail |
+|------|--------|
+| Service URL | https://filings-reviewer.onrender.com |
+| Live since | 2026-04-08 |
+| Pre-cutover checklist | Complete |
+| DB | Production Neon — all 56 fetched filings have `html_content` populated |
+
+### Pre-cutover checklist (run 2026-04-08)
+
+- Step 1 (add `html_content` column): already applied — column existed in production Neon.
+- Step 2 (backfill `html_content`): already complete — all 56 fetched filings populated.
+- Render Blueprint deployed, all environment variables set.
+- Smoke tests passed: `/health` → 200 (DB connected, pool healthy); `/v2/review/filings` → 200; API key auth passing.
 
 ---
 
@@ -176,8 +196,8 @@ Do NOT deploy code that depends on a new schema before the migration runs.
 After each deploy, verify the service is healthy:
 
 ```bash
-# Replace with your Render service URL
-BASE_URL="https://your-service.onrender.com"
+# Production URL
+BASE_URL="https://filings-reviewer.onrender.com"
 API_KEY="your-filings-api-key"
 
 # Health check (no auth required)

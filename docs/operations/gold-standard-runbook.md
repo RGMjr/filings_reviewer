@@ -6,8 +6,8 @@ Three validation pipelines maintain independent baselines:
 
 | Pipeline | Status | Baseline file |
 |----------|--------|---------------|
-| V1 (retired) | Kept for historical reference | `data/gold_standard/baseline_metrics.json` |
-| V2 (production) | Active | `data/gold_standard/v2_baseline.json` |
+| Pre-commit regression guard (`validate_against_gold_standard.py`, SEC + presentation, 15 companies) | Active | `data/gold_standard/baseline_metrics.json` |
+| V2 SEC-only diagnostic (`v2_validator.py`, 15 companies) | Active | `data/gold_standard/v2_baseline.json` |
 | Transcript | Active | `data/transcript_gold_standard/transcript_baseline_{split}.json` |
 | Presentation | Active | `data/presentation_results/presentation_baseline.json` |
 
@@ -37,9 +37,9 @@ The **gold standard CSV** (`data/gold_standard/golden_set_260408.csv`) is the hu
 
 ---
 
-## 2. Updating the V1 Baseline
+## 2. Updating the Pre-commit Regression Baseline
 
-V1 is retired but the baseline is still tracked for regression monitoring.
+Used by `validate_against_gold_standard.py` as the pre-commit regression guard (covers SEC + presentation data, 15 companies).
 
 ### Command
 
