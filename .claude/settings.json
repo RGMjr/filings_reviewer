@@ -40,6 +40,17 @@
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'BLOCKED: You must run /plan-review before exiting plan mode. Run the plan-review skill now, then retry ExitPlanMode.'"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit.*metric_keywords",

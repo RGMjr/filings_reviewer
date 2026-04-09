@@ -1,0 +1,43 @@
+# Data files (large, not useful for code understanding)
+data/filings/
+data/presentations/
+data/transcripts/
+data/models/
+data/image_model/
+data/filings_spac_analysis/
+data/llm_cache.db
+data/annotation_cache.db
+data/training/
+data/gold_standard_reextracted/
+data/reextraction_results/
+
+# Build/cache artifacts
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+htmlcov/
+.coverage
+coverage.json
+node_modules/
+.playwright-mcp/
+
+# Generated artifacts
+evidence_v2/
+reports/
+.benchmarks/
+ops/review_artifacts/
+ops/logs/
+logs/
+
+# Virtual environment
+.venv/
+
+# Archives and misc
+*.zip
+*.dump
+*.log
+.DS_Store
+.claude/worktrees/
