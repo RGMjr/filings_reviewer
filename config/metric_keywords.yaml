@@ -280,6 +280,7 @@ cm_purchase_transactions_overall:
     - '\bpurchase\s+transactions?\b(?!\s+by\s+cohort)'
     - '\border\s+count\b'
     - '\border\s+volume\b'
+    - '\borders?\s+fulfil'
   exclusions:
     - '\bby\s+cohort\b'
     - '\bby\s+vintage\b'

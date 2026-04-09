@@ -3577,3 +3577,62 @@ class TestChartPricingLabel:
             bv, source, metric_id="cm_active_customers_total"
         )
         assert reason not in ("v2_chart_pricing_label", "v2_chart_cagr_label")
+
+
+# ============================================================================
+# Test: Soft-rule confidence-floor bypass
+# ============================================================================
+
+
+class TestSoftRuleConfidenceBypass:
+    """Soft FP rules are skipped when binding_confidence >= _SOFT_RULE_CONFIDENCE_FLOOR (0.85)."""
+
+    def test_soft_rule_bypassed_by_high_confidence(self):
+        """financial_context_customer_metric (soft) is skipped at high confidence."""
+        # Table binding for cm_large_customers_period_end with financial keywords in context
+        bv = _make_bound_value("c1", 3100.0, "3,100", Unit.COUNT, "seg-1")
+        import dataclasses
+        bv = dataclasses.replace(
+            bv,
+            binding_confidence=0.90,
+            source_locator=SourceLocator(segment_id="seg-1", table_id="tbl-1"),
+        )
+        source = "number of large customers 3,100 revenue gross profit ebitda"
+        # With binding_confidence=0.90 >= 0.85 floor: soft rule is skipped
+        is_fp, _ = _is_v2_false_positive(
+            bv, source,
+            metric_id="cm_large_customers_period_end",
+            binding_confidence=0.90,
+        )
+        assert is_fp is False
+
+    def test_soft_rule_enforced_at_low_confidence(self):
+        """financial_context_customer_metric (soft) still fires at low confidence."""
+        bv = _make_bound_value("c1", 3100.0, "3,100", Unit.COUNT, "seg-1")
+        import dataclasses
+        bv = dataclasses.replace(
+            bv,
+            binding_confidence=0.50,
+            source_locator=SourceLocator(segment_id="seg-1", table_id="tbl-1"),
+        )
+        source = "number of large customers 3,100 revenue gross profit ebitda"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source,
+            metric_id="cm_large_customers_period_end",
+            binding_confidence=0.50,
+        )
+        assert is_fp is True
+        assert reason == "v2_financial_context_customer_metric"
+
+    def test_hard_rule_immune_to_confidence(self):
+        """Year-value (hard) rule fires even at very high confidence."""
+        bv = _make_bound_value("c1", 2021.0, "2021", Unit.COUNT, "seg-1")
+        import dataclasses
+        bv = dataclasses.replace(bv, binding_confidence=0.95)
+        is_fp, reason = _is_v2_false_positive(
+            bv, "In 2021 we had 2021 active customers.",
+            metric_id="cm_customers_period_end",
+            binding_confidence=0.95,
+        )
+        assert is_fp is True
+        assert reason == "v2_year_value"

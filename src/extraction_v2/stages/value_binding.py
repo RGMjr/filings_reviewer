@@ -64,6 +64,7 @@ class ValueBindingStage:
     TEXT_BINDING_BASE: float = 0.4
     EXACT_MATCH_BONUS: float = 0.2
     UNIT_PRESENCE_BONUS: float = 0.1
+    KEYWORD_PATH_BONUS: float = 0.1
     AMBIGUITY_PENALTY: float = 0.1
     SAME_SENTENCE_BONUS: float = 0.1
     DISTANCE_DECAY_THRESHOLD: int = 100  # Chars before decay starts
@@ -546,7 +547,7 @@ class ValueBindingStage:
                     continue
 
             confidence = self._compute_table_confidence(
-                match_text_lower, header_path_eff, stub_path_eff, unit
+                match_text_lower, header_path_eff, stub_path_eff, unit, keyword_in_path=True
             )
 
             bound_values.append(
@@ -1206,6 +1207,7 @@ class ValueBindingStage:
         header_path: list[str],
         stub_path: list[str],
         unit: Unit,
+        keyword_in_path: bool = False,
     ) -> float:
         """
         Compute confidence for a table binding.
@@ -1229,6 +1231,12 @@ class ValueBindingStage:
         # Unit presence bonus
         if unit in (Unit.CURRENCY, Unit.PERCENT):
             confidence += self.UNIT_PRESENCE_BONUS
+
+        # Keyword-in-path bonus: when the metric keyword is structurally part of the
+        # header/stub path (not just nearby text), this is a strong binding signal for
+        # COUNT metrics that otherwise cannot earn the UNIT_PRESENCE_BONUS.
+        if keyword_in_path and unit in (Unit.COUNT, Unit.OTHER):
+            confidence += self.KEYWORD_PATH_BONUS
 
         return max(0.0, min(1.0, confidence))
 
