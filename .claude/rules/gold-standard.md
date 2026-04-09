@@ -33,10 +33,22 @@ pytest -m gold_standard --gold-standard-mode=fresh -v
 All tests must pass. Regressions cause test failures.
 
 ### 3. If Regression Detected
-- Investigate false negatives (missed metrics)
+
+Check the **tier breakdown** in validation output to determine severity:
+
+**Tier 1 regression (must-not-miss metrics):** Blocker. Fix before committing.
+- Investigate root cause (missed keywords, FP rule too aggressive, value binding gap)
+- Do not trade Tier 1 recall for Tier 2 improvements
+
+**Tier 2 regression (nice-to-have metrics):** Acceptable if Tier 1 improves or holds.
+- Document the trade-off rationale in commit message
+- No need to fix unless Tier 2 drop is severe (>5pp F1)
+
+**Mixed regression:** If Tier 1 improves but Tier 2 regresses, this is generally acceptable. Note the trade-off in the commit message.
+
+For any regression:
 - Check if trade-off is intentional (precision vs recall)
-- If intentional, document rationale in commit message
-- If unintentional, fix before committing
+- If unintentional on Tier 1, fix before committing
 
 ### 4. Update Baseline (after intentional changes)
 ```bash
@@ -60,6 +72,8 @@ Commit the updated `data/gold_standard/v2_baseline.json`.
 
 - Regression tolerance: 1% (configurable via `--tolerance`)
 - Tests fail if any metric drops below baseline - tolerance
+- **Tier-aware policy:** Tier 1 regressions are blockers; Tier 2 regressions are acceptable trade-offs (see "If Regression Detected" above)
+- Tier definitions: `config/metric_keywords.yaml` (`tier:` field per metric)
 
 ## Transcript Gold Standard
 

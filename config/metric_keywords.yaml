@@ -4,6 +4,7 @@
 #
 # Structure:
 #   metric_id:
+#     tier: 1 (must-not-miss) or 2 (nice-to-have) — drives regression policy and prioritization
 #     patterns: List of regex patterns (case-insensitive, use \b for word boundaries)
 #     exclusions: Optional list of patterns that should NOT match this metric
 #     specific_patterns: Optional list of multi-word patterns that get confidence bonus
@@ -62,6 +63,7 @@ _revenue_synonym_context: &revenue_synonym_context
 # =============================================================================
 
 cm_new_customers_acquired:
+  tier: 2
   patterns:
     - '\bnew\s+customers?\b'
     - '\bcustomers?\s+acquired\b'
@@ -113,6 +115,7 @@ cm_new_customers_acquired:
     - '\b(?:settled\s+)?shares?\s+(?:held|of\s+stock|inventory)\b'
 
 cm_customers_period_end:
+  tier: 2
   # Period-end customer count (stock count at end of period)
   # Distinct from cm_active_customers_total which is engagement-based
   patterns:
@@ -205,6 +208,7 @@ cm_customers_period_end:
     - 'customer\s+base'
 
 cm_large_customers_period_end:
+  tier: 2
   patterns:
     - '\bpaid\s+customers?\s*>\s*\$[\d,]+'
     - '\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b'
@@ -242,6 +246,7 @@ cm_large_customers_period_end:
     - 'customers?\s+representing'
 
 cm_customers_period_end_by_tenure:
+  tier: 2
   patterns:
     - '\bcustomers?\s+by\s+tenure\b'
     - '\btenure\s+cohort\b'
@@ -250,6 +255,7 @@ cm_customers_period_end_by_tenure:
     - '\btime\s+since\b'
 
 cm_revenue_by_cohort:
+  tier: 1
   patterns:
     - '\brevenue\s+by\s+cohort\b'
     - '\bcohort\s+revenue\b'
@@ -263,6 +269,7 @@ cm_revenue_by_cohort:
     - '\b(?:existing|new)\s+customers?[^.;]{0,80}\brevenue\b'
 
 cm_transactions_by_cohort:
+  tier: 1
   patterns:
     - '\btransactions?\s+by\s+cohort\b'
     - '\bcohort\s+transactions?\b'
@@ -274,6 +281,7 @@ cm_transactions_by_cohort:
   # NOTE: Plain 'number of orders' (without cohort) in cm_purchase_transactions_overall
 
 cm_purchase_transactions_overall:
+  tier: 2
   patterns:
     - '\bnumber\s+of\s+orders?\b'
     - '\btotal\s+orders?\b'
@@ -292,6 +300,7 @@ cm_purchase_transactions_overall:
 # =============================================================================
 
 cm_active_customers_total:
+  tier: 2
   # "Active" customers implies engagement-based measurement (e.g., logged in, made purchase)
   # Distinct from "total" customers which is a simple headcount at period end
   # "Total" patterns moved to cm_customers_period_end (2026-01-07)
@@ -331,6 +340,7 @@ cm_active_customers_total:
     - 'active\s+accounts?'
 
 cm_revenue_per_customer:
+  tier: 2
   patterns:
     - '\barpu\b'
     - '\baverage\s+revenue\s+per\s+user\b'
@@ -358,6 +368,7 @@ cm_revenue_per_customer:
     - 'average\s+revenue\s+per'
 
 cm_customer_acquisition_cost:
+  tier: 1
   patterns:
     - '\bcac\b'
     - '\bcustomer\s+acquisition\s+cost\b'
@@ -376,6 +387,7 @@ cm_customer_acquisition_cost:
     - 'consumer\s+acquisition\s+cost'
 
 cm_cac_payback_period:
+  tier: 2
   patterns:
     - '\bcac\s+payback\b'
     - '\bpayback\s+period\b'
@@ -386,6 +398,7 @@ cm_cac_payback_period:
     - 'CAC payback period'
 
 cm_customer_retention_rate:
+  tier: 1
   patterns:
     - '\bretention\s+rate\b'
     - '\bcustomer\s+retention\b'
@@ -406,6 +419,7 @@ cm_customer_retention_rate:
     - '\bdollar[- ]?based\s+retention\b'
 
 cm_customer_churn_rate:
+  tier: 2
   patterns:
     - '\bchurn\s+rate\b'
     - '\bcustomer\s+churn\b'
@@ -419,6 +433,7 @@ cm_customer_churn_rate:
     - '\brevenue\s+attrition\b'
 
 cm_net_revenue_retention:
+  tier: 1
   patterns:
     - '\bnrr\b'
     - '\bnet\s+revenue\s+retention\b'
@@ -438,6 +453,7 @@ cm_net_revenue_retention:
     - 'net\s+dollar\s+retention'
 
 cm_gross_revenue_retention:
+  tier: 1
   patterns:
     - '\bgrr\b'
     - '\bgross\s+revenue\s+retention\b'
@@ -446,6 +462,7 @@ cm_gross_revenue_retention:
     - 'gross\s+revenue\s+retention'
 
 cm_monthly_active_users:
+  tier: 2
   patterns:
     - '\bmau\b'
     - '\bmonthly\s+active\s+users?\b'
@@ -468,6 +485,7 @@ cm_monthly_active_users:
     - 'monthly\s+active\s+people'
 
 cm_daily_active_users:
+  tier: 2
   patterns:
     - '\bdau\b'
     - '\bdaily\s+active\s+users?\b'
@@ -486,6 +504,7 @@ cm_daily_active_users:
     - 'daily\s+active\s+people'
 
 cm_balance_by_cohort:
+  tier: 1
   # Robinhood-specific: cumulative net deposits tracked per acquisition cohort
   patterns:
     - '\bcumulative\s+net\s+deposits?\s+by\s+(?:annual\s+)?cohort\b'
@@ -497,6 +516,7 @@ cm_balance_by_cohort:
     - 'average\s+(?:balance\s+of\s+)?cumulative\s+net\s+deposits?'
 
 cm_gross_margin_by_cohort:
+  tier: 1
   # Only patterns that explicitly require "cohort" or "vintage" context
   # REMOVED (2026-01-02): '\border\s+contribution\s+margin\b' and
   # '\bplatform\s+order\s+contribution(?:\s+margin)?\b' - not cohort-specific
@@ -510,6 +530,7 @@ cm_gross_margin_by_cohort:
     - '\b(?:new|existing)\s+(?:consumer|customer)[^.;]{0,80}\border\s+contribution\s+margin\b'
 
 cm_arr:
+  tier: 2
   patterns:
     - '\barr\b'
     - '\bannual\s+recurring\s+revenue\b'
@@ -519,6 +540,7 @@ cm_arr:
     - 'annual\s+recurring\s+revenue'
 
 cm_mrr:
+  tier: 2
   patterns:
     - '\bmrr\b'
     - '\bmonthly\s+recurring\s+revenue\b'
@@ -526,6 +548,7 @@ cm_mrr:
     - 'monthly\s+recurring\s+revenue'
 
 cm_expansion_revenue:
+  tier: 1
   patterns:
     - '\bexpansion\s+revenue\b'
     - '\bcross[- ]sell\b'
@@ -539,6 +562,7 @@ cm_expansion_revenue:
     - '\bmulti[- ]product\b'
 
 cm_revenue_concentration:
+  tier: 1
   patterns:
     - '\brevenue\s+concentration\b'
     - '\bcustomer\s+concentration\b'
@@ -594,6 +618,7 @@ cm_billings:
 # =============================================================================
 
 cm_average_order_value:
+  tier: 2
   patterns:
     - '\baov\b'
     - '\baverage\s+order\s+value\b'
@@ -604,6 +629,7 @@ cm_average_order_value:
     - '\baverage\s+transaction\s+value\b'
 
 cm_repeat_purchase_rate:
+  tier: 2
   patterns:
     - '\brepeat\s+purchase\s+rate\b'
     - '\brepeat\s+purchase(?:s)?\b'
@@ -662,6 +688,7 @@ cm_tcv:
 # =============================================================================
 
 cm_lifetime_value_per_customer:
+  tier: 1
   patterns:
     - '\bltv\b'
     - '\blifetime\s+value\b'
@@ -683,12 +710,14 @@ cm_lifetime_value_per_customer:
     - 'lifetime\s+value\s+of\s+a'
 
 cm_ltv_to_cac_ratio:
+  tier: 1
   patterns:
     - '\bltv\s*[:/]\s*cac(?:\s+ratio)?\b'
     - '\bltv\s+to\s+cac(?:\s+ratio)?\b'
     - '\blifetime\s+value\s+to\s+acquisition\s+cost\b'
 
 cm_ltv_to_cac_ratio_by_cohort:
+  tier: 1
   # LTV/CAC ratio analyzed by acquisition cohort (added 2026-01-07)
   # Updated 2026-02-09: Added temporal cohort patterns and widened proximity window
   patterns:
