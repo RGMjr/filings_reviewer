@@ -1041,6 +1041,7 @@ _METRIC_MAX_VALUE: dict[str, float] = {
     "cm_lifetime_value_per_customer": 10_000_000,   # $10M max LTV
     "cm_ltv_to_cac_ratio": 100,                      # 100x max LTV/CAC
     "cm_revenue_per_customer": 100_000,              # $100K max ARPU
+    "cm_large_customers_period_end": 20_000,         # >20K would be total customers, not "large" segment
 }
 
 
@@ -1523,7 +1524,7 @@ def _is_v2_false_positive(
     if relaxed:
         skip_tags = (
             _PRESENTATION_SKIP_TAGS
-            if document_type == "presentation"
+            if document_type == "investor_presentation"
             else _TRANSCRIPT_SKIP_TAGS
         )
     else:
