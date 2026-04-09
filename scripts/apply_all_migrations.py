@@ -70,7 +70,22 @@ MIGRATION_ORDER = [
     "14_presentation_section_types.sql",
     "15_rename_cohort_heatmap_to_parfait.sql",
     "16_add_8k_form_type.sql",
+    "17_add_cohort_type_to_v2.sql",
+    "18_add_presentation_detection_tier.sql",
+    "19_add_predicted_relevance.sql",
 ]
+
+# Non-migration SQL files that live in sql/ but are not schema migrations.
+EXCLUDED_FILES = {
+    "register_gold_standard_filings.sql",
+}
+
+
+def check_unregistered_migrations(sql_dir: Path) -> list[str]:
+    """Return sql/*.sql filenames that are on disk but not in MIGRATION_ORDER."""
+    registered = set(MIGRATION_ORDER) | EXCLUDED_FILES
+    on_disk = {f.name for f in sql_dir.glob("*.sql")}
+    return sorted(on_disk - registered)
 
 
 def bootstrap_tracking(db: DatabaseAdapter) -> None:
@@ -160,6 +175,17 @@ def main() -> None:
         sys.exit(1)
 
     sql_dir = Path(__file__).parent.parent / "sql"
+
+    unregistered = check_unregistered_migrations(sql_dir)
+    if unregistered:
+        logger.error("Unregistered migration files found in sql/:")
+        for f in unregistered:
+            logger.error(f"  {f}")
+        logger.error(
+            "Add these to MIGRATION_ORDER in scripts/apply_all_migrations.py "
+            "(or to EXCLUDED_FILES if they are not migrations)."
+        )
+        sys.exit(1)
 
     logger.info("=" * 70)
     if args.dry_run:
