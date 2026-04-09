@@ -865,6 +865,27 @@ class TestConfidenceScoring:
         assert conf >= 0.0
         assert conf <= 1.0
 
+    def test_keyword_in_path_bonus_for_count_metric(self, stage: ValueBindingStage) -> None:
+        """COUNT metric with keyword_in_path=True earns KEYWORD_PATH_BONUS."""
+        with_bonus = stage._compute_table_confidence(
+            "customers", ["Customers"], [], Unit.COUNT, keyword_in_path=True
+        )
+        without_bonus = stage._compute_table_confidence(
+            "customers", ["Customers"], [], Unit.COUNT, keyword_in_path=False
+        )
+        assert with_bonus > without_bonus
+        assert with_bonus == pytest.approx(0.9)  # 0.6 base + 0.2 exact + 0.1 keyword_path
+        assert without_bonus == pytest.approx(0.8)  # 0.6 base + 0.2 exact
+
+    def test_keyword_in_path_bonus_not_applied_to_currency(self, stage: ValueBindingStage) -> None:
+        """CURRENCY metric does not earn KEYWORD_PATH_BONUS (uses UNIT_PRESENCE_BONUS instead)."""
+        without_path = stage._compute_table_confidence(
+            "arr", ["ARR"], [], Unit.CURRENCY, keyword_in_path=True
+        )
+        # CURRENCY + exact match + unit presence = 0.6 + 0.2 + 0.1 = 0.9
+        # keyword_in_path=True does NOT add another 0.1 for CURRENCY
+        assert without_path == pytest.approx(0.9)
+
 
 # ============================================================================
 # Integration Tests

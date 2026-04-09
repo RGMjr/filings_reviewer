@@ -1250,15 +1250,6 @@ def _rule_financial_context_on_customer_metric(
         return None
     if not source_text:
         return None
-    # Large customer counts in table bindings are unambiguously customer counts
-    # and cannot be confused with financial line items regardless of table context.
-    if (
-        metric_id == "cm_large_customers_period_end"
-        and bv.source_locator.table_id is not None
-        and bv.value is not None
-        and 100 <= bv.value <= 1_000_000
-    ):
-        return None
     # Table-sourced: header/stub path directly labels the cell — always fire
     # if any financial keyword appears anywhere in source_text.
     if bv.source_locator.table_id is not None:
@@ -1425,37 +1416,37 @@ def _rule_tam_market_size(bv: BoundValue, source_text: str, metric_id: str) -> s
 # Tags are used by the relaxed-mode skip list below.
 # =============================================================================
 
-_FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None]]] = [
-    ("year_value", _rule_year_value),
-    ("percent_range", _rule_percent_range),
-    ("garbage_value", _rule_garbage_value),
-    ("year_fragment", _rule_year_fragment),
-    ("linearized_table", _rule_linearized_table),
-    ("financial_annotation", _rule_financial_annotation),
-    ("financial_sbc", _rule_financial_sbc),
-    ("ranking_name", _rule_ranking_name),
-    ("per_share", _rule_per_share),
-    ("revenue_concentration_context", _rule_revenue_concentration_context),
-    ("developer_count", _rule_developer_count),
-    ("fortune_subset", _rule_fortune_subset),
-    ("tier_qualifier", _rule_tier_qualifier),
-    ("dollar_threshold_customer", _rule_dollar_threshold_customer),
-    ("content_engagement", _rule_content_engagement),
-    ("transactions_per_account", _rule_transactions_per_account),
-    ("delta_count_value", _rule_delta_count_value),
-    ("growth_rate_percent", _rule_growth_rate_percent),
-    ("arpu_percent", _rule_arpu_percent),
-    ("arpu_as_aov", _rule_arpu_as_aov),
-    ("percent_on_count", _rule_percent_on_count_metric),
-    ("revenue_as_arr", _rule_revenue_as_arr),
-    ("retention_rate_over_100", _rule_retention_rate_over_100),
-    ("arr_tier_threshold", _rule_arr_tier_threshold),
-    ("magnitude_sanity", _rule_magnitude_sanity),
-    ("arpu_context_on_customer_count", _rule_arpu_context_on_customer_count),
-    ("financial_context_customer_metric", _rule_financial_context_on_customer_metric),
-    ("metric_definition_value", _rule_metric_definition_value),
-    ("chart_pricing_label", _rule_chart_pricing_label),
-    ("tam_market_size", _rule_tam_market_size),
+_FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] = [
+    ("year_value", _rule_year_value, False),
+    ("percent_range", _rule_percent_range, False),
+    ("garbage_value", _rule_garbage_value, False),
+    ("year_fragment", _rule_year_fragment, False),
+    ("linearized_table", _rule_linearized_table, True),
+    ("financial_annotation", _rule_financial_annotation, True),
+    ("financial_sbc", _rule_financial_sbc, True),
+    ("ranking_name", _rule_ranking_name, False),
+    ("per_share", _rule_per_share, False),
+    ("revenue_concentration_context", _rule_revenue_concentration_context, False),
+    ("developer_count", _rule_developer_count, True),
+    ("fortune_subset", _rule_fortune_subset, False),
+    ("tier_qualifier", _rule_tier_qualifier, False),
+    ("dollar_threshold_customer", _rule_dollar_threshold_customer, False),
+    ("content_engagement", _rule_content_engagement, True),
+    ("transactions_per_account", _rule_transactions_per_account, True),
+    ("delta_count_value", _rule_delta_count_value, True),
+    ("growth_rate_percent", _rule_growth_rate_percent, False),
+    ("arpu_percent", _rule_arpu_percent, False),
+    ("arpu_as_aov", _rule_arpu_as_aov, False),
+    ("percent_on_count", _rule_percent_on_count_metric, False),
+    ("revenue_as_arr", _rule_revenue_as_arr, False),
+    ("retention_rate_over_100", _rule_retention_rate_over_100, False),
+    ("arr_tier_threshold", _rule_arr_tier_threshold, False),
+    ("magnitude_sanity", _rule_magnitude_sanity, False),
+    ("arpu_context_on_customer_count", _rule_arpu_context_on_customer_count, True),
+    ("financial_context_customer_metric", _rule_financial_context_on_customer_metric, True),
+    ("metric_definition_value", _rule_metric_definition_value, True),
+    ("chart_pricing_label", _rule_chart_pricing_label, True),
+    ("tam_market_size", _rule_tam_market_size, True),
 ]
 
 # Rules skipped in relaxed mode per document type.
@@ -1479,6 +1470,13 @@ _PRESENTATION_SKIP_TAGS = frozenset({"linearized_table", "financial_annotation",
 # a document_type (e.g., unit tests) get transcript-level skipping.
 _RELAXED_SKIP_TAGS = _TRANSCRIPT_SKIP_TAGS
 
+# Confidence floor above which soft (contextual/proximity-based) FP rules are bypassed.
+# Only table bindings with exact keyword match in header/stub can reach this threshold
+# (0.6 base + 0.2 exact match + 0.1 keyword-path bonus = 0.9). Text bindings max at
+# ~0.65, so they are never exempted. This prevents metric-specific carve-outs in the
+# filter by instead using structural confidence as the signal.
+_SOFT_RULE_CONFIDENCE_FLOOR: float = 0.85
+
 # Rules skipped in strict mode (SEC filings).
 # Currently empty: the arpu_context_on_customer_count rule was previously
 # strict-only but was made safe for all modes by adding a binding_type guard
@@ -1493,6 +1491,7 @@ def _is_v2_false_positive(
     relaxed: bool = False,
     section_type: SectionType = SectionType.UNKNOWN,
     document_type: str = "",
+    binding_confidence: float = 0.0,
 ) -> tuple[bool, str | None]:
     """
     V2-native false positive checks that go beyond V1's positional filter.
@@ -1553,8 +1552,10 @@ def _is_v2_false_positive(
     else:
         skip_tags = _STRICT_SKIP_TAGS
 
-    for tag, rule_fn in _FP_RULES:
+    for tag, rule_fn, soft in _FP_RULES:
         if tag in skip_tags:
+            continue
+        if soft and binding_confidence >= _SOFT_RULE_CONFIDENCE_FLOOR:
             continue
         reason = rule_fn(bv, source_text, metric_id)
         if reason is not None:
@@ -1827,6 +1828,7 @@ class FalsePositiveFilterStage:
                         relaxed=relaxed,
                         section_type=candidate.section_type if candidate else SectionType.UNKNOWN,
                         document_type=context.document_type,
+                        binding_confidence=bv.binding_confidence,
                     )
                     if v2_fp:
                         filter_reasons[v2_reason or "v2_unknown"] = (
@@ -1869,7 +1871,8 @@ class FalsePositiveFilterStage:
                         is_fp
                         and reason is not None
                         and reason.startswith("financial_line_item")
-                        and metric_id in _V1_FINANCIAL_OVERRIDE_METRICS
+                        and (metric_id in _V1_FINANCIAL_OVERRIDE_METRICS
+                             or bv.binding_confidence >= _SOFT_RULE_CONFIDENCE_FLOOR)
                     ):
                         is_fp = False
                         reason = None
