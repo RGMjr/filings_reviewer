@@ -3307,7 +3307,7 @@ class TestDocumentTypeSkipTags:
         source = "(In thousands) Customer count 5,000"
         bv = _make_bound_value("c1", 5000.0, "5,000", Unit.COUNT)
         is_fp, reason = _is_v2_false_positive(
-            bv, source, relaxed=True, document_type="presentation"
+            bv, source, relaxed=True, document_type="investor_presentation"
         )
         assert reason != "v2_financial_annotation"
 
@@ -3342,7 +3342,7 @@ class TestDocumentTypeSkipTags:
         source = "stock-based compensation expense 1,200"
         bv = _make_bound_value("c1", 1200.0, "1,200", Unit.COUNT)
         is_fp, reason = _is_v2_false_positive(
-            bv, source, relaxed=True, document_type="presentation"
+            bv, source, relaxed=True, document_type="investor_presentation"
         )
         assert reason != "v2_financial_sbc"
 
@@ -3351,7 +3351,7 @@ class TestDocumentTypeSkipTags:
         source = "[ROW] Customer count [CELL] 5,000"
         bv = _make_bound_value("c1", 5000.0, "5,000", Unit.COUNT)
         is_fp, reason = _is_v2_false_positive(
-            bv, source, relaxed=True, document_type="presentation"
+            bv, source, relaxed=True, document_type="investor_presentation"
         )
         assert reason != "v2_linearized_table"
 

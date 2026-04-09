@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 # Document type constants
 DOC_TYPE_SEC_FILING = "sec_filing"
 DOC_TYPE_TRANSCRIPT = "transcript"
-DOC_TYPE_PRESENTATION = "presentation"
+DOC_TYPE_PRESENTATION = "investor_presentation"
 
 
 class PipelineStage(str, Enum):
