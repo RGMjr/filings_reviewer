@@ -117,6 +117,22 @@ _RETENTION_FAMILY = frozenset({
     "cm_customer_retention_rate",
 })
 
+# Metrics whose values (percentages, ratios, small counts) are semantically
+# incompatible with financial statement line items. V1 financial_line_item
+# positional checks can fire for these metrics when they appear near financial
+# tables, but the extracted values can never be revenue, cost, or balance-sheet
+# amounts. Override V1 fp classification for this set.
+_V1_FINANCIAL_OVERRIDE_METRICS = frozenset({
+    "cm_repeat_purchase_rate",
+    "cm_customer_retention_rate",
+    "cm_customer_churn_rate",
+    "cm_net_revenue_retention",
+    "cm_gross_revenue_retention",
+    "cm_ltv_to_cac_ratio",
+    "cm_ltv_to_cac_ratio_by_cohort",
+    "cm_cac_payback_period",
+})
+
 # Metrics where percent values need conjunction-clause gating (relaxed mode).
 # In transcript text like "TPV grew 50% and MAAs grew 30%", both values
 # fall in the 400-char proximity window, but only "30%" belongs to MAU.
@@ -1844,6 +1860,19 @@ class FalsePositiveFilterStage:
                             reason = None
                             break
                         reason = r
+
+                    # Override V1 financial_line_item for ratio/rate metrics.
+                    # These values (percentages, ratios) can never be financial
+                    # statement figures, so the V1 positional check is a false
+                    # positive on a false positive.
+                    if (
+                        is_fp
+                        and reason is not None
+                        and reason.startswith("financial_line_item")
+                        and metric_id in _V1_FINANCIAL_OVERRIDE_METRICS
+                    ):
+                        is_fp = False
+                        reason = None
 
                     if is_fp:
                         filter_reasons[reason or "unknown"] = (
