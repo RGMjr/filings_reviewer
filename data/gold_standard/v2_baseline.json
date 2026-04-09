@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-08T13:50:50.367011+00:00",
-  "description": "V2 pipeline validation",
+  "baseline_date": "2026-04-09T01:27:15.694962+00:00",
+  "description": "Phase 4: cm_large_customers_period_end magnitude cap at 20K",
   "overall": {
-    "precision": 0.6091954022988506,
-    "recall": 0.6404833836858006,
-    "f1": 0.6244477172312224
+    "precision": 0.6163141993957704,
+    "recall": 0.6163141993957704,
+    "f1": 0.6163141993957704
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -13,9 +13,9 @@
       "f1": 0.4864864864864865
     },
     "Datadog, Inc.": {
-      "precision": 0.5,
-      "recall": 0.5714285714285714,
-      "f1": 0.5333333333333333
+      "precision": 0.4666666666666667,
+      "recall": 0.5,
+      "f1": 0.4827586206896552
     },
     "Farfetch Limited": {
       "precision": 0.5555555555555556,
@@ -28,9 +28,9 @@
       "f1": 1.0
     },
     "Gitlab Inc.": {
-      "precision": 0.6296296296296297,
-      "recall": 0.7391304347826086,
-      "f1": 0.68
+      "precision": 0.5555555555555556,
+      "recall": 0.6521739130434783,
+      "f1": 0.6
     },
     "Kingsoft Cloud Holdings Ltd": {
       "precision": 0.75,
@@ -53,34 +53,34 @@
       "f1": 1.0
     },
     "Samsara Inc.": {
-      "precision": 0.6666666666666666,
-      "recall": 0.47619047619047616,
-      "f1": 0.5555555555555556
+      "precision": 0.6551724137931034,
+      "recall": 0.4523809523809524,
+      "f1": 0.5352112676056338
     },
     "Slack Technologies": {
-      "precision": 0.75,
+      "precision": 0.8571428571428571,
       "recall": 0.9375,
-      "f1": 0.8333333333333334
+      "f1": 0.8955223880597014
     },
     "Slack Technologies, Inc.": {
-      "precision": 0.525,
+      "precision": 0.6,
       "recall": 0.875,
-      "f1": 0.6562500000000001
+      "f1": 0.711864406779661
     },
     "Snowflake Inc": {
-      "precision": 0.7027027027027027,
-      "recall": 0.9629629629629629,
-      "f1": 0.8125
+      "precision": 0.6944444444444444,
+      "recall": 0.9259259259259259,
+      "f1": 0.7936507936507936
     },
     "Tenable Holdings, Inc.": {
-      "precision": 0.625,
+      "precision": 0.6666666666666666,
       "recall": 0.7692307692307693,
-      "f1": 0.6896551724137931
+      "f1": 0.7142857142857142
     },
     "Torrid Holdings Inc.": {
-      "precision": 0.6176470588235294,
-      "recall": 0.6176470588235294,
-      "f1": 0.6176470588235294
+      "precision": 0.5806451612903226,
+      "recall": 0.5294117647058824,
+      "f1": 0.5538461538461539
     }
   }
 }
