@@ -78,3 +78,11 @@ Show the completed checklist and get user approval before proceeding with implem
 
 - For multi-line shell commands, use heredocs or chain with `&&` / `;` on a single line.
 - Do not use bare newlines between commands — they break in zsh.
+
+## Planning Rules
+
+- Every plan must include a **Documentation** step: identify docs that need updating to reflect the planned changes (e.g., `docs/`, CLAUDE.md, README, inline comments) and include explicit update actions. If no docs are affected, state that explicitly in the plan.
+
+## Compact Instructions
+
+When compacting, preserve: modified file paths, current test/gold-standard validation status, extraction pipeline decisions made this session, and any active task checklist.
