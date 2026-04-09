@@ -92,21 +92,17 @@ if [ "$extraction_changed" = true ]; then
     done
     echo ""
 
-    if python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline --fail-on-regression; then
+    if python3 -m src.gold_standard.v2_validator --fail-on-regression; then
         echo ""
         echo "Gold standard validation PASSED — commit allowed."
         echo ""
     else
         exit_code=$?
         echo ""
-        echo "================================================"
-        echo "  COMMIT BLOCKED: Gold standard regression detected"
-        echo "================================================"
-        echo ""
         echo "Options:"
         echo "  1. Fix the regression and try again"
-        echo "  2. If intentional, update the baseline:"
-        echo "     python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline"
+        echo '  2. If intentional, update the V2 baseline:'
+        echo '     python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"'
         echo "  3. Skip this check (not recommended):"
         echo "     git commit --no-verify"
         echo ""

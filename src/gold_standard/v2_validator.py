@@ -1445,6 +1445,7 @@ def run_validation(
     baseline_description: str | None = None,
     min_confidence: float = 0.35,
     fn_diagnostics: bool = False,
+    fail_on_regression: bool = False,
 ) -> AggregateMetrics:
     """
     Run full validation and optionally update baseline.
@@ -1454,10 +1455,13 @@ def run_validation(
         baseline_description: Description for new baseline
         min_confidence: Minimum confidence threshold for counting facts
         fn_diagnostics: If True, run FN root cause analysis and print report
+        fail_on_regression: If True, exit(1) when a regression vs baseline is detected
 
     Returns:
         AggregateMetrics with validation results
     """
+    import sys
+
     # Run at the requested confidence threshold (default: high-confidence only)
     validator = V2GoldStandardValidator(min_confidence=min_confidence, fn_diagnostics=fn_diagnostics)
     results = validator.validate_all()
@@ -1492,6 +1496,22 @@ def run_validation(
     if update_baseline:
         validator.save_baseline(metrics, description=baseline_description)
 
+    if fail_on_regression:
+        try:
+            comparison = validator.compare_to_baseline(metrics)
+            if comparison.has_regression:
+                print(f"\n⚠ {comparison}")
+                print("\n  COMMIT BLOCKED: V2 gold standard regression detected")
+                print("  To update baseline after intentional changes:")
+                print('    python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"')
+                sys.exit(1)
+            else:
+                delta_f1 = comparison.f1_delta * 100
+                sign = "+" if delta_f1 >= 0 else ""
+                print(f"\n  V2 baseline comparison: F1 {sign}{delta_f1:.1f}pp — no regression.")
+        except FileNotFoundError:
+            print("\n  No V2 baseline found — skipping regression check.")
+
     return metrics
 
 
@@ -1523,6 +1543,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable false-negative root cause analysis",
     )
+    parser.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Exit with code 1 if current metrics regress vs saved baseline (for CI/pre-commit)",
+    )
 
     _args = parser.parse_args()
     run_validation(
@@ -1530,4 +1555,5 @@ if __name__ == "__main__":
         baseline_description=_args.description,
         min_confidence=_args.min_confidence,
         fn_diagnostics=_args.fn_diagnostics,
+        fail_on_regression=_args.fail_on_regression,
     )
