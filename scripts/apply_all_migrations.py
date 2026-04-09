@@ -73,6 +73,7 @@ MIGRATION_ORDER = [
     "17_add_cohort_type_to_v2.sql",
     "18_add_presentation_detection_tier.sql",
     "19_add_predicted_relevance.sql",
+    "20_add_auto_rejected_status.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
