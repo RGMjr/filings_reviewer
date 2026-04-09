@@ -27,6 +27,19 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 # result.fact_count, result.facts, result.total_duration_ms
 ```
 
+## Metric Priority Tiers
+
+When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
+
+**Current Tier 1 recall gaps (focus areas):**
+- `cm_revenue_by_cohort` — F1=31%, recall=23%. Needs better keyword patterns and value binding for cohort revenue tables.
+- `cm_balance_by_cohort` — F1=0%. Needs gold standard cases and extraction support.
+- `cm_gross_margin_by_cohort` — F1=0%. Needs gold standard cases and extraction support.
+- `cm_ltv_to_cac_ratio` — F1=46%, recall=33%. Often missed due to varied formatting.
+- `cm_customer_retention_rate` — F1=33%. Low coverage, easily confused with NRR.
+
+**Tier 2 guidance:** Accept current performance. Simplify or relax FP rules for Tier 2 metrics if they create maintenance burden or interfere with Tier 1.
+
 ## Document-Type Configs
 
 ```python

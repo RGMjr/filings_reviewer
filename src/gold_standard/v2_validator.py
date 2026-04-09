@@ -45,6 +45,7 @@ from src.gold_standard.baseline import (
 from src.gold_standard.baseline import (
     ComparisonResult as BaselineComparisonResult,
 )
+from src.shared.keyword_config import get_metric_tiers
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,25 @@ logger = logging.getLogger(__name__)
 GOLD_STANDARD_DIR = Path(__file__).parent.parent.parent / "data" / "gold_standard"
 GOLD_STANDARD_CSV = GOLD_STANDARD_DIR / "golden_set_260408.csv"
 V2_BASELINE_PATH = GOLD_STANDARD_DIR / "v2_baseline.json"
+
+
+# Metric importance tiers -- loaded from config/metric_keywords.yaml (tier: field)
+# Lazy-loaded on first access to avoid import-time YAML parsing
+_metric_tiers_cache: dict[str, int] | None = None
+TIER_LABELS: dict[int, str] = {1: "must-not-miss", 2: "nice-to-have"}
+
+
+def _load_metric_tiers() -> dict[str, int]:
+    """Load metric tiers from YAML config (cached after first call)."""
+    global _metric_tiers_cache
+    if _metric_tiers_cache is None:
+        _metric_tiers_cache = get_metric_tiers()
+    return _metric_tiers_cache
+
+
+def get_tier(metric_id: str) -> int:
+    """Return the importance tier for a metric_id (default: 2 for unmapped)."""
+    return _load_metric_tiers().get(metric_id, 2)
 
 
 @dataclass
@@ -205,6 +225,8 @@ class AggregateMetrics:
     total_false_positives: int
     total_false_negatives: int
     by_company: dict[str, MetricScores] = field(default_factory=dict)
+    by_metric: dict[str, MetricScores] = field(default_factory=dict)
+    by_tier: dict[int, MetricScores] = field(default_factory=dict)
 
     def to_baseline_metrics(
         self,
@@ -1258,6 +1280,36 @@ class V2GoldStandardValidator:
 
         return None
 
+    @staticmethod
+    def print_tier_report(metrics: AggregateMetrics) -> None:
+        """Print precision/recall/F1 breakdown by metric importance tier and per metric."""
+        print("\n==== METRIC TIER BREAKDOWN ====")
+
+        # Tier-level summary
+        for tier in sorted(metrics.by_tier):
+            scores = metrics.by_tier[tier]
+            label = TIER_LABELS.get(tier, f"tier-{tier}")
+            print(
+                f"  Tier {tier} ({label}):  "
+                f"P={scores.precision:.1%}  R={scores.recall:.1%}  F1={scores.f1:.1%}"
+            )
+
+        if not metrics.by_metric:
+            return
+
+        # Per-metric detail sorted by tier then metric name
+        print("\n  Per-metric detail:")
+        col_w = max(len(mid) for mid in metrics.by_metric)
+        print(f"  {'Metric':<{col_w}}  Tier  {'P':>6}  {'R':>6}  {'F1':>6}")
+        print("  " + "-" * (col_w + 32))
+        for mid in sorted(metrics.by_metric, key=lambda m: (get_tier(m), m)):
+            s = metrics.by_metric[mid]
+            tier = get_tier(mid)
+            print(
+                f"  {mid:<{col_w}}   T{tier}  "
+                f"{s.precision:>6.1%}  {s.recall:>6.1%}  {s.f1:>6.1%}"
+            )
+
     def compute_metrics(self, results: list[ValidationResult]) -> AggregateMetrics:
         """
         Compute aggregate metrics from validation results.
@@ -1284,6 +1336,52 @@ class V2GoldStandardValidator:
                 f1=r.f1_score,
             )
 
+        # Aggregate TP/FP/FN by metric_id
+        metric_tp: dict[str, int] = {}
+        metric_fp: dict[str, int] = {}
+        metric_fn: dict[str, int] = {}
+        for r in results:
+            for mr in r.match_results:
+                mid = mr.entry.metric_id
+                if mr.match_type == "true_positive":
+                    metric_tp[mid] = metric_tp.get(mid, 0) + 1
+                elif mr.match_type == "false_negative":
+                    metric_fn[mid] = metric_fn.get(mid, 0) + 1
+            for fp in r.fp_diagnostics:
+                mid = fp.metric_id
+                metric_fp[mid] = metric_fp.get(mid, 0) + 1
+
+        all_metric_ids = set(metric_tp) | set(metric_fp) | set(metric_fn)
+        by_metric: dict[str, MetricScores] = {}
+        for mid in sorted(all_metric_ids):
+            m_tp = metric_tp.get(mid, 0)
+            m_fp = metric_fp.get(mid, 0)
+            m_fn = metric_fn.get(mid, 0)
+            m_prec = m_tp / (m_tp + m_fp) if (m_tp + m_fp) > 0 else 0.0
+            m_rec = m_tp / (m_tp + m_fn) if (m_tp + m_fn) > 0 else 0.0
+            m_f1 = 2 * (m_prec * m_rec) / (m_prec + m_rec) if (m_prec + m_rec) > 0 else 0.0
+            by_metric[mid] = MetricScores(precision=m_prec, recall=m_rec, f1=m_f1)
+
+        # Roll up by tier
+        tier_tp: dict[int, int] = {}
+        tier_fp: dict[int, int] = {}
+        tier_fn: dict[int, int] = {}
+        for mid in all_metric_ids:
+            t = get_tier(mid)
+            tier_tp[t] = tier_tp.get(t, 0) + metric_tp.get(mid, 0)
+            tier_fp[t] = tier_fp.get(t, 0) + metric_fp.get(mid, 0)
+            tier_fn[t] = tier_fn.get(t, 0) + metric_fn.get(mid, 0)
+
+        by_tier: dict[int, MetricScores] = {}
+        for t in sorted(set(tier_tp) | set(tier_fp) | set(tier_fn)):
+            t_tp = tier_tp.get(t, 0)
+            t_fp = tier_fp.get(t, 0)
+            t_fn = tier_fn.get(t, 0)
+            t_prec = t_tp / (t_tp + t_fp) if (t_tp + t_fp) > 0 else 0.0
+            t_rec = t_tp / (t_tp + t_fn) if (t_tp + t_fn) > 0 else 0.0
+            t_f1 = 2 * (t_prec * t_rec) / (t_prec + t_rec) if (t_prec + t_rec) > 0 else 0.0
+            by_tier[t] = MetricScores(precision=t_prec, recall=t_rec, f1=t_f1)
+
         return AggregateMetrics(
             precision=precision,
             recall=recall,
@@ -1292,6 +1390,8 @@ class V2GoldStandardValidator:
             total_false_positives=total_fp,
             total_false_negatives=total_fn,
             by_company=by_company,
+            by_metric=by_metric,
+            by_tier=by_tier,
         )
 
     def compare_to_baseline(
@@ -1474,6 +1574,9 @@ def run_validation(
     print(
         f"  TP: {metrics.total_true_positives}, FP: {metrics.total_false_positives}, FN: {metrics.total_false_negatives}"
     )
+
+    # Print tier breakdown
+    V2GoldStandardValidator.print_tier_report(metrics)
 
     # Print FP diagnostics
     V2GoldStandardValidator.print_fp_diagnostics(results)

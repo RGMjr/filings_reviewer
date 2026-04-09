@@ -32,6 +32,27 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 - **Before committing**: Run `pytest -x -q` when staged changes include code files (`src/`, `tests/`, `scripts/`, `config/`, `sql/`, `pyproject.toml`, `requirements.txt`). Docs-only and `.claude/`-only commits may skip lint and tests. If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
 - **Pre-existing failures**: When a test fails during implementation, check whether it was already failing before your changes (`git stash && pytest <failing_test> -x -q && git stash pop`). Do not spend time debugging failures that predate the current work — note them and move on.
 
+## Metric Priority Tiers
+
+Metrics are classified into importance tiers based on analytical value. These tiers govern regression policy, extraction prioritization, and gold standard coverage priorities.
+
+**Tier 1 (must-not-miss):** Cohorted data, retention, LTV/CAC, revenue concentration.
+- `cm_customer_retention_rate`, `cm_net_revenue_retention`, `cm_gross_revenue_retention`
+- `cm_revenue_by_cohort`, `cm_transactions_by_cohort`, `cm_balance_by_cohort`, `cm_gross_margin_by_cohort`
+- `cm_expansion_revenue` (cohorted products owned/enrolled)
+- `cm_revenue_concentration`
+- `cm_lifetime_value_per_customer`, `cm_customer_acquisition_cost`, `cm_ltv_to_cac_ratio`, `cm_ltv_to_cac_ratio_by_cohort`
+
+**Tier 2 (nice-to-have):** Customer counts, engagement, unit economics, ARR.
+- All other `cm_*` metrics (customer counts, MAU/DAU, ARPU, ARR, AOV, etc.)
+
+**Rules:**
+- Tier 1 regression in gold standard validation = blocker, must fix before commit
+- Tier 2 regression = acceptable trade-off if Tier 1 improves; note in commit message
+- Extraction improvements (keywords, FP rules, value binding) should prioritize Tier 1 recall gaps first
+- Gold standard coverage expansion should target Tier 1 metrics with low coverage
+- Tier definitions live in `config/metric_keywords.yaml` (authoritative) and `src/gold_standard/v2_validator.py` (runtime)
+
 ## Core Design Principles
 
 1. **Rule-based first, LLM second**: Keyword matching before expensive LLM calls

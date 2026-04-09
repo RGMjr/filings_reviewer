@@ -239,6 +239,25 @@ def get_active_metrics(config_path: str | None = None) -> list[str]:
     ]
 
 
+def get_metric_tiers(config_path: str | None = None) -> dict[str, int]:
+    """
+    Get the importance tier for each active metric.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        Dictionary mapping metric_id to tier (1=must-not-miss, 2=nice-to-have).
+        Metrics without an explicit tier default to 2.
+    """
+    config = _load_config(config_path)
+    return {
+        metric_id: config[metric_id].get("tier", 2)
+        for metric_id in config.keys()
+        if _is_metric_key(metric_id) and config[metric_id].get("status") != "deprecated"
+    }
+
+
 def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
     """
     Get all metric keyword patterns.
