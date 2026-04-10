@@ -99,24 +99,25 @@ def bootstrap_tracking(db: DatabaseAdapter) -> None:
     """Create schema_migrations table if it does not exist."""
     db.execute("""
         CREATE TABLE IF NOT EXISTS schema_migrations (
-            migration_name TEXT PRIMARY KEY,
-            applied_at TIMESTAMPTZ DEFAULT NOW()
+            id          TEXT PRIMARY KEY,
+            applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            checksum    TEXT NOT NULL
         )
     """)
 
 
 def get_applied_migrations(db: DatabaseAdapter) -> set[str]:
     """Return the set of migration filenames already recorded as applied."""
-    rows = db.query("SELECT migration_name FROM schema_migrations ORDER BY applied_at")
-    return {row["migration_name"] for row in rows}
+    rows = db.query("SELECT id FROM schema_migrations ORDER BY applied_at")
+    return {row["id"] for row in rows}
 
 
-def record_migration(db: DatabaseAdapter, filename: str) -> None:
+def record_migration(db: DatabaseAdapter, filename: str, checksum: str) -> None:
     """Record a migration as applied (idempotent)."""
     db.execute(
-        "INSERT INTO schema_migrations (migration_name) VALUES (%(name)s) "
-        "ON CONFLICT (migration_name) DO NOTHING",
-        {"name": filename},
+        "INSERT INTO schema_migrations (id, checksum) VALUES (%(id)s, %(checksum)s) "
+        "ON CONFLICT (id) DO NOTHING",
+        {"id": filename, "checksum": checksum},
     )
 
 
@@ -131,15 +132,17 @@ def apply_migration(
         logger.info(f"  [dry-run] Would apply: {sql_file.name}")
         return True
 
+    chk = _checksum(sql_file.read_text())
+
     if mark_only:
-        record_migration(db, sql_file.name)
+        record_migration(db, sql_file.name, chk)
         logger.info(f"  [marked] Recorded as applied (not executed): {sql_file.name}")
         return True
 
     logger.info(f"  Applying: {sql_file.name}")
     try:
         db.execute_script(str(sql_file))
-        record_migration(db, sql_file.name)
+        record_migration(db, sql_file.name, chk)
         logger.info(f"  OK: {sql_file.name}")
         return True
     except Exception as e:

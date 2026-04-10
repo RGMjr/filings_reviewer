@@ -1,7 +1,7 @@
 # Cloud Deployment Runbook
 
 **Infrastructure:** Render (web service) + Neon (PostgreSQL)
-**Last updated:** 2026-04-08
+**Last updated:** 2026-04-10
 
 ---
 
@@ -14,7 +14,8 @@
 | Service URL | https://filings-reviewer.onrender.com |
 | Live since | 2026-04-08 |
 | Pre-cutover checklist | Complete |
-| DB | Production Neon — all 56 fetched filings have `html_content` populated |
+| DB | Production Neon — all 21 migrations applied; `html_content` and `image_cache` populated |
+| Last smoke test | 2026-04-10 — 8/8 passed |
 
 ### Pre-cutover checklist (run 2026-04-08)
 
@@ -22,6 +23,12 @@
 - Step 2 (backfill `html_content`): already complete — all 56 fetched filings populated.
 - Render Blueprint deployed, all environment variables set.
 - Smoke tests passed: `/health` → 200 (DB connected, pool healthy); `/v2/review/filings` → 200; API key auth passing.
+
+### Post-cutover smoke test (run 2026-04-10)
+
+- Migration 21 (`21_create_image_cache.sql`): table already existed in Neon (applied manually); registered in tracking table and in `apply_all_migrations.py`.
+- Smoke tests: 8/8 passed against `https://filings-reviewer.onrender.com`.
+- Note: Two migration scripts exist — `apply_migrations.py` (canonical, used for Neon; uses `id`+`checksum` schema) and `apply_all_migrations.py` (uses `migration_name` schema, tracks a different ledger). Both are now up-to-date with migration 21.
 
 ---
 
@@ -108,7 +115,7 @@ psql "$NEON_DIRECT_URL" -f sql/16_add_8k_form_type.sql
 DATABASE_URL="$NEON_DIRECT_URL" python3 scripts/apply_all_migrations.py
 ```
 
-> **Migration ordering note:** `scripts/apply_all_migrations.py` encodes the canonical order for all 18 migrations, including files with duplicate numeric prefixes (`04`, `08`, `09`, `10`, `11`, `12`). Use it instead of a manual shell loop to avoid ordering mistakes.
+> **Migration ordering note:** `scripts/apply_all_migrations.py` encodes the canonical order for all 21 migrations, including files with duplicate numeric prefixes (`04`, `08`, `09`, `10`, `11`, `12`). Use it instead of a manual shell loop to avoid ordering mistakes.
 >
 > If you need to apply a single migration manually, use `psql "$NEON_DIRECT_URL" -f sql/<filename>.sql`.
 
