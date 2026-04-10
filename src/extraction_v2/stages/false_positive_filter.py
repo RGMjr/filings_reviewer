@@ -322,6 +322,49 @@ def _rule_year_fragment(bv: BoundValue, source_text: str, metric_id: str) -> str
     return None
 
 
+# Metrics that should never take negative values (counts, rates, ratios, currencies).
+# Negative values on these metrics are almost always year fragments (e.g., -2019)
+# or parsing artifacts from context windows containing subtraction expressions.
+_POSITIVE_ONLY_METRICS: frozenset[str] = frozenset(
+    {
+        "cm_customers_period_end",
+        "cm_active_customers_total",
+        "cm_new_customers_acquired",
+        "cm_large_customers_period_end",
+        "cm_monthly_active_users",
+        "cm_daily_active_users",
+        "cm_arr",
+        "cm_average_order_value",
+        "cm_repeat_purchase_rate",
+        "cm_purchase_transactions_overall",
+        "cm_revenue_per_customer",
+        "cm_customer_acquisition_cost",
+        "cm_lifetime_value_per_customer",
+        "cm_ltv_to_cac_ratio",
+        "cm_customer_retention_rate",
+        "cm_net_revenue_retention",
+        "cm_gross_revenue_retention",
+    }
+)
+
+
+def _rule_negative_value(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block negative values on metrics that are definitionally non-negative.
+
+    Negative metric values arise when a proximity window captures a subtraction
+    expression (e.g., "2019" appearing after a minus sign) or when a year-like
+    number is extracted with incorrect sign. Customer counts, rates, ratios, and
+    per-customer currency values cannot be negative.
+    """
+    if metric_id not in _POSITIVE_ONLY_METRICS:
+        return None
+    if bv.value is not None and bv.value < 0:
+        return "v2_negative_value"
+    return None
+
+
 def _rule_linearized_table(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Text with [CELL]/[ROW] markers is a linearized table duplicate."""
     if source_text and _TABLE_MARKER_RE.search(source_text):
@@ -991,16 +1034,17 @@ _NRR_CONTEXT_RE = re.compile(
 def _rule_retention_rate_over_100(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
-    """Block cm_customer_retention_rate for values >=130 or in NRR context.
+    """Block cm_customer_retention_rate for values >100 or in NRR context.
 
-    Customer retention rate is 0-100%. Values above 130 are NRR, not
-    retention rate. Also blocks when NRR keywords appear within 80 chars
-    of the value position (proximity-scoped to avoid false blocks when
-    NRR language appears elsewhere in the same segment).
+    Customer retention rate is 0-100%. Any value above 100 is NRR (net
+    revenue retention), not customer retention rate. Also blocks when NRR
+    keywords appear within 80 chars of the value position (proximity-scoped
+    to avoid false blocks when NRR language appears elsewhere in the same
+    segment).
     """
     if metric_id != "cm_customer_retention_rate":
         return None
-    if bv.value is not None and bv.value >= 130:
+    if bv.value is not None and bv.value > 100:
         return "v2_retention_rate_over_100"
     if source_text and _NRR_CONTEXT_RE.search(source_text):
         raw = (bv.value_raw or "").strip()
@@ -1062,24 +1106,36 @@ def _rule_arr_tier_threshold(
 # Maximum plausible values per metric (to catch magnitude errors from cross-metric mis-binding).
 _METRIC_MAX_VALUE: dict[str, float] = {
     "cm_lifetime_value_per_customer": 10_000_000,   # $10M max LTV
-    "cm_ltv_to_cac_ratio": 100,                      # 100x max LTV/CAC
+    "cm_ltv_to_cac_ratio": 25,                       # 25x max LTV/CAC; real ratios rarely exceed 20x
+    "cm_customer_acquisition_cost": 50_000,          # $50K max CAC; larger values are financial figures
     "cm_revenue_per_customer": 100_000,              # $100K max ARPU
     "cm_large_customers_period_end": 20_000,         # >20K would be total customers, not "large" segment
+    "cm_net_revenue_retention": 250,                 # >250% NRR is a financial figure, not NRR
+}
+
+# Minimum plausible values for specific metrics.
+# Used by _rule_magnitude_sanity alongside _METRIC_MAX_VALUE.
+_METRIC_MIN_VALUE: dict[str, float] = {
+    "cm_net_revenue_retention": 30,                  # <30% NRR is implausible; real NRR ≥ ~40%
 }
 
 
 def _rule_magnitude_sanity(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
-    """Block values that exceed plausible maximums for a metric.
+    """Block values outside the plausible range for a metric.
 
     Catches cross-metric mis-binding where financial figures (revenue,
-    market size) are assigned to per-customer or ratio metrics.
+    market size) are assigned to per-customer or ratio metrics, and
+    where implausibly small values are assigned to rate metrics.
     """
-    max_val = _METRIC_MAX_VALUE.get(metric_id)
-    if max_val is None:
+    if bv.value is None:
         return None
-    if bv.value is not None and bv.value > max_val:
+    max_val = _METRIC_MAX_VALUE.get(metric_id)
+    if max_val is not None and bv.value > max_val:
+        return "v2_magnitude_sanity"
+    min_val = _METRIC_MIN_VALUE.get(metric_id)
+    if min_val is not None and bv.value < min_val:
         return "v2_magnitude_sanity"
     return None
 
@@ -1411,6 +1467,58 @@ def _rule_tam_market_size(bv: BoundValue, source_text: str, metric_id: str) -> s
     return None
 
 
+# ---------------------------------------------------------------------------
+# Wave 7: Table stub-path contradiction for per-customer metrics
+# ---------------------------------------------------------------------------
+
+# Keywords that appear in table stub paths (row labels) indicating the row
+# is NOT a per-customer revenue or AOV metric.  These stubs are distinctive
+# enough that they won't appear in column headers that legitimately trigger
+# cm_revenue_per_customer or cm_average_order_value keyword matching.
+_STUB_NOT_ARPU_RE = re.compile(
+    r"""
+    \b(?:
+        number\s+of\s+stores?
+        | store\s+count
+        | comparable\s+(?:store\s+)?sales
+        | square\s+(?:foot|footage|feet)
+        | sq\.\s*ft
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Metrics where a contradicting stub path is definitive evidence of wrong binding.
+_STUB_CONTRADICTION_METRICS = frozenset(
+    {"cm_revenue_per_customer", "cm_average_order_value"}
+)
+
+
+def _rule_stub_metric_contradiction(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block table-sourced per-customer metrics when the stub row is clearly a different metric.
+
+    When a table header mentions 'net sales per active customer', the value-binding
+    stage may tag ALL cells in that column as cm_revenue_per_customer, even when
+    the stub (row label) says 'Number of stores' or 'Active customers (as of)'.
+    The source_text for table cells is header_path + stub_path + cell_text, so
+    stub keywords are present and matchable.
+
+    Only fires for table bindings (source_locator.table_id is not None) where
+    the metric is a per-unit revenue metric but the stub row indicates something else.
+    """
+    if metric_id not in _STUB_CONTRADICTION_METRICS:
+        return None
+    if bv.source_locator.table_id is None:
+        return None
+    if not source_text:
+        return None
+    if _STUB_NOT_ARPU_RE.search(source_text):
+        return "v2_stub_metric_contradiction"
+    return None
+
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # Tags are used by the relaxed-mode skip list below.
@@ -1420,6 +1528,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("year_value", _rule_year_value, False),
     ("percent_range", _rule_percent_range, False),
     ("garbage_value", _rule_garbage_value, False),
+    ("negative_value", _rule_negative_value, False),
     ("year_fragment", _rule_year_fragment, False),
     ("linearized_table", _rule_linearized_table, True),
     ("financial_annotation", _rule_financial_annotation, True),
@@ -1447,6 +1556,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("metric_definition_value", _rule_metric_definition_value, True),
     ("chart_pricing_label", _rule_chart_pricing_label, True),
     ("tam_market_size", _rule_tam_market_size, True),
+    ("stub_metric_contradiction", _rule_stub_metric_contradiction, False),
 ]
 
 # Rules skipped in relaxed mode per document type.
