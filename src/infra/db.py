@@ -4317,6 +4317,96 @@ class DatabaseAdapter:
         return len(result) > 0
 
     # =============================================================================
+    # Image Cache Methods
+    # =============================================================================
+
+    def get_cached_image(
+        self, cik: str, accession_no: str, filename: str
+    ) -> dict | None:
+        """
+        Retrieve a cached image from the image_cache table.
+
+        Args:
+            cik: CIK with leading zeros stripped (matches SEC URL convention)
+            accession_no: Accession number with dashes removed
+            filename: Image filename
+
+        Returns:
+            Dict with image_data (bytes), content_type (str), size_bytes (int),
+            or None if not cached.
+        """
+        rows = self.query(
+            """
+            SELECT image_data, content_type, size_bytes
+            FROM image_cache
+            WHERE cik = %(cik)s AND accession_no = %(accession_no)s AND filename = %(filename)s
+            """,
+            {"cik": cik, "accession_no": accession_no, "filename": filename},
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            "image_data": bytes(row["image_data"]),
+            "content_type": row["content_type"],
+            "size_bytes": row["size_bytes"],
+        }
+
+    def store_cached_image(
+        self,
+        cik: str,
+        accession_no: str,
+        filename: str,
+        image_data: bytes,
+        content_type: str,
+    ) -> bool:
+        """
+        Store an image in the image_cache table.
+
+        Uses ON CONFLICT DO NOTHING — idempotent, will not overwrite existing entries.
+
+        Args:
+            cik: CIK with leading zeros stripped
+            accession_no: Accession number with dashes removed
+            filename: Image filename
+            image_data: Raw image bytes
+            content_type: MIME type (e.g. "image/jpeg")
+
+        Returns:
+            True if stored, False if already existed (conflict) or on error.
+        """
+        rows = self.query(
+            """
+            INSERT INTO image_cache (cik, accession_no, filename, image_data, content_type, size_bytes)
+            VALUES (%(cik)s, %(accession_no)s, %(filename)s, %(image_data)s, %(content_type)s, %(size_bytes)s)
+            ON CONFLICT (cik, accession_no, filename) DO NOTHING
+            RETURNING cik
+            """,
+            {
+                "cik": cik,
+                "accession_no": accession_no,
+                "filename": filename,
+                "image_data": image_data,
+                "content_type": content_type,
+                "size_bytes": len(image_data),
+            },
+        )
+        return len(rows) > 0
+
+    def get_image_cache_stats(self) -> dict:
+        """
+        Return aggregate stats for the image_cache table.
+
+        Returns:
+            Dict with count (int) and total_bytes (int).
+        """
+        rows = self.query(
+            "SELECT COUNT(*) AS count, COALESCE(SUM(size_bytes), 0) AS total_bytes FROM image_cache"
+        )
+        row = rows[0]
+        return {"count": int(row["count"]), "total_bytes": int(row["total_bytes"])}
+
+    # =============================================================================
     # V2 Extraction Review Methods
     # =============================================================================
 

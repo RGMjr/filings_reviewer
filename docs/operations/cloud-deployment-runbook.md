@@ -61,7 +61,6 @@ Set these in the Render service dashboard under **Environment → Environment Va
 | `DATABASE_URL` | `<neon pooler URL>` | Use pooler endpoint (see Neon section below) |
 | `OPENAI_API_KEY` | `sk-proj-...` | From OpenAI dashboard |
 | `LLM_CACHE_ENABLED` | `true` | |
-| `LLM_CACHE_PATH` | `data/llm_cache.db` | Stored on ephemeral disk |
 | `LLM_CACHE_VERSION` | `v1` | Bump to invalidate cache |
 | `DB_POOL_ENABLED` | `true` | |
 | `DB_POOL_MIN_SIZE` | `1` | Keep low on Render free tier |
@@ -213,22 +212,13 @@ curl -H "X-API-Key: $API_KEY" "$BASE_URL/api/review/candidates?limit=1"
 
 ## Known Limitations
 
-### Image storage is ephemeral
+### Image storage — resolved
 
-Chart images fetched from SEC filings are stored on Render's local disk. This means:
+Chart images are cached in PostgreSQL (`image_cache` table in Neon) and persist across Render redeploys. The browser loads images directly from SEC EDGAR URLs and falls back to `/images/cache/<cik>/<accession_no>/<filename>` if SEC EDGAR is unavailable. The proxy route lazily populates the cache on first fetch.
 
-- **Images are lost on every redeploy.** The service re-fetches them on demand, but the cache is wiped.
-- **Images are not shared** across multiple Render instances (if you scale horizontally).
+### LLM cache — resolved
 
-**Workaround for now:** Accept the re-fetch cost. Images are re-downloaded from SEC EDGAR on demand.
-
-**Future fix:** Migrate image storage to an object store (S3, Cloudflare R2, or Render's persistent disk). See `docs/operations/` for when this is prioritized.
-
-### LLM cache is ephemeral
-
-`data/llm_cache.db` (SQLite) is also stored on Render's ephemeral disk. LLM responses are re-queried (and re-billed) after each redeploy.
-
-**Future fix:** Migrate `LLM_CACHE_PATH` to a persistent volume or a Redis-backed cache.
+The LLM cache uses PostgreSQL via `DATABASE_URL` (Neon). Cache entries persist across Render redeploys. No action needed.
 
 ### Connection pool sizing
 

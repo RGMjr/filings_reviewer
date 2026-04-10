@@ -74,7 +74,7 @@
                                     <img src="{{ c.image_url }}"
                                          alt="{{ c.filename }}"
                                          loading="lazy"
-                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                         onerror="if(!this.dataset.retried){this.dataset.retried='1';var m=this.src.match(/\/Archives\/edgar\/data\/(\d+)\/(\d+)\/([^?]+)/);if(m){this.src='/images/cache/'+m[1]+'/'+m[2]+'/'+m[3];return;}}this.style.display='none';this.nextElementSibling.style.display='flex';">
                                     <div class="thumbnail-placeholder" style="display: none;"><span>?</span></div>
                                 </div>
                                 <div class="thumbnail-info flex-grow-1">
@@ -133,7 +133,7 @@
                             <img src="{{ current.image_url }}"
                                  alt="{{ current.filename }}"
                                  class="main-image"
-                                 onerror="this.style.display='none'; document.getElementById('img-error').style.display='block';">
+                                 onerror="if(!this.dataset.retried){this.dataset.retried='1';var m=this.src.match(/\/Archives\/edgar\/data\/(\d+)\/(\d+)\/([^?]+)/);if(m){this.src='/images/cache/'+m[1]+'/'+m[2]+'/'+m[3];return;}}this.style.display='none';document.getElementById('img-error').style.display='block';">
                         </a>
                         <div id="img-error" class="alert alert-warning" style="display: none;">
                             <p class="mb-1">Unable to load image</p>

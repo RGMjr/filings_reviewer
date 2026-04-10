@@ -73,8 +73,7 @@ The table below documents every variable. Variables marked **Required** must be 
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLM_CACHE_ENABLED` | `true` | Cache LLM responses in a local SQLite file to reduce repeat API costs. |
-| `LLM_CACHE_PATH` | `data/llm_cache.db` | Path to the cache database file. |
+| `LLM_CACHE_ENABLED` | `true` | Cache LLM responses in PostgreSQL (via `DATABASE_URL`) to reduce repeat API costs. |
 | `LLM_CACHE_VERSION` | `v1` | Increment this string to invalidate all cached responses when prompts change. |
 
 ### V2 pipeline settings

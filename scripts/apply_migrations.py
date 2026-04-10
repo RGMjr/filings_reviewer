@@ -55,6 +55,7 @@ MIGRATIONS = [
     "18_add_presentation_detection_tier.sql",
     "19_add_predicted_relevance.sql",
     "20_add_auto_rejected_status.sql",
+    "21_create_image_cache.sql",
 ]
 
 BOOTSTRAP_DDL = """

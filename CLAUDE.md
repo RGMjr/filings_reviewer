@@ -23,7 +23,7 @@ mypy src/review/ --strict          # Type checking
 
 ## Database
 
-PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-20). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_values`, `metric_definitions`, `review_candidates`, `review_decisions`. Schema files in `sql/` (00-21). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 ## Testing Standards
 
