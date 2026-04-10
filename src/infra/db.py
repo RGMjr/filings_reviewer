@@ -1139,7 +1139,7 @@ class DatabaseAdapter:
             List of pending candidate records
         """
         sql = """
-            SELECT rc.*, f.accession_number, c.company_name
+            SELECT rc.*, f.accession_number, c.company_name, c.ticker
             FROM review_candidates rc
             JOIN filings f ON rc.filing_id = f.filing_id
             JOIN companies c ON rc.company_id = c.company_id
@@ -2571,7 +2571,7 @@ class DatabaseAdapter:
                    rc.suggested_metric_id,
                    rc.char_position,
                    f.accession_number,
-                   c.company_name
+                   c.company_name, c.ticker
             FROM review_decisions rd
             JOIN review_candidates rc ON rd.candidate_id = rc.candidate_id
             JOIN filings f ON rc.filing_id = f.filing_id
@@ -3033,7 +3033,7 @@ class DatabaseAdapter:
             SELECT
                 f.filing_id, f.accession_number, f.form_type, f.filing_date,
                 f.company_id,
-                c.company_name, c.cik, c.industry_code
+                c.company_name, c.cik, c.ticker, c.industry_code
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.filing_id = %(filing_id)s
@@ -3104,7 +3104,7 @@ class DatabaseAdapter:
             SELECT
                 f.filing_id, f.accession_number, f.form_type, f.filing_date,
                 f.company_id,
-                c.company_name, c.cik
+                c.company_name, c.cik, c.ticker
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.is_in_scope_phase1 = true
@@ -3166,7 +3166,7 @@ class DatabaseAdapter:
         sql = f"""
             SELECT
                 f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                c.company_name, c.cik,
+                c.company_name, c.cik, c.ticker,
                 COUNT(rc.candidate_id) as total_candidates,
                 COUNT(rc.candidate_id) FILTER (WHERE rc.review_status = 'pending') as pending_count,
                 COUNT(rc.candidate_id) FILTER (WHERE rc.review_status = 'reviewed') as reviewed_count,
@@ -3177,7 +3177,7 @@ class DatabaseAdapter:
             JOIN review_candidates rc ON f.filing_id = rc.filing_id
             WHERE 1=1 {status_filter}
             GROUP BY f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                     c.company_name, c.cik
+                     c.company_name, c.cik, c.ticker
             ORDER BY pending_count DESC, f.filing_date DESC
             LIMIT %(limit)s OFFSET %(offset)s
         """
@@ -3275,7 +3275,7 @@ class DatabaseAdapter:
             Next pending candidate with filing info, or None if all reviewed
         """
         sql = """
-            SELECT rc.*, f.accession_number, c.company_name
+            SELECT rc.*, f.accession_number, c.company_name, c.ticker
             FROM review_candidates rc
             JOIN filings f ON rc.filing_id = f.filing_id
             JOIN companies c ON rc.company_id = c.company_id
@@ -3400,7 +3400,7 @@ class DatabaseAdapter:
         sql = f"""
             SELECT
                 f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                c.company_name, c.cik,
+                c.company_name, c.cik, c.ticker,
                 COUNT(irc.image_candidate_id) as total_candidates,
                 COUNT(irc.image_candidate_id) FILTER (WHERE irc.review_status = 'pending') as pending_count,
                 COUNT(irc.image_candidate_id) FILTER (WHERE irc.review_status = 'reviewed') as reviewed_count,
@@ -3411,7 +3411,7 @@ class DatabaseAdapter:
             JOIN image_review_candidates irc ON f.filing_id = irc.filing_id
             WHERE 1=1 {status_filter}
             GROUP BY f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                     c.company_name, c.cik
+                     c.company_name, c.cik, c.ticker
             ORDER BY pending_count DESC, f.filing_date DESC
             LIMIT %(limit)s OFFSET %(offset)s
         """
@@ -3556,7 +3556,7 @@ class DatabaseAdapter:
             SELECT
                 irc.*,
                 f.accession_number,
-                c.company_name,
+                c.company_name, c.ticker,
                 ird.image_decision_id,
                 ird.decision,
                 ird.chart_type,
@@ -4349,6 +4349,7 @@ class DatabaseAdapter:
                 f.filing_id,
                 c.company_name,
                 c.cik,
+                c.ticker,
                 f.accession_number,
                 f.form_type,
                 f.filing_date,
@@ -4370,7 +4371,7 @@ class DatabaseAdapter:
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
             {where_clause}
-            GROUP BY f.filing_id, c.company_name, c.cik, f.accession_number,
+            GROUP BY f.filing_id, c.company_name, c.cik, c.ticker, f.accession_number,
                      f.form_type, f.filing_date, d.doc_id, d.document_type, d.status,
                      d.fact_count, d.segment_count, d.table_count, d.image_count,
                      d.extract_completed_at
@@ -4397,6 +4398,7 @@ class DatabaseAdapter:
         document_type: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        hide_completed: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Get filings combining V2 text fact counts and image candidate counts.
@@ -4409,15 +4411,20 @@ class DatabaseAdapter:
                            (applied against v2_documents.document_type).
             limit: Maximum number of rows to return.
             offset: Number of rows to skip (for pagination).
+            hide_completed: If True, exclude filings with 0 pending text facts
+                            and 0 pending image candidates.
 
         Returns:
             List of dicts with filing metadata and combined review stats.
         """
         doc_type_filter = ""
+        completed_filter = ""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if document_type is not None:
             doc_type_filter = "AND d.document_type = %(document_type)s"
             params["document_type"] = document_type
+        if hide_completed:
+            completed_filter = "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
 
         sql = f"""
             WITH text_progress AS (
@@ -4443,6 +4450,7 @@ class DatabaseAdapter:
                 f.filing_id,
                 c.company_name,
                 c.cik,
+                c.ticker,
                 f.accession_number,
                 f.form_type,
                 f.filing_date,
@@ -4461,6 +4469,7 @@ class DatabaseAdapter:
             LEFT JOIN image_progress ip ON ip.filing_id = f.filing_id
             WHERE (f.is_spac IS NOT TRUE)
             {doc_type_filter}
+            {completed_filter}
             ORDER BY f.filing_date DESC NULLS LAST, c.company_name
             LIMIT %(limit)s OFFSET %(offset)s
         """
@@ -4469,27 +4478,52 @@ class DatabaseAdapter:
     def get_unified_filings_for_review_count(
         self,
         document_type: str | None = None,
+        hide_completed: bool = False,
     ) -> int:
         """Return total count of filings eligible for unified review.
 
         Args:
             document_type: Optional filter — "sec_filing" or "earnings_call".
+            hide_completed: If True, exclude filings with 0 pending text facts
+                            and 0 pending image candidates.
 
         Returns:
             Total number of matching filings.
         """
         doc_type_filter = ""
+        completed_filter = ""
         params: dict[str, Any] = {}
         if document_type is not None:
             doc_type_filter = "AND d.document_type = %(document_type)s"
             params["document_type"] = document_type
+        if hide_completed:
+            completed_filter = """
+                AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)
+            """
 
         sql = f"""
+            WITH text_progress AS (
+                SELECT
+                    mf.doc_id AS filing_id,
+                    COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS facts_pending
+                FROM v2_metric_facts mf
+                GROUP BY mf.doc_id
+            ),
+            image_progress AS (
+                SELECT
+                    irc.filing_id,
+                    COUNT(CASE WHEN irc.review_status = 'pending' THEN 1 END) AS images_pending
+                FROM image_review_candidates irc
+                GROUP BY irc.filing_id
+            )
             SELECT COUNT(*) AS cnt
             FROM filings f
             JOIN v2_documents d ON d.filing_id = f.filing_id
+            LEFT JOIN text_progress  tp ON tp.filing_id = f.filing_id
+            LEFT JOIN image_progress ip ON ip.filing_id = f.filing_id
             WHERE (f.is_spac IS NOT TRUE)
             {doc_type_filter}
+            {completed_filter}
         """
         result = self.query(sql, params if params else None)
         return result[0]["cnt"] if result else 0
@@ -4949,6 +4983,7 @@ class DatabaseAdapter:
             SELECT
                 c.company_name,
                 c.cik,
+                c.ticker,
                 COUNT(DISTINCT f.filing_id)                                         AS filing_count,
                 COUNT(mf.fact_id)                                                   AS fact_count,
                 COUNT(CASE WHEN mf.review_status != 'pending_review' THEN 1 END)   AS reviewed_count,
@@ -4961,7 +4996,7 @@ class DatabaseAdapter:
             JOIN filings f ON f.company_id = c.company_id
             JOIN v2_documents d ON d.filing_id = f.filing_id
             LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
-            GROUP BY c.company_id, c.company_name, c.cik
+            GROUP BY c.company_id, c.company_name, c.cik, c.ticker
             ORDER BY c.company_name
         """
         per_company = self.query(per_company_sql)

@@ -123,13 +123,18 @@ def filing_list():
 
     raw_type = request.args.get("document_type")
     document_type = raw_type if raw_type in VALID_DOCUMENT_TYPES else None
+    hide_completed = request.args.get("hide_completed", "0") == "1"
 
     try:
-        total = db.get_unified_filings_for_review_count(document_type=document_type)
+        total = db.get_unified_filings_for_review_count(
+            document_type=document_type,
+            hide_completed=hide_completed,
+        )
         filings = db.get_unified_filings_for_review(
             document_type=document_type,
             limit=per_page,
             offset=(page - 1) * per_page,
+            hide_completed=hide_completed,
         )
     except Exception as e:
         logger.error(f"Database error in unified filing list: {e}")
@@ -146,6 +151,7 @@ def filing_list():
         "unified_filing_list.html",
         filings=filings,
         current_document_type=document_type or "all",
+        hide_completed=hide_completed,
         page=page,
         per_page=per_page,
         total=total,
@@ -192,7 +198,7 @@ def review_filing(filing_id: int):
     try:
         # Get filing metadata (include document_type from v2_documents)
         filing_sql = """
-            SELECT f.*, c.company_name, c.cik,
+            SELECT f.*, c.company_name, c.cik, c.ticker,
                    d.document_type
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
@@ -285,12 +291,11 @@ def review_filing(filing_id: int):
                 "reviewer_id": current_fact.get("reviewer_id"),
             }
 
-        # Resolve primary document URL for source filing link.
-        # Use the latest S-1/S-1/A for the company (not necessarily the specific
-        # filing being reviewed) so the link always points to the most current
-        # version of the registration statement.
+        # Resolve source document URL for the "View source" link.
         sec_filing_url = None
         if document_type == "sec_filing" and filing.get("cik"):
+            # SEC filings: use the latest S-1/S-1/A for the company so the
+            # link always points to the most current registration statement.
             try:
                 sec_client = SECClient()
                 latest = sec_client.get_latest_registration_filing(filing["cik"])
@@ -298,6 +303,14 @@ def review_filing(filing_id: int):
                     sec_filing_url = latest.primary_doc_url
             except Exception:
                 pass  # Non-fatal — link just won't appear
+        elif document_type == "investor_presentation":
+            # Presentations: use sec_html_url (8-K filing page) if available,
+            # otherwise fall back to the EDGAR filing directory.
+            sec_filing_url = filing.get("sec_html_url")
+            if not sec_filing_url and filing.get("cik") and filing.get("accession_number"):
+                sec_filing_url = _build_sec_directory_url(
+                    filing["cik"], filing["accession_number"]
+                )
 
         # Current filter state
         current_filters = {
