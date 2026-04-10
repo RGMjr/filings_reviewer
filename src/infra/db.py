@@ -4399,6 +4399,8 @@ class DatabaseAdapter:
         limit: int = 50,
         offset: int = 0,
         hide_completed: bool = False,
+        sort_by: str = "date",
+        sort_dir: str = "desc",
     ) -> list[dict[str, Any]]:
         """
         Get filings combining V2 text fact counts and image candidate counts.
@@ -4417,6 +4419,17 @@ class DatabaseAdapter:
         Returns:
             List of dicts with filing metadata and combined review stats.
         """
+        _sort_map = {
+            "company": "c.company_name",
+            "date": "f.filing_date",
+            "text_progress": "COALESCE(tp.facts_pending, 0)",
+            "image_progress": "COALESCE(ip.images_pending, 0)",
+        }
+        order_col = _sort_map.get(sort_by, "f.filing_date")
+        order_dir = "ASC" if sort_dir == "asc" else "DESC"
+        # Secondary sort for stable ordering
+        secondary = "" if sort_by == "company" else ", c.company_name"
+
         doc_type_filter = ""
         completed_filter = ""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
@@ -4470,7 +4483,7 @@ class DatabaseAdapter:
             WHERE (f.is_spac IS NOT TRUE)
             {doc_type_filter}
             {completed_filter}
-            ORDER BY f.filing_date DESC NULLS LAST, c.company_name
+            ORDER BY {order_col} {order_dir} NULLS LAST{secondary}
             LIMIT %(limit)s OFFSET %(offset)s
         """
         return self.query(sql, params)
