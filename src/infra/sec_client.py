@@ -157,6 +157,7 @@ class SECClient:
         http_client: HTTPClient | None = None,
         metrics: SECClientMetrics | None = None,
         image_cache_dir: str | Path | None = None,
+        db_adapter=None,
     ):
         """
         Initialize SEC client.
@@ -172,6 +173,9 @@ class SECClient:
             image_cache_dir: Optional directory for caching downloaded images.
                 Structure: {cache_dir}/{cik}/{accession_no_dashes}/{filename}
                 If None, images are not cached (fetched fresh each time).
+            db_adapter: Optional DatabaseAdapter for PostgreSQL-backed image caching.
+                Checked before disk cache; populated on fetch miss. Persists across
+                Render redeploys. If None, only disk caching is used.
         """
         self.user_agent = user_agent
 
@@ -188,6 +192,9 @@ class SECClient:
         self._image_cache_dir: Path | None = None
         if image_cache_dir is not None:
             self._image_cache_dir = Path(image_cache_dir)
+
+        # Optional PostgreSQL-backed image cache
+        self._db_adapter = db_adapter
 
         # Keep session for backward compatibility with existing code
         # TODO: Remove once all code migrated to http_client
@@ -939,18 +946,28 @@ class SECClient:
             - Validates Content-Type is an image type
             - Logs warnings for failures (does not raise exceptions)
         """
-        # Check cache first (if enabled)
+        # Compute canonical key components used by both DB and disk caches
+        cik_stripped = cik.lstrip("0") or "0"
+        accession_no_dashes = accession_number.replace("-", "")
+
+        # Check DB cache first (persists across redeploys)
+        if self._db_adapter is not None:
+            try:
+                cached_db = self._db_adapter.get_cached_image(
+                    cik_stripped, accession_no_dashes, filename
+                )
+                if cached_db is not None:
+                    logger.debug(f"DB cache hit: {cik_stripped}/{accession_no_dashes}/{filename}")
+                    return cached_db["image_data"]
+            except Exception as e:
+                logger.warning(f"DB cache lookup failed for {filename}: {e}")
+
+        # Check disk cache (local dev speed)
         cache_path = self._get_image_cache_path(cik, accession_number, filename)
         if cache_path is not None:
             cached = self._read_cached_image(cache_path)
             if cached is not None:
                 return cached
-
-        # Strip leading zeros from CIK for URL construction
-        cik_stripped = cik.lstrip("0") or "0"
-
-        # Remove dashes from accession number for URL path
-        accession_no_dashes = accession_number.replace("-", "")
 
         url = (
             f"{self.BASE_URL}/Archives/edgar/data/"
@@ -1009,7 +1026,20 @@ class SECClient:
                 f"{http_response.elapsed_seconds:.3f}s"
             )
 
-            # Cache the downloaded image (if caching enabled)
+            # Write to DB cache (persists across redeploys)
+            if self._db_adapter is not None:
+                try:
+                    self._db_adapter.store_cached_image(
+                        cik_stripped,
+                        accession_no_dashes,
+                        filename,
+                        image_bytes,
+                        content_type,
+                    )
+                except Exception as e:
+                    logger.warning(f"DB cache write failed for {filename}: {e}")
+
+            # Write to disk cache (local dev speed)
             if cache_path is not None:
                 self._write_cached_image(cache_path, image_bytes)
 

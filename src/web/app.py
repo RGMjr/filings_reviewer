@@ -418,6 +418,11 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(review_pres_images_bp)
 
+    # Image cache proxy (no API auth — images are public SEC data, served to <img> tags)
+    from src.web.routes.image_cache import image_cache_bp
+
+    app.register_blueprint(image_cache_bp)
+
 
 def _wants_json_response() -> bool:
     """Check if the client prefers JSON over HTML."""
