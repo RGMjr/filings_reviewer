@@ -210,7 +210,7 @@ def ingest_all(dry_run: bool, db_url: str | None) -> None:
                 company_name = meta["company_name"] or ticker
                 cik = meta["cik"]
 
-            metadata = DocumentMetadata(
+            _metadata = DocumentMetadata(
                 source_id=source_id,
                 source="sec_edgar_presentation",
                 company_name=company_name,
