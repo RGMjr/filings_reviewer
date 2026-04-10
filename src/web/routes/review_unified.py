@@ -48,6 +48,9 @@ V2_SORT_OPTIONS = ("confidence_desc", "confidence_asc", "metric", "period")
 # Valid document types for the filing list filter
 VALID_DOCUMENT_TYPES = ("sec_filing", "earnings_call", "investor_presentation")
 
+# Valid sort columns for the filing list
+VALID_FILING_SORT_COLUMNS = {"company", "date", "text_progress", "image_progress"}
+
 
 # =============================================================================
 # Audit Logging Hooks
@@ -125,6 +128,11 @@ def filing_list():
     document_type = raw_type if raw_type in VALID_DOCUMENT_TYPES else None
     hide_completed = request.args.get("hide_completed", "0") == "1"
 
+    raw_sort_by = request.args.get("sort_by", "date")
+    sort_by = raw_sort_by if raw_sort_by in VALID_FILING_SORT_COLUMNS else "date"
+    raw_sort_dir = request.args.get("sort_dir", "desc")
+    sort_dir = "asc" if raw_sort_dir == "asc" else "desc"
+
     try:
         total = db.get_unified_filings_for_review_count(
             document_type=document_type,
@@ -135,6 +143,8 @@ def filing_list():
             limit=per_page,
             offset=(page - 1) * per_page,
             hide_completed=hide_completed,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
     except Exception as e:
         logger.error(f"Database error in unified filing list: {e}")
@@ -156,6 +166,8 @@ def filing_list():
         per_page=per_page,
         total=total,
         total_pages=total_pages,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
 
 
