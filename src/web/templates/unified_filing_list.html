@@ -48,7 +48,6 @@
       <table class="table table-hover">
         <thead class="table-light">
           <tr>
-            {# Sortable column header macro #}
             {% macro sort_th(col_key, label) %}
             {% set next_dir = 'asc' if (sort_by == col_key and sort_dir == 'desc') else 'desc' %}
             <th style="white-space: nowrap; cursor: pointer;">
@@ -242,9 +241,11 @@
     if (savedSort) {
       try {
         var pref = JSON.parse(savedSort);
+        var validCols = ['company', 'date', 'text_progress', 'image_progress'];
+        if (!pref.sort_by || !validCols.includes(pref.sort_by)) throw new Error('invalid');
         var url = new URL(window.location.href);
         url.searchParams.set('sort_by', pref.sort_by);
-        url.searchParams.set('sort_dir', pref.sort_dir || 'desc');
+        url.searchParams.set('sort_dir', pref.sort_dir === 'asc' ? 'asc' : 'desc');
         url.searchParams.set('page', '1');
         window.location.replace(url.toString());
         return; // Stop — page will reload with sort params.

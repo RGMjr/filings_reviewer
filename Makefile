@@ -2,7 +2,7 @@
 #
 # Common commands for development, testing, and documentation maintenance.
 
-.PHONY: help install test test-unit coverage lint format docs-check docs-update hooks-install clean
+.PHONY: help install test test-unit coverage lint format docs-check docs-update hooks-install clean test-docker test-smoke-live
 
 # Default target
 help:
@@ -25,6 +25,10 @@ help:
 	@echo ""
 	@echo "Cleanup:"
 	@echo "  make clean          Remove build artifacts and caches"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  make test-docker    Build Docker image and run deployment tests locally"
+	@echo "  make test-smoke-live Run smoke tests against live Render deployment"
 
 # -----------------------------------------------------------------------------
 # Setup
@@ -80,6 +84,22 @@ docs-update:
 
 # Alias for quick doc validation
 docs: docs-check
+
+# -----------------------------------------------------------------------------
+# Cleanup
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Deployment
+# -----------------------------------------------------------------------------
+
+test-docker:
+	docker build -t filings-reviewer-test .
+	uv run pytest tests/deployment/ -m deployment -v --tb=short --no-cov
+
+test-smoke-live:
+	SMOKE_TEST_BASE_URL=https://filings-reviewer.onrender.com \
+	uv run pytest tests/deployment/test_smoke.py -m deployment -v --tb=short --no-cov
 
 # -----------------------------------------------------------------------------
 # Cleanup

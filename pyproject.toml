@@ -89,7 +89,7 @@ addopts = [
     "--strict-markers",
     "--tb=short",
     "-m",
-    "not slow and not v2_parity and not gold_standard and not transcript_gold_standard",
+    "not slow and not v2_parity and not gold_standard and not transcript_gold_standard and not deployment",
 ]
 
 # Test markers
@@ -101,6 +101,7 @@ markers = [
     "gold_standard: Gold standard regression tests (require database and gold standard data)",
     "transcript_gold_standard: Transcript gold standard regression tests (require transcript gold standard data)",
     "performance: Performance tests",
+    "deployment: Deployment and Docker smoke tests (require Docker daemon or live URL)",
 ]
 
 # Logging
