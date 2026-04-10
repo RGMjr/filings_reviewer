@@ -34,7 +34,7 @@
                                     <a href="{{ url_for('review.filing_list') }}">Filings</a>
                                 </li>
                                 <li class="breadcrumb-item active" aria-current="page">
-                                    {{ filing.company_name }}
+                                    {{ filing.company_name }}{% if filing.ticker %} ({{ filing.ticker }}){% endif %}
                                 </li>
                             </ol>
                         </nav>

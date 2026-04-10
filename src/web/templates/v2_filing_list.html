@@ -70,8 +70,8 @@
           {% for f in filings %}
           <tr>
             <td>
-              <strong>{{ f.company_name }}</strong>
-              <br><small class="text-muted">{{ f.accession_number }}</small>
+              <strong>{{ f.company_name }}</strong>{% if f.ticker %} <small class="text-muted">({{ f.ticker }})</small>{% endif %}
+              <br><small class="text-muted font-monospace" style="font-size: 0.75em;">{{ f.accession_number }}</small>
             </td>
             <td>
               {% if f.document_type == 'earnings_call' %}

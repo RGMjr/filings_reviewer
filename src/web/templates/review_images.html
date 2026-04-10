@@ -42,14 +42,14 @@
                             <a href="{{ url_for('review_images.filing_list') }}">Image Review</a>
                         </li>
                         <li class="breadcrumb-item active" aria-current="page">
-                            {{ filing.company_name }}
+                            {{ filing.company_name }}{% if filing.ticker %} ({{ filing.ticker }}){% endif %}
                         </li>
                     </ol>
                 </nav>
 
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h4 class="mb-0">{{ filing.company_name }}</h4>
+                        <h4 class="mb-0">{{ filing.company_name }}{% if filing.ticker %} <small class="text-muted" style="font-size: 0.65em;">{{ filing.ticker }}</small>{% endif %}</h4>
                         <small class="text-muted">
                             {{ filing.form_type }} &bull;
                             <code>{{ filing.accession_number }}</code>
