@@ -61,12 +61,12 @@
       <ol class="breadcrumb mb-1">
         <li class="breadcrumb-item"><a href="{{ url_for('review_v2.filing_list') }}">V2 Filings</a></li>
         <li class="breadcrumb-item"><a href="{{ url_for('review_v2.filing_list', document_type='earnings_call') }}">Earnings Calls</a></li>
-        <li class="breadcrumb-item active">{{ filing.company_name }}</li>
+        <li class="breadcrumb-item active">{{ filing.company_name }}{% if filing.ticker %} ({{ filing.ticker }}){% endif %}</li>
       </ol>
     </nav>
     <div class="d-flex justify-content-between align-items-center">
       <div>
-        <h4 class="mb-0">{{ filing.company_name }}</h4>
+        <h4 class="mb-0">{{ filing.company_name }}{% if filing.ticker %} <small class="text-muted" style="font-size: 0.65em;">{{ filing.ticker }}</small>{% endif %}</h4>
         <small class="text-muted">
           {{ filing.accession_number }}
           &middot; <span class="badge bg-info text-dark">Earnings Call</span>

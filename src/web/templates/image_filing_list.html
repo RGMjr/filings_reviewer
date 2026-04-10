@@ -160,7 +160,7 @@
                                 <td>
                                     <a href="{{ url_for('review_images.review_filing', filing_id=filing.filing_id) }}"
                                        class="text-decoration-none fw-semibold">
-                                        {{ filing.company_name }}
+                                        {{ filing.company_name }}{% if filing.ticker %} <small class="text-muted">({{ filing.ticker }})</small>{% endif %}
                                     </a>
                                     <br>
                                     <small class="text-muted">{{ filing.form_type }} - {{ filing.filing_date.strftime('%Y-%m-%d') if filing.filing_date else 'N/A' }}</small>

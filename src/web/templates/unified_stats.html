@@ -224,7 +224,7 @@
                 {% set fact_total = row.fact_count or 0 %}
                 {% set rev_pct = ((row.reviewed_count or 0) / fact_total * 100) | round(0) | int if fact_total > 0 else 0 %}
                 <tr>
-                  <td><strong>{{ row.company_name }}</strong></td>
+                  <td><strong>{{ row.company_name }}</strong>{% if row.ticker %} <small class="text-muted">({{ row.ticker }})</small>{% endif %}</td>
                   <td><small class="text-muted font-monospace">{{ row.cik }}</small></td>
                   <td class="text-center">{{ row.filing_count or 0 }}</td>
                   <td class="text-center"><span class="badge bg-primary">{{ fact_total }}</span></td>

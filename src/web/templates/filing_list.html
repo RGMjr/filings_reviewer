@@ -146,7 +146,7 @@
           {# Card Header: Company name + Status badge #}
           <div class="card-header d-flex justify-content-between align-items-center">
             <div>
-              <h5 class="mb-1">{{ filing.company_name }}</h5>
+              <h5 class="mb-1">{{ filing.company_name }}{% if filing.ticker %} <small class="text-muted">({{ filing.ticker }})</small>{% endif %}</h5>
               <small class="text-muted">CIK: {{ filing.cik }}</small>
             </div>
             {% if filing.pending_count > 0 %}
