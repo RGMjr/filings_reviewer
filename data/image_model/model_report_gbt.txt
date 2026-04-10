@@ -1,0 +1,39 @@
+Image Relevance Model Report
+========================================
+
+Training samples: 584
+  Relevant: 66 (11.3%)
+  Not relevant: 518 (88.7%)
+
+Cross-validated metrics (5-fold stratified):
+  AUC-ROC:               0.769
+  Avg precision (AP):    0.449
+  Precision @ 80% recall: 0.167
+  Precision @ 90% recall: 0.139
+  Precision @ 95% recall: 0.123
+  Score threshold for ~80% recall: 0.223
+
+Baseline (current tier_1_cohort system):
+  Precision: 0.211
+  Recall:    0.576
+  Coverage:  180/584 candidates reviewed
+
+Model type: gbt
+
+Feature importances (GBT, permutation on train set):
+  cohort_confidence                  : 0.4533
+  filename_has_chart_hint            : 0.1069
+  text_long                          : 0.0978
+  cohort_keyword_nearby              : 0.0975
+  keyword_count                      : 0.0688
+  is_tier_1                          : 0.0514
+  text_medium                        : 0.0429
+  has_dimensions                     : 0.0021
+  is_tier_2                          : 0.0016
+  image_area_clipped                 : 0.0005
+  is_table_image_classification      : 0.0000
+  log_keyword_count                  : 0.0000
+  is_unknown_classification          : -0.0007
+  is_chart_classification            : -0.0008
+  text_short                         : -0.0041
+  is_source_sec                      : -0.0044
