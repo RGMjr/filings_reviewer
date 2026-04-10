@@ -44,16 +44,20 @@
     <nav aria-label="breadcrumb">
       <ol class="breadcrumb mb-1">
         <li class="breadcrumb-item"><a href="{{ url_for('review_unified.filing_list') }}">Review Filings</a></li>
-        <li class="breadcrumb-item active">{{ filing.company_name }}</li>
+        <li class="breadcrumb-item active">{{ filing.company_name }}{% if filing.ticker %} ({{ filing.ticker }}){% endif %}</li>
       </ol>
     </nav>
     <div class="d-flex justify-content-between align-items-center">
       <div>
-        <h4 class="mb-0">{{ filing.company_name }}</h4>
+        <h4 class="mb-0">{{ filing.company_name }}{% if filing.ticker %} <small class="text-muted" style="font-size: 0.65em;">{{ filing.ticker }}</small>{% endif %}</h4>
         <small class="text-muted">
           {{ filing.accession_number }}
           {% if filing.form_type %}&middot; {{ filing.form_type }}{% endif %}
-          {% if sec_filing_url %}&middot; <a href="{{ sec_filing_url }}" target="_blank" rel="noopener" style="font-size:0.8em;">View source filing</a>{% endif %}
+          {% if sec_filing_url %}
+          &middot; <a href="{{ sec_filing_url }}" target="_blank" rel="noopener" style="font-size:0.8em;">
+            {% if document_type == 'investor_presentation' %}View source document{% else %}View source filing{% endif %}
+          </a>
+          {% endif %}
         </small>
       </div>
       <div class="text-end">

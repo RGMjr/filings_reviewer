@@ -11,25 +11,38 @@
 </div>
 
 {# Document type filter tabs #}
-<div class="row mb-3">
-  <div class="col-12">
+<div class="row mb-3 align-items-center">
+  <div class="col-auto">
     <div class="btn-group" role="group" aria-label="Document type filter">
-      <a href="{{ url_for('review_unified.filing_list') }}"
+      <a href="{{ url_for('review_unified.filing_list', hide_completed=1 if hide_completed else None) }}"
          class="btn {% if current_document_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
         All
       </a>
-      <a href="{{ url_for('review_unified.filing_list', document_type='sec_filing') }}"
+      <a href="{{ url_for('review_unified.filing_list', document_type='sec_filing', hide_completed=1 if hide_completed else None) }}"
          class="btn {% if current_document_type == 'sec_filing' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
         SEC Filings
       </a>
-      <a href="{{ url_for('review_unified.filing_list', document_type='earnings_call') }}"
+      <a href="{{ url_for('review_unified.filing_list', document_type='earnings_call', hide_completed=1 if hide_completed else None) }}"
          class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
         Earnings Calls
       </a>
-      <a href="{{ url_for('review_unified.filing_list', document_type='investor_presentation') }}"
+      <a href="{{ url_for('review_unified.filing_list', document_type='investor_presentation', hide_completed=1 if hide_completed else None) }}"
          class="btn {% if current_document_type == 'investor_presentation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
         Presentations
       </a>
+    </div>
+  </div>
+  <div class="col-auto ms-3">
+    <div class="form-check form-check-inline mb-0">
+      <input class="form-check-input" type="checkbox" id="hideCompleted"
+             {% if hide_completed %}checked{% endif %}
+             onchange="
+               var url = new URL(window.location.href);
+               if (this.checked) { url.searchParams.set('hide_completed', '1'); } else { url.searchParams.delete('hide_completed'); }
+               url.searchParams.set('page', '1');
+               window.location.href = url.toString();
+             ">
+      <label class="form-check-label text-muted" for="hideCompleted">Hide completed</label>
     </div>
   </div>
 </div>
@@ -61,8 +74,8 @@
           {% set images_reviewed = f.images_reviewed or 0 %}
           <tr>
             <td>
-              <strong>{{ f.company_name }}</strong>
-              <br><small class="text-muted font-monospace">{{ f.accession_number }}</small>
+              <strong>{{ f.company_name }}</strong>{% if f.ticker %} <small class="text-muted">({{ f.ticker }})</small>{% endif %}
+              <br><small class="text-muted font-monospace" style="font-size: 0.75em;">{{ f.accession_number }}</small>
             </td>
             <td>
               {% if f.document_type == 'earnings_call' %}
@@ -147,7 +160,7 @@
         <li class="page-item {% if page <= 1 %}disabled{% endif %}">
           {% if page > 1 %}
           <a class="page-link"
-             href="{{ url_for('review_unified.filing_list', page=page - 1, per_page=per_page, document_type=current_document_type) }}">
+             href="{{ url_for('review_unified.filing_list', page=page - 1, per_page=per_page, document_type=current_document_type, hide_completed=1 if hide_completed else None) }}">
             &laquo; Previous
           </a>
           {% else %}
@@ -159,7 +172,7 @@
           {% if page_num == 1 or page_num == total_pages or (page_num >= page - 2 and page_num <= page + 2) %}
           <li class="page-item {% if page_num == page %}active{% endif %}">
             <a class="page-link"
-               href="{{ url_for('review_unified.filing_list', page=page_num, per_page=per_page, document_type=current_document_type) }}">
+               href="{{ url_for('review_unified.filing_list', page=page_num, per_page=per_page, document_type=current_document_type, hide_completed=1 if hide_completed else None) }}">
               {{ page_num }}
             </a>
           </li>
@@ -173,7 +186,7 @@
         <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
           {% if page < total_pages %}
           <a class="page-link"
-             href="{{ url_for('review_unified.filing_list', page=page + 1, per_page=per_page, document_type=current_document_type) }}">
+             href="{{ url_for('review_unified.filing_list', page=page + 1, per_page=per_page, document_type=current_document_type, hide_completed=1 if hide_completed else None) }}">
             Next &raquo;
           </a>
           {% else %}
