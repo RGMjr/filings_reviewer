@@ -4419,13 +4419,13 @@ class DatabaseAdapter:
         Returns:
             List of dicts with filing metadata and combined review stats.
         """
-        _sort_map = {
+        sort_map = {
             "company": "c.company_name",
             "date": "f.filing_date",
             "text_progress": "COALESCE(tp.facts_pending, 0)",
             "image_progress": "COALESCE(ip.images_pending, 0)",
         }
-        order_col = _sort_map.get(sort_by, "f.filing_date")
+        order_col = sort_map.get(sort_by, "f.filing_date")
         order_dir = "ASC" if sort_dir == "asc" else "DESC"
         # Secondary sort for stable ordering
         secondary = "" if sort_by == "company" else ", c.company_name"
