@@ -30,6 +30,7 @@ Notes:
 """
 
 import argparse
+import hashlib
 import logging
 import os
 import sys
@@ -74,12 +75,17 @@ MIGRATION_ORDER = [
     "18_add_presentation_detection_tier.sql",
     "19_add_predicted_relevance.sql",
     "20_add_auto_rejected_status.sql",
+    "21_create_image_cache.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
 EXCLUDED_FILES = {
     "register_gold_standard_filings.sql",
 }
+
+
+def _checksum(sql: str) -> str:
+    return hashlib.sha256(sql.encode()).hexdigest()
 
 
 def check_unregistered_migrations(sql_dir: Path) -> list[str]:

@@ -9,11 +9,10 @@ computes ratio = closest_extracted / expected and buckets into:
 """
 import argparse
 import logging
-import sys
 
 logging.disable(logging.CRITICAL)
 
-from src.gold_standard.v2_validator import V2GoldStandardValidator, FNDiagnostic
+from src.gold_standard.v2_validator import FNDiagnostic, V2GoldStandardValidator  # noqa: E402
 
 
 def _bucket(ratio: float | None) -> str:

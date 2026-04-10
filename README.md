@@ -22,10 +22,6 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | Universe Builder | ✅ Complete | 93% |
 | Filing Fetcher | ✅ Complete | 94% |
 | HTML Segmenter | ✅ Complete | 85% |
-| Metric Classifier | ✅ Complete | 98% |
-| Value Extractor | ✅ Complete | 66% |
-| Definition Extractor | ✅ Complete | 89% |
-| Quality Scorer | ✅ Complete | 100% |
 | Extraction Pipeline | ✅ Complete | 91% |
 | LLM Integration | ✅ Complete | 88% |
 | Human Review System | ✅ Complete | 95-100% |
@@ -87,7 +83,8 @@ src/
 ├── infra/          # Database, SEC API client, validation
 ├── universe/       # Filing discovery and classification
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # Metric extraction pipeline
+├── extraction/     # HTML segmentation (HTMLSegmenter)
+├── extraction_v2/  # V2 metric extraction pipeline
 ├── review/         # Human-in-the-loop review system
 ├── web/            # Flask web application
 └── llm/            # OpenAI GPT-4o-mini integration
@@ -95,11 +92,11 @@ src/
 
 **Pipeline Flow:**
 ```
-UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier
-                                        ↓
-                              ValueExtractor + DefinitionExtractor
-                                        ↓
-                                  QualityScorer → Database
+UniverseBuilder → FilingFetcher → HTMLSegmenter → CandidateGenerationStage
+                                                          ↓
+                                              ValueBindingStage + DefinitionExtractionStage
+                                                          ↓
+                                                  V2QualityScorer → Database
 ```
 
 ## Documentation
@@ -127,7 +124,8 @@ filings_reviewer/
 │   ├── infra/             # Infrastructure (db.py, sec_client.py)
 │   ├── universe/          # Filing discovery
 │   ├── filing_fetcher/    # Document retrieval
-│   ├── extraction/        # Metric extraction
+│   ├── extraction/        # HTML segmentation
+│   ├── extraction_v2/     # V2 extraction pipeline
 │   ├── review/            # Human review system
 │   ├── web/               # Flask application
 │   └── llm/               # LLM integration

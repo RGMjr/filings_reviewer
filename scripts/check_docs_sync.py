@@ -213,10 +213,10 @@ class DocsChecker:
             "UniverseBuilder": SRC / "universe" / "universe_builder.py",
             "FilingFetcher": SRC / "filing_fetcher" / "filing_fetcher.py",
             "HTMLSegmenter": SRC / "extraction" / "html_segmenter.py",
-            "MetricClassifier": SRC / "extraction" / "metric_classifier.py",
-            "ValueExtractor": SRC / "extraction" / "value_extractor.py",
-            "DefinitionExtractor": SRC / "extraction" / "definition_extractor.py",
-            "QualityScorer": SRC / "extraction" / "quality_scorer.py",
+            "CandidateGenerationStage": SRC / "extraction_v2" / "stages" / "candidate_generation.py",
+            "ValueBindingStage": SRC / "extraction_v2" / "stages" / "value_binding.py",
+            "DefinitionExtractionStage": SRC / "extraction_v2" / "stages" / "definition_extraction.py",
+            "V2QualityScorer": SRC / "extraction_v2" / "quality_scoring.py",
         }
 
         issues = []
