@@ -20,7 +20,7 @@ python-dotenv>=1.0.0
 tqdm>=4.66.0
 
 # HTTP client - Used for SEC EDGAR API requests (rate-limited, polite access)
-requests>=2.31.0
+requests>=2.33.0
 
 # HTML parsing - Extracts text and tables from SEC filing HTML documents
 beautifulsoup4>=4.12.0
