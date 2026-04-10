@@ -1,0 +1,39 @@
+Image Relevance Model Report
+========================================
+
+Training samples: 584
+  Relevant: 66 (11.3%)
+  Not relevant: 518 (88.7%)
+
+Cross-validated metrics (5-fold stratified):
+  AUC-ROC:               0.771
+  Avg precision (AP):    0.361
+  Precision @ 80% recall: 0.244
+  Precision @ 90% recall: 0.144
+  Precision @ 95% recall: 0.127
+  Score threshold for ~80% recall: 0.471
+
+Baseline (current tier_1_cohort system):
+  Precision: 0.211
+  Recall:    0.576
+  Coverage:  180/584 candidates reviewed
+
+Model type: logistic
+
+Feature coefficients:
+  is_tier_1                          : +0.858
+  has_dimensions                     : -0.521
+  keyword_count                      : +0.400
+  image_area_clipped                 : -0.377
+  cohort_keyword_nearby              : +0.369
+  filename_has_chart_hint            : +0.304
+  text_short                         : +0.298
+  is_unknown_classification          : +0.286
+  text_medium                        : -0.280
+  cohort_confidence                  : -0.196
+  is_source_sec                      : +0.180
+  is_tier_2                          : +0.120
+  is_table_image_classification      : +0.120
+  log_keyword_count                  : +0.082
+  text_long                          : -0.077
+  is_chart_classification            : +0.049
