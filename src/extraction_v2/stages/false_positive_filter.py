@@ -1488,53 +1488,150 @@ def _rule_tam_market_size(bv: BoundValue, source_text: str, metric_id: str) -> s
 
 
 # ---------------------------------------------------------------------------
-# Wave 7: Table stub-path contradiction for per-customer metrics
+# Wave 7: Table stub-path contradiction for per-customer / retention metrics
 # ---------------------------------------------------------------------------
 
-# Keywords that appear in table stub paths (row labels) indicating the row
-# is NOT a per-customer revenue or AOV metric.  These stubs are distinctive
-# enough that they won't appear in column headers that legitimately trigger
-# cm_revenue_per_customer or cm_average_order_value keyword matching.
-_STUB_NOT_ARPU_RE = re.compile(
-    r"""
-    \b(?:
-        number\s+of\s+stores?
-        | store\s+count
-        | comparable\s+(?:store\s+)?sales
-        | square\s+(?:foot|footage|feet)
-        | sq\.\s*ft
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-# Metrics where a contradicting stub path is definitive evidence of wrong binding.
-_STUB_CONTRADICTION_METRICS = frozenset(
-    {"cm_revenue_per_customer", "cm_average_order_value"}
-)
+# Per-metric contradiction regexes for table stub-path mismatches.
+#
+# When a metric keyword matches in a column header, the pipeline binds ALL
+# data cells in that column to that metric — even when the row label (stub)
+# clearly identifies a different metric.  For each metric below, the regex
+# matches stub text that is definitive evidence of the WRONG row being bound.
+#
+# source_text for table values = header_path + stub_path + cell_text
+# (false_positive_filter.py:_get_source_text), so stub tokens are matchable.
+#
+# CAUTION: "active customers" is intentionally excluded from cm_revenue_per_customer
+# and cm_average_order_value — mixed tables in Chewy-style filings have legitimate
+# ARPU rows sharing header context with active-customer-count rows, and adding
+# "active customers" here caused false negatives in past iterations.
+_STUB_DOMAIN_CONTRADICTIONS: dict[str, re.Pattern] = {
+    # Retention metrics → block when stub names customer counts or per-customer metrics.
+    # "number of … customers" allows up to 3 adjective words (e.g. "premium cloud service").
+    "cm_net_revenue_retention": re.compile(
+        r"\b(?:"
+        r"number\s+of\s+(?:\w+\s+){0,3}customers?"
+        r"|customer\s+count"
+        r"|arpc"
+        r"|average\s+revenues?\s+per"
+        r"|revenue\s+per\s+customer"
+        r"|arpu"
+        r"|active\s+customers?"
+        r")\b",
+        re.IGNORECASE,
+    ),
+    "cm_gross_revenue_retention": re.compile(
+        r"\b(?:"
+        r"number\s+of\s+(?:\w+\s+){0,3}customers?"
+        r"|customer\s+count"
+        r"|arpc"
+        r"|average\s+revenues?\s+per"
+        r"|revenue\s+per\s+customer"
+        r"|arpu"
+        r"|active\s+customers?"
+        r")\b",
+        re.IGNORECASE,
+    ),
+    "cm_customer_retention_rate": re.compile(
+        r"\b(?:"
+        r"number\s+of\s+(?:\w+\s+){0,3}customers?"
+        r"|customer\s+count"
+        r"|arpc"
+        r"|average\s+revenues?\s+per"
+        r"|revenue\s+per\s+customer"
+        r"|arpu"
+        r"|active\s+customers?"
+        r"|net\s+revenue\s+retention"
+        r"|nrr\b"
+        r")\b",
+        re.IGNORECASE,
+    ),
+    # Per-customer metrics → block when stub names count/retention rows
+    # NOTE: "active customers" deliberately excluded (see caution above)
+    "cm_revenue_per_customer": re.compile(
+        r"\b(?:"
+        r"number\s+of\s+stores?"
+        r"|store\s+count"
+        r"|comparable\s+(?:store\s+)?sales"
+        r"|square\s+(?:foot|footage|feet)"
+        r"|sq\.\s*ft"
+        r"|net\s+revenue\s+retention"
+        r"|gross\s+revenue\s+retention"
+        r"|(?:customer\s+)?(?:churn|retention)\s+rate"
+        r")\b",
+        re.IGNORECASE,
+    ),
+    "cm_average_order_value": re.compile(
+        r"\b(?:"
+        r"number\s+of\s+stores?"
+        r"|store\s+count"
+        r"|comparable\s+(?:store\s+)?sales"
+        r"|square\s+(?:foot|footage|feet)"
+        r"|sq\.\s*ft"
+        r"|net\s+revenue\s+retention"
+        r"|gross\s+revenue\s+retention"
+        r"|(?:customer\s+)?(?:churn|retention)\s+rate"
+        r")\b",
+        re.IGNORECASE,
+    ),
+    # Customer count metrics → block when stub names per-customer or retention metrics
+    # NOTE: "stores" intentionally excluded — does not indicate a non-customer-count row
+    "cm_active_customers_total": re.compile(
+        r"\b(?:"
+        r"arpu"
+        r"|arpc"
+        r"|average\s+revenues?\s+per"
+        r"|revenue\s+per\s+(?:active\s+)?customer"
+        r"|net\s+sales\s+per"
+        r"|net\s+revenue\s+retention"
+        r"|gross\s+revenue\s+retention"
+        r"|(?:customer\s+)?(?:churn|retention)\s+rate"
+        r")\b",
+        re.IGNORECASE,
+    ),
+    "cm_customers_period_end": re.compile(
+        r"\b(?:"
+        r"arpu"
+        r"|arpc"
+        r"|average\s+revenues?\s+per"
+        r"|revenue\s+per\s+(?:active\s+)?customer"
+        r"|net\s+sales\s+per"
+        r"|net\s+revenue\s+retention"
+        r"|gross\s+revenue\s+retention"
+        r"|(?:customer\s+)?(?:churn|retention)\s+rate"
+        r")\b",
+        re.IGNORECASE,
+    ),
+}
 
 
 def _rule_stub_metric_contradiction(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
-    """Block table-sourced per-customer metrics when the stub row is clearly a different metric.
+    """Block table column-header bindings where the stub row labels a different metric.
 
-    When a table header mentions 'net sales per active customer', the value-binding
-    stage may tag ALL cells in that column as cm_revenue_per_customer, even when
-    the stub (row label) says 'Number of stores' or 'Active customers (as of)'.
-    The source_text for table cells is header_path + stub_path + cell_text, so
-    stub keywords are present and matchable.
+    When a column header contains a metric keyword, the value-binding stage binds
+    ALL data cells in that column to that metric — even when the row label (stub_path)
+    clearly names a DIFFERENT metric.  For example, a 'Net Revenue Retention' column
+    header may cause customer-count rows or ARPC rows to be mis-bound as NRR.
 
-    Only fires for table bindings (source_locator.table_id is not None) where
-    the metric is a per-unit revenue metric but the stub row indicates something else.
+    The source_text for table cells is header_path + stub_path + cell_text, so stub
+    tokens are present and matchable via _STUB_DOMAIN_CONTRADICTIONS.
+
+    Only fires for table_header bindings (binding_type == 'table_header') where the
+    stub row contradicts the bound metric.  table_stub bindings are correct by
+    construction — the stub IS the matched keyword.
     """
-    if metric_id not in _STUB_CONTRADICTION_METRICS:
+    contradiction_re = _STUB_DOMAIN_CONTRADICTIONS.get(metric_id)
+    if contradiction_re is None:
+        return None
+    if bv.binding_type != "table_header":
         return None
     if bv.source_locator.table_id is None:
         return None
     if not source_text:
         return None
-    if _STUB_NOT_ARPU_RE.search(source_text):
+    if contradiction_re.search(source_text):
         return "v2_stub_metric_contradiction"
     return None
 
