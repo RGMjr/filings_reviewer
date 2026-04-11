@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-09T16:21:33.538837+00:00",
-  "description": "1C/1D recall fix: soft-rule confidence bypass, keyword_in_path bonus, orders-fulfilled pattern",
+  "baseline_date": "2026-04-11T00:17:06.124361+00:00",
+  "description": "SEC recall gap closure: repeat customer revenue FP fix",
   "overall": {
-    "precision": 0.6275071633237822,
-    "recall": 0.655688622754491,
-    "f1": 0.6412884333821376
+    "precision": 0.6501457725947521,
+    "recall": 0.6676646706586826,
+    "f1": 0.6587887740029542
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -28,9 +28,9 @@
       "f1": 1.0
     },
     "Gitlab Inc.": {
-      "precision": 0.7083333333333334,
+      "precision": 0.7727272727272727,
       "recall": 0.7391304347826086,
-      "f1": 0.723404255319149
+      "f1": 0.7555555555555555
     },
     "Kingsoft Cloud Holdings Ltd": {
       "precision": 0.6296296296296297,
@@ -53,9 +53,9 @@
       "f1": 1.0
     },
     "Samsara Inc.": {
-      "precision": 0.6428571428571429,
-      "recall": 0.42857142857142855,
-      "f1": 0.5142857142857143
+      "precision": 0.6785714285714286,
+      "recall": 0.4523809523809524,
+      "f1": 0.5428571428571429
     },
     "Slack Technologies": {
       "precision": 0.868421052631579,
@@ -68,9 +68,9 @@
       "f1": 0.7096774193548387
     },
     "Snowflake Inc": {
-      "precision": 0.7105263157894737,
+      "precision": 0.75,
       "recall": 1.0,
-      "f1": 0.8307692307692308
+      "f1": 0.8571428571428571
     },
     "Tenable Holdings, Inc.": {
       "precision": 0.625,
@@ -78,9 +78,9 @@
       "f1": 0.6896551724137931
     },
     "Torrid Holdings Inc.": {
-      "precision": 0.6333333333333333,
-      "recall": 0.5588235294117647,
-      "f1": 0.59375
+      "precision": 0.7857142857142857,
+      "recall": 0.6470588235294118,
+      "f1": 0.7096774193548386
     }
   }
 }
