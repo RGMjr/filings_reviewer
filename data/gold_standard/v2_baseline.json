@@ -1,21 +1,21 @@
 {
-  "baseline_date": "2026-04-11T00:17:06.124361+00:00",
-  "description": "SEC recall gap closure: repeat customer revenue FP fix",
+  "baseline_date": "2026-04-11T00:40:41.635797+00:00",
+  "description": "precision: ARR-of tier regex, CRR min, revenue_per_customer fin annotation rule",
   "overall": {
-    "precision": 0.6501457725947521,
+    "precision": 0.6696696696696697,
     "recall": 0.6676646706586826,
-    "f1": 0.6587887740029542
+    "f1": 0.6686656671664167
   },
   "by_company": {
     "Chewy, Inc.": {
-      "precision": 0.391304347826087,
+      "precision": 0.5294117647058824,
       "recall": 0.6428571428571429,
-      "f1": 0.4864864864864865
+      "f1": 0.5806451612903226
     },
     "Datadog, Inc.": {
-      "precision": 0.5,
+      "precision": 0.5714285714285714,
       "recall": 0.5714285714285714,
-      "f1": 0.5333333333333333
+      "f1": 0.5714285714285714
     },
     "Farfetch Limited": {
       "precision": 0.5555555555555556,
@@ -43,9 +43,9 @@
       "f1": 0.5365853658536585
     },
     "Robinhood Markets, Inc.": {
-      "precision": 0.4444444444444444,
+      "precision": 0.5,
       "recall": 0.22857142857142856,
-      "f1": 0.3018867924528302
+      "f1": 0.3137254901960784
     },
     "SAMSARA VISION INC.": {
       "precision": 1.0,
