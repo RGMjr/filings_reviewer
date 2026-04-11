@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-11T00:40:41.635797+00:00",
-  "description": "precision: ARR-of tier regex, CRR min, revenue_per_customer fin annotation rule",
+  "baseline_date": "2026-04-11T14:02:57.089053+00:00",
+  "description": "precision: NRR/CRR minimums, revenue_concentration ratio suffix, large_customers small ARR threshold",
   "overall": {
-    "precision": 0.6696696696696697,
-    "recall": 0.6676646706586826,
-    "f1": 0.6686656671664167
+    "precision": 0.6747720364741642,
+    "recall": 0.6646706586826348,
+    "f1": 0.6696832579185521
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -13,9 +13,9 @@
       "f1": 0.5806451612903226
     },
     "Datadog, Inc.": {
-      "precision": 0.5714285714285714,
+      "precision": 0.6153846153846154,
       "recall": 0.5714285714285714,
-      "f1": 0.5714285714285714
+      "f1": 0.5925925925925927
     },
     "Farfetch Limited": {
       "precision": 0.5555555555555556,
@@ -53,9 +53,9 @@
       "f1": 1.0
     },
     "Samsara Inc.": {
-      "precision": 0.6785714285714286,
-      "recall": 0.4523809523809524,
-      "f1": 0.5428571428571429
+      "precision": 0.72,
+      "recall": 0.42857142857142855,
+      "f1": 0.5373134328358209
     },
     "Slack Technologies": {
       "precision": 0.868421052631579,
