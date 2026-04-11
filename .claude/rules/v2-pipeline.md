@@ -36,7 +36,7 @@ When improving keywords, FP rules, or value binding, prioritize **Tier 1** metri
 - `cm_balance_by_cohort` — F1=0%. Needs gold standard cases and extraction support.
 - `cm_gross_margin_by_cohort` — F1=0%. Needs gold standard cases and extraction support.
 - `cm_ltv_to_cac_ratio` — F1=46%, recall=33%. Often missed due to varied formatting.
-- `cm_customer_retention_rate` — F1=33%. Low coverage, easily confused with NRR.
+- `cm_customer_retention_rate` — F1=50%. Low coverage, easily confused with NRR.
 
 **Tier 2 guidance:** Accept current performance. Simplify or relax FP rules for Tier 2 metrics if they create maintenance burden or interfere with Tier 1.
 
@@ -53,6 +53,6 @@ PipelineConfig.for_presentation() # Images enabled, min_paragraph_chars=20
 - `pipeline.py` — orchestrator
 - `models.py` — EvidencePack, Fact, PipelineResult dataclasses
 - `persistence.py` — DB write layer
-- `stages/false_positive_filter.py` — 32 FP rules (2,239 lines)
+- `stages/false_positive_filter.py` — 33 FP rules (2,263 lines)
 - `stages/value_binding.py` — number-to-metric binding (1,436 lines)
 - `stages/period_inference.py` — date/period extraction (1,246 lines)

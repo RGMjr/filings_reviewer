@@ -48,9 +48,9 @@ logger = logging.getLogger(__name__)
 _YEAR_MIN = 1990
 _YEAR_MAX = 2100
 
-# Financial table annotation — "(In thousands)", "(In millions)", etc.
+# Financial table annotation — "(In thousands)", "(In millions)", "($ in thousands)", etc.
 _FINANCIAL_ANNOTATION_RE = re.compile(
-    r"\(\s*in\s+(?:thousands|millions|billions|hundreds)\s*\)",
+    r"\(\s*\$?\s*in\s+(?:thousands|millions|billions|hundreds)\s*\)",
     re.IGNORECASE,
 )
 
@@ -1086,6 +1086,8 @@ _ARR_TIER_SOURCE_RE = re.compile(
     (?:
         \$\s*\d[\d,]*\s*(?:K|k|M|m)?\s*(?:in\s+)?(?:ARR|arr)  # "$5K ARR", "$100K in ARR"
         |
+        (?:ARR|arr)\s+(?:of|above|over|exceeding|greater\s+than|more\s+than|at\s+least)\s+\$  # "ARR of $X", "ARR above $X"
+        |
         (?:over|greater\s+than|more\s+than|above|exceeding|>)\s*\$  # "over $X"
         |
         (?:at\s+least|minimum)\s+\$                                  # "at least $X"
@@ -1134,6 +1136,7 @@ _METRIC_MAX_VALUE: dict[str, float] = {
 # Used by _rule_magnitude_sanity alongside _METRIC_MAX_VALUE.
 _METRIC_MIN_VALUE: dict[str, float] = {
     "cm_net_revenue_retention": 30,                  # <30% NRR is implausible; real NRR ≥ ~40%
+    "cm_customer_retention_rate": 5,                 # <5% CRR is implausible; catches ratio/multiplier mis-bindings
 }
 
 
@@ -1536,6 +1539,31 @@ def _rule_stub_metric_contradiction(
     return None
 
 
+def _rule_revenue_per_customer_fin_annotation(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block large cm_revenue_per_customer values from '($ in thousands)' financial sections.
+
+    Catches customer count values (e.g. 6,789 active customers) that appear in
+    a financial statement section annotated with '($ in thousands)' or
+    '(in thousands)' and are mistakenly bound as per-customer revenue because a
+    'revenue per customer' keyword appears elsewhere in the same segment.
+
+    Only fires when value >= 1,000 — legitimate ARPU values above $1,000 exist
+    (e.g. Torrid ~$3,400) but those segments do not carry financial-statement
+    scale annotations.
+    """
+    if metric_id != "cm_revenue_per_customer":
+        return None
+    if bv.value is None or bv.value < 1_000:
+        return None
+    if not source_text:
+        return None
+    if _FINANCIAL_ANNOTATION_RE.search(source_text):
+        return "v2_revenue_per_customer_fin_annotation"
+    return None
+
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # Tags are used by the relaxed-mode skip list below.
@@ -1568,6 +1596,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("retention_rate_over_100", _rule_retention_rate_over_100, False),
     ("arr_tier_threshold", _rule_arr_tier_threshold, False),
     ("magnitude_sanity", _rule_magnitude_sanity, False),
+    ("revenue_per_customer_fin_annotation", _rule_revenue_per_customer_fin_annotation, False),
     ("arpu_context_on_customer_count", _rule_arpu_context_on_customer_count, True),
     ("financial_context_customer_metric", _rule_financial_context_on_customer_metric, True),
     ("metric_definition_value", _rule_metric_definition_value, True),
