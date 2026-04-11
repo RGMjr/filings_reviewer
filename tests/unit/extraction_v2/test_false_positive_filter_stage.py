@@ -3841,8 +3841,13 @@ class TestRetentionRateThresholdUpdate:
 
 
 class TestStubMetricContradiction:
-    """Tests for _rule_stub_metric_contradiction — blocks table cells where stub
-    row contradicts the revenue-per-customer or AOV metric assignment.
+    """Tests for _rule_stub_metric_contradiction — blocks table column-header
+    bindings where the stub row label identifies a different metric.
+
+    Covers: cm_revenue_per_customer, cm_average_order_value (original),
+    cm_net_revenue_retention, cm_gross_revenue_retention,
+    cm_customer_retention_rate, cm_active_customers_total,
+    cm_customers_period_end (expanded).
     """
 
     def test_number_of_stores_stub_blocks_arpu(self):
@@ -3927,10 +3932,145 @@ class TestStubMetricContradiction:
         assert reason != "v2_stub_metric_contradiction"
 
     def test_non_arpu_metric_not_affected(self):
-        """Rule doesn't fire for cm_customers_period_end even with store stub."""
+        """Rule doesn't fire for cm_customers_period_end even with store stub.
+
+        cm_customers_period_end is now in _STUB_DOMAIN_CONTRADICTIONS, but its
+        contradiction regex targets ARPU/NRR patterns — NOT 'stores'.
+        """
         bv = _make_table_bound_value("c1", 608.0, "608", Unit.COUNT)
         source = "Number of stores (as of end of period) 608"
         is_fp, reason = _is_v2_false_positive(
             bv, source, metric_id="cm_customers_period_end"
+        )
+        assert reason != "v2_stub_metric_contradiction"
+
+    # ------------------------------------------------------------------
+    # NRR / GRR / CRR — expanded coverage
+    # ------------------------------------------------------------------
+
+    def test_nrr_column_customer_count_stub_blocked(self):
+        """NRR column header + 'Number of Premium Cloud Service Customers' stub → blocked.
+
+        Kingsoft pattern: table with NRR column header binds all rows including
+        the customer-count row. Value=175 should be blocked as NRR.
+        The regex allows up to 3 adjective words between 'of' and 'customers'.
+        """
+        bv = _make_table_bound_value("c1", 175.0, "175", Unit.COUNT)
+        source = (
+            "Net Revenue Retention Rate (%) "
+            "Number of Premium Cloud Service Customers 175"
+        )
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention"
+        )
+        assert is_fp is True
+        assert reason == "v2_stub_metric_contradiction"
+
+    def test_nrr_column_arpc_stub_blocked(self):
+        """NRR column header + ARPC stub → blocked (value is per-customer revenue, not NRR).
+
+        Value 120.0 is used (above NRR min=31) to ensure magnitude_sanity doesn't
+        fire first — we want to specifically test the stub_contradiction rule.
+        """
+        bv = _make_table_bound_value("c1", 120.0, "120", Unit.CURRENCY)
+        source = "Net Revenue Retention (%) ARPC ($) 120"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention"
+        )
+        assert is_fp is True
+        assert reason == "v2_stub_metric_contradiction"
+
+    def test_nrr_column_correct_row_kept(self):
+        """NRR column header + NRR stub (correct row) → kept."""
+        bv = _make_table_bound_value("c1", 161.0, "161", Unit.PERCENT)
+        source = "Net Revenue Retention Rate (%) NRR (%) 161"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention"
+        )
+        assert reason != "v2_stub_metric_contradiction"
+
+    def test_nrr_column_neutral_stub_kept(self):
+        """NRR column header + neutral period stub ('2019') → kept."""
+        bv = _make_table_bound_value("c1", 161.0, "161", Unit.PERCENT)
+        source = "Net Revenue Retention (%) 2019 161"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention"
+        )
+        assert reason != "v2_stub_metric_contradiction"
+
+    def test_grr_column_customer_count_stub_blocked(self):
+        """GRR column + customer count stub → blocked."""
+        bv = _make_table_bound_value("c1", 250.0, "250", Unit.COUNT)
+        source = "Gross Revenue Retention (%) Customer Count 250"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_gross_revenue_retention"
+        )
+        assert is_fp is True
+        assert reason == "v2_stub_metric_contradiction"
+
+    def test_crr_column_nrr_stub_blocked(self):
+        """CRR column + 'Net Revenue Retention' stub → blocked as FP.
+
+        Value 85.0 used (≤100) to avoid triggering v2_retention_rate_over_100.
+        The v2_retention_rate_nrr_context rule may fire before stub_contradiction
+        when source contains 'Net Revenue Retention' — either way correctly rejected.
+        """
+        bv = _make_table_bound_value("c1", 85.0, "85", Unit.PERCENT)
+        source = "Customer Retention Rate (%) Net Revenue Retention 85"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customer_retention_rate"
+        )
+        assert is_fp is True
+
+    # ------------------------------------------------------------------
+    # Customer count metrics — expanded coverage
+    # ------------------------------------------------------------------
+
+    def test_customers_period_end_arpu_stub_blocked(self):
+        """customers_period_end column + ARPU stub → blocked as FP.
+
+        The v2_arpu_context_on_customer_count rule may fire before
+        stub_contradiction — either way the binding is correctly rejected.
+        """
+        bv = _make_table_bound_value("c1", 291.0, "291", Unit.CURRENCY)
+        source = "Number of Customers ARPU ($) 291"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end"
+        )
+        assert is_fp is True
+
+    def test_customers_period_end_nrr_stub_blocked(self):
+        """customers_period_end column + 'Net Revenue Retention' stub → blocked.
+
+        Uses unit=COUNT so percent-on-count rule doesn't fire first.
+        """
+        bv = _make_table_bound_value("c1", 115.0, "115", Unit.COUNT)
+        source = "Number of Customers Net Revenue Retention 115"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason == "v2_stub_metric_contradiction"
+
+    def test_table_stub_binding_not_blocked(self):
+        """table_stub binding with same source_text → NOT blocked.
+
+        For stub bindings the stub IS the keyword match — no contradiction possible.
+        """
+        bv = BoundValue(
+            candidate_id="c1",
+            value=175.0,
+            value_raw="175",
+            unit=Unit.COUNT,
+            binding_type="table_stub",  # <-- stub binding
+            binding_confidence=0.5,
+            source_locator=SourceLocator(table_id="tbl-1", cell_row=3, cell_col=1),
+        )
+        source = (
+            "Net Revenue Retention Rate (%) "
+            "Number of Premium Cloud Service Customers 175"
+        )
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_net_revenue_retention"
         )
         assert reason != "v2_stub_metric_contradiction"
