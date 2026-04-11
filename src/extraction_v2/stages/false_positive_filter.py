@@ -171,6 +171,18 @@ _COST_STRUCTURE_REVENUE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Repeat customer purchase rate context.
+# "Repeat customers accounted for approximately 72% of net sales" describes
+# the share of revenue from repeat purchasers — this is cm_repeat_purchase_rate,
+# not customer revenue concentration. The cm_revenue_concentration keyword
+# pattern matches "accounted for approximately X%" broadly, creating a
+# false positive when the subject is "repeat customers" rather than a named
+# customer entity.
+_REPEAT_CUSTOMER_REVENUE_RE = re.compile(
+    r"\b(?:repeat|existing|loyal|returning)\s+customers?\b",
+    re.IGNORECASE,
+)
+
 # Developer/engineer count context.
 # Used to suppress cm_daily_active_users FPs from developer registration counts.
 _DEVELOPER_COUNT_RE = re.compile(
@@ -457,6 +469,11 @@ def _rule_revenue_concentration_context(bv: BoundValue, source_text: str, metric
     # source_text.search() only finds the first match which may be far from the value.
     if any(abs(m.start() - value_pos) <= 200 for m in _COST_STRUCTURE_REVENUE_RE.finditer(source_text)):
         return "v2_cost_structure_revenue"
+    # "Repeat/existing customers accounted for X% of net sales" describes
+    # repeat purchase rate, not customer revenue concentration.
+    repeat_match = _REPEAT_CUSTOMER_REVENUE_RE.search(source_text)
+    if repeat_match and abs(repeat_match.start() - value_pos) <= 300:
+        return "v2_repeat_customer_revenue"
     return None
 
 
