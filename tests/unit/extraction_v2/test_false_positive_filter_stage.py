@@ -3754,7 +3754,7 @@ class TestMagnitudeSanityUpdates:
         assert reason == "v2_magnitude_sanity"
 
     def test_nrr_too_low_rejected(self):
-        """NRR of 9.3 → rejected (below min=30)."""
+        """NRR of 9.3 → rejected (below min=31)."""
         bv = _make_bound_value("c1", 9.3, "9.3", Unit.PERCENT)
         is_fp, reason = _is_v2_false_positive(
             bv, "Net revenue retention 9.3", metric_id="cm_net_revenue_retention"
@@ -3763,18 +3763,27 @@ class TestMagnitudeSanityUpdates:
         assert reason == "v2_magnitude_sanity"
 
     def test_nrr_plausible_value_kept(self):
-        """NRR of 120% → kept (within 30-250 range)."""
+        """NRR of 120% → kept (within 31-250 range)."""
         bv = _make_bound_value("c1", 120.0, "120%", Unit.PERCENT)
         is_fp, reason = _is_v2_false_positive(
             bv, "Net revenue retention rate was 120%.", metric_id="cm_net_revenue_retention"
         )
         assert is_fp is False
 
-    def test_nrr_at_min_boundary_kept(self):
-        """NRR of exactly 30% → kept (boundary: not strictly below min)."""
+    def test_nrr_30_rejected(self):
+        """NRR of 30 → rejected (below min=31; this was a Datadog mis-binding)."""
         bv = _make_bound_value("c1", 30.0, "30%", Unit.PERCENT)
         is_fp, reason = _is_v2_false_positive(
             bv, "Net revenue retention 30%", metric_id="cm_net_revenue_retention"
+        )
+        assert is_fp is True
+        assert reason == "v2_magnitude_sanity"
+
+    def test_nrr_at_min_boundary_kept(self):
+        """NRR of 44% → kept (Samsara gold standard value; boundary at min=31)."""
+        bv = _make_bound_value("c1", 44.0, "44%", Unit.PERCENT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, "Net revenue retention 44%", metric_id="cm_net_revenue_retention"
         )
         assert is_fp is False
 

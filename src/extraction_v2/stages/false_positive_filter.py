@@ -1135,8 +1135,8 @@ _METRIC_MAX_VALUE: dict[str, float] = {
 # Minimum plausible values for specific metrics.
 # Used by _rule_magnitude_sanity alongside _METRIC_MAX_VALUE.
 _METRIC_MIN_VALUE: dict[str, float] = {
-    "cm_net_revenue_retention": 30,                  # <30% NRR is implausible; real NRR ≥ ~40%
-    "cm_customer_retention_rate": 5,                 # <5% CRR is implausible; catches ratio/multiplier mis-bindings
+    "cm_net_revenue_retention": 31,                  # <31% NRR is implausible; blocks 30.0 mis-binding; active gold min is 44% (Samsara)
+    "cm_customer_retention_rate": 50,                # <50% CRR is implausible; active gold min is 66% (Chewy)
 }
 
 
@@ -1564,6 +1564,54 @@ def _rule_revenue_per_customer_fin_annotation(
     return None
 
 
+_RATIO_SUFFIX_RE = re.compile(r"\d+(?:\.\d+)?\s*[xX×]$")
+
+_SMALL_ARR_THRESHOLD_RE = re.compile(
+    r"\$\s*5[,.]?000\s*(?:in\s+)?(?:ARR|annual\s+recurring)",
+    re.IGNORECASE,
+)
+
+
+def _rule_revenue_concentration_ratio_suffix(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block cm_revenue_concentration when raw value has a ratio suffix (e.g. '33.9x').
+
+    Revenue concentration is a percentage (0-100). A trailing 'x' or '×' signals a
+    ratio or multiplier metric (LTV/CAC, ARR multiple, etc.) being mis-bound as
+    concentration.
+    """
+    if metric_id != "cm_revenue_concentration":
+        return None
+    raw = bv.value_raw or ""
+    if _RATIO_SUFFIX_RE.search(raw.strip()):
+        return "v2_revenue_concentration_ratio_suffix"
+    return None
+
+
+def _rule_large_customers_small_arr_threshold(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block cm_large_customers_period_end when source context mentions a $5K ARR threshold.
+
+    The standard 'large customers' definition uses $100K+ ARR. A $5,000 ARR threshold
+    indicates a total/core customer count (e.g. Samsara's 'Core Customers' = 13,000+
+    with >$5K ARR) rather than the enterprise tier the metric is designed to track.
+
+    Value guard (>5,000) prevents blocking the legitimate $100K-tier count (gold = 715)
+    that appears in the same filing paragraph as the core-customer $5K definition.
+    """
+    if metric_id != "cm_large_customers_period_end":
+        return None
+    if bv.value is None or bv.value <= 5_000:
+        return None
+    if not source_text:
+        return None
+    if _SMALL_ARR_THRESHOLD_RE.search(source_text):
+        return "v2_large_customers_small_arr_threshold"
+    return None
+
+
 # =============================================================================
 # FP Rule Registry — order matters (first match wins)
 # Tags are used by the relaxed-mode skip list below.
@@ -1597,6 +1645,8 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("arr_tier_threshold", _rule_arr_tier_threshold, False),
     ("magnitude_sanity", _rule_magnitude_sanity, False),
     ("revenue_per_customer_fin_annotation", _rule_revenue_per_customer_fin_annotation, False),
+    ("revenue_concentration_ratio_suffix", _rule_revenue_concentration_ratio_suffix, False),
+    ("large_customers_small_arr_threshold", _rule_large_customers_small_arr_threshold, False),
     ("arpu_context_on_customer_count", _rule_arpu_context_on_customer_count, True),
     ("financial_context_customer_metric", _rule_financial_context_on_customer_metric, True),
     ("metric_definition_value", _rule_metric_definition_value, True),
