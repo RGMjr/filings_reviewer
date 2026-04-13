@@ -317,6 +317,31 @@ def get_specific_patterns(config_path: str | None = None) -> list[str]:
     return patterns
 
 
+def get_specific_patterns_by_metric(config_path: str | None = None) -> dict[str, list[str]]:
+    """
+    Get specific (multi-word) patterns grouped by metric_id.
+
+    Unlike get_specific_patterns() which returns a flat list, this function
+    returns patterns keyed by metric_id so callers can check which metric a
+    pattern belongs to.
+
+    Args:
+        config_path: Optional path to config file.
+
+    Returns:
+        Dict mapping metric_id to list of specific pattern strings.
+        Excludes YAML anchor keys (starting with underscore) and deprecated metrics.
+    """
+    config = _load_config(config_path)
+    return {
+        metric_id: list(metric_config["specific_patterns"])
+        for metric_id, metric_config in config.items()
+        if _is_metric_key(metric_id)
+        and "specific_patterns" in metric_config
+        and metric_config.get("status") != "deprecated"
+    }
+
+
 def get_required_context(config_path: str | None = None) -> dict[str, dict[str, Any]]:
     """
     Get required context patterns for metrics.

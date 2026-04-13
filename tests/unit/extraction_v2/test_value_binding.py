@@ -3232,3 +3232,289 @@ class TestRespectivelyPatternBinding:
 
         # Currency values must be filtered for a count-only metric
         assert len(results) == 0
+
+
+class TestStubContradictionUpstream:
+    """Tests for the upstream stub-contradiction check in _bind_cells().
+
+    When a metric keyword matches a column header, the value-binding stage
+    performs a column scan (iterate_rows=True) and may bind values from rows
+    whose stub label identifies a DIFFERENT metric. The upstream check prevents
+    these FPs by skipping data cells whose stub_path matches a specific_pattern
+    for a different metric.
+
+    Covers:
+    - Contradicting stub → cell skipped (prevents NRR column binding customer rows)
+    - Neutral stub (year labels) → cell binds normally
+    - Same-metric stub → cell binds (no false suppression)
+    - Row-scan binding (iterate_rows=False) → not affected by the check
+    """
+
+    @staticmethod
+    def _make_nrr_column_table(stub_texts: list[str]) -> Table:
+        """Build a table with 'Net Revenue Retention' as column header.
+
+        Layout (1 header row, len(stub_texts) data rows):
+            | (empty) | Net Revenue Retention |
+            | stub_0  |        125%           |
+            | stub_1  |        110%           |
+            ...
+
+        Candidate: cm_net_revenue_retention matched at header cell (0, 1).
+        """
+        cells: list[Cell] = [
+            Cell(row=0, col=0, text="", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=0,
+                col=1,
+                text="Net Revenue Retention",
+                is_header=True,
+                header_path=[],
+                stub_path=[],
+            ),
+        ]
+        values = ["125%", "110%", "115%", "120%", "130%"]
+        for i, stub in enumerate(stub_texts):
+            cells.append(
+                Cell(
+                    row=i + 1,
+                    col=0,
+                    text=stub,
+                    is_stub=True,
+                    header_path=[""],
+                    stub_path=[],
+                )
+            )
+            cells.append(
+                Cell(
+                    row=i + 1,
+                    col=1,
+                    text=values[i],
+                    header_path=["Net Revenue Retention"],
+                    stub_path=[stub],
+                )
+            )
+
+        n_rows = len(stub_texts) + 1
+        table = Table(
+            table_id="nrr-col-table",
+            row_count=n_rows,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(n_rows)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+        return table
+
+    @staticmethod
+    def _nrr_header_candidate(table_id: str) -> MetricCandidate:
+        """Candidate for cm_net_revenue_retention matched in the header cell."""
+        return MetricCandidate(
+            candidate_id="cand-nrr-header",
+            metric_id="cm_net_revenue_retention",
+            match_text="Net Revenue Retention",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id=table_id,
+                cell_row=0,
+                cell_col=1,
+            ),
+        )
+
+    def test_column_scan_skips_contradicting_stub(self) -> None:
+        """Stub rows naming a different metric are skipped during column scan.
+
+        An 'NRR' column header should NOT bind values from rows labeled
+        'paid customers' or 'active customers' — those stubs identify different
+        metrics (cm_customers_period_end and cm_active_customers_total).
+        """
+        stage = ValueBindingStage()
+        table = self._make_nrr_column_table(["paid customers", "active customers"])
+        candidate = self._nrr_header_candidate("nrr-col-table")
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        stage.process(context)  # type: ignore
+
+        assert len(context.bound_values) == 0, (
+            "Expected 0 bindings: both rows have stubs that name different metrics"
+        )
+
+    def test_column_scan_keeps_neutral_stub(self) -> None:
+        """Data rows with neutral stubs (year labels) bind normally.
+
+        Year labels like '2022' and '2023' do not match any metric-specific
+        pattern, so the stub check does not suppress binding.
+        """
+        stage = ValueBindingStage()
+        table = self._make_nrr_column_table(["2022", "2023"])
+        candidate = self._nrr_header_candidate("nrr-col-table")
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        stage.process(context)  # type: ignore
+
+        assert len(context.bound_values) == 2, (
+            "Expected 2 bindings: neutral stubs do not conflict with any metric"
+        )
+
+    def test_column_scan_keeps_matching_stub(self) -> None:
+        """Data rows whose stub labels the SAME metric as the candidate bind normally.
+
+        A stub saying 'net revenue retention' in an NRR column is internally
+        consistent — it should not suppress binding.
+        """
+        stage = ValueBindingStage()
+        table = self._make_nrr_column_table(["net revenue retention"])
+        candidate = self._nrr_header_candidate("nrr-col-table")
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        stage.process(context)  # type: ignore
+
+        assert len(context.bound_values) == 1, (
+            "Expected 1 binding: stub names the same metric as the candidate"
+        )
+
+    def test_row_scan_not_affected(self) -> None:
+        """Row-scan bindings (iterate_rows=False) are not guarded by the stub check.
+
+        When the candidate is in a stub cell, Strategy 2 fires a row scan.
+        The stub of the candidate row may happen to match another metric's
+        specific_pattern, but the check must NOT suppress these bindings because
+        the stub IS the matched keyword in row-scan context.
+        """
+        stage = ValueBindingStage()
+        # Table: stub col "paid customers", year columns "2022"/"2023"
+        cells = [
+            Cell(row=0, col=0, text="", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=1, text="2022", is_header=True, header_path=[], stub_path=[]),
+            Cell(row=0, col=2, text="2023", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=1,
+                col=0,
+                text="Paid customers",
+                is_stub=True,
+                header_path=[""],
+                stub_path=[],
+            ),
+            Cell(
+                row=1,
+                col=1,
+                text="45,000",
+                header_path=["2022"],
+                stub_path=["Paid customers"],
+            ),
+            Cell(
+                row=1,
+                col=2,
+                text="50,000",
+                header_path=["2023"],
+                stub_path=["Paid customers"],
+            ),
+        ]
+        table = Table(
+            table_id="row-scan-table",
+            row_count=2,
+            col_count=3,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
+        )
+        table._grid = [[None] * 3 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        # Candidate is in the stub cell — Strategy 2 fires (row scan)
+        candidate = MetricCandidate(
+            candidate_id="cand-row-scan",
+            metric_id="cm_customers_period_end",
+            match_text="Paid customers",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="row-scan-table",
+                cell_row=1,
+                cell_col=0,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        stage.process(context)  # type: ignore
+
+        assert len(context.bound_values) == 2, (
+            "Expected 2 bindings: row-scan is not guarded by the stub check"
+        )
+
+    def test_active_customer_in_arpu_stub_not_suppressed(self) -> None:
+        """cm_revenue_per_customer is not suppressed when stub contains 'active customer'.
+
+        Torrid-style tables have a column header matching cm_revenue_per_customer,
+        and data rows including one labeled 'Net sales per active customer'. That
+        stub contains 'active customer' as a substring, which matches
+        cm_active_customers_total's specific_pattern ('active customers?'). The
+        _STUB_CHECK_NO_SUPPRESS exception must prevent false suppression of this
+        ARPU binding during column scan.
+        """
+        stage = ValueBindingStage()
+        # Table: column header "Net Sales Per Customer", data rows with period stubs
+        # that include an ARPU-style label containing "active customer"
+        cells = [
+            Cell(row=0, col=0, text="", is_header=True, header_path=[], stub_path=[]),
+            Cell(
+                row=0,
+                col=1,
+                text="Net Sales Per Customer",
+                is_header=True,
+                header_path=[],
+                stub_path=[],
+            ),
+            # Row with ARPU stub that contains "active customer" as substring
+            Cell(
+                row=1,
+                col=0,
+                text="Net sales per active customer",
+                is_stub=True,
+                header_path=[""],
+                stub_path=[],
+            ),
+            Cell(
+                row=1,
+                col=1,
+                text="$3,448",
+                header_path=["Net Sales Per Customer"],
+                stub_path=["Net sales per active customer"],
+            ),
+        ]
+        table = Table(
+            table_id="arpu-active-table",
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
+        )
+        table._grid = [[None] * 2 for _ in range(2)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+
+        # Candidate in the column header cell → Strategy 1 fires (column scan)
+        candidate = MetricCandidate(
+            candidate_id="cand-arpu-torrid",
+            metric_id="cm_revenue_per_customer",
+            match_text="Net Sales Per Customer",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(
+                table_id="arpu-active-table",
+                cell_row=0,
+                cell_col=1,
+            ),
+        )
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        stage.process(context)  # type: ignore
+
+        # Should bind — the no-suppress exception must allow this binding
+        assert len(context.bound_values) == 1, (
+            "Expected 1 binding: 'active customer' in ARPU stub must not trigger suppression "
+            "for cm_revenue_per_customer"
+        )

@@ -35,13 +35,13 @@ from src.extraction_v2.unit_compatibility import (
 )
 from src.review.false_positive_filter import should_treat_as_percentage
 from src.review.respectively_parser import detect_respectively_pattern
+from src.shared.keyword_config import get_specific_patterns_by_metric
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Cell, Segment, Table
     from src.extraction_v2.pipeline import PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
-
 
 class ValueBindingStage:
     """
@@ -134,6 +134,57 @@ class ValueBindingStage:
         """
         self.proximity_window = proximity_window
         self._unit_filtered_count = 0
+        # Lazily populated: metric_id -> compiled specific_patterns.
+        # Used by _stub_matches_different_metric() to detect when a cell's
+        # stub_path labels the row as a different metric.
+        self._stub_metric_patterns: dict[str, list[re.Pattern[str]]] | None = None
+
+    def _ensure_stub_patterns(self) -> None:
+        """Compile stub-contradiction patterns on first use (lazy initialization).
+
+        Patterns are anchored to the start of the stub string (\\A prefix) so
+        that a short specific_pattern like 'active\\s+customers?' only fires
+        when the stub label STARTS with that phrase — not when it appears as an
+        embedded substring (e.g., 'Net sales per active customer' should not
+        suppress an ARPU binding, but 'Active customers (as of period end)'
+        should suppress a retention-rate binding).
+        """
+        if self._stub_metric_patterns is not None:
+            return
+        raw = get_specific_patterns_by_metric()
+        self._stub_metric_patterns = {
+            metric_id: [re.compile(r"\A" + p, re.IGNORECASE) for p in patterns]
+            for metric_id, patterns in raw.items()
+            if patterns
+        }
+
+    def _stub_matches_different_metric(
+        self, stub_text: str, candidate_metric_id: str
+    ) -> str | None:
+        """Return the conflicting metric_id if stub_text names a different metric.
+
+        Checks stub_text against the specific_patterns for every metric. If the
+        text matches a start-anchored pattern belonging to a metric other than
+        candidate_metric_id, returns that conflicting metric_id. Returns None
+        if no conflict is found.
+
+        Only specific_patterns (multi-word phrases, anchored to \\A) are checked
+        — not all keyword patterns — to avoid false suppression on:
+        - Common single-word stubs like "Revenue" or "Customers"
+        - Stubs where the metric keyword appears in the middle of a longer phrase
+          (e.g., 'active customer' in 'Net sales per active customer')
+        """
+        if not stub_text.strip():
+            return None
+        self._ensure_stub_patterns()
+        assert self._stub_metric_patterns is not None  # guaranteed by _ensure_stub_patterns
+        for metric_id, patterns in self._stub_metric_patterns.items():
+            if metric_id == candidate_metric_id:
+                continue
+            for pattern in patterns:
+                if pattern.search(stub_text):
+                    return metric_id
+        return None
 
     def _check_percentage_context(
         self, metric_id: str, unit: Unit, raw_text: str, context_text: str
@@ -495,6 +546,29 @@ class ValueBindingStage:
                 continue
             if cell.is_header or cell.is_stub:
                 continue
+
+            # Column-scan only: if the row's stub labels this row as a different
+            # metric, skip binding to prevent column-header over-broadcasting FPs
+            # (e.g., an "NRR" column header binding customer-count or ARPC rows).
+            # Uses specific_patterns (multi-word) to avoid suppressing on
+            # ambiguous single-word stubs like "Revenue" or "Customers".
+            # Row-scan bindings (iterate_rows=False) are exempt — the stub IS
+            # the matched keyword in that case, so binding is correct by construction.
+            if iterate_rows and cell.stub_path:
+                stub_text = " ".join(cell.stub_path)
+                conflicting = self._stub_matches_different_metric(
+                    stub_text, candidate.metric_id
+                )
+                if conflicting:
+                    logger.debug(
+                        "Skipping column-scan binding for %s at row %d: "
+                        "stub_path %r matches %s",
+                        candidate.metric_id,
+                        idx,
+                        cell.stub_path,
+                        conflicting,
+                    )
+                    continue
 
             parsed = self._parse_number(cell.text)
             if not parsed:
