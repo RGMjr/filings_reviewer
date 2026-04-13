@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-11T14:02:57.089053+00:00",
-  "description": "precision: NRR/CRR minimums, revenue_concentration ratio suffix, large_customers small ARR threshold",
+  "baseline_date": "2026-04-13T17:08:17.305276+00:00",
+  "description": "Add upstream stub-contradiction check to _bind_cells(): P+0.4pp, no T1 regression, T2 Torrid trade-off is correct suppression",
   "overall": {
-    "precision": 0.6747720364741642,
-    "recall": 0.6646706586826348,
-    "f1": 0.6696832579185521
+    "precision": 0.6790123456790124,
+    "recall": 0.6586826347305389,
+    "f1": 0.668693009118541
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -78,9 +78,9 @@
       "f1": 0.6896551724137931
     },
     "Torrid Holdings Inc.": {
-      "precision": 0.7857142857142857,
-      "recall": 0.6470588235294118,
-      "f1": 0.7096774193548386
+      "precision": 0.8695652173913043,
+      "recall": 0.5882352941176471,
+      "f1": 0.7017543859649124
     }
   }
 }
