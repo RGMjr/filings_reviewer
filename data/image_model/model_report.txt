@@ -6,12 +6,12 @@ Training samples: 584
   Not relevant: 518 (88.7%)
 
 Cross-validated metrics (5-fold stratified):
-  AUC-ROC:               0.771
-  Avg precision (AP):    0.361
-  Precision @ 80% recall: 0.244
-  Precision @ 90% recall: 0.144
-  Precision @ 95% recall: 0.127
-  Score threshold for ~80% recall: 0.471
+  AUC-ROC:               0.823
+  Avg precision (AP):    0.584
+  Precision @ 80% recall: 0.251
+  Precision @ 90% recall: 0.171
+  Precision @ 95% recall: 0.115
+  Score threshold for ~80% recall: 0.362
 
 Baseline (current tier_1_cohort system):
   Precision: 0.211
@@ -21,19 +21,24 @@ Baseline (current tier_1_cohort system):
 Model type: logistic
 
 Feature coefficients:
-  is_tier_1                          : +0.858
-  has_dimensions                     : -0.521
-  keyword_count                      : +0.400
-  image_area_clipped                 : -0.377
-  cohort_keyword_nearby              : +0.369
-  filename_has_chart_hint            : +0.304
-  text_short                         : +0.298
-  is_unknown_classification          : +0.286
-  text_medium                        : -0.280
-  cohort_confidence                  : -0.196
-  is_source_sec                      : +0.180
-  is_tier_2                          : +0.120
-  is_table_image_classification      : +0.120
-  log_keyword_count                  : +0.082
-  text_long                          : -0.077
-  is_chart_classification            : +0.049
+  text_cohort_terms                  : +2.708
+  text_retention_terms               : +1.214
+  cohort_confidence                  : -0.774
+  text_growth_terms                  : +0.611
+  is_tier_1                          : +0.570
+  cohort_keyword_nearby              : -0.499
+  keyword_count                      : +0.465
+  image_area_clipped                 : -0.379
+  has_dimensions                     : -0.344
+  text_unit_econ_terms               : +0.324
+  text_short                         : +0.282
+  text_medium                        : -0.263
+  filename_has_chart_hint            : +0.224
+  is_chart_classification            : +0.184
+  log_keyword_count                  : +0.120
+  is_tier_2                          : +0.118
+  is_table_image_classification      : +0.118
+  is_unknown_classification          : +0.101
+  text_long                          : -0.076
+  text_temporal_terms                : +0.044
+  is_source_sec                      : -0.005
