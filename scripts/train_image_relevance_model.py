@@ -14,7 +14,6 @@ Usage:
 import argparse
 import csv
 import logging
-import re
 import sys
 from io import StringIO
 from pathlib import Path
@@ -34,97 +33,14 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from src.shared.image_features import FEATURE_NAMES, engineer_features  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT = ROOT / "data" / "image_model" / "training_data.csv"
 DEFAULT_MODEL = ROOT / "data" / "image_model" / "relevance_model.joblib"
 DEFAULT_REPORT = ROOT / "data" / "image_model" / "model_report.txt"
-
-# Filename patterns common in SEC auto-generated chart images
-# e.g. g665122g20q37.jpg, g468383g1r55k94.jpg — letter 'g' prefix followed by digits
-SEC_CHART_FILENAME_RE = re.compile(r"^g\d+", re.IGNORECASE)
-
-
-def engineer_features(rows: list[dict]) -> np.ndarray:
-    """Convert raw CSV rows to numeric feature matrix."""
-    X = []
-    for r in rows:
-        cohort_confidence = float(r.get("cohort_confidence") or 0.0)
-        cohort_keyword_nearby = int(r.get("cohort_keyword_nearby") or 0)
-        keyword_count = int(r.get("keyword_count") or 0)
-        text_length = int(r.get("text_length") or 0)
-        has_dimensions = int(r.get("has_dimensions") or 0)
-        image_area = float(r.get("image_area") or 0.0)
-        # Clip area to reduce outlier influence; 1M px is ~1000x1000
-        image_area_clipped = min(image_area, 1_000_000) / 1_000_000
-
-        classification = (r.get("classification") or "").lower()
-        is_chart_classification = int(classification == "chart")
-        is_unknown_classification = int(classification == "unknown")
-        is_table_image_classification = int(classification == "table_image")
-
-        tier = r.get("detection_tier") or ""
-        is_tier_1 = int(tier == "tier_1_cohort")
-        is_tier_2 = int(tier == "tier_2_large")
-
-        filename = (r.get("filename") or "").lower()
-        filename_has_chart_hint = int(
-            "chart" in filename
-            or "graph" in filename
-            or bool(SEC_CHART_FILENAME_RE.match(filename))
-        )
-
-        # text_length bucketed: short (<100), medium (100-500), long (>500)
-        text_short = int(text_length < 100)
-        text_medium = int(100 <= text_length < 500)
-        text_long = int(text_length >= 500)
-
-        # Explicit source indicator (replaces the accidental signal in has_dimensions)
-        is_source_sec = int((r.get("source") or "").lower() == "sec")
-
-        # Log-transform keyword count: marginal value of extra keywords is sublinear
-        log_keyword_count = float(np.log1p(keyword_count))
-
-        X.append([
-            cohort_confidence,                # 0
-            cohort_keyword_nearby,            # 1  (strongest signal)
-            keyword_count,                    # 2  (strongest signal)
-            text_long,                        # 3
-            text_medium,                      # 4
-            text_short,                       # 5
-            has_dimensions,                   # 6
-            image_area_clipped,               # 7
-            is_chart_classification,          # 8
-            is_unknown_classification,        # 9
-            is_tier_1,                        # 10
-            is_tier_2,                        # 11
-            filename_has_chart_hint,          # 12
-            is_source_sec,                    # 13
-            is_table_image_classification,    # 14
-            log_keyword_count,                # 15
-        ])
-    return np.array(X, dtype=float)
-
-
-FEATURE_NAMES = [
-    "cohort_confidence",
-    "cohort_keyword_nearby",
-    "keyword_count",
-    "text_long",
-    "text_medium",
-    "text_short",
-    "has_dimensions",
-    "image_area_clipped",
-    "is_chart_classification",
-    "is_unknown_classification",
-    "is_tier_1",
-    "is_tier_2",
-    "filename_has_chart_hint",
-    "is_source_sec",
-    "is_table_image_classification",
-    "log_keyword_count",
-]
 
 
 def precision_at_recall(precisions, recalls, target_recall: float) -> float:

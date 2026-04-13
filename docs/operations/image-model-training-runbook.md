@@ -29,6 +29,32 @@ Trained model and supporting files are written to `data/image_model/`.
 
 ---
 
+## Step 0: Backfill Image Dimensions (one-time / as needed)
+
+Many SEC candidates are inserted with `NULL` `image_width`/`image_height` because the HTML `<img>` tag lacked explicit dimension attributes. The features `has_dimensions` and `image_area_clipped` default to `0` for these rows, which degrades model accuracy.
+
+Run this step whenever a significant number of candidates lack dimension data (e.g., after a bulk ingestion or before the first model training on a new set of filings).
+
+```bash
+# Dry run — show how many candidates are missing dimensions
+python3 scripts/backfill_image_dimensions.py --dry-run
+
+# Fill from DB cache only (fast, no SEC requests)
+python3 scripts/backfill_image_dimensions.py
+
+# Also fetch uncached images live from SEC EDGAR (slow — respects 100ms rate limit)
+python3 scripts/backfill_image_dimensions.py --live-fetch
+
+# Limit to N candidates (useful for testing)
+python3 scripts/backfill_image_dimensions.py --limit 50
+```
+
+The script reads image bytes from the `image_cache` table, parses pixel dimensions with Pillow, updates `image_review_candidates`, and clears `predicted_relevance` on updated rows so they are re-scored automatically.
+
+After running, proceed to **Step 4** (score candidates) before exporting training data.
+
+---
+
 ## Step 1: Generate Missing Image Candidate Files
 
 Skip this step if all presentations already have `_image_candidates.json` files.
@@ -77,8 +103,8 @@ Trains a logistic regression and gradient-boosted tree (GBT) classifier, evaluat
 
 | Metric | Logistic baseline | GBT baseline |
 |--------|------------------|--------------|
-| AUC-ROC | 0.771 | 0.771 |
-| AP | 0.361 | 0.449 |
+| AUC-ROC | 0.823 | 0.769 |
+| AP | 0.584 | 0.449 |
 
 A drop in AUC-ROC or AP indicates the new training data may contain labeling errors or the class balance has shifted. Investigate before deploying.
 
@@ -101,6 +127,56 @@ Applies the newly trained model to all image candidates in the database and upda
 | `data/image_model/training_data.csv` | Exported feature matrix used for training |
 | `data/image_model/relevance_model.joblib` | Serialized trained model (loaded at runtime) |
 | `data/image_model/model_report.txt` | Evaluation metrics from the most recent training run |
+
+---
+
+---
+
+## Expanding Training Data
+
+Current dataset size: 584 samples (66 relevant, 11.3% positive rate). Every additional labeling batch from a new company directly improves model generalization.
+
+### Check labeling status
+
+```bash
+python3 scripts/image_labeling_status.py          # show unlabeled queue
+python3 scripts/image_labeling_status.py --all    # include fully labeled filings
+```
+
+The script ranks unlabeled filings by priority:
+1. **New tickers** first — companies not yet represented in any labeled data maximize diversity
+2. **S-1/F-1/10-K** before 8-K — registration filings have far more charts than earnings releases
+3. **Candidate count** — more images per session = more efficient use of review time
+
+### Workflow for adding a new presentation ticker
+
+```bash
+# 1. Generate candidates (if not already present)
+python3 scripts/preannotate_presentations.py --ticker <TICKER> --filing-type S-1 --images-only
+
+# 2. Label via the web UI
+#    http://localhost:5001/review/pres-images/
+
+# 3. Retrain (Steps 2–4 of this runbook)
+python3 scripts/export_image_training_data.py
+python3 scripts/train_image_relevance_model.py
+python3 scripts/score_image_candidates.py --rescore-all
+```
+
+### Dataset size milestones
+
+| Samples | Positive | Goal |
+|---------|----------|------|
+| 584 | 66 (11%) | Baseline |
+| 800 | ~100 | First meaningful generalization gains |
+| 1000 | ~130 | Reliable AUC improvement expected |
+| 1500+ | ~200 | Sufficient for GBT to outperform LR |
+
+### Class balance monitoring
+
+After retraining, check `data/image_model/model_report.txt`:
+- Positive rate should be **≥ 10%** — if it drops below, the new batch skewed toward negatives
+- If AUC-ROC drops > 0.02 from baseline (0.823), inspect the new training rows for labeling errors
 
 ---
 

@@ -20,7 +20,6 @@ Usage:
 import argparse
 import logging
 import os
-import re
 import sys
 from pathlib import Path
 
@@ -30,88 +29,54 @@ import joblib
 import numpy as np
 from dotenv import load_dotenv
 
+from src.shared.image_features import engineer_features
+
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL = ROOT / "data" / "image_model" / "relevance_model.joblib"
 
-SEC_CHART_FILENAME_RE = re.compile(r"^g\d+", re.IGNORECASE)
 
+def normalize_db_row(row: dict) -> dict:
+    """Convert a raw image_review_candidates DB row to the common feature dict format.
 
-def engineer_features(rows: list[dict]) -> np.ndarray:
-    """Build feature matrix from image_review_candidates rows.
-
-    Must be kept in sync with train_image_relevance_model.py.
+    The DB schema uses different column names than the training CSV, so this
+    function maps them to the keys expected by engineer_features().
     """
-    X = []
-    for r in rows:
-        cohort_confidence = float(r.get("cohort_confidence") or 0.0)
-        cohort_keyword_nearby = int(bool(r.get("cohort_keyword_nearby")))
-        detected_keywords = r.get("detected_keywords") or []
-        if isinstance(detected_keywords, str):
-            detected_keywords = [
-                k.strip()
-                for k in detected_keywords.strip("{}").split(",")
-                if k.strip()
-            ]
-        keyword_count = len(detected_keywords)
+    # Parse detected_keywords: Postgres TEXT[] arrives as a list or "{a,b}" string
+    detected_keywords = row.get("detected_keywords") or []
+    if isinstance(detected_keywords, str):
+        detected_keywords = [
+            k.strip()
+            for k in detected_keywords.strip("{}").split(",")
+            if k.strip()
+        ]
+    keyword_count = len(detected_keywords)
 
-        preceding_text = r.get("preceding_text") or ""
-        text_length = len(preceding_text)
+    preceding_text = row.get("preceding_text") or ""
+    text_length = len(preceding_text)
 
-        w = r.get("image_width")
-        h = r.get("image_height")
-        has_dimensions = int(w is not None and h is not None)
-        area = (float(w) * float(h)) if has_dimensions else 0.0
-        image_area_clipped = min(area, 1_000_000) / 1_000_000
+    w = row.get("image_width")
+    h = row.get("image_height")
+    has_dimensions = int(w is not None and h is not None)
+    image_area = (float(w) * float(h)) if has_dimensions else 0.0
 
+    return {
+        "cohort_confidence": row.get("cohort_confidence"),
+        "cohort_keyword_nearby": row.get("cohort_keyword_nearby"),
+        "keyword_count": keyword_count,
+        "text_length": text_length,
+        "preceding_text": preceding_text,
+        "has_dimensions": has_dimensions,
+        "image_area": image_area,
         # classification is not stored on SEC candidates — leave blank
-        classification = (r.get("classification") or "").lower()
-        is_chart_classification = int(classification == "chart")
-        is_unknown_classification = int(classification == "unknown")
-        is_table_image_classification = int(classification == "table_image")
-
-        tier = r.get("detection_tier") or ""
-        is_tier_1 = int(tier == "tier_1_cohort")
-        is_tier_2 = int(tier == "tier_2_large")
-
-        filename = (r.get("image_src") or "").lower()
-        filename_has_chart_hint = int(
-            "chart" in filename
-            or "graph" in filename
-            or bool(SEC_CHART_FILENAME_RE.match(filename))
-        )
-
-        text_short = int(text_length < 100)
-        text_medium = int(100 <= text_length < 500)
-        text_long = int(text_length >= 500)
-
-        # SEC candidates come from the database; presentation candidates are not in this table.
-        # All rows in image_review_candidates are SEC images.
-        is_source_sec = 1
-
-        # Log-transform keyword count: marginal value of extra keywords is sublinear
-        log_keyword_count = float(np.log1p(keyword_count))
-
-        X.append([
-            cohort_confidence,
-            cohort_keyword_nearby,
-            keyword_count,
-            text_long,
-            text_medium,
-            text_short,
-            has_dimensions,
-            image_area_clipped,
-            is_chart_classification,
-            is_unknown_classification,
-            is_tier_1,
-            is_tier_2,
-            filename_has_chart_hint,
-            is_source_sec,
-            is_table_image_classification,
-            log_keyword_count,
-        ])
-    return np.array(X, dtype=float)
+        "classification": row.get("classification") or "",
+        "detection_tier": row.get("detection_tier"),
+        # DB uses image_src; shared module expects filename
+        "filename": row.get("image_src") or "",
+        # All rows in image_review_candidates are SEC images
+        "source": "sec",
+    }
 
 
 def main() -> None:
@@ -168,7 +133,7 @@ def main() -> None:
         logger.info("Nothing to score.")
         return
 
-    X = engineer_features(candidates)
+    X = engineer_features([normalize_db_row(c) for c in candidates])
     scores = model.predict_proba(X)[:, 1]
 
     # Distribution summary
