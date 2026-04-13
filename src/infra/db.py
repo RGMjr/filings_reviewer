@@ -4316,6 +4316,35 @@ class DatabaseAdapter:
         )
         return len(result) > 0
 
+    def update_image_dimensions(
+        self,
+        image_candidate_id: int,
+        width: int,
+        height: int,
+    ) -> bool:
+        """
+        Set image_width and image_height on an image candidate and clear
+        predicted_relevance so the candidate is re-scored with the new dimensions.
+
+        Only updates rows that currently have at least one NULL dimension —
+        will not overwrite valid existing values.
+
+        Returns:
+            True if a row was updated, False if not found or dimensions already set.
+        """
+        sql = """
+            UPDATE image_review_candidates
+            SET image_width         = %(width)s,
+                image_height        = %(height)s,
+                predicted_relevance = NULL,
+                updated_at          = now()
+            WHERE image_candidate_id = %(id)s
+              AND (image_width IS NULL OR image_height IS NULL)
+            RETURNING image_candidate_id
+        """
+        result = self.query(sql, {"id": image_candidate_id, "width": width, "height": height})
+        return len(result) > 0
+
     # =============================================================================
     # Image Cache Methods
     # =============================================================================
