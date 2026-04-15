@@ -960,7 +960,7 @@ class TestFalsePositiveFiltering:
         segments = [
             {
                 "source_segment_id": 1,
-                "raw_text": """For the year ended December 31, 2023, we had ARR of $100 million.
+                "raw_text": """For the year ended December 31, 2023, we had customer acquisition cost of $100 million.
 As of 12/31/2023, our customer count reached 50,000 active customers.
 See Note 5 on page 123 for details. Version 2.0 of our software launched.""",
             }
@@ -1569,8 +1569,8 @@ class TestMetricExpectedFormats:
 
     def test_revenue_metrics_expect_currency(self):
         """Revenue metrics should expect currency format."""
-        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_arr", [])
-        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_mrr", [])
+        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_billings", [])
+        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_bookings", [])
         assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_cac", [])
 
 
@@ -1597,7 +1597,7 @@ class TestSpecificKeywordPatterns:
         assert any(p.search("active customers") for p in compiled)
         assert any(p.search("enterprise customers") for p in compiled)
         assert any(p.search("net revenue retention") for p in compiled)
-        assert any(p.search("annual recurring revenue") for p in compiled)
+        assert any(p.search("gross revenue retention") for p in compiled)
         assert any(p.search("daily active users") for p in compiled)
 
     def test_patterns_dont_match_generic(self):
@@ -2204,9 +2204,9 @@ class TestDeduplicateCandidates:
     def test_keeps_highest_confidence(self, generator):
         """When duplicates exist, keep the one with highest confidence."""
         candidates = [
-            self._make_candidate(Decimal("500"), "cm_arr", 0.5),
-            self._make_candidate(Decimal("500"), "cm_arr", 0.9),
-            self._make_candidate(Decimal("500"), "cm_arr", 0.7),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.5),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.9),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.7),
         ]
 
         result, count = generator._deduplicate_candidates(candidates)
@@ -3902,7 +3902,7 @@ class TestContextPrefixMatching:
                 "source_segment_id": 1,
                 "raw_text": "The values were 50,000 and 75,000 at year end.",
                 "segment_type": "list_item",
-                "context_prefix": "Annual recurring revenue breakdown:",
+                "context_prefix": "New customers acquired breakdown:",
             }
         ]
 
@@ -3912,12 +3912,12 @@ class TestContextPrefixMatching:
             segments=segments,
         )
 
-        arr_candidates = [
-            c for c in candidates if c.suggested_metric_id and "arr" in c.suggested_metric_id.lower()
+        new_customer_candidates = [
+            c for c in candidates if c.suggested_metric_id and "new_customers" in c.suggested_metric_id.lower()
         ]
 
-        # Both numbers should potentially match ARR from context
-        assert len(arr_candidates) >= 1  # At least one match
+        # Both numbers should potentially match new customers from context
+        assert len(new_customer_candidates) >= 1  # At least one match
 
 # =============================================================================
 # EI-1: Definition Segment Filtering Tests
@@ -4370,93 +4370,20 @@ class TestMetricSpecificFPRules:
     def generator(self):
         return CandidateGenerator()
 
-    def test_arr_tier_threshold_suppressed(self, generator):
-        """$100K ARR threshold in tier description should not produce cm_arr candidate."""
+    def test_real_cac_not_suppressed(self, generator):
+        """Actual CAC value should not be suppressed."""
         segments = [
             {
                 "source_segment_id": 1,
                 "raw_text": (
-                    "We had 200 customers with more than $100,000 in ARR as of January 31, 2021, "
-                    "representing our enterprise tier customers."
+                    "Our customer acquisition cost was $250 million as of December 31, 2020."
                 ),
                 "segment_type": "paragraph",
             }
         ]
         candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_candidates = [c for c in candidates if c.suggested_metric_id == "cm_arr"]
-        arr_100k = [c for c in arr_candidates if c.parsed_value is not None and float(c.parsed_value) == 100_000]
-        assert len(arr_100k) == 0, "$100K ARR tier threshold should not be a cm_arr candidate"
-
-    def test_arr_tier_5k_suppressed(self, generator):
-        """$5K ARR tier threshold should not produce cm_arr candidate."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "Base Customers generating $5,000 or more in ARR grew from 1,662 to 2,745."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_5k = [
-            c for c in candidates
-            if c.suggested_metric_id == "cm_arr"
-            and c.parsed_value is not None
-            and float(c.parsed_value) == 5_000
-        ]
-        assert len(arr_5k) == 0, "$5K ARR tier threshold should not be a cm_arr candidate"
-
-    def test_arr_magnitude_cap_suppressed(self, generator):
-        """TAM-scale ARR values exceeding $100B should be suppressed."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "According to Gartner, the total addressable market is estimated to be "
-                    "$328 billion by the end of 2021 in annual recurring revenue."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_huge = [
-            c for c in candidates
-            if c.suggested_metric_id == "cm_arr"
-            and c.parsed_value is not None
-            and float(c.parsed_value) > 100_000_000_000
-        ]
-        assert len(arr_huge) == 0, "ARR values above $100B should be suppressed"
-
-    def test_arr_tam_context_suppressed(self, generator):
-        """Dollar values near TAM language should not produce cm_arr candidate."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "The total addressable market for our platform is $43 billion in annual recurring revenue."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_tam = [c for c in candidates if c.suggested_metric_id == "cm_arr"]
-        assert len(arr_tam) == 0, "TAM context should suppress cm_arr candidates"
-
-    def test_real_arr_not_suppressed(self, generator):
-        """Actual ARR value should not be suppressed."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "Our annualized recurring revenue was $250 million as of December 31, 2020."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_candidates = [c for c in candidates if c.suggested_metric_id == "cm_arr"]
-        assert len(arr_candidates) > 0, "Real ARR value should produce a cm_arr candidate"
+        cac_candidates = [c for c in candidates if c.suggested_metric_id == "cm_customer_acquisition_cost"]
+        assert len(cac_candidates) > 0, "Real CAC value should produce a cm_customer_acquisition_cost candidate"
 
     def test_financial_context_on_distant_customer_keyword_suppressed(self, generator):
         """Income statement values distant from customer keyword should be suppressed."""

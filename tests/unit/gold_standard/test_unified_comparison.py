@@ -33,7 +33,7 @@ from src.review.models import CandidateFeatures, ReviewCandidate
 
 
 def make_gold_entry(
-    metric_id: str = "cm_arr",
+    metric_id: str = "cm_average_order_value",
     raw_value: str = "100",
     scaled_value: str = "",
     scale_unit: str = "",
@@ -63,7 +63,7 @@ def make_gold_entry(
 
 
 def make_normalized(
-    metric_id: str = "cm_arr",
+    metric_id: str = "cm_average_order_value",
     value: float = 100.0,
     source_type: str = "text",
     pipeline: str = "v2",
@@ -84,7 +84,7 @@ def make_normalized(
 
 
 def make_metric_fact(
-    canonical_metric_id: str = "cm_arr",
+    canonical_metric_id: str = "cm_average_order_value",
     value: float = 100.0,
     source_type: SourceType = SourceType.TEXT,
     fact_id: str = "fact-1",
@@ -111,7 +111,7 @@ def make_metric_fact(
 
 
 def make_review_candidate(
-    suggested_metric_id: str = "cm_arr",
+    suggested_metric_id: str = "cm_average_order_value",
     parsed_value: Decimal | None = Decimal("100"),
     suggestion_confidence: float | None = 0.8,
     is_in_table: bool = False,
@@ -153,8 +153,8 @@ def make_review_candidate(
 class TestMatchExtractionsToGold:
     def test_exact_match(self) -> None:
         """One extraction matches one gold entry → TP=1, FP=0, FN=0, P=R=F1=1.0."""
-        gold = [make_gold_entry(metric_id="cm_arr", raw_value="100")]
-        extractions = [make_normalized(metric_id="cm_arr", value=100.0)]
+        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100")]
+        extractions = [make_normalized(metric_id="cm_average_order_value", value=100.0)]
 
         result = match_extractions_to_gold(extractions, gold)
 
@@ -167,8 +167,8 @@ class TestMatchExtractionsToGold:
 
     def test_close_match_within_tolerance(self) -> None:
         """Value 101.0 vs gold 100 (1% off, within 2% tolerance) → TP."""
-        gold = [make_gold_entry(metric_id="cm_arr", raw_value="100")]
-        extractions = [make_normalized(metric_id="cm_arr", value=101.0)]
+        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100")]
+        extractions = [make_normalized(metric_id="cm_average_order_value", value=101.0)]
 
         result = match_extractions_to_gold(extractions, gold, value_tolerance=0.02)
 
@@ -178,8 +178,8 @@ class TestMatchExtractionsToGold:
 
     def test_value_outside_tolerance(self) -> None:
         """Value 103.0 vs gold 100 (3% off) → FP=1, FN=1."""
-        gold = [make_gold_entry(metric_id="cm_arr", raw_value="100")]
-        extractions = [make_normalized(metric_id="cm_arr", value=103.0)]
+        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100")]
+        extractions = [make_normalized(metric_id="cm_average_order_value", value=103.0)]
 
         result = match_extractions_to_gold(extractions, gold, value_tolerance=0.02)
 
@@ -190,7 +190,7 @@ class TestMatchExtractionsToGold:
     def test_wrong_metric_no_match(self) -> None:
         """Extraction with wrong metric_id that IS in gold set → FP+FN."""
         gold = [
-            make_gold_entry(metric_id="cm_arr", raw_value="100"),
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100"),
             make_gold_entry(metric_id="cm_nrr", raw_value="110"),
         ]
         # Extract cm_nrr value=100 but gold cm_nrr=110 — value mismatch
@@ -199,20 +199,20 @@ class TestMatchExtractionsToGold:
         result = match_extractions_to_gold(extractions, gold)
 
         # cm_nrr is in gold but value doesn't match — FP
-        # cm_arr has no extraction — FN; cm_nrr also unmatched — FN
+        # cm_average_order_value has no extraction — FN; cm_nrr also unmatched — FN
         assert len(result.tp_pairs) == 0
         assert len(result.fp_extractions) == 1  # cm_nrr wrong value, in gold set
         assert len(result.fn_entries) == 2  # both gold entries unmatched
 
     def test_fp_scoping_unknown_metric(self) -> None:
         """Extraction with metric_id NOT in gold set → not counted as FP."""
-        gold = [make_gold_entry(metric_id="cm_arr", raw_value="100")]
+        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100")]
         # Extract an entirely different metric not in gold
         extractions = [make_normalized(metric_id="cm_dau", value=50.0)]
 
         result = match_extractions_to_gold(extractions, gold)
 
-        # cm_dau not in gold — not an FP; cm_arr not matched — FN
+        # cm_dau not in gold — not an FP; cm_average_order_value not matched — FN
         assert len(result.tp_pairs) == 0
         assert len(result.fp_extractions) == 0
         assert len(result.fn_entries) == 1
@@ -220,8 +220,8 @@ class TestMatchExtractionsToGold:
     def test_deduplication_gold_entries(self) -> None:
         """Two gold entries with same (metric_id, value) collapse to 1 — missing both counts as FN=1."""
         gold = [
-            make_gold_entry(metric_id="cm_arr", raw_value="100"),
-            make_gold_entry(metric_id="cm_arr", raw_value="100"),  # duplicate
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100"),
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100"),  # duplicate
         ]
         extractions: list[NormalizedExtraction] = []
 
@@ -233,7 +233,7 @@ class TestMatchExtractionsToGold:
 
     def test_definition_only_entries_skipped(self) -> None:
         """Gold entry with is_definition_only=True doesn't count in metrics."""
-        gold = [make_gold_entry(metric_id="cm_arr", raw_value="100", is_def_only=True)]
+        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100", is_def_only=True)]
         extractions: list[NormalizedExtraction] = []
 
         result = match_extractions_to_gold(extractions, gold)
@@ -248,29 +248,29 @@ class TestMatchExtractionsToGold:
 
     def test_greedy_no_double_claiming(self) -> None:
         """Two extractions, one gold entry — only one gets matched (greedy, 1-to-1)."""
-        gold = [make_gold_entry(metric_id="cm_arr", raw_value="100")]
+        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100")]
         extractions = [
-            make_normalized(metric_id="cm_arr", value=100.0, extraction_id="e1"),
-            make_normalized(metric_id="cm_arr", value=100.0, extraction_id="e2"),
+            make_normalized(metric_id="cm_average_order_value", value=100.0, extraction_id="e1"),
+            make_normalized(metric_id="cm_average_order_value", value=100.0, extraction_id="e2"),
         ]
 
         result = match_extractions_to_gold(extractions, gold)
 
         # Only one extraction can claim the single gold entry
         assert len(result.tp_pairs) == 1
-        # The other extraction is a FP (cm_arr in gold set, unmatched)
+        # The other extraction is a FP (cm_average_order_value in gold set, unmatched)
         assert len(result.fp_extractions) == 1
         assert len(result.fn_entries) == 0
 
     def test_multiple_matches(self) -> None:
         """3 extractions, 3 gold entries, all match → P=R=1.0."""
         gold = [
-            make_gold_entry(metric_id="cm_arr", raw_value="100"),
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100"),
             make_gold_entry(metric_id="cm_nrr", raw_value="110"),
             make_gold_entry(metric_id="cm_dau", raw_value="500"),
         ]
         extractions = [
-            make_normalized(metric_id="cm_arr", value=100.0, extraction_id="e1"),
+            make_normalized(metric_id="cm_average_order_value", value=100.0, extraction_id="e1"),
             make_normalized(metric_id="cm_nrr", value=110.0, extraction_id="e2"),
             make_normalized(metric_id="cm_dau", value=500.0, extraction_id="e3"),
         ]
@@ -297,7 +297,7 @@ class TestMatchExtractionsToGold:
     def test_zero_gold_entries(self) -> None:
         """Empty gold list → MatchingResult with zeros, no crash."""
         result = match_extractions_to_gold(
-            [make_normalized(metric_id="cm_arr", value=100.0)],
+            [make_normalized(metric_id="cm_average_order_value", value=100.0)],
             [],
         )
 
@@ -312,12 +312,12 @@ class TestMatchExtractionsToGold:
         """Verify P, R, F1 computed correctly from TP/FP/FN."""
         # 2 gold entries, 3 extractions: 1 TP, 1 FP (in-scope), 1 FN
         gold = [
-            make_gold_entry(metric_id="cm_arr", raw_value="100"),
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100"),
             make_gold_entry(metric_id="cm_nrr", raw_value="110"),
         ]
         extractions = [
-            make_normalized(metric_id="cm_arr", value=100.0, extraction_id="e1"),  # TP
-            make_normalized(metric_id="cm_arr", value=200.0, extraction_id="e2"),  # FP (wrong val)
+            make_normalized(metric_id="cm_average_order_value", value=100.0, extraction_id="e1"),  # TP
+            make_normalized(metric_id="cm_average_order_value", value=200.0, extraction_id="e2"),  # FP (wrong val)
             # cm_nrr not extracted → FN
         ]
 
@@ -379,9 +379,9 @@ class TestNormalizedConversions:
 
     def test_v2_fact_metric_id_preserved(self) -> None:
         """canonical_metric_id survives normalization."""
-        fact = make_metric_fact(canonical_metric_id="cm_arr")
+        fact = make_metric_fact(canonical_metric_id="cm_average_order_value")
         normalized = v2_fact_to_normalized(fact)
-        assert normalized.metric_id == "cm_arr"
+        assert normalized.metric_id == "cm_average_order_value"
 
     def test_v1_candidate_default_confidence(self) -> None:
         """None suggestion_confidence → 0.5."""
@@ -436,12 +436,12 @@ class TestPartitionBySourceType:
     def test_partitions_by_segment_type(self) -> None:
         """Gold entries with mixed segment_types get split into correct buckets."""
         gold = [
-            make_gold_entry(metric_id="cm_arr", raw_value="100", segment_type="text"),
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100", segment_type="text"),
             make_gold_entry(metric_id="cm_nrr", raw_value="110", segment_type="table"),
             make_gold_entry(metric_id="cm_dau", raw_value="500", segment_type="text"),
         ]
         extractions = [
-            make_normalized(metric_id="cm_arr", value=100.0),
+            make_normalized(metric_id="cm_average_order_value", value=100.0),
             make_normalized(metric_id="cm_nrr", value=110.0),
             make_normalized(metric_id="cm_dau", value=500.0),
         ]
@@ -461,7 +461,7 @@ class TestPartitionBySourceType:
     def test_empty_segment_type_goes_to_unclassified(self) -> None:
         """Entries with segment_type='' are grouped under empty-string key."""
         gold = [
-            make_gold_entry(metric_id="cm_arr", raw_value="100", segment_type=""),
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100", segment_type=""),
         ]
 
         result = partition_by_source_type(
@@ -477,7 +477,7 @@ class TestPartitionBySourceType:
 
     def test_v2_text_only_none_produces_none_result(self) -> None:
         """When v2_text_only_extractions=None, v2_text_only_result is None for all buckets."""
-        gold = [make_gold_entry(metric_id="cm_arr", raw_value="100", segment_type="text")]
+        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100", segment_type="text")]
 
         result = partition_by_source_type(
             gold_entries=gold,
@@ -491,11 +491,11 @@ class TestPartitionBySourceType:
     def test_partition_scores_computed_per_bucket(self) -> None:
         """Each bucket gets its own MatchingResult from all extractions."""
         gold = [
-            make_gold_entry(metric_id="cm_arr", raw_value="100", segment_type="text"),
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100", segment_type="text"),
             make_gold_entry(metric_id="cm_nrr", raw_value="110", segment_type="chart"),
         ]
         extractions = [
-            make_normalized(metric_id="cm_arr", value=100.0),
+            make_normalized(metric_id="cm_average_order_value", value=100.0),
             make_normalized(metric_id="cm_nrr", value=110.0),
         ]
 
@@ -506,7 +506,7 @@ class TestPartitionBySourceType:
             v2_text_only_extractions=None,
         )
 
-        # text bucket: cm_arr matched
+        # text bucket: cm_average_order_value matched
         assert len(result["text"].v2_full_result.tp_pairs) == 1
         # chart bucket: cm_nrr matched
         assert len(result["chart"].v2_full_result.tp_pairs) == 1

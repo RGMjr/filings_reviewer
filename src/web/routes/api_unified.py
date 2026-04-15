@@ -632,14 +632,17 @@ def add_missed_metric():
         if errors:
             return jsonify({"status": "error", "errors": errors}), 400
 
+        period_end = data.get("period_end") or None
+        period_type = data.get("period_type") or None
+
         fact_id = db.insert_manual_v2_metric_fact(
             filing_id=filing_id,
             canonical_metric_id=canonical_metric_id,
             value_raw=value_raw,
             value=data.get("value"),
             unit=unit,
-            period_type=data.get("period_type"),
-            period_end=data.get("period_end"),
+            period_type=period_type,
+            period_end=period_end,
             scope=data.get("scope", "company"),
             reviewer_id=reviewer_id,
             reviewer_notes=data.get("reviewer_notes"),

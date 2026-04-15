@@ -876,76 +876,6 @@ class CandidateGenerator:
         raw_text = candidate.raw_number_text or ""
         value = candidate.parsed_value
 
-        # --- ARR tier threshold ---
-        # Block cm_arr when the value is a common tier boundary (e.g. $5K, $100K, $1M)
-        # AND the context contains tier/threshold language.
-        # Ported from V2 _rule_arr_tier_threshold.
-        _ARR_TIER_VALUES = frozenset({
-            1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 5_000_000,
-        })
-        _ARR_TIER_SOURCE_RE = _re.compile(
-            r"""
-            (?:
-                \$\s*\d[\d,]*\s*(?:K|k|M|m)?\s*(?:or\s+more\s+)?(?:in\s+)?(?:ARR|arr)  # "$5K ARR", "$5K or more in ARR"
-                |
-                (?:ARR|arr)\s+of\s+\$                                                     # "ARR of $100,000"
-                |
-                (?:over|greater\s+than|more\s+than|above|exceeding|>)\s*\$                # "over $X"
-                |
-                (?:at\s+least|minimum)\s+\$                                               # "at least $X"
-                |
-                annualized\s+(?:recurring\s+)?revenue\s+(?:of\s+)?\$                     # "annualized revenue of $X"
-            )
-            """,
-            _re.IGNORECASE | _re.VERBOSE,
-        )
-        if metric_id == "cm_arr" and value is not None:
-            try:
-                float_val = float(value)
-            except (TypeError, ValueError):
-                float_val = None
-            if float_val is not None and float_val in _ARR_TIER_VALUES:
-                if _ARR_TIER_SOURCE_RE.search(context_text):
-                    return "arr_tier_threshold"
-
-        # --- ARR magnitude cap ---
-        # No real company has >$100B ARR; large values are TAM or financial figures.
-        _ARR_MAX = 100_000_000_000  # $100B
-        if metric_id == "cm_arr" and value is not None:
-            try:
-                float_val = float(value)
-            except (TypeError, ValueError):
-                float_val = None
-            if float_val is not None and float_val > _ARR_MAX:
-                return "arr_magnitude_cap"
-
-        # --- TAM / market-size context ---
-        # Block cm_arr when context discusses total addressable market or market size,
-        # not actual company ARR.
-        _TAM_RE = _re.compile(
-            r"\b(?:total\s+addressable\s+market|TAM|market\s+(?:size|opportunity)|"
-            r"addressable\s+(?:market|opportunity)|serviceable\s+(?:addressable|"
-            r"obtainable|available))\b",
-            _re.IGNORECASE,
-        )
-        if metric_id == "cm_arr" and _TAM_RE.search(context_text):
-            return "arr_tam_context"
-
-        # --- ARR: average ARR per customer is not total company ARR ---
-        # "average ARR of our enterprise customers" (Datadog $140K) describes a per-customer
-        # average, not the company's total ARR.
-        if metric_id == "cm_arr" and _re.search(
-            r"\baverage\s+(?:ARR|annual\s+recurring\b)", context_text, _re.IGNORECASE
-        ):
-            return "arr_average_not_total"
-
-        # --- ARR: capital raised is not ARR ---
-        # "we have raised $92.0 million of capital, net of share repurchases" (Datadog).
-        if metric_id == "cm_arr" and _re.search(
-            r"\bnet\s+of\s+share\s+repurchases?\b", context_text, _re.IGNORECASE
-        ):
-            return "arr_capital_not_arr"
-
         # --- Financial statement values on count-only customer metrics ---
         # Income-statement values (operating expenses, interest income, net loss)
         # occasionally land near a "customer" keyword in a distant section heading.
@@ -1222,17 +1152,6 @@ class CandidateGenerator:
                     context_text, _re.IGNORECASE,
                 ):
                     return "active_customers_delta_not_total"
-            except (TypeError, ValueError):
-                pass
-
-        # --- ARR: zero is not a valid ARR value ---
-        # "$0" in net retention rate calculation context is a placeholder/formula value,
-        # not actual company ARR.
-        if metric_id == "cm_arr" and value is not None:
-            try:
-                float_val = float(value)
-                if float_val == 0.0:
-                    return "arr_zero_not_valid"
             except (TypeError, ValueError):
                 pass
 

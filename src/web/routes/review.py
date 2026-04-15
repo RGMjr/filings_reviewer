@@ -698,12 +698,9 @@ METRIC_DISPLAY_ORDER: dict[str, int] = {
     "cm_repeat_purchase_rate": 13,
     "cm_average_order_value": 14,
     # Category 3: Revenue Metrics (21-29)
-    "cm_arr": 21,
-    "cm_mrr": 22,
     "cm_revenue_per_customer": 23,
     "cm_revenue_by_cohort": 24,
     "cm_gross_margin_by_cohort": 25,
-    "cm_expansion_revenue": 26,
     "cm_revenue_concentration": 27,
     # Category 4: Retention, Churn & Attrition (31-39)
     "cm_net_revenue_retention": 31,

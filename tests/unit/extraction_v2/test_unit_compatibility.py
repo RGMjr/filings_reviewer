@@ -58,8 +58,6 @@ class TestCurrencyOnlyMetrics:
     """Currency-only metrics should reject count and percent."""
 
     CURRENCY_METRICS = [
-        "cm_arr",
-        "cm_mrr",
         "cm_tcv",
         "cm_acv",
         "cm_lifetime_value_per_customer",
@@ -214,9 +212,9 @@ class TestUnconstrainedMetrics:
         [Unit.COUNT, Unit.CURRENCY, Unit.PERCENT, Unit.RATIO, Unit.OTHER],
     )
     def test_revenue_per_customer_unconstrained(self, unit: Unit) -> None:
-        """revenue_per_customer/expansion_revenue are unconstrained for transcripts."""
+        """revenue_per_customer/revenue_by_cohort are unconstrained for transcripts."""
         assert is_unit_compatible("cm_revenue_per_customer", unit) is True
-        assert is_unit_compatible("cm_expansion_revenue", unit) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", unit) is True
 
 
 
@@ -231,7 +229,7 @@ class TestGetAllowedUnits:
         assert Unit.CURRENCY not in allowed
 
     def test_currency_metric_returns_currency_and_other(self) -> None:
-        allowed = get_allowed_units("cm_arr")
+        allowed = get_allowed_units("cm_tcv")
         assert allowed is not None
         assert Unit.CURRENCY in allowed
         assert Unit.OTHER in allowed
@@ -261,6 +259,7 @@ class TestGetAllowedUnits:
 
     def test_lookup_dict_not_empty(self) -> None:
         assert len(METRIC_ALLOWED_UNITS) > 0
-        # count(8) + currency(11) + percent(7) + ratio(3)
+        # count(8) + currency(9) + percent(7) + ratio(3)
         # cm_revenue_by_cohort removed from currency-only — now unconstrained
-        assert len(METRIC_ALLOWED_UNITS) == 8 + 11 + 7 + 3  # 29 total
+        # cm_arr and cm_mrr removed (deprecated)
+        assert len(METRIC_ALLOWED_UNITS) == 8 + 9 + 7 + 3  # 27 total

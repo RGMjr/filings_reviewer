@@ -43,6 +43,7 @@ docs/archive/
 ├── historical/                    # Historical process docs, task inventory
 │   └── process/                   # Superseded worker prompt templates, skills meta-docs
 ├── improvement-plans-completed/   # Completed improvement/remediation plans
+├── ops/                           # Superseded operational prompt system (archived 2026-04-15)
 ├── worker-prompts/                # Completed worker prompts (moved from docs/worker-prompts/ when done)
 └── workstreams/                   # Completed workstream docs
 ```

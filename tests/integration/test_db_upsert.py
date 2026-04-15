@@ -19,7 +19,7 @@ def make_candidate(
     filing_id: int,
     company_id: int,
     char_position: int = 100,
-    suggested_metric_id: str | None = "cm_arr",
+    suggested_metric_id: str | None = "cm_average_order_value",
     suggestion_confidence: float | None = 0.8,
     source_segment_id: int | None = None,
     context_text: str = "Test context",
@@ -59,7 +59,7 @@ class TestBasicInsert:
 
         # Verify in DB
         candidate = clean_db.get_review_candidate(result[0])
-        assert candidate["suggested_metric_id"] == "cm_arr"
+        assert candidate["suggested_metric_id"] == "cm_average_order_value"
 
     def test_insert_multiple_new(self, clean_db):
         """Inserting multiple non-conflicting candidates returns all IDs."""
@@ -271,13 +271,13 @@ class TestRunnerUpCapture:
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_mrr",
+                suggested_metric_id="cm_lifetime_value_per_customer",
                 suggestion_confidence=0.7,
             ),
         ]
@@ -295,7 +295,7 @@ class TestRunnerUpCapture:
         assert len(runner_up_logs) == 1
 
         log = runner_up_logs[0]
-        assert log["suggested_metric_id"] == "cm_mrr"  # The runner-up metric
+        assert log["suggested_metric_id"] == "cm_lifetime_value_per_customer"  # The runner-up metric
         assert float(log["suggestion_confidence"]) == pytest.approx(0.7)
 
     def test_runner_up_different_metric_only(self, clean_db):
@@ -307,13 +307,13 @@ class TestRunnerUpCapture:
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.7,
             ),
         ]
@@ -338,13 +338,13 @@ class TestRunnerUpCapture:
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_mrr",
+                suggested_metric_id="cm_lifetime_value_per_customer",
                 suggestion_confidence=0.5,
             ),
             make_candidate(
@@ -362,7 +362,7 @@ class TestRunnerUpCapture:
         runner_up_logs = [log_entry for log_entry in logs if log_entry["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
 
-        # cm_customers (0.7) is runner-up, not cm_mrr (0.5)
+        # cm_customers (0.7) is runner-up, not cm_lifetime_value_per_customer (0.5)
         assert runner_up_logs[0]["suggested_metric_id"] == "cm_customers"
 
     def test_runner_up_linked_to_winner(self, clean_db):
@@ -373,13 +373,13 @@ class TestRunnerUpCapture:
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_mrr",
+                suggested_metric_id="cm_lifetime_value_per_customer",
                 suggestion_confidence=0.7,
             ),
         ]
@@ -388,8 +388,8 @@ class TestRunnerUpCapture:
             candidates, log_suppressed=True
         )
 
-        # Find which ID is cm_arr (the winner)
-        arr_id = result_ids[0]  # First one is cm_arr
+        # Find which ID is cm_average_order_value (the winner)
+        arr_id = result_ids[0]  # First one is cm_average_order_value
 
         runner_up_logs = [log_entry for log_entry in logs if log_entry["suppression_reason"] == "runner_up"]
         assert len(runner_up_logs) == 1
@@ -462,14 +462,14 @@ class TestNullSegmentHandling:
                 filing_id, company_id,
                 char_position=100,
                 source_segment_id=None,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.9,
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
                 source_segment_id=None,
-                suggested_metric_id="cm_mrr",
+                suggested_metric_id="cm_lifetime_value_per_customer",
                 suggestion_confidence=0.7,
             ),
         ]
@@ -564,13 +564,13 @@ class TestWithinBatchDedup:
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.5,
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.9,
                 context_text="Winner context",
             ),
@@ -594,14 +594,14 @@ class TestWithinBatchDedup:
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.8,
                 context_text="First context",
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.8,
                 context_text="Second context",
             ),
@@ -620,13 +620,13 @@ class TestWithinBatchDedup:
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.5,
             ),
             make_candidate(
                 filing_id, company_id,
                 char_position=100,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.9,
             ),
         ]

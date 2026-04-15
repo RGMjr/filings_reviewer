@@ -30,7 +30,7 @@ from src.extraction_v2.models import (
     Table,
     Unit,
 )
-from src.extraction_v2.stages.value_binding import ValueBindingStage
+from src.extraction_v2.stages.value_binding import _WIDER_PROXIMITY_METRICS, ValueBindingStage
 
 # ============================================================================
 # Test Fixtures
@@ -270,7 +270,7 @@ class TestTableBindingHeaderPath:
         # Candidate in second-level header
         candidate = MetricCandidate(
             candidate_id="cand-multi",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Q4",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -429,7 +429,7 @@ class TestTableBindingStubPath:
 
         candidate = MetricCandidate(
             candidate_id="cand-multi-stub",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -1480,7 +1480,7 @@ class TestUnitFiltering:
 
         candidate = MetricCandidate(
             candidate_id="cand-uf-curr",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -1518,7 +1518,7 @@ class TestUnitFiltering:
 
         candidate = MetricCandidate(
             candidate_id="cand-uf-curr-ok",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -1698,6 +1698,128 @@ class TestConfigBasedProximity:
         result_wide = stage.process(context_wide)  # type: ignore
         assert result_wide.success
         assert len(context_wide.bound_values) >= 1
+
+
+# ============================================================================
+# Wider Proximity Override Tests
+# ============================================================================
+
+
+class TestWiderProximityMetrics:
+    """Tests for the _WIDER_PROXIMITY_METRICS frozenset and its effect on binding."""
+
+    def test_wider_proximity_binds_value_beyond_default_window(self) -> None:
+        """Metrics in _WIDER_PROXIMITY_METRICS get a 200-char window, catching values
+        that fall outside the default 100-char window."""
+        stage = ValueBindingStage()  # default proximity_window=100
+
+        # Keyword "LTV/CAC ratio" starts at 0; pad ~140 chars then place the value.
+        # The value "3.5" starts at position ~150, well beyond the 100-char default
+        # but within the 200-char wider window.
+        padding = "x" * 140
+        segment_text = f"LTV/CAC ratio {padding} 3.5"
+        keyword_end = len("LTV/CAC ratio")  # 13
+
+        segment = Segment(
+            segment_id="seg-wider-1",
+            text=segment_text,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-wider-1",
+            metric_id="cm_ltv_to_cac_ratio",
+            match_text="LTV/CAC ratio",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-wider-1",
+                text_span=(0, keyword_end),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_wider_proximity_does_not_apply_to_non_wider_metric(self) -> None:
+        """Metrics NOT in _WIDER_PROXIMITY_METRICS use the default 100-char window
+        and cannot bind values beyond it."""
+        stage = ValueBindingStage()  # default proximity_window=100
+
+        padding = "x" * 140
+        segment_text = f"Revenue {padding} 500"
+        keyword_end = len("Revenue")  # 7
+
+        segment = Segment(
+            segment_id="seg-wider-2",
+            text=segment_text,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-wider-2",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-wider-2",
+                text_span=(0, keyword_end),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0
+
+    def test_wider_proximity_does_not_narrow_larger_window(self) -> None:
+        """When config sets text_proximity_chars=400, max(400, 200) = 400 is used.
+        A value ~350 chars from keyword end is found."""
+        stage = ValueBindingStage()
+
+        padding = "x" * 350
+        segment_text = f"LTV/CAC ratio {padding} 4.2"
+        keyword_end = len("LTV/CAC ratio")  # 13
+
+        segment = Segment(
+            segment_id="seg-wider-3",
+            text=segment_text,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-wider-3",
+            metric_id="cm_ltv_to_cac_ratio",
+            match_text="LTV/CAC ratio",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-wider-3",
+                text_span=(0, keyword_end),
+            ),
+        )
+
+        @dataclass
+        class WideConfig:
+            text_proximity_chars: int = 400
+            min_confidence_auto_accept: float = 0.90
+
+        context = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            config=WideConfig(),  # type: ignore
+        )
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_wider_proximity_metrics_frozenset_contents(self) -> None:
+        """_WIDER_PROXIMITY_METRICS contains exactly the expected metric IDs."""
+        expected = frozenset({
+            "cm_balance_by_cohort",
+            "cm_gross_margin_by_cohort",
+            "cm_ltv_to_cac_ratio",
+            "cm_ltv_to_cac_ratio_by_cohort",
+            "cm_cac_payback_period",
+        })
+        assert _WIDER_PROXIMITY_METRICS == expected
 
 
 # ============================================================================
@@ -1912,7 +2034,7 @@ class TestAmbiguityPenaltyPostFilter:
     """Tests that ambiguity penalty is computed AFTER unit filtering.
 
     When "ARR grew 7% to $4.1 billion", the 7% is filtered (incompatible
-    with cm_arr=CURRENCY_ONLY), leaving only $4.1B. The surviving value
+    with cm_average_order_value=CURRENCY_ONLY), leaving only $4.1B. The surviving value
     should NOT get an ambiguity penalty since it's the only compatible value.
     """
 
@@ -1922,16 +2044,16 @@ class TestAmbiguityPenaltyPostFilter:
 
         segment = Segment(
             segment_id="seg-arr-growth",
-            text="Annual recurring revenue grew 7% to $4.1 billion.",
+            text="Total contract value grew 7% to $4.1 billion.",
         )
         candidate = MetricCandidate(
             candidate_id="cand-arr-growth",
-            metric_id="cm_arr",
-            match_text="annual recurring revenue",
+            metric_id="cm_tcv",
+            match_text="total contract value",
             source_type=SourceType.TEXT,
             source_locator=SourceLocator(
                 segment_id="seg-arr-growth",
-                text_span=(0, 24),
+                text_span=(0, 20),
             ),
         )
 
@@ -1939,7 +2061,7 @@ class TestAmbiguityPenaltyPostFilter:
         result = stage.process(context)  # type: ignore
 
         assert result.success
-        # Only $4.1B should survive (7% filtered for cm_arr)
+        # Only $4.1B should survive (7% filtered for cm_tcv as currency-only metric)
         assert len(context.bound_values) == 1
         bv = context.bound_values[0]
         assert bv.value == pytest.approx(4_100_000_000, rel=0.01)
@@ -2219,7 +2341,7 @@ class TestTableScaleFactorCountMetrics:
         table = self._make_thousands_table("cur-1", "Revenue", "$1,500")
         candidate = MetricCandidate(
             candidate_id="cand-cur-1",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Revenue",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -2453,7 +2575,7 @@ class TestColumnTypeFiltering:
             Cell(
                 row=1,
                 col=0,
-                text="ARR",
+                text="TCV",
                 is_stub=True,
                 header_path=[""],
                 stub_path=[],
@@ -2463,14 +2585,14 @@ class TestColumnTypeFiltering:
                 col=1,
                 text="500",
                 header_path=["Amount ($)"],
-                stub_path=["ARR"],
+                stub_path=["TCV"],
             ),
             Cell(
                 row=1,
                 col=2,
                 text="10,000",
                 header_path=["Number of Users"],
-                stub_path=["ARR"],
+                stub_path=["TCV"],
             ),
         ]
         table = Table(
@@ -2487,8 +2609,8 @@ class TestColumnTypeFiltering:
 
         candidate = MetricCandidate(
             candidate_id="cand-ct-3",
-            metric_id="cm_arr",
-            match_text="ARR",
+            metric_id="cm_tcv",
+            match_text="TCV",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
                 table_id="mixed-curr",
@@ -2735,7 +2857,7 @@ class TestTextProximityFilters:
         )
         candidate = MetricCandidate(
             candidate_id="cand-tbl-bare",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -2864,7 +2986,7 @@ class TestTableScaleExceptions:
         table = self._make_except_table("ff-rev-1", "Revenue", "$1,500")
         candidate = MetricCandidate(
             candidate_id="cand-rev-1",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Revenue",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -2933,7 +3055,7 @@ class TestTableScaleExceptions:
 
         candidate = MetricCandidate(
             candidate_id="cand-normal-1",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Revenue",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(

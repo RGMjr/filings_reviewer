@@ -73,9 +73,7 @@ _SYNTHETIC_FILING_ID = 99999
 # High-confidence (ticker, date_str, metric_id, expected_value) spot checks.
 # These are all v2_likely=yes in manual_annotations.csv with explicit numeric values.
 SPOT_CHECK_EXTRACTIONS: list[tuple[str, str, str, float]] = [
-    ("CRM", "2025-02-26", "cm_arr", 900_000_000),
     ("META", "2025-04-30", "cm_daily_active_users", 3_400_000_000),
-    ("ADBE", "2025-03-12", "cm_arr", 17_630_000_000),
     ("GDDY", "2025-05-01", "cm_customers_period_end", 20_500_000),
     ("PYPL", "2025-04-29", "cm_active_customers_total", 436_000_000),
     ("TMUS", "2025-04-24", "cm_customers_period_end", 25_500_000),

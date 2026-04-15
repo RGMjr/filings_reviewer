@@ -526,7 +526,7 @@ class TestFinancialStatementFiltering:
         """Revenue values in financial statement context should be filtered."""
         text = "CONSOLIDATED STATEMENTS OF OPERATIONS\nRevenue $400,552 thousand"
         segment = _make_text_segment("seg-1", text)
-        candidate = _make_candidate("c1", "cm_arr", "seg-1")
+        candidate = _make_candidate("c1", "cm_average_order_value", "seg-1")
 
         bv = _make_bound_value(
             "c1",
@@ -609,7 +609,7 @@ class TestLegitimateValuesKept:
         """A currency ARR value should not be filtered."""
         text = "Our annual recurring revenue reached $1.2 billion."
         segment = _make_text_segment("seg-1", text)
-        candidate = _make_candidate("c1", "cm_arr", "seg-1")
+        candidate = _make_candidate("c1", "cm_average_order_value", "seg-1")
 
         bv = _make_bound_value(
             "c1",
@@ -1369,7 +1369,7 @@ class TestCurrencyOnCountMetric:
         """Currency values on ARR are kept (ARR is legitimately currency)."""
         source = "ARR grew to $4.1 billion"
         segment = _make_text_segment("seg-1", source)
-        candidate = _make_candidate("c1", "cm_arr", "seg-1")
+        candidate = _make_candidate("c1", "cm_average_order_value", "seg-1")
         bv = _make_bound_value("c1", 4100000000.0, "$4.1 billion", Unit.CURRENCY, "seg-1")
 
         ctx = MockPipelineContext(
@@ -2198,10 +2198,10 @@ class TestQACurrencyOnCountRule:
         bv = _make_bound_value("c1", 578_000_000.0, "$578 million", Unit.CURRENCY)
         source = "we achieved net new ARR of $578 million"
         is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr",
+            bv, source, metric_id="cm_average_order_value",
             relaxed=True, section_type=SectionType.QA
         )
-        # QA currency-on-count rule should NOT fire for cm_arr (not a count metric)
+        # QA currency-on-count rule should NOT fire for cm_average_order_value (not a count metric)
         assert reason != "v2_qa_currency_on_count"
 
     def test_qa_currency_on_count_not_fired_in_prepared_remarks(self):
@@ -2216,92 +2216,6 @@ class TestQACurrencyOnCountRule:
         )
         # QA-specific rule must NOT fire for prepared remarks
         assert reason != "v2_qa_currency_on_count"
-
-
-# ============================================================================
-# Test: Revenue-as-ARR rule (A+.1 — ADBE FP hardening)
-# ============================================================================
-
-
-class TestRevenueAsArrRule:
-    """Tests for the _rule_revenue_as_arr FP filter (cm_arr metric only)."""
-
-    def test_gaap_revenue_value_rejected_for_arr(self):
-        """'$4.85B revenue' near cm_arr → rejected (GAAP revenue, not ARR)."""
-        bv = _make_bound_value("c1", 4_850_000_000.0, "4.85", Unit.CURRENCY)
-        source = "Total revenue was $4.85 billion for fiscal 2023."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr", relaxed=True
-        )
-        assert is_fp is True
-        assert reason == "v2_revenue_as_arr"
-
-    def test_segment_revenue_rejected_for_arr(self):
-        """'$843M document cloud revenue' near cm_arr → rejected."""
-        bv = _make_bound_value("c1", 843_000_000.0, "843", Unit.CURRENCY)
-        source = "$843 million document cloud revenue grew 13% year over year."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr", relaxed=True
-        )
-        assert is_fp is True
-        assert reason == "v2_revenue_as_arr"
-
-    def test_recurring_revenue_not_rejected(self):
-        """'recurring revenue' near cm_arr → kept (genuine ARR context)."""
-        bv = _make_bound_value("c1", 578_000_000.0, "578", Unit.CURRENCY)
-        source = "Annual recurring revenue of $578 million, up 18% year over year."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr", relaxed=True
-        )
-        assert reason != "v2_revenue_as_arr"
-
-    def test_arr_label_adjacent_not_rejected(self):
-        """'ARR' immediately before value (within ±20 chars) → kept (genuine ARR)."""
-        bv = _make_bound_value("c1", 500_000_000.0, "500", Unit.CURRENCY)
-        source = "We closed the year with ARR of $500 million, up 25%."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr", relaxed=True
-        )
-        assert reason != "v2_revenue_as_arr"
-
-    def test_arr_far_away_does_not_escape_rule(self):
-        """'ARR' >20 chars before a GAAP revenue value does NOT suppress the rule."""
-        bv = _make_bound_value("c1", 4_150_000_000.0, "4.15", Unit.CURRENCY)
-        # "ARR" is ~40 chars before "4.15" — outside the ±20-char escape window
-        source = "net new digital media ARR of $578 million and revenue of $4.15 billion"
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr", relaxed=True
-        )
-        assert is_fp is True
-        assert reason == "v2_revenue_as_arr"
-
-    def test_no_revenue_in_window_not_rejected(self):
-        """No 'revenue' word in window near cm_arr → kept (fail-open)."""
-        bv = _make_bound_value("c1", 250_000_000.0, "250", Unit.CURRENCY)
-        source = "We ended the quarter at $250 million, growing 30% year over year."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr", relaxed=True
-        )
-        assert reason != "v2_revenue_as_arr"
-
-    def test_rule_does_not_fire_for_non_arr_metric(self):
-        """Revenue-as-ARR rule is cm_arr-specific; other metrics unaffected."""
-        bv = _make_bound_value("c1", 1_000_000_000.0, "1 billion", Unit.CURRENCY)
-        source = "Product revenue of $1 billion exceeded expectations."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_net_revenue_retention", relaxed=True
-        )
-        assert reason != "v2_revenue_as_arr"
-
-    def test_rule_fires_in_non_relaxed_mode_too(self):
-        """Revenue-as-ARR rule is in the registry and fires for SEC filings too."""
-        bv = _make_bound_value("c1", 5_000_000_000.0, "5", Unit.CURRENCY)
-        source = "Total revenue of $5 billion including subscription revenue."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr", relaxed=False
-        )
-        assert is_fp is True
-        assert reason == "v2_revenue_as_arr"
 
 
 # ============================================================================
@@ -2822,14 +2736,14 @@ class TestGoalOfServingGuidance:
 
 class TestTransactionsPerAccountRule:
     """_rule_transactions_per_account suppresses TPA ratios mis-classified as
-    expansion revenue or count-type metric values."""
+    count-type metric values."""
 
-    def test_tpa_fires_for_expansion_revenue(self):
-        """'57.6 transactions per active account' → rejected for cm_expansion_revenue."""
+    def test_tpa_fires_for_count_metric(self):
+        """'57.6 transactions per active account' → rejected for cm_customers_period_end."""
         source = "PayPal generated 57.6 transactions per active account in the quarter."
         bv = _make_bound_value("c1", 57.6, "57.6", Unit.COUNT)
         is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_expansion_revenue"
+            bv, source, metric_id="cm_customers_period_end"
         )
         assert is_fp is True
         assert reason == "v2_transactions_per_account"
@@ -2844,21 +2758,21 @@ class TestTransactionsPerAccountRule:
         assert is_fp is True
         assert reason == "v2_transactions_per_account"
 
-    def test_tpa_does_not_fire_for_unrelated_text(self):
-        """No TPA phrase → cm_expansion_revenue value is NOT suppressed."""
+    def test_tpa_does_not_fire_for_non_count_metric(self):
+        """No TPA phrase → cm_average_order_value value is NOT suppressed."""
         source = "Cross-sell revenue of 50 million was driven by upsell motions."
         bv = _make_bound_value("c1", 50.0, "50 million", Unit.COUNT)
         is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_expansion_revenue"
+            bv, source, metric_id="cm_average_order_value"
         )
         assert reason != "v2_transactions_per_account"
 
     def test_tpa_does_not_fire_for_unrelated_metric(self):
-        """TPA phrase is present but metric is cm_arr → rule does not fire."""
+        """TPA phrase is present but metric is cm_average_order_value → rule does not fire."""
         source = "ARR reached 57.6 billion; transactions per active account were flat."
         bv = _make_bound_value("c1", 57.6, "57.6", Unit.COUNT)
         is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
+            bv, source, metric_id="cm_average_order_value"
         )
         assert reason != "v2_transactions_per_account"
 
@@ -3003,74 +2917,6 @@ class TestRetentionRateOver100:
 
 
 # ============================================================================
-# Test: _rule_arr_tier_threshold
-# ============================================================================
-
-
-class TestArrTierThreshold:
-    """Tests for _rule_arr_tier_threshold — blocks tier threshold values for ARR metric."""
-
-    def test_common_tier_value_with_arr_context_rejected(self):
-        """'$100K ARR' tier boundary in customer-tier description → rejected."""
-        bv = _make_bound_value("c1", 100_000.0, "$100K", Unit.CURRENCY)
-        source = "Customers with greater than $100K ARR are served by our enterprise team."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
-        )
-        assert is_fp is True
-        assert reason == "v2_arr_tier_threshold"
-
-    def test_over_dollar_tier_context_rejected(self):
-        """'over $250,000' threshold language → rejected."""
-        bv = _make_bound_value("c1", 250_000.0, "250,000", Unit.CURRENCY)
-        source = "Enterprise customers spending over $250,000 annually receive dedicated support."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
-        )
-        assert is_fp is True
-        assert reason == "v2_arr_tier_threshold"
-
-    def test_non_tier_value_with_arr_context_kept(self):
-        """Non-boundary ARR value without threshold language → not caught by arr_tier_threshold."""
-        bv = _make_bound_value("c1", 123_456.0, "$123,456", Unit.CURRENCY)
-        source = "Annual recurring revenue was $123,456 at the end of the quarter."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
-        )
-        # arr_tier_threshold should NOT fire (123,456 is not a standard tier value)
-        assert reason != "v2_arr_tier_threshold"
-        assert is_fp is False
-
-    def test_tier_value_without_tier_language_kept(self):
-        """Common tier boundary value but no tier language → kept."""
-        bv = _make_bound_value("c1", 1_000_000.0, "1 million", Unit.CURRENCY)
-        source = "Annual recurring revenue reached $1 million for the first time."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
-        )
-        assert is_fp is False
-
-    def test_rule_not_fired_for_unrelated_metric(self):
-        """Tier threshold language but wrong metric → not rejected by this rule."""
-        bv = _make_bound_value("c1", 100_000.0, "$100K", Unit.CURRENCY)
-        source = "Customers with greater than $100K ARR qualify for enterprise."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_revenue_per_customer"
-        )
-        assert reason != "v2_arr_tier_threshold"
-
-    def test_at_least_dollar_pattern_rejected(self):
-        """'at least $X' pattern triggers tier threshold rule."""
-        bv = _make_bound_value("c1", 10_000.0, "10,000", Unit.CURRENCY)
-        source = "SMB accounts spending at least $10,000 per year get priority onboarding."
-        is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
-        )
-        assert is_fp is True
-        assert reason == "v2_arr_tier_threshold"
-
-
-# ============================================================================
 # Test: _rule_magnitude_sanity
 # ============================================================================
 
@@ -3117,11 +2963,11 @@ class TestMagnitudeSanity:
         assert is_fp is False
 
     def test_rule_not_fired_for_unconstrained_metric(self):
-        """Large value for cm_arr → not rejected by magnitude rule (no max defined)."""
+        """Large value for cm_average_order_value → not rejected by magnitude rule (no max defined)."""
         bv = _make_bound_value("c1", 999_000_000.0, "999 million", Unit.CURRENCY)
         source = "ARR reached $999 million."
         is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
+            bv, source, metric_id="cm_average_order_value"
         )
         assert reason != "v2_magnitude_sanity"
 
@@ -3419,11 +3265,11 @@ class TestFinancialContextOnCustomerMetric:
         assert reason != "v2_financial_context_customer_metric"
 
     def test_financial_keyword_does_not_block_arr(self):
-        """Financial keyword near cm_arr → rule does not fire (arr not in blocked set)."""
+        """Financial keyword near cm_average_order_value → rule does not fire (arr not in blocked set)."""
         source = "Free cash flow $50M. ARR was $200 million."
         bv = _make_bound_value("c1", 200_000_000.0, "$200 million", Unit.CURRENCY)
         is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
+            bv, source, metric_id="cm_average_order_value"
         )
         assert reason != "v2_financial_context_customer_metric"
 
@@ -3451,6 +3297,60 @@ class TestFinancialContextOnCustomerMetric:
         assert is_fp is True
         assert reason == "v2_financial_context_customer_metric"
 
+    def test_large_customers_table_exempt_in_range(self):
+        """cm_large_customers_period_end table-sourced in 100-1M range → NOT blocked by financial context."""
+        source = "gross margin 500"
+        bv = _make_table_bound_value("c1", 500.0, "500", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert reason != "v2_financial_context_customer_metric"
+
+    def test_large_customers_table_blocked_value_below_range(self):
+        """cm_large_customers_period_end table-sourced value=50 (below 100) → IS blocked."""
+        source = "total revenue 50"
+        bv = _make_table_bound_value("c1", 50.0, "50", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason == "v2_financial_context_customer_metric"
+
+    def test_large_customers_table_blocked_value_above_range(self):
+        """cm_large_customers_period_end table-sourced value=2_000_000 (above 1M) → IS blocked.
+
+        Note: 2,000,000 exceeds plausible customer count range and may be caught
+        by v2_magnitude_sanity before the financial context rule runs — both are
+        correct rejections.
+        """
+        source = "total revenue 2,000,000"
+        bv = _make_table_bound_value("c1", 2_000_000.0, "2,000,000", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason in ("v2_financial_context_customer_metric", "v2_magnitude_sanity")
+
+    def test_other_count_metric_table_not_exempt(self):
+        """cm_active_customers_total table-sourced value=500 → IS blocked (exemption is metric-specific)."""
+        source = "gross margin 500"
+        bv = _make_table_bound_value("c1", 500.0, "500", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total"
+        )
+        assert is_fp is True
+        assert reason == "v2_financial_context_customer_metric"
+
+    def test_large_customers_text_sourced_unchanged(self):
+        """cm_large_customers_period_end text-sourced → text path unchanged, still blocked when keyword is within 100 chars."""
+        source = "gross margin expanded to 78%. We had 500 large customers."
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason == "v2_financial_context_customer_metric"
+
 
 # ============================================================================
 # Test: _rule_metric_definition_value (Step 3)
@@ -3464,7 +3364,7 @@ class TestMetricDefinitionValue:
         """'customers with over $100,000' → blocked as FP (arr_tier_threshold or metric_definition_value)."""
         source = "customers with over $100,000 ARR"
         bv = _make_bound_value("c1", 100_000.0, "$100,000", Unit.CURRENCY)
-        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_arr")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_average_order_value")
         # Either rule may fire first — both correctly identify the FP
         assert is_fp is True
         assert reason in ("v2_metric_definition_value", "v2_arr_tier_threshold")
@@ -3473,7 +3373,7 @@ class TestMetricDefinitionValue:
         """'defined as $5,000' → blocked as FP."""
         source = "Core Customers defined as $5,000 in ARR"
         bv = _make_bound_value("c1", 5000.0, "$5,000", Unit.CURRENCY)
-        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_arr")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_average_order_value")
         assert is_fp is True
         assert reason in ("v2_metric_definition_value", "v2_arr_tier_threshold")
 
@@ -3481,7 +3381,7 @@ class TestMetricDefinitionValue:
         """'customers spending more than $1,000' → blocked."""
         source = "customers spending more than $1,000 per year"
         bv = _make_bound_value("c1", 1000.0, "$1,000", Unit.CURRENCY)
-        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_arr")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_average_order_value")
         assert is_fp is True
         assert reason == "v2_metric_definition_value"
 
@@ -3489,14 +3389,14 @@ class TestMetricDefinitionValue:
         """'ARR grew to over $1.1 billion' → not blocked (milestone, not threshold)."""
         source = "Annual recurring revenue grew to over $1.1 billion."
         bv = _make_bound_value("c1", 1_100_000_000.0, "$1.1 billion", Unit.CURRENCY)
-        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_arr")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_average_order_value")
         assert reason != "v2_metric_definition_value"
 
     def test_legitimate_arr_not_blocked(self):
         """Reported ARR without definition language → not blocked."""
         source = "Annual recurring revenue was $45.2 million at quarter end."
         bv = _make_bound_value("c1", 45_200_000.0, "$45.2 million", Unit.CURRENCY)
-        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_arr")
+        is_fp, reason = _is_v2_false_positive(bv, source, metric_id="cm_average_order_value")
         assert reason != "v2_metric_definition_value"
 
     def test_count_unit_not_blocked(self):
@@ -3555,11 +3455,11 @@ class TestChartPricingLabel:
         assert reason == "v2_chart_pricing_label"
 
     def test_cagr_label_blocked(self):
-        """CAGR label on chart → blocked (use cm_arr to avoid percent_on_count firing first)."""
+        """CAGR label on chart → blocked (use cm_average_order_value to avoid percent_on_count firing first)."""
         source = "25% CAGR projected through 2027"
         bv = _make_chart_bound_value("c1", 25.0, "25%", Unit.PERCENT, "chart_annotation")
         is_fp, reason = _is_v2_false_positive(
-            bv, source, metric_id="cm_arr"
+            bv, source, metric_id="cm_average_order_value"
         )
         assert is_fp is True
         assert reason == "v2_chart_cagr_label"
@@ -3612,6 +3512,8 @@ class TestSoftRuleConfidenceBypass:
 
     def test_soft_rule_enforced_at_low_confidence(self):
         """financial_context_customer_metric (soft) still fires at low confidence."""
+        # Use cm_active_customers_total — cm_large_customers_period_end is now
+        # exempt from the table financial context rule for values in 100-1M range.
         bv = _make_bound_value("c1", 3100.0, "3,100", Unit.COUNT, "seg-1")
         import dataclasses
         bv = dataclasses.replace(
@@ -3619,10 +3521,10 @@ class TestSoftRuleConfidenceBypass:
             binding_confidence=0.50,
             source_locator=SourceLocator(segment_id="seg-1", table_id="tbl-1"),
         )
-        source = "number of large customers 3,100 revenue gross profit ebitda"
+        source = "number of active customers 3,100 revenue gross profit ebitda"
         is_fp, reason = _is_v2_false_positive(
             bv, source,
-            metric_id="cm_large_customers_period_end",
+            metric_id="cm_active_customers_total",
             binding_confidence=0.50,
         )
         assert is_fp is True

@@ -1,10 +1,11 @@
 # Gold Standard Validator Memory
 
+*(Flaky files, SNAP precision note, and DB requirement promoted to `.claude/rules/gold-standard.md`)*
+
 ## Key Paths
 - Transcript benchmark: `scripts/validate_transcript_extraction.py --baseline`
 - Presentation benchmark: `scripts/validate_presentation_extraction.py --verbose`
-- SEC gold standard: `pytest -m gold_standard --gold-standard-mode=fresh -v` (runs from worktree dir)
-- SEC validate_against_gold_standard.py requires live DB — produces 0 candidates without it; use pytest instead
+- SEC gold standard: `pytest -m gold_standard --gold-standard-mode=fresh -v`
 - Transcript baseline JSON: `data/spike_samples/transcript_baseline.json`
 - Transcript HTML files: `data/spike_samples/transcripts_html/*.html`
 - Transcript annotations: `data/transcript_gold_standard/transcript_gold_standard.csv`
@@ -20,40 +21,33 @@
 - Fix: require "by" to be preceded by directional/motion verb, not passive ("used by", "adopted by")
 - Affected filing: META_2025-01-29 `cm_monthly_active_users: 3000000000`
 
-## Known Flaky Transcript Files
-- TMUS_2025-04-24: varies between 4 and 5 TPs depending on run (dedup ordering)
-- META_2025-04-30: can miss 1 extra MAU value per run (non-deterministic cross-metric dedup)
-- Tolerance: 1pp per metric before flagging regression
-
 ## Presentation Notes
-- SNAP filings (Q3 and Q4 2025): image-based investor letter — poor precision (29%), many spurious text FPs
 - ADBE presentation: zero extraction (only 12 paragraph segments, no metrics matched)
 - CRM and META presentations: 100% R/P/F1 on current gold standard
+- Coverage check FAILS (20-21%) when running with --cov — expected; most code isn't exercised by gold_standard tests
 
-## SEC Gold Standard
-- `validate_against_gold_standard.py --all --mode fresh --baseline` requires DB; always shows 0/0 without it
-- Use `pytest -m gold_standard --gold-standard-mode=fresh` for authoritative SEC check
-- Coverage check FAILS (20-21%) — this is expected; --cov is included but most code isn't exercised by gold_standard tests
+## V2 FN Root Cause Distribution (2026-04-15 baseline, conf >= 0.35)
+- V2 overall: P=65.4%, R=67.4%, F1=66.4% (TP=225, FP=119, FN=109)
+- Tier 1: P=75.7%, R=61.2%, F1=67.7% | Tier 2: P=55.0%, R=78.3%, F1=64.6%
+- Run: `python3 -m src.gold_standard.v2_validator --fn-diagnostics`
+- PERIOD_AMBIGUITY_PENALTY reduced from 0.10 to 0.05 in fact_construction.py on 2026-04-15
+  - wrong_period dropped from 19 to 7 FNs (-12); low_confidence dropped from 17 to 5 FNs (-12)
+  - wrong_value grew from 51 to 57 (+6); fp_filtered grew from 5 to 10 (+5) — acceptable trade-off
+- wrong_value: 57 FNs (52%) — largest category; value extracted but wrong magnitude/row
+  - Samsara cm_large_customers_period_end — wrong row selected; closest=255/390 vs expected 92-382
+  - Robinhood cm_revenue_by_cohort — closest=33421.5 vs expected $17-$186 (scale artifact)
+  - Torrid cm_active_customers_total — closest=1202 vs 3182-3364 expected
+  - Datadog cm_arr: closest=100000 vs expected 200000 (scale halved)
+  - Farfetch cm_ltv_to_cac_ratio_by_cohort: closest=1.77 vs 1.81-2.71
+- wrong_period: 7 FNs (6%) — Chewy cm_revenue_per_customer (3 FNs), GitLab NRR/customers (3 FNs), Slack NRR (1 FN)
+- no_value_binding: 19 FNs (17%) — candidate found but value extractor returned nothing
+  - Farfetch cm_gross_margin_by_cohort (10 FNs) — bvs=0, table extraction failure
+  - Maplebear cm_revenue_by_cohort (9 FNs) — "x" multiplier values (1.00x, 1.73x, 3.26x) not parsed
+- no_candidate: 11 FNs (10%)
+- low_confidence: 5 FNs (5%) — Torrid cm_ltv_to_cac_ratio (5 FNs), conf=0.27; max=0.27
+- fp_filtered: 10 FNs (9%) — Samsara cm_revenue_concentration (5 FNs), Samsara cm_customer_retention_rate (3 FNs), Tenable cm_large_customers_period_end (2 FNs)
 
-## V2 FN Root Cause Distribution (2026-04-04 baseline)
-- V2 overall: P=66.9%, R=49.7%, F1=57.0% (TP=160, FP=79, FN=162; note: ~3 FNs listed as 159 in summary)
-- FN API: `V2GoldStandardValidator(fn_diagnostics=True)` then `V2GoldStandardValidator.print_fn_diagnostics(results)`
-- wrong_value: 71 FNs (45%) — largest category; value extracted but wrong magnitude/scale
-  - Samsara ARR: closest=1.0 vs expected ~100-500 — scale stripping artifact
-  - Torrid active customers: 1202 extracted vs 3000-3400 expected — wrong row selected in table
-  - Robinhood customers: 30 vs 5-22M expected — scale unit dropped
-  - GitLab large customers: 31 extracted vs 11-2745 expected — wrong candidate row
-- low_confidence: 23 FNs (14%) — value extracted correctly but confidence < 0.5 threshold
-  - Torrid LTV/CAC/CAC metrics: conf=0.33; Kingsoft customers: conf=0.46
-  - Fix path: lower threshold for specific metric types OR improve scorer for these patterns
-- no_candidate: 23 FNs (14%) — metric_id not even matched in filing
-  - Kingsoft cm_revenue_per_customer (5 FNs) — metric not in keyword config
-  - Robinhood cm_balance_by_cohort (9 FNs) — metric not in keyword config
-  - Samsara/Tenable cm_revenue_concentration — keyword not triggering
-- no_value_binding: 16 FNs (10%) — candidate found but value extractor returned nothing
-  - Farfetch cm_gross_margin_by_cohort (6 FNs) — table extraction issue
-  - Maplebear cm_revenue_by_cohort (8-9 FNs) — "x" multiplier values (1.00x, 1.73x) not parsed
-- wrong_period: 16 FNs (10%) — value/metric match but period attribution wrong
-  - Robinhood MAU (4 FNs), GitLab/Kingsoft NRR, Tenable new customers
-- fp_filtered: 10 FNs (6%) — correct value removed by FP filter (false FP block)
-  - Flywire NRR (4 FNs), Tenable large customers (2 FNs), Maplebear transactions (1 FN)
+## Maplebear cm_revenue_by_cohort (2026-04-10)
+- Root cause: no_value_binding (9 FNs)
+- Expected: multiplier values like 1.00x, 0.98x, 1.73x, 1.74x, 3.00x, 3.26x, 3.52x, 1.49x, + 1 more
+- cands=6, bvs=0: candidates found but value extractor cannot parse "Nx" multiplier format

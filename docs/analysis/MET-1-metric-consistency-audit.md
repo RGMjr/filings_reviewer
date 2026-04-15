@@ -3,7 +3,8 @@
 **Generated**: 2026-01-07
 **Task ID**: MET-1
 **Phase**: 1 (Audit)
-**Status**: Awaiting User Review
+**Status**: Resolved
+**Resolution**: Option A (keep as distinct metrics) — implemented 2026-04-15
 
 ---
 
@@ -262,9 +263,19 @@ These are semantically **distinct**:
 2. But the YAML also defines `cm_active_customers_total` as its own metric with different patterns
 3. The SQL only has `cm_active_customers_total`, not `cm_customers_period_end`
 
-### Recommendations (Choose One)
+### Resolution: Option A Selected
 
-**Option A: Keep as Distinct Metrics**
+**Option A was implemented** (2026-04-15, waves 1-7 on branch `claude/evaluate-metrics-xX17n`):
+- The alias declaration was removed from `cm_customers_period_end` in YAML
+- Both metrics exist as distinct entries in YAML with no alias relationship
+- YAML comment at lines 59-62 explicitly documents the semantic distinction
+- `cm_customers_period_end` added to SQL as an active metric
+- Gold standard data uses both IDs correctly
+- `keyword_config.py` alias functions return empty (no aliases defined)
+
+### Original Recommendations (For Reference)
+
+**Option A: Keep as Distinct Metrics** *(selected)*
 - Remove the alias declaration from `cm_customers_period_end`
 - Add `cm_customers_period_end` to SQL
 - Update gold standard files to use correct canonical IDs
@@ -357,25 +368,15 @@ These are semantically **distinct**:
 
 ---
 
-## Phase 2: Next Steps (Requires User Approval)
+## Phase 2: Decisions (Resolved 2026-04-15)
 
-After reviewing this audit, please provide guidance on:
+1. **Alias Contradiction Resolution**: **Option A selected** — keep as distinct metrics. Implemented in waves 1-7.
 
-1. **Alias Contradiction Resolution** (Section 6):
-   - Option A: Keep as distinct metrics
-   - Option B: Merge into single metric
-   - Option C: Keep current hybrid
+2. **cm_deferred_revenue**: No action taken; deferred for future evaluation.
 
-2. **cm_deferred_revenue** handling:
-   - Add patterns to YAML?
-   - Or deprecate in SQL?
+3. **Test fixture fixes**: Addressed in wave 5 (deprecated metric IDs replaced). Abbreviated IDs left as-is.
 
-3. **Test fixture fixes**:
-   - Fix clearly wrong IDs (Priority 2)?
-   - Leave abbreviated IDs as-is?
-
-4. **METRIC_NAME_MAPPING gaps**:
-   - Add missing entries for active metrics?
+4. **METRIC_NAME_MAPPING gaps**: Deferred; V2 pipeline does not use METRIC_NAME_MAPPING.
 
 ---
 
