@@ -241,7 +241,7 @@ VALUES (
     'extended',
     'Annualized value of recurring subscription revenue, typically calculated as MRR × 12 or based on contracted annual values.',
     'financial_performance',
-    'active',
+    'deprecated',
     1
 );
 
@@ -253,7 +253,7 @@ VALUES (
     'extended',
     'Monthly value of recurring subscription revenue from active subscriptions.',
     'financial_performance',
-    'active',
+    'deprecated',
     1
 );
 
@@ -265,7 +265,7 @@ VALUES (
     'extended',
     'Additional revenue from existing customers through upsells, cross-sells, or increased usage.',
     'retention',
-    'active',
+    'deprecated',
     1
 );
 
@@ -399,10 +399,10 @@ INSERT INTO metrics (metric_id, display_name, metric_class, description, primary
 VALUES (
     'cm_lifetime_value_per_customer',
     'Customer Lifetime Value',
-    'future',
+    'extended',
     'Expected total value (gross profit or revenue) from a customer over their entire relationship.',
     'unit_economics',
-    'experimental',
+    'active',
     1
 );
 
@@ -411,10 +411,10 @@ INSERT INTO metrics (metric_id, display_name, metric_class, description, primary
 VALUES (
     'cm_ltv_to_cac_ratio',
     'LTV to CAC Ratio',
-    'future',
+    'extended',
     'Ratio of customer lifetime value to customer acquisition cost.',
     'unit_economics',
-    'experimental',
+    'active',
     1
 );
 
