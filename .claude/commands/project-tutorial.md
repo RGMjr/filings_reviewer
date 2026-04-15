@@ -1,11 +1,11 @@
-# Powerup: Interactive Project Lessons
+# Project Tutorial: Interactive Lessons
 
 Discover the filings_reviewer system through quick interactive lessons. Each lesson teaches a key part of the project with live codebase walkthroughs.
 
 ## Usage
 
 ```
-/powerup [lesson]
+/project-tutorial [lesson]
 ```
 
 Without arguments, show the lesson menu. With a lesson name or number, jump directly to that lesson.
