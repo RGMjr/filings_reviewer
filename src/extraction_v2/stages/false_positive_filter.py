@@ -1251,6 +1251,19 @@ _METRIC_DEFINITION_THRESHOLD_RE = re.compile(
 )
 
 
+_METRIC_DEFINITION_THRESHOLD_POST_RE = re.compile(
+    r"""
+    (?:
+        # "$X ARR customer(s)/deal(s)" — threshold for customer tier
+        \bARR\s+(?:customer|deal|client)s?\b
+        # "$X or more in ARR/annual recurring revenue"
+        | \bor\s+more\s+in\s+(?:ARR|annual\s+recurring\s+revenue)\b
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
 def _rule_metric_definition_value(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
@@ -1260,7 +1273,7 @@ def _rule_metric_definition_value(
     spending at least $5,000' produce currency candidates for the threshold amount
     rather than the company's actual metric value. This rule suppresses such
     extractions by detecting definition/threshold language in the 80-char window
-    before the value.
+    before the value, or ARR-threshold language in the 80-char window after it.
     """
     if bv.unit != Unit.CURRENCY:
         return None
@@ -1273,6 +1286,12 @@ def _rule_metric_definition_value(
     pre_start = max(0, value_pos - 120)
     pre_window = source_text[pre_start:value_pos]
     if _METRIC_DEFINITION_THRESHOLD_RE.search(pre_window):
+        return "v2_metric_definition_value"
+    # Post-value window: catches "$X ARR customers", "$X or more in ARR"
+    raw_len = len(bv.value_raw or "")
+    post_end = min(len(source_text), value_pos + raw_len + 80)
+    post_window = source_text[value_pos + raw_len:post_end]
+    if _METRIC_DEFINITION_THRESHOLD_POST_RE.search(post_window):
         return "v2_metric_definition_value"
     return None
 
