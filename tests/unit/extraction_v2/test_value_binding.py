@@ -30,7 +30,7 @@ from src.extraction_v2.models import (
     Table,
     Unit,
 )
-from src.extraction_v2.stages.value_binding import ValueBindingStage
+from src.extraction_v2.stages.value_binding import _WIDER_PROXIMITY_METRICS, ValueBindingStage
 
 # ============================================================================
 # Test Fixtures
@@ -1698,6 +1698,128 @@ class TestConfigBasedProximity:
         result_wide = stage.process(context_wide)  # type: ignore
         assert result_wide.success
         assert len(context_wide.bound_values) >= 1
+
+
+# ============================================================================
+# Wider Proximity Override Tests
+# ============================================================================
+
+
+class TestWiderProximityMetrics:
+    """Tests for the _WIDER_PROXIMITY_METRICS frozenset and its effect on binding."""
+
+    def test_wider_proximity_binds_value_beyond_default_window(self) -> None:
+        """Metrics in _WIDER_PROXIMITY_METRICS get a 200-char window, catching values
+        that fall outside the default 100-char window."""
+        stage = ValueBindingStage()  # default proximity_window=100
+
+        # Keyword "LTV/CAC ratio" starts at 0; pad ~140 chars then place the value.
+        # The value "3.5" starts at position ~150, well beyond the 100-char default
+        # but within the 200-char wider window.
+        padding = "x" * 140
+        segment_text = f"LTV/CAC ratio {padding} 3.5"
+        keyword_end = len("LTV/CAC ratio")  # 13
+
+        segment = Segment(
+            segment_id="seg-wider-1",
+            text=segment_text,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-wider-1",
+            metric_id="cm_ltv_to_cac_ratio",
+            match_text="LTV/CAC ratio",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-wider-1",
+                text_span=(0, keyword_end),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_wider_proximity_does_not_apply_to_non_wider_metric(self) -> None:
+        """Metrics NOT in _WIDER_PROXIMITY_METRICS use the default 100-char window
+        and cannot bind values beyond it."""
+        stage = ValueBindingStage()  # default proximity_window=100
+
+        padding = "x" * 140
+        segment_text = f"Revenue {padding} 500"
+        keyword_end = len("Revenue")  # 7
+
+        segment = Segment(
+            segment_id="seg-wider-2",
+            text=segment_text,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-wider-2",
+            metric_id="cm_revenue",
+            match_text="Revenue",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-wider-2",
+                text_span=(0, keyword_end),
+            ),
+        )
+
+        context = MockPipelineContext(segments=[segment], candidates=[candidate])
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) == 0
+
+    def test_wider_proximity_does_not_narrow_larger_window(self) -> None:
+        """When config sets text_proximity_chars=400, max(400, 200) = 400 is used.
+        A value ~350 chars from keyword end is found."""
+        stage = ValueBindingStage()
+
+        padding = "x" * 350
+        segment_text = f"LTV/CAC ratio {padding} 4.2"
+        keyword_end = len("LTV/CAC ratio")  # 13
+
+        segment = Segment(
+            segment_id="seg-wider-3",
+            text=segment_text,
+        )
+        candidate = MetricCandidate(
+            candidate_id="cand-wider-3",
+            metric_id="cm_ltv_to_cac_ratio",
+            match_text="LTV/CAC ratio",
+            source_type=SourceType.TEXT,
+            source_locator=SourceLocator(
+                segment_id="seg-wider-3",
+                text_span=(0, keyword_end),
+            ),
+        )
+
+        @dataclass
+        class WideConfig:
+            text_proximity_chars: int = 400
+            min_confidence_auto_accept: float = 0.90
+
+        context = MockPipelineContext(
+            segments=[segment],
+            candidates=[candidate],
+            config=WideConfig(),  # type: ignore
+        )
+        result = stage.process(context)  # type: ignore
+
+        assert result.success
+        assert len(context.bound_values) >= 1
+
+    def test_wider_proximity_metrics_frozenset_contents(self) -> None:
+        """_WIDER_PROXIMITY_METRICS contains exactly the expected metric IDs."""
+        expected = frozenset({
+            "cm_balance_by_cohort",
+            "cm_gross_margin_by_cohort",
+            "cm_ltv_to_cac_ratio",
+            "cm_ltv_to_cac_ratio_by_cohort",
+            "cm_cac_payback_period",
+        })
+        assert _WIDER_PROXIMITY_METRICS == expected
 
 
 # ============================================================================
