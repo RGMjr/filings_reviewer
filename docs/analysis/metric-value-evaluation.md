@@ -322,18 +322,18 @@ Record decisions below. Each recommendation can be accepted, rejected, or modifi
 
 | # | Recommendation | Decision | Notes |
 |---|---------------|----------|-------|
-| 1 | Deprecate cm_arr | | |
-| 2 | Deprecate cm_mrr | | |
-| 3 | Promote cm_large_customers_period_end to Tier 1 | | |
-| 4 | Add GS entries for cm_expansion_revenue (T1, zero coverage) | | |
-| 5 | Add GS entries for cm_transactions_by_cohort (T1, zero coverage) | | |
-| 6 | Expand GS for cm_customer_retention_rate (T1, 2 entries) | | |
-| 7 | Expand GS for cm_gross_revenue_retention (T1, 3 entries) | | |
-| 8 | Promote cm_lifetime_value_per_customer SQL status to active | | |
-| 9 | Resolve MET-1 alias contradiction | | |
-| 10 | Deprecate cm_deferred_revenue in SQL | | |
-| 11 | Consider promoting cm_new_customers_acquired to Tier 1 (CMASB CM1) | | |
-| 12 | Consider promoting cm_customers_period_end_by_tenure to Tier 1 (CMASB CM2) | | |
+| 1 | Deprecate cm_arr | agreed | |
+| 2 | Deprecate cm_mrr | agreed | |
+| 3 | Promote cm_large_customers_period_end to Tier 1 | agreed | |
+| 4 | Add GS entries for cm_expansion_revenue (T1, zero coverage) | do not agree - deprecate| no evidence that anyone has disclosed this |
+| 5 | Add GS entries for cm_transactions_by_cohort (T1, zero coverage) | agreed | |
+| 6 | Expand GS for cm_customer_retention_rate (T1, 2 entries) | agreed | |
+| 7 | Expand GS for cm_gross_revenue_retention (T1, 3 entries) | agrees | this may be a rare metric |
+| 8 | Promote cm_lifetime_value_per_customer SQL status to active | agreed | |
+| 9 | Resolve MET-1 alias contradiction | agreed | |
+| 10 | Deprecate cm_deferred_revenue in SQL | agreed | this should not be a metric we track |
+| 11 | Consider promoting cm_new_customers_acquired to Tier 1 (CMASB CM1) | agreed | |
+| 12 | Consider promoting cm_customers_period_end_by_tenure to Tier 1 (CMASB CM2) | agreed | |
 
 ---
 
