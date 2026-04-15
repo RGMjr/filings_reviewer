@@ -26,7 +26,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import joblib
-import numpy as np
 from dotenv import load_dotenv
 
 from src.shared.image_features import engineer_features
