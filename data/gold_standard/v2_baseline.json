@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-15T18:43:45.707608+00:00",
-  "description": "Wider proximity (200 chars) for LTV/CAC cohort metrics + table exemption for cm_large_customers_period_end",
+  "baseline_date": "2026-04-15T22:03:57.457374+00:00",
+  "description": "AR exclusion corrects Tenable mislabel",
   "overall": {
-    "precision": 0.6905537459283387,
-    "recall": 0.6347305389221557,
-    "f1": 0.6614664586583463
+    "precision": 0.6918032786885245,
+    "recall": 0.6317365269461078,
+    "f1": 0.6604068857589984
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -68,14 +68,14 @@
       "f1": 0.7096774193548387
     },
     "Snowflake Inc": {
-      "precision": 0.75,
+      "precision": 0.7714285714285715,
       "recall": 1.0,
-      "f1": 0.8571428571428571
+      "f1": 0.870967741935484
     },
     "Tenable Holdings, Inc.": {
-      "precision": 0.625,
-      "recall": 0.7692307692307693,
-      "f1": 0.6896551724137931
+      "precision": 0.6,
+      "recall": 0.6923076923076923,
+      "f1": 0.6428571428571429
     },
     "Torrid Holdings Inc.": {
       "precision": 0.8695652173913043,
