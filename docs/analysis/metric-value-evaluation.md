@@ -10,13 +10,12 @@
 
 | Category | Count | Metrics |
 |----------|-------|---------|
-| **Deprecate** | 2 | cm_arr, cm_mrr |
-| **Promote to Tier 1** | 1 | cm_large_customers_period_end |
-| **Keep Tier 1** | 13 | (no changes) |
-| **Keep Tier 2** | 12 | (no changes) |
-| **Zero GS coverage** | 5 | cm_expansion_revenue, cm_transactions_by_cohort, cm_customers_period_end_by_tenure, cm_customer_churn_rate, cm_mrr |
+| **Deprecate** | 3 | cm_arr, cm_mrr, cm_expansion_revenue |
+| **Promote to Tier 1** | 3 | cm_large_customers_period_end, cm_new_customers_acquired, cm_customers_period_end_by_tenure |
+| **Keep Tier 1** | 12 | (no changes) |
+| **Keep Tier 2** | 10 | (no changes) |
 
-After this evaluation, the system would have **26 active metrics** (13 Tier 1, 13 Tier 2) and **7 deprecated metrics**.
+After this evaluation, the system has **25 active metrics** (15 Tier 1, 10 Tier 2) and **8 deprecated metrics**.
 
 ---
 
