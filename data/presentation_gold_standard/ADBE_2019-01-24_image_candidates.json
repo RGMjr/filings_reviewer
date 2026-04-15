@@ -1,0 +1,15 @@
+[
+  {
+    "img_id": "9edc482b-5070-5ecd-af6d-a5ddb9c831c4",
+    "filename": "graphica03a01a01a08.jpg",
+    "image_url": "https://www.sec.gov/Archives/edgar/data/796343/000079634319000008/graphica03a01a01a08.jpg",
+    "classification": "chart",
+    "relevance_score": 0.5,
+    "nearby_text": "EXHIBIT 99.1 Public Relations Contact Dan Berthiaume",
+    "section_type": "unknown",
+    "ocr_text": "",
+    "dom_locator": "/html/body[1]/document[1]/type[1]/sequence[1]/filename[1]/description[1]/text[1]/div[5]/img[1]",
+    "width": 0,
+    "height": 0
+  }
+]
