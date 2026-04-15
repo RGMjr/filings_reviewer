@@ -89,6 +89,7 @@ All references to "Core", "Extended", or "Future" metrics in this document are i
 
 **ID:** `cm_new_customers_acquired`  
 **Class:** Core (Phase 1)  
+**Tier:** 1 (promoted 2026-04-15)  
 
 **Business intent**
 
@@ -158,6 +159,7 @@ Measure how many **new customers** a company acquires in each reporting period. 
 
 **ID:** `cm_customers_period_end_by_tenure`  
 **Class:** Core (Phase 1)  
+**Tier:** 1 (promoted 2026-04-15)  
 
 **Business intent**
 
@@ -485,6 +487,7 @@ Phase 1:
 
 **ID:** `cm_large_customers_period_end`  
 **Class:** Extended (Phase 1)  
+**Tier:** 1 (promoted 2026-04-15)
 
 Count of customers exceeding a revenue or ARR threshold defined by the issuer (e.g., customers with trailing 12-month revenue greater than $100,000). Common in SaaS and enterprise software filings.
 
@@ -527,6 +530,7 @@ Gross margin or contribution margin analyzed by customer acquisition cohort or v
 
 **ID:** `cm_arr`  
 **Class:** Extended (Phase 1)  
+**Status:** Deprecated 2026-04-15. ARR is a financial reporting metric, not a customer-level disclosure. Customer-relevant uses are captured by `cm_large_customers_period_end` ("customers with >$100K ARR") and `cm_revenue_by_cohort` ("ARR by cohort").
 
 Annualized value of subscription or recurring contract revenue as of a point in time. Commonly abbreviated ARR. A standard SaaS metric; includes annualized run-rate variants disclosed by issuers.
 
@@ -534,6 +538,7 @@ Annualized value of subscription or recurring contract revenue as of a point in 
 
 **ID:** `cm_mrr`  
 **Class:** Extended (Phase 1)  
+**Status:** Deprecated 2026-04-15. Monthly analogue of ARR; same rationale. Zero gold standard coverage across all datasets confirms it is rarely disclosed in S-1/F-1 filings.
 
 Monthly subscription or recurring contract revenue as of a point in time. Commonly abbreviated MRR. The monthly analogue of ARR; typically used by earlier-stage SaaS companies or those with monthly billing cycles.
 
@@ -541,6 +546,7 @@ Monthly subscription or recurring contract revenue as of a point in time. Common
 
 **ID:** `cm_expansion_revenue`  
 **Class:** Extended (Phase 1)  
+**Status:** Deprecated 2026-04-15. Zero gold standard coverage across all datasets; no evidence of standalone disclosure in S-1/F-1 filings. Expansion in the context of retained revenue is captured by `cm_net_revenue_retention`.
 
 Revenue generated from existing customers beyond their initial contract or baseline spend. Includes upsell, cross-sell, and additional product adoption. Sometimes expressed as products per customer or transactions per active account.
 

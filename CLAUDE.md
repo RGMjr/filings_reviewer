@@ -36,15 +36,15 @@ PostgreSQL. Key tables: `companies`, `filings`, `source_segments`, `metric_value
 
 Metrics are classified into importance tiers based on analytical value. These tiers govern regression policy, extraction prioritization, and gold standard coverage priorities.
 
-**Tier 1 (must-not-miss):** Cohorted data, retention, LTV/CAC, revenue concentration.
+**Tier 1 (must-not-miss):** Cohorted data, retention, LTV/CAC, revenue concentration, customer counts.
 - `cm_customer_retention_rate`, `cm_net_revenue_retention`, `cm_gross_revenue_retention`
 - `cm_revenue_by_cohort`, `cm_transactions_by_cohort`, `cm_balance_by_cohort`, `cm_gross_margin_by_cohort`
-- `cm_expansion_revenue` (cohorted products owned/enrolled)
 - `cm_revenue_concentration`
 - `cm_lifetime_value_per_customer`, `cm_customer_acquisition_cost`, `cm_ltv_to_cac_ratio`, `cm_ltv_to_cac_ratio_by_cohort`
+- `cm_large_customers_period_end`, `cm_new_customers_acquired`, `cm_customers_period_end_by_tenure`
 
-**Tier 2 (nice-to-have):** Customer counts, engagement, unit economics, ARR.
-- All other `cm_*` metrics (customer counts, MAU/DAU, ARPU, ARR, AOV, etc.)
+**Tier 2 (nice-to-have):** Customer counts, engagement, unit economics.
+- All other `cm_*` metrics (customer counts, MAU/DAU, ARPU, AOV, etc.)
 
 **Rules:**
 - Tier 1 regression in gold standard validation = blocker, must fix before commit
@@ -59,6 +59,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 2. **Provenance tracking**: Every extracted value links to source segment
 3. **Idempotent operations**: Re-running any stage is safe (upserts)
 4. **Conservative classification**: "Require BOTH" signals to minimize false positives
+5. **Image pipeline is active**: Do not delete image-processing code (`src/llm/vision_client.py`, `src/extraction_v2/` image/OCR stages, `src/web/routes/review_images.py`, image scripts). The image review system is complete and in use.
 
 ## Compact Instructions
 
