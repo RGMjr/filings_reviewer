@@ -40,3 +40,7 @@ Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmo
 - Rate limiting: 100ms minimum between requests (enforced in `sec_client.py`)
 - User-Agent header required: set via `SEC_USER_AGENT` env var
 
+## Pre-commit Deployment Checklist
+
+For any change touching routes, migrations, or auth: (1) verify migration files are registered in the migration runner, (2) verify `url_for` endpoints resolve correctly, (3) test API endpoints with both direct calls and browser fetch to catch auth/CORS issues. (Historically, unregistered migrations and broken `url_for` calls caused multiple deployment 500 errors in Apr 2026.)
+
