@@ -132,6 +132,7 @@ metrics:
 
   cm_arr:
     label: "Annual Recurring Revenue (ARR)"
+    status: deprecated
     definition: >
       The annualized value of recurring subscription or contract revenue.
       ARR represents what the company would earn in a year if all current contracts
@@ -153,6 +154,7 @@ metrics:
 
   cm_mrr:
     label: "Monthly Recurring Revenue (MRR)"
+    status: deprecated
     definition: >
       The monthly equivalent of ARR — the value of recurring subscription revenue in
       a single month. Rarely stated in earnings calls; more common in SMB SaaS companies.
@@ -255,6 +257,7 @@ metrics:
 
   cm_expansion_revenue:
     label: "Expansion Revenue"
+    status: deprecated
     definition: >
       Revenue generated from existing customers through upsells, cross-sells, seat
       additions, or usage increases. Also called "expansion ARR" or "upsell revenue."

@@ -371,8 +371,6 @@ PERCENTAGE_ONLY_METRICS: set[str] = {
 
 # Metrics that should ONLY be dollar amounts (not percentages or plain counts)
 DOLLAR_ONLY_METRICS: set[str] = {
-    'cm_arr',  # ARR should be $X million, not 40% or 100
-    'cm_mrr',  # MRR should be $X million, not 40% or 100
     'cm_tcv',  # Total contract value
     'cm_acv',  # Annual contract value
     'cm_ltv',  # Lifetime value

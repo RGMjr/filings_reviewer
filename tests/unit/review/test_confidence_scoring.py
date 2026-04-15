@@ -457,8 +457,8 @@ class TestMetricExpectedFormats:
 
     def test_revenue_metrics_expect_currency(self):
         """Revenue metrics should expect currency format."""
-        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_arr", [])
-        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_mrr", [])
+        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_billings", [])
+        assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_bookings", [])
         assert "currency" in METRIC_EXPECTED_FORMATS.get("cm_cac", [])
 
     def test_retention_metrics_expect_percentage(self):
