@@ -446,7 +446,7 @@ class TestP1DistanceFirstSorting:
 
     def test_longest_keyword_when_prefer_closest_disabled(self):
         """When prefer_closest_keyword is False, longest keyword should be selected."""
-        text = "annual recurring revenue" + (" " * 20) + "revenue 100"
+        text = "net revenue retention" + (" " * 20) + "retention 100"
 
         number = NumberMatch(
             start=text.index("100"),
@@ -1873,57 +1873,56 @@ class TestRequiredContext:
         assert len(bookings_matches) == 0, \
             "Bookings should not match when context is beyond proximity_chars"
 
-    def test_arr_matches_without_context(self, matcher):
-        """ARR should match even without cohort/per-customer context."""
-        # ARR without any cohort/per-customer context
-        text = "Our ARR grew to $100 million this year"
+    def test_nrr_matches_without_context(self, matcher):
+        """NRR should match even without cohort/per-customer context."""
+        # NRR without any cohort/per-customer context
+        text = "Our net revenue retention grew to 120% this year"
 
         all_keywords = matcher.find_all_keywords(text)
 
         import re
-        num_match = re.search(r'\$[\d,]+', text)
+        num_match = re.search(r'\d+%', text)
         number = NumberMatch(
             start=num_match.start(),
             end=num_match.end(),
             raw_text=num_match.group(),
-            value=Decimal("100000000"),
-            unit="currency",
+            value=Decimal("120"),
+            unit="percent",
         )
 
         keywords = matcher.find_keywords_near_number(
             number, all_keywords, check_required_context=True, text=text
         )
 
-        # Should find ARR (not context-gated)
-        arr_matches = [kw for kw in keywords if kw.metric_id == "cm_arr"]
-        assert len(arr_matches) >= 1, \
-            "ARR should match without cohort context (inherently customer-related)"
+        # Should find NRR (not context-gated)
+        nrr_matches = [kw for kw in keywords if kw.metric_id == "cm_net_revenue_retention"]
+        assert len(nrr_matches) >= 1, \
+            "NRR should match without cohort context (inherently customer-related)"
 
-    def test_mrr_matches_without_context(self, matcher):
-        """MRR should match even without cohort/per-customer context."""
-        # MRR without any cohort/per-customer context
-        text = "Our MRR reached $8 million last month"
+    def test_customer_retention_matches_without_context(self, matcher):
+        """Customer retention rate should match without cohort/per-customer context."""
+        text = "Our customer retention rate reached 95% last quarter"
 
         all_keywords = matcher.find_all_keywords(text)
 
         import re
-        num_match = re.search(r'\$[\d,]+', text)
+        num_match = re.search(r'\d+%', text)
         number = NumberMatch(
             start=num_match.start(),
             end=num_match.end(),
             raw_text=num_match.group(),
-            value=Decimal("8000000"),
-            unit="currency",
+            value=Decimal("95"),
+            unit="percent",
         )
 
         keywords = matcher.find_keywords_near_number(
             number, all_keywords, check_required_context=True, text=text
         )
 
-        # Should find MRR (not context-gated)
-        mrr_matches = [kw for kw in keywords if kw.metric_id == "cm_mrr"]
-        assert len(mrr_matches) >= 1, \
-            "MRR should match without cohort context (inherently customer-related)"
+        # Should find customer retention rate (not context-gated)
+        crr_matches = [kw for kw in keywords if kw.metric_id == "cm_customer_retention_rate"]
+        assert len(crr_matches) >= 1, \
+            "Customer retention rate should match without cohort context"
 
     def test_non_revenue_metrics_unaffected(self, matcher):
         """Non-revenue synonym metrics should not be affected by context check."""

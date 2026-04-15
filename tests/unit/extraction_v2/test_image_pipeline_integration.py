@@ -471,13 +471,13 @@ class TestChartScanning:
     def test_scan_chart_finds_metric_in_title(self, stage: CandidateGenerationStage) -> None:
         """Chart title containing metric keyword produces candidates."""
         asset = _make_chart_asset(
-            title="Annual Recurring Revenue Growth",
-            y_axis_label="ARR ($M)",
+            title="Net Revenue Retention Growth",
+            y_axis_label="NRR (%)",
         )
 
         candidates = stage._scan_chart(asset)
 
-        # Should find at least one candidate for ARR
+        # Should find at least one candidate for NRR
         assert len(candidates) >= 1
         # All should be CHART source type
         assert all(c.source_type == SourceType.CHART for c in candidates)
@@ -488,15 +488,15 @@ class TestChartScanning:
         """Metric keyword in y-axis label produces candidates."""
         asset = _make_chart_asset(
             title="Growth Over Time",
-            y_axis_label="Annual Recurring Revenue ($M)",
+            y_axis_label="Net Revenue Retention (%)",
         )
 
         candidates = stage._scan_chart(asset)
 
-        # Should find ARR-related candidate
+        # Should find NRR-related candidate
         metric_ids = {c.metric_id for c in candidates}
-        assert any("arr" in mid.lower() for mid in metric_ids), (
-            f"Expected ARR metric, got: {metric_ids}"
+        assert any("retention" in mid.lower() or "nrr" in mid.lower() for mid in metric_ids), (
+            f"Expected NRR metric, got: {metric_ids}"
         )
 
     def test_scan_chart_finds_metric_in_series_name(self, stage: CandidateGenerationStage) -> None:

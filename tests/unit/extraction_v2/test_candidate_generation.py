@@ -154,7 +154,9 @@ class TestSegmentScanning:
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
     ) -> None:
         """Stage finds multiple different metric keywords in one segment."""
-        segment = make_segment("Our ARR grew to $100M while we added 1,000 new customers.")
+        segment = make_segment(
+            "Our net revenue retention grew to 120% while we added 1,000 new customers."
+        )
         mock_context.segments.append(segment)
 
         result = stage.process(mock_context)
@@ -163,7 +165,7 @@ class TestSegmentScanning:
         assert len(mock_context.candidates) >= 2
         metric_ids = [c.metric_id for c in mock_context.candidates]
         assert "cm_new_customers_acquired" in metric_ids
-        assert "cm_arr" in metric_ids
+        assert "cm_net_revenue_retention" in metric_ids
 
     def test_no_match_when_keyword_absent(
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
@@ -512,7 +514,7 @@ class TestIntegration:
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
     ) -> None:
         """Generated candidates have all required fields populated."""
-        segment = make_segment("Our ARR exceeded $50 million.")
+        segment = make_segment("Our net revenue retention exceeded 120%.")
         mock_context.segments.append(segment)
 
         stage.process(mock_context)
