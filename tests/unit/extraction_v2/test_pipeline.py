@@ -454,7 +454,7 @@ class TestPipelineReturnsDedupFacts:
         # Manually inject duplicate facts into context via a patched stage
         dup_fact_1 = MetricFact(
             fact_id="dup-1",
-            canonical_metric_id="cm_arr",
+            canonical_metric_id="cm_average_order_value",
             value=100.0,
             value_raw="100",
             unit=Unit.COUNT,
@@ -464,7 +464,7 @@ class TestPipelineReturnsDedupFacts:
         )
         dup_fact_2 = MetricFact(
             fact_id="dup-2",
-            canonical_metric_id="cm_arr",
+            canonical_metric_id="cm_average_order_value",
             value=100.0,
             value_raw="100",
             unit=Unit.COUNT,
@@ -517,7 +517,7 @@ class TestPipelineReturnsDedupFacts:
         )
         fact = MetricFact(
             fact_id="raw-1",
-            canonical_metric_id="cm_arr",
+            canonical_metric_id="cm_average_order_value",
             value=50.0,
             unit=Unit.COUNT,
         )

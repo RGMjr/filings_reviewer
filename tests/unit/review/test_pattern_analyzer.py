@@ -71,7 +71,7 @@ def sample_decisions_data():
             "candidate_id": 3,
             "filing_id": 100,
             "decision": "accept",
-            "assigned_metric_id": "cm_arr",
+            "assigned_metric_id": "cm_average_order_value",
             "rejection_category": None,
             "features": {
                 "keyword_distance": 20,
@@ -563,9 +563,9 @@ class TestEdgeCases:
         ]
 
         analyzer = PatternAnalyzer(mock_db, min_sample_size=1)
-        result = analyzer.analyze_decisions(filing_id=100, metric_id="cm_arr")
+        result = analyzer.analyze_decisions(filing_id=100, metric_id="cm_average_order_value")
 
-        # Should only include decisions for cm_arr
+        # Should only include decisions for cm_average_order_value
         assert result["total_decisions"] == 1
         assert result["decision_counts"]["accept"] == 1
 

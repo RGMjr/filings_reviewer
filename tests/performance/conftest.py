@@ -277,8 +277,8 @@ def _generate_synthetic_patterns(count: int, approved_ratio: float = 0.8) -> lis
     metrics = [
         None,  # Global patterns
         "cm_customer_count",
-        "cm_arr",
-        "cm_mrr",
+        "cm_average_order_value",
+        "cm_lifetime_value_per_customer",
         "cm_net_revenue_retention",
         "cm_churn_rate",
         "cm_dau",

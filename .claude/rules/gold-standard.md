@@ -103,6 +103,14 @@ python3 scripts/validate_transcript_extraction.py --split tuning --save-baseline
 python3 scripts/validate_transcript_extraction.py --split test --save-baseline
 ```
 
+## Known Quirks
+
+**SEC validator requires DB:** `validate_against_gold_standard.py --all --mode fresh --baseline` produces 0 candidates without a live DB connection. Always use `pytest -m gold_standard --gold-standard-mode=fresh` for the authoritative SEC check.
+
+**Known flaky transcript files:** TMUS_2025-04-24 and META_2025-04-30 vary by 1 TP between runs due to non-deterministic dedup ordering. Allow ±1pp per metric before flagging as a regression.
+
+**SNAP presentations:** SNAP Q3/Q4 2025 filings have poor precision (~29%) due to an image-based investor letter generating spurious text candidates. This is a known limitation, not a regression signal.
+
 ## Full Procedures
 
 See `docs/operations/gold-standard-runbook.md` for the complete baseline update runbook covering V1, V2, transcript, and presentation pipelines.

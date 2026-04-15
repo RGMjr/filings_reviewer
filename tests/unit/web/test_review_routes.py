@@ -199,12 +199,12 @@ def test_next_candidate_preserves_filter_params(client, mock_db):
     ]
 
     # Request with filter parameters
-    response = client.get("/review/1/next?status=pending&metric=cm_arr&confidence=high&sort=confidence_desc")
+    response = client.get("/review/1/next?status=pending&metric=cm_average_order_value&confidence=high&sort=confidence_desc")
 
     assert response.status_code == 302
     # Filter params should be preserved in redirect
     assert "status=pending" in response.location
-    assert "metric=cm_arr" in response.location
+    assert "metric=cm_average_order_value" in response.location
     assert "confidence=high" in response.location
     assert "sort=confidence_desc" in response.location
 
@@ -458,7 +458,7 @@ class TestGetUniqueMetricsForFiling:
 
         # Create candidates with metrics from different categories
         candidates = [
-            {"suggested_metric_id": "cm_arr"},  # Revenue (21)
+            {"suggested_metric_id": "cm_revenue_per_customer"},  # Revenue (23)
             {"suggested_metric_id": "cm_customers_period_end"},  # Customer Count (1)
             {"suggested_metric_id": "cm_net_revenue_retention"},  # Retention (31)
             {"suggested_metric_id": "cm_customer_acquisition_cost"},  # Unit Economics (42)
@@ -469,7 +469,7 @@ class TestGetUniqueMetricsForFiling:
         # Should be ordered by category, not alphabetically
         assert result == [
             "cm_customers_period_end",  # Category 1
-            "cm_arr",  # Category 3
+            "cm_revenue_per_customer",  # Category 3
             "cm_net_revenue_retention",  # Category 4
             "cm_customer_acquisition_cost",  # Category 5
         ]
@@ -479,14 +479,14 @@ class TestGetUniqueMetricsForFiling:
         from src.web.routes.review import _get_unique_metrics_for_filing
 
         candidates = [
-            {"suggested_metric_id": "cm_arr"},
-            {"suggested_metric_id": "cm_arr"},
-            {"suggested_metric_id": "cm_arr"},
+            {"suggested_metric_id": "cm_average_order_value"},
+            {"suggested_metric_id": "cm_average_order_value"},
+            {"suggested_metric_id": "cm_average_order_value"},
         ]
 
         result = _get_unique_metrics_for_filing(candidates)
 
-        assert result == ["cm_arr"]
+        assert result == ["cm_average_order_value"]
         assert len(result) == 1
 
     def test_unknown_metric_at_end(self):

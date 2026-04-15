@@ -1,7 +1,7 @@
 """
 Shared constants for transcript annotation and gold standard tooling.
 
-ACTIVE_METRICS is the canonical set of 27 customer metric IDs used across:
+ACTIVE_METRICS is the canonical set of 24 customer metric IDs used across:
   - scripts/preannotate_transcript.py
   - scripts/review_transcript_annotations.py
   - scripts/validate_transcript_annotations.py
@@ -13,7 +13,6 @@ Must stay in sync with config/metric_keywords.yaml active set.
 ACTIVE_METRICS: frozenset[str] = frozenset(
     [
         "cm_active_customers_total",
-        "cm_arr",
         "cm_average_order_value",
         "cm_cac_payback_period",
         "cm_customer_acquisition_cost",
@@ -22,7 +21,6 @@ ACTIVE_METRICS: frozenset[str] = frozenset(
         "cm_customers_period_end",
         "cm_customers_period_end_by_tenure",
         "cm_daily_active_users",
-        "cm_expansion_revenue",
         "cm_gross_margin_by_cohort",
         "cm_gross_revenue_retention",
         "cm_large_customers_period_end",
@@ -30,7 +28,6 @@ ACTIVE_METRICS: frozenset[str] = frozenset(
         "cm_ltv_to_cac_ratio",
         "cm_ltv_to_cac_ratio_by_cohort",
         "cm_monthly_active_users",
-        "cm_mrr",
         "cm_net_revenue_retention",
         "cm_new_customers_acquired",
         "cm_purchase_transactions_overall",

@@ -1,7 +1,7 @@
 # Project Task Inventory & Parallel Execution Plan
 
 **Created**: 2025-12-24
-**Last Verified**: 2026-01-14 (IMG-1-9 complete, EXT-FP-1 complete)
+**Last Verified**: 2026-03-16
 **Purpose**: Comprehensive task tracking for orchestrator-driven parallel execution
 
 ---
@@ -10,10 +10,10 @@
 
 | Plan | Total Tasks | Complete | Partial | Pending | Blocked | Dropped/Deferred |
 |------|-------------|----------|---------|---------|---------|------------------|
-| GOLDMINE_REMEDIATION (GR) | 18 | 16 | 0 | 1 | 1 | 0 |
+| GOLDMINE_REMEDIATION (GR) | 18 | 18 | 0 | 0 | 0 | 0 |
 | EXTRACTION_IMPROVEMENT (EI/EA) | 10 | 10 | 0 | 0 | 0 | 0 |
 | HUMAN_REVIEW_INTERFACE (HRI) | 12 | 11 | 0 | 0 | 1 | 0 |
-| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 18 | 0 | 0 | 1 | 0 |
+| HUMAN_REVIEW_VALIDATION (HRV) | 19 | 19 | 0 | 0 | 0 | 0 |
 | INVESTIGATION (INV) | 3 | 3 | 0 | 0 | 0 | 0 |
 | DUPLICATE_PREVENTION (DUP) | 3 | 3 | 0 | 0 | 0 | 0 |
 | DATE_FALSE_POSITIVE (DFP) | 1 | 1 | 0 | 0 | 0 | 0 |
@@ -21,13 +21,14 @@
 | METRIC_DROPDOWN_ORDERING (MET) | 10 | 10 | 0 | 0 | 0 | 0 |
 | IMAGE_EXTRACTION (IMG) | 11 | 9 | 0 | 0 | 0 | 2 |
 | VISUAL_INTERPRETATION (VIS) | 6 | 4 | 0 | 0 | 0 | 2 |
-| **TOTAL** | **106** | **93** | **0** | **1** | **3** | **9** |
+| **TOTAL** | **106** | **96** | **0** | **0** | **1** | **9** |
 
-**Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts-completed/`
+**Note**: INV workstream complete - all prompts archived to `docs/archive/worker-prompts/`
 
 **Status**: 🟢 PRODUCTION READY - All targets exceeded (80% recall, 95% precision, 87% F1)
 **Next Priority**: IMG-1-* Human Review UI for chart images (Phase 1)
-**Remaining Work**: GR-10 pending, GR-16 blocked; VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization)
+**Remaining Work**: HRI blocked (1 task — multi-user infrastructure); VIS-2b dropped (YAGNI), VIS-2c deferred (premature optimization). GR and HRV plans closed.
+**Note**: Work landed 2026-01-14 to 2026-03-16 (FilingFetcher bug fix, cloud deployment runbook, `/ci-fix` + `/plan-execute` + `/doc-audit` commands, `/commit` enhancement, V2 revert) was maintenance and not tracked through formal task IDs. See git log for details.
 **See**: `docs/analysis/GR-FINAL_VALIDATION.md` for complete validation results
 
 ---
@@ -35,8 +36,8 @@
 ## Plan Status Overview
 
 ### GOLDMINE_REMEDIATION_PLAN.md
-**Location**: `docs/GOLDMINE_REMEDIATION_PLAN.md`
-**Status**: 🟢 PRODUCTION READY - Phase 0-2 Complete, Phase 3 partial (16/18 tasks complete, GR-10 pending, GR-16 blocked)
+**Location**: `docs/archive/improvement-plans-completed/GOLDMINE_REMEDIATION_PLAN.md`
+**Status**: ✅ CLOSED — All 18 tasks complete (GR-16 done 2026-03-16; GR-10 superseded by GR-18)
 **Goal**: Improve goldmine recall from 52% to 70-75% → **ACHIEVED: 80% recall**
 
 ### EXTRACTION_IMPROVEMENT_PLAN.md
@@ -50,8 +51,8 @@
 **Goal**: Improve reviewer productivity and UX
 
 ### HUMAN_REVIEW_VALIDATION_PLAN.md
-**Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
-**Status**: ✅ PHASE 4 COMPLETE - 18/19 tasks done (1 deferred), Wave 4
+**Location**: `docs/archive/improvement-plans-completed/HUMAN_REVIEW_VALIDATION_PLAN.md`
+**Status**: ✅ CLOSED — All 19 tasks complete (HRV-6 done 2026-03-16; deliverable: `docs/analysis/HRV-6_VALIDATION_ANALYSIS.md`)
 **Goal**: Build confidence in segmentation and metric identification, then implement system improvements
 
 ### UX_IMPROVEMENT_PLAN.md
@@ -113,11 +114,11 @@
 
 | ID | Name | Size | Time | Risk | Status | Dependencies |
 |----|------|------|------|------|--------|--------------|
-| **GR-16** | Label Snowflake & DocuSign filings | S | 2h | NONE | 🔴 BLOCKED | Data integrity fix |
+| **GR-16** | Label Snowflake & DocuSign filings | S | 2h | NONE | ✅ COMPLETE | Data integrity fix |
 | **GR-17** | Add new industry filings | L | 5h | NONE | ✅ COMPLETE | None |
 | **GR-18** | Final validation report | S | 2h | NONE | ✅ COMPLETE | GR-10, ~~GR-16~~, GR-17 ✅ |
 
-**Phase 3 Total**: ✅ Complete (GR-17, GR-18 done; GR-16 blocked on data integrity issue)
+**Phase 3 Total**: ✅ Complete (GR-16 done 2026-03-16; GR-17, GR-18 done)
 
 ---
 
@@ -174,7 +175,7 @@
 ### HUMAN_REVIEW_VALIDATION Tasks (HRV-Series)
 
 **Goal**: Build confidence in segmentation and metric identification before scaling
-**Plan Location**: `docs/HUMAN_REVIEW_VALIDATION_PLAN.md`
+**Plan Location**: `docs/archive/improvement-plans-completed/HUMAN_REVIEW_VALIDATION_PLAN.md`
 
 | ID | Name | Size | Time | Risk | Status | Dependencies |
 |----|------|------|------|------|--------|--------------|
@@ -319,7 +320,7 @@ Phase 4e: Final Validation (Sequential) ✅ COMPLETE
 - Performance improvement for ALL filings, not just large ones
 - Farfetch extraction time: ~105s → <30s
 - Design decision documented in CLAUDE.md section 13
-- All worker prompts archived to `docs/archive/worker-prompts-completed/`
+- All worker prompts archived to `docs/archive/worker-prompts/`
 
 ---
 
@@ -458,7 +459,7 @@ evaluation revealed this **duplicates existing functionality**:
 - Root cause: Bootstrap intercepts ArrowDown/ArrowUp events before custom handler could update state
 - Fix approach: Query `document.activeElement` on Enter instead of relying on stale `state.dropdownFocusIndex`
 - Improvement: Added focus event listeners to sync state with Bootstrap's focus management
-- See `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_UXI-1a.md` for full task spec
+- See `docs/archive/worker-prompts/WORKER_PROMPT_TASK_UXI-1a.md` for full task spec
 
 **UXI-3 Completion Note** (2026-01-07): Skip/defer keyboard shortcut complete:
 - S key triggers skip action (sets status to "skipped", navigates to next candidate)
@@ -639,7 +640,7 @@ Phase 4 (Cleanup):
 
 **Goal**: Build human review UI for chart images to enable rapid classification and pattern learning
 **Plan Location**: `.claude/plans/gentle-prancing-yao.md`
-**Status**: 🟡 IN PROGRESS - Phase 1 Human Review UI
+**Status**: ✅ COMPLETE - Phase 1 Human Review UI complete; stats dashboard and export script added
 
 #### Phase 0: Discovery (SUPERSEDED)
 
@@ -706,7 +707,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 **Phase 1 Deliverables**:
 - Database tables: `image_review_candidates`, `image_review_decisions`
 - Flask routes: `/review/images/filings`, `/review/images/<filing_id>`, `/review/images/<filing_id>/next`
-- API endpoints: `POST /api/image-decisions`, `POST /api/image-candidates/<id>/skip`, `DELETE /api/image-decisions/<id>`
+- API endpoints: `POST /api/image-decisions`, `POST /api/image-candidates/<id>/skip`, `POST /api/image-candidates/<id>/unskip`, `DELETE /api/image-decisions/<id>`
 - 3-column UI: thumbnail sidebar, main image display, context panel
 - Keyboard shortcuts: Y (relevant), N (not relevant), S (skip), U (undo), ←→ (nav), 1-7 (dropdown)
 - Pattern learning: `detection_tier` field tracks how images were included for analysis
@@ -797,12 +798,11 @@ IMG-1-3    IMG-1-4    IMG-1-5
 
 **VIS-2c Deferred** (2026-01-13): DEFERRED - Premature optimization:
 - No demonstrated batch processing bottleneck exists yet
-- Image review UI (IMG-1-*) not complete - no production usage data
 - Current volume is low (<100 images in inventory)
-- Revisit after IMG-1-8 complete and real usage patterns emerge
-- Decision: Optimize when actual performance data justifies the effort
+- Revisit when actual performance data justifies the effort
+- Decision: Optimize when real usage patterns emerge from production image review
 
-**Worker Prompts**: `docs/archive/worker-prompts-completed/WORKER_PROMPT_TASK_VIS-*.md`
+**Worker Prompts**: `docs/archive/worker-prompts/WORKER_PROMPT_TASK_VIS-*.md`
 
 **Future Tasks** (defined after VIS-2):
 - VIS-3: Review UI Integration for Chart Metrics
@@ -837,7 +837,7 @@ IMG-1-3    IMG-1-4    IMG-1-5
 | 3 | GR-12 | Goldmine | 1.5h |
 | 4 | GR-13 | Goldmine | 2.5h |
 | 5 | GR-14 | Goldmine | 1h |
-| ~~6~~ | ~~GR-16~~ | ~~Goldmine~~ | ~~2h~~ 🔴 BLOCKED |
+| ~~6~~ | ~~GR-16~~ | ~~Goldmine~~ | ~~2h~~ ✅ |
 | ~~7~~ | ~~GR-17~~ | ~~Goldmine~~ | ~~5h~~ ✅ |
 | ~~8~~ | ~~EA-1~~ | ~~Extraction~~ | ~~4-6h~~ ✅ |
 
@@ -984,7 +984,7 @@ HRV-11 (FinStmt Filter) ✅   │                         HRV-12 (Industry) ❌ 
                     └─────────────────────────────────────────────────────┘
 
 Waves 1-5 Complete: 79/89 tasks (89%)
-Remaining: GR-10 pending, GR-16 blocked, HRI-12 blocked
+Remaining: GR-10 pending, HRI-12 blocked
 ```
 
 ---
@@ -1015,7 +1015,7 @@ HRV-16 ← HRV-22                 # Final validation needs data fix
 ### Soft Dependencies (Can Start Early)
 ```
 GR-11,12,13,14 ← (none)  # Code quality tasks are independent
-GR-16 ← Data fix needed  # BLOCKED on data integrity issue
+GR-16 ← Data fix needed  # COMPLETE (done 2026-03-16)
 GR-17 ← (none)           # Labeling tasks are independent
 EA-1 ← EI-7              # Already satisfied (EI-7 complete)
 HRV-1 ← (none)           # CSV schema can start immediately
@@ -1096,7 +1096,7 @@ instructions_orchestrator.md
 ```
 
 Reference the specific task section in the corresponding plan document:
-- GR tasks: `docs/GOLDMINE_REMEDIATION_PLAN.md`
+- GR tasks: `docs/archive/improvement-plans-completed/GOLDMINE_REMEDIATION_PLAN.md`
 - EA tasks: `docs/archive/improvement-plans-completed/EXTRACTION_IMPROVEMENT_PLAN.md`
 
 ---
@@ -1120,7 +1120,7 @@ Reference the specific task section in the corresponding plan document:
 - [x] GR-12: EnrichmentMetadata TypedDict added ✅ 2025-12-26
 - [x] GR-13: Text caching implemented ✅ 2025-12-26
 - [x] GR-14: Image detection skip ✅ 2025-12-26
-- [ ] GR-16: Snowflake/DocuSign labeled 🔴 BLOCKED (data integrity issue)
+- [x] GR-16: Snowflake/DocuSign labeled ✅ 2026-03-16
 - [x] GR-17: New industry filings added ✅ 2025-12-26 (Coinbase, Shopify, Teladoc)
 - [x] EA-1: StructureParser created (completed 2025-12-25)
 

@@ -60,7 +60,7 @@ class TestDeduplicateCandidatesBasic:
 
     def test_single_candidate_unchanged(self):
         """Single candidate should be returned unchanged."""
-        candidate = self._make_candidate(Decimal("100"), "cm_arr")
+        candidate = self._make_candidate(Decimal("100"), "cm_average_order_value")
 
         result, count = deduplicate_candidates([candidate])
 
@@ -71,8 +71,8 @@ class TestDeduplicateCandidatesBasic:
     def test_unique_candidates_all_kept(self):
         """Candidates with different keys should all be kept."""
         candidates = [
-            self._make_candidate(Decimal("100"), "cm_arr"),
-            self._make_candidate(Decimal("200"), "cm_arr"),
+            self._make_candidate(Decimal("100"), "cm_average_order_value"),
+            self._make_candidate(Decimal("200"), "cm_average_order_value"),
             self._make_candidate(Decimal("100"), "cm_churn_rate"),
         ]
 
@@ -84,8 +84,8 @@ class TestDeduplicateCandidatesBasic:
     def test_exact_duplicates_removed(self):
         """Duplicate (value, metric) pairs should be deduplicated."""
         candidates = [
-            self._make_candidate(Decimal("500"), "cm_arr", 0.8),
-            self._make_candidate(Decimal("500"), "cm_arr", 0.6),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.8),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.6),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -96,9 +96,9 @@ class TestDeduplicateCandidatesBasic:
     def test_highest_confidence_kept(self):
         """Among duplicates, highest confidence should be kept."""
         candidates = [
-            self._make_candidate(Decimal("500"), "cm_arr", 0.5),
-            self._make_candidate(Decimal("500"), "cm_arr", 0.9),
-            self._make_candidate(Decimal("500"), "cm_arr", 0.7),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.5),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.9),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.7),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -110,8 +110,8 @@ class TestDeduplicateCandidatesBasic:
     def test_none_confidence_sorted_last(self):
         """Candidates with None confidence should be sorted after those with values."""
         candidates = [
-            self._make_candidate(Decimal("100"), "cm_arr", None),
-            self._make_candidate(Decimal("100"), "cm_arr", 0.3),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", None),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", 0.3),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -123,9 +123,9 @@ class TestDeduplicateCandidatesBasic:
     def test_all_none_confidence_keeps_one(self):
         """When all duplicates have None confidence, one should be kept."""
         candidates = [
-            self._make_candidate(Decimal("100"), "cm_arr", None),
-            self._make_candidate(Decimal("100"), "cm_arr", None),
-            self._make_candidate(Decimal("100"), "cm_arr", None),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", None),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", None),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", None),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -173,7 +173,7 @@ class TestDeduplicateCandidatesEdgeCases:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=None,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.5,
             ),
             ReviewCandidate(
@@ -186,7 +186,7 @@ class TestDeduplicateCandidatesEdgeCases:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=None,
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.8,
             ),
         ]
@@ -214,7 +214,7 @@ class TestDeduplicateCandidatesEdgeCases:
         """None metric_id and real metric_id should be separate groups."""
         candidates = [
             self._make_candidate(Decimal("100"), None, 0.5),
-            self._make_candidate(Decimal("100"), "cm_arr", 0.9),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", 0.9),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -225,13 +225,13 @@ class TestDeduplicateCandidatesEdgeCases:
     def test_multiple_groups_with_duplicates(self):
         """Multiple groups with different duplicate counts."""
         candidates = [
-            # Group 1: (100, cm_arr) - 3 duplicates
-            self._make_candidate(Decimal("100"), "cm_arr", 0.9),
-            self._make_candidate(Decimal("100"), "cm_arr", 0.7),
-            self._make_candidate(Decimal("100"), "cm_arr", 0.5),
-            # Group 2: (200, cm_arr) - 2 duplicates
-            self._make_candidate(Decimal("200"), "cm_arr", 0.8),
-            self._make_candidate(Decimal("200"), "cm_arr", 0.6),
+            # Group 1: (100, cm_average_order_value) - 3 duplicates
+            self._make_candidate(Decimal("100"), "cm_average_order_value", 0.9),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", 0.7),
+            self._make_candidate(Decimal("100"), "cm_average_order_value", 0.5),
+            # Group 2: (200, cm_average_order_value) - 2 duplicates
+            self._make_candidate(Decimal("200"), "cm_average_order_value", 0.8),
+            self._make_candidate(Decimal("200"), "cm_average_order_value", 0.6),
             # Group 3: (100, cm_churn) - 1 (no duplicate)
             self._make_candidate(Decimal("100"), "cm_churn_rate", 0.4),
         ]
@@ -244,8 +244,8 @@ class TestDeduplicateCandidatesEdgeCases:
     def test_decimal_precision_preserved(self):
         """Decimal precision should be preserved in grouping."""
         candidates = [
-            self._make_candidate(Decimal("100.50"), "cm_arr", 0.9),
-            self._make_candidate(Decimal("100.5"), "cm_arr", 0.7),  # Same value, different repr
+            self._make_candidate(Decimal("100.50"), "cm_average_order_value", 0.9),
+            self._make_candidate(Decimal("100.5"), "cm_average_order_value", 0.7),  # Same value, different repr
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -328,8 +328,8 @@ class TestDeduplicateCandidatesL1Enhancement:
     def test_none_period_grouped_together(self):
         """Candidates with None period should be grouped together."""
         candidates = [
-            self._make_candidate_with_period(Decimal("100"), "cm_arr", 0.8, None),
-            self._make_candidate_with_period(Decimal("100"), "cm_arr", 0.6, None),
+            self._make_candidate_with_period(Decimal("100"), "cm_average_order_value", 0.8, None),
+            self._make_candidate_with_period(Decimal("100"), "cm_average_order_value", 0.6, None),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -340,8 +340,8 @@ class TestDeduplicateCandidatesL1Enhancement:
     def test_none_period_separate_from_real_period(self):
         """None period and real period should be separate groups."""
         candidates = [
-            self._make_candidate_with_period(Decimal("100"), "cm_arr", 0.8, None),
-            self._make_candidate_with_period(Decimal("100"), "cm_arr", 0.6, "2015"),
+            self._make_candidate_with_period(Decimal("100"), "cm_average_order_value", 0.8, None),
+            self._make_candidate_with_period(Decimal("100"), "cm_average_order_value", 0.6, "2015"),
         ]
 
         result, count = deduplicate_candidates(candidates)
@@ -380,7 +380,7 @@ class TestDeduplicateCandidatesL1Enhancement:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.8,
                 features=None,  # No features
             ),
@@ -394,7 +394,7 @@ class TestDeduplicateCandidatesL1Enhancement:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.6,
                 features=None,  # No features
             ),
@@ -409,7 +409,7 @@ class TestDeduplicateCandidatesL1Enhancement:
     def test_features_without_period_treated_as_none(self):
         """Features with detected_period=None should group together."""
         candidates = [
-            self._make_candidate_with_period(Decimal("100"), "cm_arr", 0.8, None),
+            self._make_candidate_with_period(Decimal("100"), "cm_average_order_value", 0.8, None),
             ReviewCandidate(
                 filing_id=1,
                 company_id=1,
@@ -420,7 +420,7 @@ class TestDeduplicateCandidatesL1Enhancement:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.6,
                 features=CandidateFeatures(
                     keyword_distance=10,
@@ -458,7 +458,7 @@ class TestDeduplicateCandidatesLogging:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.8,
             ),
             ReviewCandidate(
@@ -471,7 +471,7 @@ class TestDeduplicateCandidatesLogging:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.6,
             ),
         ]
@@ -498,7 +498,7 @@ class TestDeduplicateCandidatesLogging:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
             ),
         ]
 
@@ -550,10 +550,10 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
         """Same-sentence candidate should win over higher-confidence cross-sentence."""
         candidates = [
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+                Decimal("100"), "cm_average_order_value", confidence=0.7, is_same_sentence=True
             ),
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+                Decimal("100"), "cm_average_order_value", confidence=0.9, is_same_sentence=False
             ),
         ]
 
@@ -568,10 +568,10 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
         """When prefer_same_sentence=False, highest confidence wins."""
         candidates = [
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+                Decimal("100"), "cm_average_order_value", confidence=0.7, is_same_sentence=True
             ),
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+                Decimal("100"), "cm_average_order_value", confidence=0.9, is_same_sentence=False
             ),
         ]
 
@@ -586,13 +586,13 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
         """Among same-sentence candidates, highest confidence should win."""
         candidates = [
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.6, is_same_sentence=True
+                Decimal("100"), "cm_average_order_value", confidence=0.6, is_same_sentence=True
             ),
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.8, is_same_sentence=True
+                Decimal("100"), "cm_average_order_value", confidence=0.8, is_same_sentence=True
             ),
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.95, is_same_sentence=False
+                Decimal("100"), "cm_average_order_value", confidence=0.95, is_same_sentence=False
             ),
         ]
 
@@ -606,10 +606,10 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
         """When no same-sentence candidates exist, use all candidates."""
         candidates = [
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=False
+                Decimal("100"), "cm_average_order_value", confidence=0.7, is_same_sentence=False
             ),
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+                Decimal("100"), "cm_average_order_value", confidence=0.9, is_same_sentence=False
             ),
         ]
 
@@ -632,7 +632,7 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.8,
                 features=None,  # No features = can't determine same-sentence
             ),
@@ -646,7 +646,7 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
                 keyword_distance=10,
                 keyword_position="before",
                 parsed_value=Decimal("100"),
-                suggested_metric_id="cm_arr",
+                suggested_metric_id="cm_average_order_value",
                 suggestion_confidence=0.6,
                 features=None,
             ),
@@ -661,7 +661,7 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
     def test_mixed_features_and_no_features(self):
         """Candidate with is_same_sentence=True should win over no features."""
         same_sentence_candidate = self._make_candidate_with_sentence(
-            Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+            Decimal("100"), "cm_average_order_value", confidence=0.7, is_same_sentence=True
         )
         no_features_candidate = ReviewCandidate(
             filing_id=1,
@@ -673,7 +673,7 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
             keyword_distance=10,
             keyword_position="before",
             parsed_value=Decimal("100"),
-            suggested_metric_id="cm_arr",
+            suggested_metric_id="cm_average_order_value",
             suggestion_confidence=0.9,
             features=None,
         )
@@ -691,10 +691,10 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
         """Default value for prefer_same_sentence should be True."""
         candidates = [
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+                Decimal("100"), "cm_average_order_value", confidence=0.7, is_same_sentence=True
             ),
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+                Decimal("100"), "cm_average_order_value", confidence=0.9, is_same_sentence=False
             ),
         ]
 
@@ -708,19 +708,19 @@ class TestDeduplicateCandidatesP16SameSentencePreference:
     def test_independent_groups_each_prefer_same_sentence(self):
         """Each independent group should apply same-sentence preference."""
         candidates = [
-            # Group 1: (100, cm_arr)
+            # Group 1: (100, cm_average_order_value)
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.7, is_same_sentence=True
+                Decimal("100"), "cm_average_order_value", confidence=0.7, is_same_sentence=True
             ),
             self._make_candidate_with_sentence(
-                Decimal("100"), "cm_arr", confidence=0.9, is_same_sentence=False
+                Decimal("100"), "cm_average_order_value", confidence=0.9, is_same_sentence=False
             ),
-            # Group 2: (200, cm_arr) - only cross-sentence
+            # Group 2: (200, cm_average_order_value) - only cross-sentence
             self._make_candidate_with_sentence(
-                Decimal("200"), "cm_arr", confidence=0.6, is_same_sentence=False
+                Decimal("200"), "cm_average_order_value", confidence=0.6, is_same_sentence=False
             ),
             self._make_candidate_with_sentence(
-                Decimal("200"), "cm_arr", confidence=0.8, is_same_sentence=False
+                Decimal("200"), "cm_average_order_value", confidence=0.8, is_same_sentence=False
             ),
         ]
 

@@ -1667,7 +1667,7 @@ class TestMetricTypeValidation:
         """DOLLAR_ONLY_METRICS should contain expected metrics."""
         from src.review.false_positive_filter import DOLLAR_ONLY_METRICS
 
-        assert "cm_arr" in DOLLAR_ONLY_METRICS
+        assert "cm_tcv" in DOLLAR_ONLY_METRICS
         assert "cm_ltv" in DOLLAR_ONLY_METRICS
         assert "cm_cac" in DOLLAR_ONLY_METRICS
         assert "cm_gmv" in DOLLAR_ONLY_METRICS
