@@ -49,7 +49,7 @@ class TestBulkDecisionValidation:
             json={
                 "candidate_ids": [],
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
         assert response.status_code == 400
@@ -63,7 +63,7 @@ class TestBulkDecisionValidation:
             "/api/bulk-decisions",
             json={
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
         assert response.status_code == 400
@@ -79,7 +79,7 @@ class TestBulkDecisionValidation:
             json={
                 "candidate_ids": candidate_ids,
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
         assert response.status_code == 403
@@ -94,7 +94,7 @@ class TestBulkDecisionValidation:
             json={
                 "candidate_ids": [1, 2, 3],
                 "decision": "reclassify",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
         assert response.status_code == 400
@@ -167,7 +167,7 @@ class TestBulkAccept:
             json={
                 "candidate_ids": [1, 2, 3],
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
 
@@ -182,7 +182,7 @@ class TestBulkAccept:
         mock_db.insert_bulk_review_decisions.assert_called_once_with(
             candidate_ids=[1, 2, 3],
             decision="accept",
-            assigned_metric_id="cm_arr",
+            assigned_metric_id="cm_average_order_value",
             rejection_category=None,
             rejection_reason=None,
         )
@@ -200,7 +200,7 @@ class TestBulkAccept:
             json={
                 "candidate_ids": [1, 2, 1, 2],  # Duplicates
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
 
@@ -227,7 +227,7 @@ class TestBulkAccept:
             json={
                 "candidate_ids": candidate_ids,
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
 
@@ -292,7 +292,7 @@ class TestBulkEdgeCases:
             json={
                 "candidate_ids": [1, 2],
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
 
@@ -309,7 +309,7 @@ class TestBulkEdgeCases:
             json={
                 "candidate_ids": [999],
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
 
@@ -333,7 +333,7 @@ class TestBulkEdgeCases:
             json={
                 "candidate_ids": [1, 2],
                 "decision": "accept",
-                "assigned_metric_id": "cm_arr",
+                "assigned_metric_id": "cm_average_order_value",
             },
         )
 

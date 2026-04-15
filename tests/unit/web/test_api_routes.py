@@ -1079,7 +1079,7 @@ class TestSkipCandidate:
                 "/api/candidates/123/skip",
                 json={
                     "filter_status": "pending",
-                    "filter_metric": "cm_arr",
+                    "filter_metric": "cm_average_order_value",
                     "filter_confidence": "high",
                     "filter_sort": "confidence_desc",
                 },
@@ -1089,7 +1089,7 @@ class TestSkipCandidate:
         assert response.status_code == 200
         data = json.loads(response.data)
         assert data["status"] == "success"
-        assert "metric=cm_arr" in data["next_candidate"]["url"]
+        assert "metric=cm_average_order_value" in data["next_candidate"]["url"]
         assert "confidence=high" in data["next_candidate"]["url"]
         assert "sort=confidence_desc" in data["next_candidate"]["url"]
 

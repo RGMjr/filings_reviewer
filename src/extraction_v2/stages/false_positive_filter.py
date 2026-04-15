@@ -345,7 +345,6 @@ _POSITIVE_ONLY_METRICS: frozenset[str] = frozenset(
         "cm_large_customers_period_end",
         "cm_monthly_active_users",
         "cm_daily_active_users",
-        "cm_arr",
         "cm_average_order_value",
         "cm_repeat_purchase_rate",
         "cm_purchase_transactions_overall",
@@ -692,19 +691,19 @@ def _rule_transactions_per_account(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
     """Suppress TPA (transactions per active account) ratio values mis-classified
-    as expansion revenue or active account counts.
+    as active account counts.
 
     Fires when the phrase 'transactions per [active] account' appears within
-    150 characters of the bound value, and the metric is cm_expansion_revenue
-    or a count-type metric.  TPA is a ratio (e.g., 57.6 transactions per
-    active account) — never an absolute expansion revenue or customer count.
+    150 characters of the bound value, and the metric is a count-type metric.
+    TPA is a ratio (e.g., 57.6 transactions per active account) — never an
+    absolute customer count.
 
     The window is 150 chars to cover prose like:
     "Payment transactions per active account ('TPA') on a trailing 12-month
     basis decreased 6% to 57.6" where the phrase precedes the value by ~85
     chars.
     """
-    if metric_id not in {"cm_expansion_revenue"} | _COUNT_TYPE_METRICS:
+    if metric_id not in _COUNT_TYPE_METRICS:
         return None
     if not source_text:
         return None
@@ -801,18 +800,12 @@ def _rule_growth_rate_percent(bv: BoundValue, source_text: str, metric_id: str) 
 
 
 def _rule_arpu_percent(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
-    """Percent values for currency-denominated metrics are always growth rates, not metric values.
+    """Percent values for cm_revenue_per_customer are always growth rates, not metric values.
 
-    Covers:
-    - cm_revenue_per_customer: ARPA/ARPU is always a dollar amount;
-      "ARPA grew 3%" or "ARPU growth of 4%" is a growth rate, not the ARPA value.
-    - cm_expansion_revenue: expansion revenue is always in dollars;
-      "transactions per account grew 4%" is a growth rate, not an expansion revenue value.
+    ARPA/ARPU is always a dollar amount; "ARPA grew 3%" or "ARPU growth of 4%"
+    is a growth rate, not the ARPA value.
     """
-    if bv.unit == Unit.PERCENT and metric_id in (
-        "cm_revenue_per_customer",
-        "cm_expansion_revenue",
-    ):
+    if bv.unit == Unit.PERCENT and metric_id == "cm_revenue_per_customer":
         return "v2_arpu_percent"
     return None
 
@@ -853,22 +846,6 @@ def _rule_arpu_as_aov(bv: BoundValue, source_text: str, metric_id: str) -> str |
     return None
 
 
-# Revenue-as-ARR detection — GAAP revenue values near cm_arr keywords.
-# Fires when text in ±60-char window contains "revenue" (or variants) WITHOUT
-# "recurring" or "ARR" (which would indicate it really is ARR context).
-# Pattern matches "revenue of $X" and "$X revenue" structures.
-_REVENUE_LABEL_RE = re.compile(
-    r"\brevenue\b",
-    re.IGNORECASE,
-)
-_ARR_QUALIFIER_RE = re.compile(
-    r"\b(?:recurring|ARR|annual\s+recurring)\b",
-    re.IGNORECASE,
-)
-# Compound phrase "recurring revenue" — when this exact phrase is present, the
-# value is genuine ARR regardless of word proximity.
-_RECURRING_REVENUE_RE = re.compile(r"\brecurring\s+revenue\b", re.IGNORECASE)
-
 # Year-over-year / YoY context — signals that a percent value is a growth rate
 # disclosure rather than an adoption rate.  Used to escape _rule_percent_on_count_metric
 # for MAU/DAU metrics: "growing 23% year-over-year" → legitimate growth rate (ACCEPT).
@@ -876,70 +853,6 @@ _YOY_CONTEXT_RE = re.compile(
     r"\byear[- ]over[- ]year\b|\bYoY\b|\bY/Y\b|\byear[- ]on[- ]year\b",
     re.IGNORECASE,
 )
-# Standalone ARR indicator (not "recurring revenue" compound) for proximity check.
-_ARR_ONLY_RE = re.compile(r"\bARR\b|\bannual\s+recurring\b", re.IGNORECASE)
-
-
-def _rule_revenue_as_arr(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
-    """Block GAAP revenue values from binding to cm_arr.
-
-    Fires when metric_id == 'cm_arr' and the immediate context (±35 chars)
-    around the value contains 'revenue'.
-
-    Three-stage escape (first match wins):
-    1. Compound phrase "recurring revenue" anywhere in ±50-char window → genuine ARR
-       (e.g., "recurring revenue reached $1.2B" — "recurring revenue" is the ARR label).
-    2. Standalone "ARR"/"annual recurring" in ±35-char window AND closer to the value
-       than "revenue" → genuine ARR context via proximity tiebreaker.
-       (e.g., "ARR of $578M and revenue of $4.15B" — "ARR" is farther from $4.15B
-       than "revenue" is → escape does NOT fire → $4.15B correctly rejected).
-    3. Otherwise → revenue-as-ARR FP.
-
-    Does NOT fire when:
-    - No 'revenue' in the ±35-char window
-    - 'recurring revenue' compound phrase is in the ±50-char window
-    - Standalone 'ARR'/'annual recurring' is closer to the value than 'revenue'
-    """
-    if metric_id != "cm_arr" or not source_text:
-        return None
-    loc = _locate_value(bv, source_text)
-    if loc is None:
-        return None
-    raw, value_pos = loc
-    # ±35-char window: "revenue" must be within 35 chars of the value.
-    # This captures "document cloud revenue" (revenue ~30 chars after value).
-    rev_start = max(0, value_pos - 35)
-    rev_end = min(len(source_text), value_pos + len(raw) + 35)
-    rev_window = source_text[rev_start:rev_end]
-    rev_match = _REVENUE_LABEL_RE.search(rev_window)
-    if not rev_match:
-        return None  # "revenue" not adjacent — not a revenue-as-ARR FP
-
-    # Stage 1 escape: "recurring revenue" compound phrase → genuine ARR.
-    # Use a slightly wider ±50-char window so "annual recurring revenue of $X"
-    # is captured even when "recurring" is ~45 chars from the value.
-    compound_start = max(0, value_pos - 50)
-    compound_end = min(len(source_text), value_pos + len(raw) + 50)
-    compound_window = source_text[compound_start:compound_end]
-    if _RECURRING_REVENUE_RE.search(compound_window):
-        return None  # "recurring revenue" compound — genuine ARR context
-
-    # Stage 2 escape: standalone "ARR" / "annual recurring" with proximity tiebreaker.
-    # Only fires when ARR is closer to the value than "revenue" — handles
-    # "ARR of $578M and revenue of $4.15B" where "revenue" is closer to $4.15B.
-    arr_start = max(0, value_pos - 35)
-    arr_end = min(len(source_text), value_pos + len(raw) + 35)
-    arr_window = source_text[arr_start:arr_end]
-    arr_match = _ARR_ONLY_RE.search(arr_window)
-    if arr_match:
-        rev_abs = rev_start + rev_match.start()
-        arr_abs = arr_start + arr_match.start()
-        rev_dist = abs(rev_abs - value_pos)
-        arr_dist = abs(arr_abs - value_pos)
-        if arr_dist <= rev_dist:
-            return None  # ARR is closer (or tied) — genuine ARR context
-
-    return "v2_revenue_as_arr"
 
 
 # Forward guidance detection — applies in relaxed mode (transcripts/presentations).
@@ -1078,48 +991,6 @@ def _rule_retention_rate_over_100(
         return "v2_retention_rate_nrr_context"
     return None
 
-
-# ARR tier threshold patterns — "$5K ARR", "over $100K", "at least $X".
-# Used to suppress cm_arr FPs from customer-tier descriptions.
-_ARR_TIER_SOURCE_RE = re.compile(
-    r"""
-    (?:
-        \$\s*\d[\d,]*\s*(?:K|k|M|m)?\s*(?:in\s+)?(?:ARR|arr)  # "$5K ARR", "$100K in ARR"
-        |
-        (?:ARR|arr)\s+(?:of|above|over|exceeding|greater\s+than|more\s+than|at\s+least)\s+\$  # "ARR of $X", "ARR above $X"
-        |
-        (?:over|greater\s+than|more\s+than|above|exceeding|>)\s*\$  # "over $X"
-        |
-        (?:at\s+least|minimum)\s+\$                                  # "at least $X"
-        |
-        annualized\s+(?:recurring\s+)?revenue\s+(?:of\s+)?\$         # "annualized revenue of $X"
-    )
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-# Common ARR tier boundary values used in customer-tier descriptions.
-_ARR_TIER_VALUES = frozenset({
-    5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 5_000_000,
-})
-
-
-def _rule_arr_tier_threshold(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
-    """Block cm_arr when value looks like a tier threshold, not an actual ARR amount.
-
-    Customer tier descriptions like 'customers with >$100K ARR' generate
-    ARR candidates with the threshold value rather than the company's ARR.
-    """
-    if metric_id != "cm_arr":
-        return None
-    if bv.value is None:
-        return None
-    # Block if value is a common tier boundary AND source text has tier language
-    if bv.value in _ARR_TIER_VALUES and source_text and _ARR_TIER_SOURCE_RE.search(source_text):
-        return "v2_arr_tier_threshold"
-    return None
 
 
 # Maximum plausible values per metric (to catch magnitude errors from cross-metric mis-binding).
@@ -1453,7 +1324,6 @@ _TAM_MARKET_SIZE_RE = re.compile(
 
 # Metrics that should never take a total-market-size value.
 _TAM_BLOCKED_METRICS = _FINANCIAL_CONTEXT_BLOCKED_METRICS | frozenset({
-    "cm_arr",
     "cm_lifetime_value_per_customer",
     "cm_ltv_to_cac_ratio",
     "cm_revenue_per_customer",
@@ -1737,9 +1607,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("arpu_percent", _rule_arpu_percent, False),
     ("arpu_as_aov", _rule_arpu_as_aov, False),
     ("percent_on_count", _rule_percent_on_count_metric, False),
-    ("revenue_as_arr", _rule_revenue_as_arr, False),
     ("retention_rate_over_100", _rule_retention_rate_over_100, False),
-    ("arr_tier_threshold", _rule_arr_tier_threshold, False),
     ("magnitude_sanity", _rule_magnitude_sanity, False),
     ("revenue_per_customer_fin_annotation", _rule_revenue_per_customer_fin_annotation, False),
     ("revenue_concentration_ratio_suffix", _rule_revenue_concentration_ratio_suffix, False),

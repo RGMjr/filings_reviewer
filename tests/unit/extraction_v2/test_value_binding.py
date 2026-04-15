@@ -270,7 +270,7 @@ class TestTableBindingHeaderPath:
         # Candidate in second-level header
         candidate = MetricCandidate(
             candidate_id="cand-multi",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Q4",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -429,7 +429,7 @@ class TestTableBindingStubPath:
 
         candidate = MetricCandidate(
             candidate_id="cand-multi-stub",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -1480,7 +1480,7 @@ class TestUnitFiltering:
 
         candidate = MetricCandidate(
             candidate_id="cand-uf-curr",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -1518,7 +1518,7 @@ class TestUnitFiltering:
 
         candidate = MetricCandidate(
             candidate_id="cand-uf-curr-ok",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -1912,7 +1912,7 @@ class TestAmbiguityPenaltyPostFilter:
     """Tests that ambiguity penalty is computed AFTER unit filtering.
 
     When "ARR grew 7% to $4.1 billion", the 7% is filtered (incompatible
-    with cm_arr=CURRENCY_ONLY), leaving only $4.1B. The surviving value
+    with cm_average_order_value=CURRENCY_ONLY), leaving only $4.1B. The surviving value
     should NOT get an ambiguity penalty since it's the only compatible value.
     """
 
@@ -2219,7 +2219,7 @@ class TestTableScaleFactorCountMetrics:
         table = self._make_thousands_table("cur-1", "Revenue", "$1,500")
         candidate = MetricCandidate(
             candidate_id="cand-cur-1",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Revenue",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -2735,7 +2735,7 @@ class TestTextProximityFilters:
         )
         candidate = MetricCandidate(
             candidate_id="cand-tbl-bare",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -2864,7 +2864,7 @@ class TestTableScaleExceptions:
         table = self._make_except_table("ff-rev-1", "Revenue", "$1,500")
         candidate = MetricCandidate(
             candidate_id="cand-rev-1",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Revenue",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
@@ -2933,7 +2933,7 @@ class TestTableScaleExceptions:
 
         candidate = MetricCandidate(
             candidate_id="cand-normal-1",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             match_text="Revenue",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(

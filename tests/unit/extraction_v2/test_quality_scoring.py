@@ -13,7 +13,7 @@ from src.extraction_v2.quality_scoring import V2QualityScorer
 
 
 def make_fact(
-    metric_id: str = "cm_arr",
+    metric_id: str = "cm_average_order_value",
     period_end: date | None = None,
     cohort_def: str | None = None,
     value: float = 1.0,
@@ -27,7 +27,7 @@ def make_fact(
 
 
 def make_definition(
-    metric_id: str = "cm_arr",
+    metric_id: str = "cm_average_order_value",
     definition_text: str = "",
     methodology_text: str = "",
     alignment_flag: str = "unknown",
@@ -172,47 +172,47 @@ class TestScoreFiling:
         assert result == []
 
     def test_single_metric_with_fact(self, scorer):
-        fact = make_fact("cm_arr", period_end=date(2023, 12, 31))
+        fact = make_fact("cm_average_order_value", period_end=date(2023, 12, 31))
         result = scorer.score_filing(1, 42, [fact], [], [])
         assert len(result) == 1
         incidence = result[0]
         assert incidence.filing_id == 1
         assert incidence.company_id == 42
-        assert incidence.metric_id == "cm_arr"
+        assert incidence.metric_id == "cm_average_order_value"
         assert incidence.metric_disclosed_flag is True
         assert incidence.quality_overall_score == 1  # fact only, no definition
 
     def test_definition_only_metric_included(self, scorer):
-        defn = make_definition("cm_arr", definition_text="Annual Recurring Revenue")
+        defn = make_definition("cm_average_order_value", definition_text="Annual Recurring Revenue")
         result = scorer.score_filing(1, 1, [], [defn], [])
         assert len(result) == 1
-        assert result[0].metric_id == "cm_arr"
+        assert result[0].metric_id == "cm_average_order_value"
         assert result[0].metric_disclosed_flag is True
 
     def test_cohort_breakdown_detected(self, scorer):
-        fact = make_fact("cm_arr", cohort_def="2021 cohort")
+        fact = make_fact("cm_average_order_value", cohort_def="2021 cohort")
         result = scorer.score_filing(1, 1, [fact], [], [])
         assert result[0].has_cohort_breakdown_flag is True
 
     def test_alignment_flag_propagated(self, scorer):
-        fact = make_fact("cm_arr")
-        defn = make_definition("cm_arr", definition_text="some text", alignment_flag="aligned")
+        fact = make_fact("cm_average_order_value")
+        defn = make_definition("cm_average_order_value", definition_text="some text", alignment_flag="aligned")
         result = scorer.score_filing(1, 1, [fact], [defn], [])
         assert result[0].alignment_flag == "aligned"
 
     def test_multiple_metrics_scored_separately(self, scorer):
         facts = [
-            make_fact("cm_arr", period_end=date(2023, 12, 31)),
+            make_fact("cm_average_order_value", period_end=date(2023, 12, 31)),
             make_fact("cm_nrr", period_end=date(2023, 12, 31)),
         ]
         result = scorer.score_filing(1, 1, facts, [], [])
         metric_ids = {r.metric_id for r in result}
-        assert "cm_arr" in metric_ids
+        assert "cm_average_order_value" in metric_ids
         assert "cm_nrr" in metric_ids
         assert len(result) == 2
 
     def test_quality_scores_non_negative(self, scorer):
-        fact = make_fact("cm_arr")
+        fact = make_fact("cm_average_order_value")
         result = scorer.score_filing(1, 1, [fact], [], [])
         inc = result[0]
         assert inc.quality_overall_score >= 0
@@ -223,8 +223,8 @@ class TestScoreFiling:
 
     def test_primary_segment_ids_are_none(self, scorer):
         """V2 doesn't set integer FK segment IDs for V1 table."""
-        fact = make_fact("cm_arr")
-        defn = make_definition("cm_arr", definition_text="text")
+        fact = make_fact("cm_average_order_value")
+        defn = make_definition("cm_average_order_value", definition_text="text")
         result = scorer.score_filing(1, 1, [fact], [defn], [])
         assert result[0].primary_definition_segment_id is None
         assert result[0].primary_methodology_segment_id is None
@@ -235,21 +235,21 @@ class TestCohortTypeFlags:
 
     def test_tenure_breakdown_flag_true_when_cohort_type_tenure(self, scorer):
         """has_tenure_breakdown_flag should be True when any fact has cohort_type='tenure'."""
-        fact = make_fact("cm_arr")
+        fact = make_fact("cm_average_order_value")
         fact.cohort_type = "tenure"
         result = scorer.score_filing(1, 1, [fact], [], [])
         assert result[0].has_tenure_breakdown_flag is True
 
     def test_acquisition_cohort_flag_true_when_cohort_type_acquisition(self, scorer):
         """has_acquisition_cohort_flag should be True when any fact has cohort_type='acquisition'."""
-        fact = make_fact("cm_arr")
+        fact = make_fact("cm_average_order_value")
         fact.cohort_type = "acquisition"
         result = scorer.score_filing(1, 1, [fact], [], [])
         assert result[0].has_acquisition_cohort_flag is True
 
     def test_cohort_flags_false_when_cohort_type_none(self, scorer):
         """Both cohort flags should be False when cohort_type is None."""
-        fact = make_fact("cm_arr")
+        fact = make_fact("cm_average_order_value")
         # cohort_type defaults to None — do not set it
         result = scorer.score_filing(1, 1, [fact], [], [])
         assert result[0].has_tenure_breakdown_flag is False
@@ -257,7 +257,7 @@ class TestCohortTypeFlags:
 
     def test_cohort_flags_false_when_cohort_type_other(self, scorer):
         """Neither specific flag should fire when cohort_type='other'."""
-        fact = make_fact("cm_arr")
+        fact = make_fact("cm_average_order_value")
         fact.cohort_type = "other"
         result = scorer.score_filing(1, 1, [fact], [], [])
         assert result[0].has_tenure_breakdown_flag is False
@@ -265,9 +265,9 @@ class TestCohortTypeFlags:
 
     def test_tenure_and_acquisition_flags_independent(self, scorer):
         """Tenure and acquisition flags come from separate facts for the same metric."""
-        fact_tenure = make_fact("cm_arr")
+        fact_tenure = make_fact("cm_average_order_value")
         fact_tenure.cohort_type = "tenure"
-        fact_acquisition = make_fact("cm_arr")
+        fact_acquisition = make_fact("cm_average_order_value")
         fact_acquisition.cohort_type = "acquisition"
         result = scorer.score_filing(1, 1, [fact_tenure, fact_acquisition], [], [])
         assert result[0].has_tenure_breakdown_flag is True

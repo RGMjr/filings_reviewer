@@ -113,7 +113,7 @@ def make_bound_value(
 
 def make_candidate(
     candidate_id: str = "test_candidate",
-    metric_id: str = "cm_arr",
+    metric_id: str = "cm_average_order_value",
     section_type: SectionType = SectionType.UNKNOWN,
 ) -> MetricCandidate:
     """Create a MetricCandidate for testing."""
@@ -193,7 +193,7 @@ def test_single_bound_value_to_fact(
     """Test transformation of a single BoundValue to MetricFact."""
     # Setup
     candidate = make_candidate(
-        candidate_id="cand_1", metric_id="cm_arr", section_type=SectionType.MDA
+        candidate_id="cand_1", metric_id="cm_average_order_value", section_type=SectionType.MDA
     )
     bv = make_bound_value(
         candidate_id="cand_1",
@@ -224,7 +224,7 @@ def test_single_bound_value_to_fact(
 
     fact = mock_context.facts[0]
     assert fact.doc_id == "TEST_DOC"
-    assert fact.canonical_metric_id == "cm_arr"
+    assert fact.canonical_metric_id == "cm_average_order_value"
     assert fact.value == 1000.0
     assert fact.value_raw == "1,000"
     assert fact.unit == "USD"
@@ -242,7 +242,7 @@ def test_multiple_bound_values_to_facts(
 ) -> None:
     """Test transformation of multiple BoundValues to multiple MetricFacts."""
     # Setup
-    candidate1 = make_candidate(candidate_id="cand_1", metric_id="cm_arr")
+    candidate1 = make_candidate(candidate_id="cand_1", metric_id="cm_average_order_value")
     candidate2 = make_candidate(candidate_id="cand_2", metric_id="cm_nrr")
 
     bv1 = make_bound_value(candidate_id="cand_1", value=100.0, segment_id="seg_1")
@@ -261,7 +261,7 @@ def test_multiple_bound_values_to_facts(
     assert result.items_output == 2
     assert len(mock_context.facts) == 2
 
-    assert mock_context.facts[0].canonical_metric_id == "cm_arr"
+    assert mock_context.facts[0].canonical_metric_id == "cm_average_order_value"
     assert mock_context.facts[0].value == 100.0
     assert mock_context.facts[1].canonical_metric_id == "cm_nrr"
     assert mock_context.facts[1].value == 200.0
@@ -960,7 +960,7 @@ def _make_context_with_table(
 ) -> tuple[object, object]:
     """Helper: set up context with a table and a BoundValue pointing at row 1, col 1."""
     table = make_table("tbl_1", header_texts=header_texts, stub_texts=stub_texts)
-    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_arr")
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_average_order_value")
     bv = make_bound_value(
         candidate_id="cand_1",
         table_id="tbl_1",
@@ -1037,7 +1037,7 @@ def test_no_cohort_for_text_source(
     stage: FactConstructionStage, mock_context: PipelineContext
 ) -> None:
     """Text-sourced BoundValues (no table) leave cohort_def as None."""
-    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_arr")
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_average_order_value")
     bv = make_bound_value(
         candidate_id="cand_1",
         segment_id="seg_1",
@@ -1092,7 +1092,7 @@ def test_most_specific_stub_wins(
     ]
     table.cells = cells
 
-    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_arr")
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_average_order_value")
     bv = make_bound_value(
         candidate_id="cand_1",
         table_id="tbl_multi",

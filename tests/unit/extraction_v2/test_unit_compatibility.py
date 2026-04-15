@@ -212,9 +212,9 @@ class TestUnconstrainedMetrics:
         [Unit.COUNT, Unit.CURRENCY, Unit.PERCENT, Unit.RATIO, Unit.OTHER],
     )
     def test_revenue_per_customer_unconstrained(self, unit: Unit) -> None:
-        """revenue_per_customer/expansion_revenue are unconstrained for transcripts."""
+        """revenue_per_customer/revenue_by_cohort are unconstrained for transcripts."""
         assert is_unit_compatible("cm_revenue_per_customer", unit) is True
-        assert is_unit_compatible("cm_expansion_revenue", unit) is True
+        assert is_unit_compatible("cm_revenue_by_cohort", unit) is True
 
 
 

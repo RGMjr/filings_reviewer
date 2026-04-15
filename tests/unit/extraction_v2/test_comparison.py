@@ -633,11 +633,11 @@ class TestLoadV2Facts:
         db = MagicMock()
         db.query.return_value = [
             _make_fact_row(fact_id="aaaa-0001", canonical_metric_id="cm_ndr"),
-            _make_fact_row(fact_id="aaaa-0002", canonical_metric_id="cm_arr"),
+            _make_fact_row(fact_id="aaaa-0002", canonical_metric_id="cm_average_order_value"),
         ]
         facts = load_v2_facts(db, 42)
         assert len(facts) == 2
-        assert {f.canonical_metric_id for f in facts} == {"cm_ndr", "cm_arr"}
+        assert {f.canonical_metric_id for f in facts} == {"cm_ndr", "cm_average_order_value"}
 
     def test_queries_correct_filing_id(self) -> None:
         db = MagicMock()
