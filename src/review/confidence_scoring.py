@@ -140,8 +140,6 @@ METRIC_EXPECTED_FORMATS: dict[str, list[str]] = {
     "cm_monthly_active_users": ["integer"],
     "cm_new_customers_acquired": ["integer"],
     # Revenue metrics - expect currency
-    "cm_arr": ["currency"],
-    "cm_mrr": ["currency"],
     "cm_revenue_per_customer": ["currency", "decimal"],
     "cm_average_order_value": ["currency", "decimal"],
     "cm_aov": ["currency", "decimal"],
@@ -150,7 +148,6 @@ METRIC_EXPECTED_FORMATS: dict[str, list[str]] = {
     "cm_ltv": ["currency"],
     "cm_lifetime_value_per_customer": ["currency"],
     "cm_gmv": ["currency"],
-    "cm_expansion_revenue": ["currency"],
     "cm_billings": ["currency"],
     "cm_bookings": ["currency"],
     "cm_deferred_revenue": ["currency"],

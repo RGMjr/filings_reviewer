@@ -33,13 +33,10 @@ _COUNT_ONLY_METRICS: set[str] = {
     "cm_cac_payback_period",
 }
 
-# Currency-only metrics: ARR, MRR, etc.
-# Note: cm_revenue_per_customer and cm_expansion_revenue are intentionally
-# unconstrained — transcript annotations include percent/ratio units
-# (e.g. ARPA growth "nearly 4%", cross-sell "six times more revenue").
+# Currency-only metrics: TCV, ACV, LTV, CAC, AOV, etc.
+# Note: cm_revenue_per_customer is intentionally unconstrained — transcript
+# annotations include percent/ratio units (e.g. ARPA growth "nearly 4%").
 _CURRENCY_ONLY_METRICS: set[str] = {
-    "cm_arr",
-    "cm_mrr",
     "cm_tcv",
     "cm_acv",
     "cm_lifetime_value_per_customer",

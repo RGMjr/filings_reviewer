@@ -1922,16 +1922,16 @@ class TestAmbiguityPenaltyPostFilter:
 
         segment = Segment(
             segment_id="seg-arr-growth",
-            text="Annual recurring revenue grew 7% to $4.1 billion.",
+            text="Total contract value grew 7% to $4.1 billion.",
         )
         candidate = MetricCandidate(
             candidate_id="cand-arr-growth",
-            metric_id="cm_arr",
-            match_text="annual recurring revenue",
+            metric_id="cm_tcv",
+            match_text="total contract value",
             source_type=SourceType.TEXT,
             source_locator=SourceLocator(
                 segment_id="seg-arr-growth",
-                text_span=(0, 24),
+                text_span=(0, 20),
             ),
         )
 
@@ -1939,7 +1939,7 @@ class TestAmbiguityPenaltyPostFilter:
         result = stage.process(context)  # type: ignore
 
         assert result.success
-        # Only $4.1B should survive (7% filtered for cm_arr)
+        # Only $4.1B should survive (7% filtered for cm_tcv as currency-only metric)
         assert len(context.bound_values) == 1
         bv = context.bound_values[0]
         assert bv.value == pytest.approx(4_100_000_000, rel=0.01)
@@ -2453,7 +2453,7 @@ class TestColumnTypeFiltering:
             Cell(
                 row=1,
                 col=0,
-                text="ARR",
+                text="TCV",
                 is_stub=True,
                 header_path=[""],
                 stub_path=[],
@@ -2463,14 +2463,14 @@ class TestColumnTypeFiltering:
                 col=1,
                 text="500",
                 header_path=["Amount ($)"],
-                stub_path=["ARR"],
+                stub_path=["TCV"],
             ),
             Cell(
                 row=1,
                 col=2,
                 text="10,000",
                 header_path=["Number of Users"],
-                stub_path=["ARR"],
+                stub_path=["TCV"],
             ),
         ]
         table = Table(
@@ -2487,8 +2487,8 @@ class TestColumnTypeFiltering:
 
         candidate = MetricCandidate(
             candidate_id="cand-ct-3",
-            metric_id="cm_arr",
-            match_text="ARR",
+            metric_id="cm_tcv",
+            match_text="TCV",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
                 table_id="mixed-curr",

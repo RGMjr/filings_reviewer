@@ -458,7 +458,7 @@ class TestGetUniqueMetricsForFiling:
 
         # Create candidates with metrics from different categories
         candidates = [
-            {"suggested_metric_id": "cm_arr"},  # Revenue (21)
+            {"suggested_metric_id": "cm_revenue_per_customer"},  # Revenue (23)
             {"suggested_metric_id": "cm_customers_period_end"},  # Customer Count (1)
             {"suggested_metric_id": "cm_net_revenue_retention"},  # Retention (31)
             {"suggested_metric_id": "cm_customer_acquisition_cost"},  # Unit Economics (42)
@@ -469,7 +469,7 @@ class TestGetUniqueMetricsForFiling:
         # Should be ordered by category, not alphabetically
         assert result == [
             "cm_customers_period_end",  # Category 1
-            "cm_arr",  # Category 3
+            "cm_revenue_per_customer",  # Category 3
             "cm_net_revenue_retention",  # Category 4
             "cm_customer_acquisition_cost",  # Category 5
         ]
