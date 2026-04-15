@@ -37,7 +37,7 @@ class TestFilterValidAnnotations:
         return {
             "ticker": "CRM",
             "date": "2025-01-01",
-            "metric_id": "cm_arr",
+            "metric_id": "cm_average_order_value",
             "value": "100",
             "disposition": disposition,
             "is_trap": is_trap,
@@ -105,40 +105,40 @@ class TestDedupAnnotations:
 
     def test_no_duplicates_kept_as_is(self):
         rows = [
-            self._row("CRM", "2025-01-01", "cm_arr", "100"),
-            self._row("CRM", "2025-01-01", "cm_arr", "200"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "100"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "200"),
         ]
         result = dedup_annotations(rows)
         assert len(result) == 2
 
     def test_duplicate_removed(self):
         rows = [
-            self._row("CRM", "2025-01-01", "cm_arr", "100"),
-            self._row("CRM", "2025-01-01", "cm_arr", "100"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "100"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "100"),
         ]
         result = dedup_annotations(rows)
         assert len(result) == 1
 
     def test_different_ticker_not_deduped(self):
         rows = [
-            self._row("CRM", "2025-01-01", "cm_arr", "100"),
-            self._row("ADBE", "2025-01-01", "cm_arr", "100"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "100"),
+            self._row("ADBE", "2025-01-01", "cm_average_order_value", "100"),
         ]
         result = dedup_annotations(rows)
         assert len(result) == 2
 
     def test_different_date_not_deduped(self):
         rows = [
-            self._row("CRM", "2025-01-01", "cm_arr", "100"),
-            self._row("CRM", "2025-04-01", "cm_arr", "100"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "100"),
+            self._row("CRM", "2025-04-01", "cm_average_order_value", "100"),
         ]
         result = dedup_annotations(rows)
         assert len(result) == 2
 
     def test_first_occurrence_kept(self):
         rows = [
-            self._row("CRM", "2025-01-01", "cm_arr", "100"),
-            self._row("CRM", "2025-01-01", "cm_arr", "100"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "100"),
+            self._row("CRM", "2025-01-01", "cm_average_order_value", "100"),
         ]
         rows[0]["unit"] = "currency"
         rows[1]["unit"] = "count"
@@ -224,8 +224,8 @@ def _make_ann(metric_id: str, value: str) -> dict:
 
 class TestMatchFactsToAnnotations:
     def test_exact_match(self):
-        facts = [_make_fact("cm_arr", 100.0)]
-        anns = [_make_ann("cm_arr", "100")]
+        facts = [_make_fact("cm_average_order_value", 100.0)]
+        anns = [_make_ann("cm_average_order_value", "100")]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 1
         assert len(result["unmatched_annotations"]) == 0
@@ -235,8 +235,8 @@ class TestMatchFactsToAnnotations:
         # 0.95 * reference = lower tolerance boundary (exactly on edge)
         reference = 100.0
         value = reference * 0.95
-        facts = [_make_fact("cm_arr", value)]
-        anns = [_make_ann("cm_arr", str(reference))]
+        facts = [_make_fact("cm_average_order_value", value)]
+        anns = [_make_ann("cm_average_order_value", str(reference))]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 1
 
@@ -244,61 +244,61 @@ class TestMatchFactsToAnnotations:
         # 1.05 * reference = upper tolerance boundary (exactly on edge)
         reference = 100.0
         value = reference * 1.05
-        facts = [_make_fact("cm_arr", value)]
-        anns = [_make_ann("cm_arr", str(reference))]
+        facts = [_make_fact("cm_average_order_value", value)]
+        anns = [_make_ann("cm_average_order_value", str(reference))]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 1
 
     def test_outside_tolerance_not_matched(self):
-        facts = [_make_fact("cm_arr", 106.0)]
-        anns = [_make_ann("cm_arr", "100")]
+        facts = [_make_fact("cm_average_order_value", 106.0)]
+        anns = [_make_ann("cm_average_order_value", "100")]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 0
         assert len(result["unmatched_annotations"]) == 1
         assert len(result["unmatched_facts"]) == 1
 
     def test_metric_id_mismatch_not_matched(self):
-        facts = [_make_fact("cm_arr", 100.0)]
-        anns = [_make_ann("cm_mrr", "100")]
+        facts = [_make_fact("cm_average_order_value", 100.0)]
+        anns = [_make_ann("cm_lifetime_value_per_customer", "100")]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 0
 
     def test_zero_value_exact_match(self):
-        facts = [_make_fact("cm_arr", 0.0)]
-        anns = [_make_ann("cm_arr", "0")]
+        facts = [_make_fact("cm_average_order_value", 0.0)]
+        anns = [_make_ann("cm_average_order_value", "0")]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 1
 
     def test_non_numeric_annotation_matches_on_metric_id_only(self):
-        facts = [_make_fact("cm_arr", 100.0)]
-        anns = [_make_ann("cm_arr", "N/A")]
+        facts = [_make_fact("cm_average_order_value", 100.0)]
+        anns = [_make_ann("cm_average_order_value", "N/A")]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 1
 
     def test_no_double_match(self):
         # Two facts same metric_id/value — should match only first annotation
-        facts = [_make_fact("cm_arr", 100.0), _make_fact("cm_arr", 100.0)]
-        anns = [_make_ann("cm_arr", "100")]
+        facts = [_make_fact("cm_average_order_value", 100.0), _make_fact("cm_average_order_value", 100.0)]
+        anns = [_make_ann("cm_average_order_value", "100")]
         result = match_facts_to_annotations(facts, anns)
         assert len(result["matched"]) == 1
         assert len(result["unmatched_facts"]) == 1
 
     def test_empty_facts(self):
-        anns = [_make_ann("cm_arr", "100")]
+        anns = [_make_ann("cm_average_order_value", "100")]
         result = match_facts_to_annotations([], anns)
         assert len(result["matched"]) == 0
         assert len(result["unmatched_annotations"]) == 1
         assert len(result["unmatched_facts"]) == 0
 
     def test_empty_annotations(self):
-        facts = [_make_fact("cm_arr", 100.0)]
+        facts = [_make_fact("cm_average_order_value", 100.0)]
         result = match_facts_to_annotations(facts, [])
         assert len(result["matched"]) == 0
         assert len(result["unmatched_facts"]) == 1
 
     def test_none_value_fact_not_matched_on_numeric_ann(self):
-        facts = [_make_fact("cm_arr", None)]
-        anns = [_make_ann("cm_arr", "100")]
+        facts = [_make_fact("cm_average_order_value", None)]
+        anns = [_make_ann("cm_average_order_value", "100")]
         result = match_facts_to_annotations(facts, anns)
         # fact.value is None and ann is numeric — no match
         assert len(result["matched"]) == 0

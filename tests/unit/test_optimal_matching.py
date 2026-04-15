@@ -22,9 +22,9 @@ def test_optimal_matching_prefers_higher_scores():
     Test that optimal matching assigns better matches over worse matches.
 
     Scenario:
-    - Gold Entry 1: metric=cm_arr, value=1000000
-    - Candidate A: metric=cm_arr, value=1000001 (close value match, score=4.5)
-    - Candidate B: metric=cm_arr, value=2000000 (metric match only, score=2)
+    - Gold Entry 1: metric=cm_average_order_value, value=1000000
+    - Candidate A: metric=cm_average_order_value, value=1000001 (close value match, score=4.5)
+    - Candidate B: metric=cm_average_order_value, value=2000000 (metric match only, score=2)
 
     With first-come-first-served, if B is processed first, it would take Entry 1.
     With optimal matching, A should take Entry 1 (higher score).
@@ -33,7 +33,7 @@ def test_optimal_matching_prefers_higher_scores():
         GoldStandardEntry(
             document_url="https://example.com/filing",
             company="Test Company",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             is_new_metric=False,
             text_variant="ARR",
             raw_value="1000000",
@@ -50,7 +50,7 @@ def test_optimal_matching_prefers_higher_scores():
     # Candidate B: weaker match (metric only)
     candidate_b = {
         'candidate_id': 2,
-        'suggested_metric_id': 'cm_arr',
+        'suggested_metric_id': 'cm_average_order_value',
         'parsed_value': 2000000.0,
         'raw_number_text': '2 million',
         'triggering_keyword': 'arr',
@@ -60,7 +60,7 @@ def test_optimal_matching_prefers_higher_scores():
     # Candidate A: stronger match (metric + close value)
     candidate_a = {
         'candidate_id': 1,
-        'suggested_metric_id': 'cm_arr',
+        'suggested_metric_id': 'cm_average_order_value',
         'parsed_value': 1000001.0,  # Within 1% of gold value
         'raw_number_text': '1,000,001',
         'triggering_keyword': 'arr',
@@ -100,10 +100,10 @@ def test_optimal_matching_handles_overlapping_candidates():
     Test optimal matching with multiple candidates competing for same gold entry.
 
     Scenario:
-    - Gold Entry 1: metric=cm_arr, value=5000000
-    - Candidate A: metric=cm_arr, value=5000000 (exact match, score=5)
-    - Candidate B: metric=cm_arr, value=4950000 (close match, score=4.5)
-    - Candidate C: metric=cm_mrr, value=5000000 (value only, score=3)
+    - Gold Entry 1: metric=cm_average_order_value, value=5000000
+    - Candidate A: metric=cm_average_order_value, value=5000000 (exact match, score=5)
+    - Candidate B: metric=cm_average_order_value, value=4950000 (close match, score=4.5)
+    - Candidate C: metric=cm_lifetime_value_per_customer, value=5000000 (value only, score=3)
 
     Expected: A takes Entry 1, B and C are FP
     """
@@ -111,7 +111,7 @@ def test_optimal_matching_handles_overlapping_candidates():
         GoldStandardEntry(
             document_url="https://example.com/filing",
             company="Test Company",
-            metric_id="cm_arr",
+            metric_id="cm_average_order_value",
             is_new_metric=False,
             text_variant="ARR",
             raw_value="5000000",
@@ -128,7 +128,7 @@ def test_optimal_matching_handles_overlapping_candidates():
     candidates = [
         {
             'candidate_id': 3,
-            'suggested_metric_id': 'cm_mrr',
+            'suggested_metric_id': 'cm_lifetime_value_per_customer',
             'parsed_value': 5000000.0,
             'raw_number_text': '5M',
             'triggering_keyword': 'mrr',
@@ -136,7 +136,7 @@ def test_optimal_matching_handles_overlapping_candidates():
         },
         {
             'candidate_id': 2,
-            'suggested_metric_id': 'cm_arr',
+            'suggested_metric_id': 'cm_average_order_value',
             'parsed_value': 4950000.0,
             'raw_number_text': '4.95M',
             'triggering_keyword': 'arr',
@@ -144,7 +144,7 @@ def test_optimal_matching_handles_overlapping_candidates():
         },
         {
             'candidate_id': 1,
-            'suggested_metric_id': 'cm_arr',
+            'suggested_metric_id': 'cm_average_order_value',
             'parsed_value': 5000000.0,
             'raw_number_text': '5M',
             'triggering_keyword': 'arr',

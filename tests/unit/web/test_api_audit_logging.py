@@ -160,7 +160,7 @@ class TestAuditLogContent:
                 json={
                     "candidate_id": 123,
                     "decision": "accept",
-                    "assigned_metric_id": "cm_arr",
+                    "assigned_metric_id": "cm_average_order_value",
                 },
             )
 
@@ -169,7 +169,7 @@ class TestAuditLogContent:
         call_kwargs = mock_db.insert_audit_log.call_args[1]
         query_params = call_kwargs["query_params"]
         assert query_params["decision"] == "accept"
-        assert query_params["assigned_metric_id"] == "cm_arr"
+        assert query_params["assigned_metric_id"] == "cm_average_order_value"
 
     def test_reject_decision_captures_rejection_category(self, client, mock_db):
         """Rejection category captured in query_params for reject decisions."""

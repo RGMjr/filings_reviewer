@@ -162,9 +162,9 @@ class TestDefinitionSegmentFound:
         para = _seg("s1", 1, SegmentType.PARAGRAPH, "ARR was $10M.")
         meth = _seg("s2", 2, SegmentType.METHODOLOGY, "Calculated by summing monthly recurring revenue times 12.")
         ctx = MockPipelineContext(
-            facts=[_fact("cm_arr")],
+            facts=[_fact("cm_average_order_value")],
             segments=[para, meth],
-            candidates=[_candidate("c1", "cm_arr", "s1")],
+            candidates=[_candidate("c1", "cm_average_order_value", "s1")],
         )
         stage.process(ctx)
         assert len(ctx.definitions) == 1
@@ -322,17 +322,17 @@ class TestMultipleMetrics:
         para2 = _seg("s3", 10, SegmentType.PARAGRAPH, "Customer count mention.")
         defn2 = _seg("s4", 11, SegmentType.DEFINITION, "Customers are unique accounts.")
         ctx = MockPipelineContext(
-            facts=[_fact("cm_arr"), _fact("cm_customers_period_end")],
+            facts=[_fact("cm_average_order_value"), _fact("cm_customers_period_end")],
             segments=[para1, defn1, para2, defn2],
             candidates=[
-                _candidate("c1", "cm_arr", "s1"),
+                _candidate("c1", "cm_average_order_value", "s1"),
                 _candidate("c2", "cm_customers_period_end", "s3"),
             ],
         )
         stage.process(ctx)
         assert len(ctx.definitions) == 2
         metric_ids = {d.canonical_metric_id for d in ctx.definitions}
-        assert "cm_arr" in metric_ids
+        assert "cm_average_order_value" in metric_ids
         assert "cm_customers_period_end" in metric_ids
 
     def test_same_metric_produces_one_definition(self, stage):
@@ -341,17 +341,17 @@ class TestMultipleMetrics:
         para2 = _seg("s2", 5, SegmentType.PARAGRAPH, "Second mention of ARR.")
         defn = _seg("s3", 2, SegmentType.DEFINITION, "ARR definition.")
         ctx = MockPipelineContext(
-            facts=[_fact("cm_arr")],
+            facts=[_fact("cm_average_order_value")],
             segments=[para1, para2, defn],
             candidates=[
-                _candidate("c1", "cm_arr", "s1"),
-                _candidate("c2", "cm_arr", "s2"),
+                _candidate("c1", "cm_average_order_value", "s1"),
+                _candidate("c2", "cm_average_order_value", "s2"),
             ],
         )
         stage.process(ctx)
         # Only one MetricDefinition per metric_id
         assert len(ctx.definitions) == 1
-        assert ctx.definitions[0].canonical_metric_id == "cm_arr"
+        assert ctx.definitions[0].canonical_metric_id == "cm_average_order_value"
 
     def test_metric_with_no_nearby_definition_excluded(self, stage):
         # Two metrics, only one has a nearby definition
@@ -359,17 +359,17 @@ class TestMultipleMetrics:
         defn1 = _seg("s2", 2, SegmentType.DEFINITION, "ARR definition.")
         para2 = _seg("s3", 50, SegmentType.PARAGRAPH, "Customers mention, far from any definition.")
         ctx = MockPipelineContext(
-            facts=[_fact("cm_arr"), _fact("cm_customers_period_end")],
+            facts=[_fact("cm_average_order_value"), _fact("cm_customers_period_end")],
             segments=[para1, defn1, para2],
             candidates=[
-                _candidate("c1", "cm_arr", "s1"),
+                _candidate("c1", "cm_average_order_value", "s1"),
                 _candidate("c2", "cm_customers_period_end", "s3"),
             ],
         )
         stage.process(ctx)
         # Only ARR should get a definition; customers metric has none nearby
         assert len(ctx.definitions) == 1
-        assert ctx.definitions[0].canonical_metric_id == "cm_arr"
+        assert ctx.definitions[0].canonical_metric_id == "cm_average_order_value"
 
 
 # ============================================================================
@@ -382,10 +382,10 @@ class TestStageResult:
         para = _seg("s1", 1, SegmentType.PARAGRAPH, "Metric mention.")
         defn = _seg("s2", 2, SegmentType.DEFINITION, "Definition.")
         ctx = MockPipelineContext(
-            facts=[_fact("cm_arr"), _fact("cm_customers_period_end")],
+            facts=[_fact("cm_average_order_value"), _fact("cm_customers_period_end")],
             segments=[para, defn],
             candidates=[
-                _candidate("c1", "cm_arr", "s1"),
+                _candidate("c1", "cm_average_order_value", "s1"),
                 _candidate("c2", "cm_customers_period_end", "s1"),
             ],
         )
@@ -396,9 +396,9 @@ class TestStageResult:
         para = _seg("s1", 1, SegmentType.PARAGRAPH, "Metric mention.")
         defn = _seg("s2", 2, SegmentType.DEFINITION, "Definition.")
         ctx = MockPipelineContext(
-            facts=[_fact("cm_arr")],
+            facts=[_fact("cm_average_order_value")],
             segments=[para, defn],
-            candidates=[_candidate("c1", "cm_arr", "s1")],
+            candidates=[_candidate("c1", "cm_average_order_value", "s1")],
         )
         result = stage.process(ctx)
         assert result.items_output == len(ctx.definitions)

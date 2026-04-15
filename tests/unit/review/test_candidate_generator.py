@@ -2204,9 +2204,9 @@ class TestDeduplicateCandidates:
     def test_keeps_highest_confidence(self, generator):
         """When duplicates exist, keep the one with highest confidence."""
         candidates = [
-            self._make_candidate(Decimal("500"), "cm_arr", 0.5),
-            self._make_candidate(Decimal("500"), "cm_arr", 0.9),
-            self._make_candidate(Decimal("500"), "cm_arr", 0.7),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.5),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.9),
+            self._make_candidate(Decimal("500"), "cm_average_order_value", 0.7),
         ]
 
         result, count = generator._deduplicate_candidates(candidates)
@@ -4369,79 +4369,6 @@ class TestMetricSpecificFPRules:
     @pytest.fixture
     def generator(self):
         return CandidateGenerator()
-
-    def test_arr_tier_threshold_suppressed(self, generator):
-        """$100K ARR threshold in tier description should not produce cm_arr candidate."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "We had 200 customers with more than $100,000 in ARR as of January 31, 2021, "
-                    "representing our enterprise tier customers."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_candidates = [c for c in candidates if c.suggested_metric_id == "cm_arr"]
-        arr_100k = [c for c in arr_candidates if c.parsed_value is not None and float(c.parsed_value) == 100_000]
-        assert len(arr_100k) == 0, "$100K ARR tier threshold should not be a cm_arr candidate"
-
-    def test_arr_tier_5k_suppressed(self, generator):
-        """$5K ARR tier threshold should not produce cm_arr candidate."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "Base Customers generating $5,000 or more in ARR grew from 1,662 to 2,745."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_5k = [
-            c for c in candidates
-            if c.suggested_metric_id == "cm_arr"
-            and c.parsed_value is not None
-            and float(c.parsed_value) == 5_000
-        ]
-        assert len(arr_5k) == 0, "$5K ARR tier threshold should not be a cm_arr candidate"
-
-    def test_arr_magnitude_cap_suppressed(self, generator):
-        """TAM-scale ARR values exceeding $100B should be suppressed."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "According to Gartner, the total addressable market is estimated to be "
-                    "$328 billion by the end of 2021 in annual recurring revenue."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_huge = [
-            c for c in candidates
-            if c.suggested_metric_id == "cm_arr"
-            and c.parsed_value is not None
-            and float(c.parsed_value) > 100_000_000_000
-        ]
-        assert len(arr_huge) == 0, "ARR values above $100B should be suppressed"
-
-    def test_arr_tam_context_suppressed(self, generator):
-        """Dollar values near TAM language should not produce cm_arr candidate."""
-        segments = [
-            {
-                "source_segment_id": 1,
-                "raw_text": (
-                    "The total addressable market for our platform is $43 billion in annual recurring revenue."
-                ),
-                "segment_type": "paragraph",
-            }
-        ]
-        candidates = generator.generate_for_filing(filing_id=1, company_id=1, segments=segments)
-        arr_tam = [c for c in candidates if c.suggested_metric_id == "cm_arr"]
-        assert len(arr_tam) == 0, "TAM context should suppress cm_arr candidates"
 
     def test_real_cac_not_suppressed(self, generator):
         """Actual CAC value should not be suppressed."""

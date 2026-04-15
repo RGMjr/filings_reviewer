@@ -50,7 +50,7 @@ class MockPipelineContext:
 
 def make_fact(
     fact_id: str = "fact-1",
-    metric_id: str = "cm_arr",
+    metric_id: str = "cm_average_order_value",
     value: float | None = 100.0,
     unit: Unit = Unit.CURRENCY,
     source_type: SourceType = SourceType.HTML_TABLE,
@@ -141,8 +141,8 @@ class TestGroupingLogic:
         """Facts with different metric_id should be in separate groups."""
         stage = DeduplicationStage()
         facts = [
-            make_fact(fact_id="fact-1", metric_id="cm_arr", value=100.0),
-            make_fact(fact_id="fact-2", metric_id="cm_mrr", value=100.0),
+            make_fact(fact_id="fact-1", metric_id="cm_average_order_value", value=100.0),
+            make_fact(fact_id="fact-2", metric_id="cm_lifetime_value_per_customer", value=100.0),
         ]
 
         groups = stage._group_duplicates(facts, tolerance=0.02)
@@ -393,8 +393,8 @@ class TestEdgeCases:
         stage = DeduplicationStage()
         context = MockPipelineContext(
             facts=[
-                make_fact(fact_id="fact-1", metric_id="cm_arr"),
-                make_fact(fact_id="fact-2", metric_id="cm_mrr"),
+                make_fact(fact_id="fact-1", metric_id="cm_average_order_value"),
+                make_fact(fact_id="fact-2", metric_id="cm_lifetime_value_per_customer"),
                 make_fact(fact_id="fact-3", metric_id="cm_nrr"),
             ]
         )
@@ -494,7 +494,7 @@ class TestStageResult:
             facts=[
                 make_fact(fact_id="fact-1"),  # Duplicate
                 make_fact(fact_id="fact-2"),  # Duplicate
-                make_fact(fact_id="fact-3", metric_id="cm_mrr"),  # Unique
+                make_fact(fact_id="fact-3", metric_id="cm_lifetime_value_per_customer"),  # Unique
             ]
         )
 
@@ -524,7 +524,7 @@ class TestStageResult:
             facts=[
                 make_fact(fact_id="fact-1"),  # Duplicate group
                 make_fact(fact_id="fact-2"),  # Duplicate group
-                make_fact(fact_id="fact-3", metric_id="cm_mrr"),  # Unique
+                make_fact(fact_id="fact-3", metric_id="cm_lifetime_value_per_customer"),  # Unique
             ]
         )
 
@@ -590,7 +590,7 @@ class TestFuzzyPeriodDedup:
         facts = [
             make_fact(
                 fact_id="fact-table",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 source_type=SourceType.HTML_TABLE,
                 period_start=date(2024, 1, 1),
@@ -598,7 +598,7 @@ class TestFuzzyPeriodDedup:
             ),
             make_fact(
                 fact_id="fact-text",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 source_type=SourceType.TEXT,
                 period_start=date(2024, 6, 1),
@@ -618,14 +618,14 @@ class TestFuzzyPeriodDedup:
         facts = [
             make_fact(
                 fact_id="fact-2024",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
             ),
             make_fact(
                 fact_id="fact-2023",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 period_start=date(2023, 1, 1),
                 period_end=date(2023, 12, 31),
@@ -645,14 +645,14 @@ class TestFuzzyPeriodDedup:
         facts = [
             make_fact(
                 fact_id="fact-100",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
             ),
             make_fact(
                 fact_id="fact-200",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=200.0,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
@@ -674,7 +674,7 @@ class TestFuzzyPeriodDedup:
         facts = [
             make_fact(
                 fact_id="fact-arr-table",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 source_type=SourceType.HTML_TABLE,
                 period_start=date(2024, 1, 1),
@@ -682,7 +682,7 @@ class TestFuzzyPeriodDedup:
             ),
             make_fact(
                 fact_id="fact-arr-text",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 source_type=SourceType.TEXT,
                 period_start=date(2024, 6, 1),
@@ -690,14 +690,14 @@ class TestFuzzyPeriodDedup:
             ),
             make_fact(
                 fact_id="fact-mrr-2024",
-                metric_id="cm_mrr",
+                metric_id="cm_lifetime_value_per_customer",
                 value=50.0,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
             ),
             make_fact(
                 fact_id="fact-mrr-2023",
-                metric_id="cm_mrr",
+                metric_id="cm_lifetime_value_per_customer",
                 value=50.0,
                 period_start=date(2023, 1, 1),
                 period_end=date(2023, 12, 31),
@@ -723,7 +723,7 @@ class TestFuzzyPeriodDedup:
             facts=[
                 make_fact(
                     fact_id="fact-table",
-                    metric_id="cm_arr",
+                    metric_id="cm_average_order_value",
                     value=100.0,
                     source_type=SourceType.HTML_TABLE,
                     period_start=date(2024, 1, 1),
@@ -731,7 +731,7 @@ class TestFuzzyPeriodDedup:
                 ),
                 make_fact(
                     fact_id="fact-text",
-                    metric_id="cm_arr",
+                    metric_id="cm_average_order_value",
                     value=100.0,
                     source_type=SourceType.TEXT,
                     period_start=date(2024, 6, 1),
@@ -752,7 +752,7 @@ class TestFuzzyPeriodDedup:
         facts = [
             make_fact(
                 fact_id="fact-with-period",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 source_type=SourceType.HTML_TABLE,
                 period_start=date(2024, 1, 1),
@@ -760,7 +760,7 @@ class TestFuzzyPeriodDedup:
             ),
             make_fact(
                 fact_id="fact-no-period",
-                metric_id="cm_arr",
+                metric_id="cm_average_order_value",
                 value=100.0,
                 source_type=SourceType.TEXT,
                 period_start=None,
@@ -814,11 +814,11 @@ class TestGroupingPerformance:
         stage = DeduplicationStage()
 
         facts = [
-            make_fact(fact_id="f1", metric_id="cm_arr", value=100.0),
-            make_fact(fact_id="f2", metric_id="cm_arr", value=101.0),  # Within tolerance
-            make_fact(fact_id="f3", metric_id="cm_arr", value=200.0),  # Different value
-            make_fact(fact_id="f4", metric_id="cm_mrr", value=100.0),  # Different metric
-            make_fact(fact_id="f5", metric_id="cm_mrr", value=100.0),  # Duplicate of f4
+            make_fact(fact_id="f1", metric_id="cm_average_order_value", value=100.0),
+            make_fact(fact_id="f2", metric_id="cm_average_order_value", value=101.0),  # Within tolerance
+            make_fact(fact_id="f3", metric_id="cm_average_order_value", value=200.0),  # Different value
+            make_fact(fact_id="f4", metric_id="cm_lifetime_value_per_customer", value=100.0),  # Different metric
+            make_fact(fact_id="f5", metric_id="cm_lifetime_value_per_customer", value=100.0),  # Duplicate of f4
         ]
 
         groups = stage._group_duplicates(facts, tolerance=0.02)

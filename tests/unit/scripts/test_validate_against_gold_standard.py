@@ -108,7 +108,7 @@ class TestNormalizeMetricId:
     def test_whitespace_handling(self):
         """Test whitespace is trimmed."""
         assert normalize_metric_id("  cm_dau  ") == "cm_dau"
-        assert normalize_metric_id("\tcm_arr\n") == "cm_arr"
+        assert normalize_metric_id("\tcm_average_order_value\n") == "cm_average_order_value"
 
     def test_empty_string(self):
         """Test empty string stays empty."""
@@ -158,7 +158,7 @@ https://example.com/filing1,Test Corp,,cm_custom_metric,custom metric,5,5,,Q1 20
     def test_parse_multiline_quotes(self):
         """Test parsing entries with multi-line quoted fields."""
         csv_content = '''Document URL,Company,Standard Metric Name,New standard metric?,Name in the text,Raw value,Scaled value,Scale/unit,Period,Definition,Quote/context
-https://example.com,Test Corp,cm_arr,,ARR,1 billion,1,billion,2023,"Annual recurring revenue, which is
+https://example.com,Test Corp,cm_average_order_value,,ARR,1 billion,1,billion,2023,"Annual recurring revenue, which is
 calculated as the monthly
 recurring revenue times 12","We define annual recurring revenue
 as the sum of all subscription
@@ -207,7 +207,7 @@ class TestGetEntriesForCompany:
                 is_definition_only=False
             ),
             GoldStandardEntry(
-                document_url="", company="Another Corp", metric_id="cm_arr",
+                document_url="", company="Another Corp", metric_id="cm_average_order_value",
                 is_new_metric=False, text_variant="", raw_value="", scaled_value="",
                 scale_unit="", period="", definition="", source_quote="", line_number=2,
                 is_definition_only=False

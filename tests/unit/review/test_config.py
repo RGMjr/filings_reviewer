@@ -45,7 +45,7 @@ class TestCandidateGenerationConfig:
             enable_boundary_detection=False,
             log_ambiguous_matches=False,
             ambiguity_threshold=5,
-            metric_distance_overrides={"cm_arr": 50},
+            metric_distance_overrides={"cm_average_order_value": 50},
         )
 
         assert config.prefer_closest_keyword is False
@@ -53,7 +53,7 @@ class TestCandidateGenerationConfig:
         assert config.enable_boundary_detection is False
         assert config.log_ambiguous_matches is False
         assert config.ambiguity_threshold == 5
-        assert config.metric_distance_overrides == {"cm_arr": 50}
+        assert config.metric_distance_overrides == {"cm_average_order_value": 50}
 
     def test_default_config_instance(self):
         """DEFAULT_CONFIG should be a valid configuration instance."""

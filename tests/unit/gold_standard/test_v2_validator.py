@@ -1935,7 +1935,7 @@ class TestPrintFNDiagnostics:
     def test_summary_shows_totals(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Summary section shows correct counts."""
         entry1 = make_entry(metric_id="cm_dau", raw_value="1000")
-        entry2 = make_entry(metric_id="cm_arr", raw_value="5000")
+        entry2 = make_entry(metric_id="cm_lifetime_value_per_customer", raw_value="5000")
         diag1 = FNDiagnostic(
             entry=entry1,
             company_name="Co1",
