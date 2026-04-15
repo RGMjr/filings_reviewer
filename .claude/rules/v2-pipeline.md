@@ -56,3 +56,20 @@ PipelineConfig.for_presentation() # Images enabled, min_paragraph_chars=20
 - `stages/false_positive_filter.py` — 35 FP rules (2,263 lines)
 - `stages/value_binding.py` — number-to-metric binding (1,436 lines)
 - `stages/period_inference.py` — date/period extraction (1,246 lines)
+
+## Common Keyword/FP Regression Causes
+
+| Change type | Common regression | Prevention |
+|---|---|---|
+| Adding broad primary keyword | FP spike | Add negative keywords or context gate |
+| Removing negative keyword | FPs from financial-only mentions | Check existing FP filter coverage |
+| FP filter too aggressive | Recall drops on valid mentions | Test with gold standard filings |
+| FP filter too loose | Precision drops | Check per-company precision in GS |
+| Number pattern change | Year fragments extracted as values | NUMBER_PATTERN must exclude 4-digit years |
+| Proximity window change | Binding wrong values to metrics | Keep window conservative (~250 chars) |
+
+## Key FP Filter Notes
+
+- `NUMBER_PATTERN` has no left-side word boundary — "M365" → extracts "365". Year-like values (4-digit numbers) must be excluded separately.
+- Growth rate percents ("up N% year-over-year") are only filtered by `_rule_growth_rate_percent` when a scale count also appears in the same segment. If the sentence has no absolute count, the percent is treated as the metric value.
+- Transcript converter: speaker-pattern check must run **before** section detection. If reversed, Operator intro lines containing "question-and-answer" can trigger QA section detection and drop prepared-remarks speaker turns.

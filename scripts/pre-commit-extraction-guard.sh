@@ -17,7 +17,7 @@ staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 # Allowed top-level dirs under docs/ (plus root-level files)
 DOCS_ALLOWED_DIRS="analysis|architecture|archive|development|operations|requirements|worker-prompts|antigravity_version|codex_version|claude_version|completion|investigation|reports|research|historical|improvement-plans-completed|workstreams"
 # Allowed subdirs under docs/archive/
-ARCHIVE_ALLOWED_DIRS="extraction-validation|worker-prompts|analysis|historical|improvement-plans-completed|workstreams"
+ARCHIVE_ALLOWED_DIRS="extraction-validation|worker-prompts|analysis|historical|improvement-plans-completed|workstreams|ops"
 
 docs_files=$(echo "$staged_files" | grep '^docs/' || true)
 if [ -n "$docs_files" ]; then

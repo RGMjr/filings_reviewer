@@ -83,9 +83,7 @@ Active and historical plans for reference.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[PROJECT_TASK_INVENTORY.md](PROJECT_TASK_INVENTORY.md)** | Task inventory across all workstreams | Developers |
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
-| **[PERFORMANCE_BASELINE.md](PERFORMANCE_BASELINE.md)** | Performance benchmarks and profiling | Developers |
 | **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Known issues and limitations | Developers |
 
 ### Archive (Historical Reference)
@@ -95,7 +93,7 @@ Historical documents for reference only. Not part of current operations.
 | Category | Contents |
 |----------|----------|
 | **[archive/improvement-plans-completed/](archive/improvement-plans-completed/)** | Completed improvement plans |
-| **[archive/historical/](archive/historical/)** | Historical process documentation and task inventory |
+| **[archive/historical/](archive/historical/)** | Historical process documentation, task inventory, and performance baselines |
 | **[archive/workstreams/](archive/workstreams/)** | Legacy workstream documentation |
 
 ### Operational Templates
