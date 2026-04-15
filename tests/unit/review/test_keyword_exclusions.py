@@ -259,13 +259,13 @@ class TestExclusionEdgeCases:
 
     def test_empty_exclusion_list_handled(self) -> None:
         """Metrics without exclusions should work normally."""
-        # cm_arr has no exclusions defined
-        text = "Our ARR reached $10 million"
+        # cm_net_revenue_retention has no exclusions defined
+        text = "Our net revenue retention reached 120%"
         matcher = KeywordMatcher()
         matches = matcher.find_all_keywords(text)
         matched_metrics = {m.metric_id for m in matches}
 
-        assert "cm_arr" in matched_metrics
+        assert "cm_net_revenue_retention" in matched_metrics
 
     def test_multiple_exclusion_patterns_checked(self) -> None:
         """All exclusion patterns for a metric should be checked."""

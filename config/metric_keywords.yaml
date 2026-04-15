@@ -63,7 +63,7 @@ _revenue_synonym_context: &revenue_synonym_context
 # =============================================================================
 
 cm_new_customers_acquired:
-  tier: 2
+  tier: 1
   patterns:
     - '\bnew\s+customers?\b'
     - '\bcustomers?\s+acquired\b'
@@ -208,7 +208,7 @@ cm_customers_period_end:
     - 'customer\s+base'
 
 cm_large_customers_period_end:
-  tier: 2
+  tier: 1
   patterns:
     - '\bpaid\s+customers?\s*>\s*\$[\d,]+'
     - '\bcustomers?\s*>\s*\$\d+(?:,\d+)*\s*(?:of\s+)?(?:arr|annual\s+recurring\s+revenue)\b'
@@ -246,7 +246,7 @@ cm_large_customers_period_end:
     - 'customers?\s+representing'
 
 cm_customers_period_end_by_tenure:
-  tier: 2
+  tier: 1
   patterns:
     - '\bcustomers?\s+by\s+tenure\b'
     - '\btenure\s+cohort\b'
@@ -531,6 +531,7 @@ cm_gross_margin_by_cohort:
 
 cm_arr:
   tier: 2
+  status: deprecated
   patterns:
     - '\barr\b'
     - '\bannual\s+recurring\s+revenue\b'
@@ -541,6 +542,7 @@ cm_arr:
 
 cm_mrr:
   tier: 2
+  status: deprecated
   patterns:
     - '\bmrr\b'
     - '\bmonthly\s+recurring\s+revenue\b'
@@ -549,6 +551,7 @@ cm_mrr:
 
 cm_expansion_revenue:
   tier: 1
+  status: deprecated  # not a customer-level metric; zero GS coverage across all datasets
   patterns:
     - '\bexpansion\s+revenue\b'
     - '\bcross[- ]sell\b'

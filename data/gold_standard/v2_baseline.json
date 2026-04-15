@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-13T17:08:17.305276+00:00",
-  "description": "Add upstream stub-contradiction check to _bind_cells(): P+0.4pp, no T1 regression, T2 Torrid trade-off is correct suppression",
+  "baseline_date": "2026-04-15T16:08:22.289137+00:00",
+  "description": "Deprecate cm_arr/cm_mrr/cm_expansion_revenue: recall regression on Samsara expected (expansion_revenue removed from active extraction)",
   "overall": {
-    "precision": 0.6790123456790124,
-    "recall": 0.6586826347305389,
-    "f1": 0.668693009118541
+    "precision": 0.6905537459283387,
+    "recall": 0.6347305389221557,
+    "f1": 0.6614664586583463
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -13,9 +13,9 @@
       "f1": 0.5806451612903226
     },
     "Datadog, Inc.": {
-      "precision": 0.6153846153846154,
+      "precision": 0.7272727272727273,
       "recall": 0.5714285714285714,
-      "f1": 0.5925925925925927
+      "f1": 0.64
     },
     "Farfetch Limited": {
       "precision": 0.5555555555555556,
@@ -53,9 +53,9 @@
       "f1": 1.0
     },
     "Samsara Inc.": {
-      "precision": 0.72,
-      "recall": 0.42857142857142855,
-      "f1": 0.5373134328358209
+      "precision": 1.0,
+      "recall": 0.23809523809523808,
+      "f1": 0.3846153846153846
     },
     "Slack Technologies": {
       "precision": 0.868421052631579,
