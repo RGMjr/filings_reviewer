@@ -43,6 +43,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_WIDER_PROXIMITY_METRICS: frozenset[str] = frozenset({
+    "cm_balance_by_cohort",
+    "cm_gross_margin_by_cohort",
+    "cm_ltv_to_cac_ratio",
+    "cm_ltv_to_cac_ratio_by_cohort",
+    "cm_cac_payback_period",
+})
+
 class ValueBindingStage:
     """
     Stage 7: Value Binding.
@@ -326,6 +334,8 @@ class ValueBindingStage:
         """
         # Read effective proximity from config (if available), else use instance default
         effective_proximity = getattr(context.config, "text_proximity_chars", self.proximity_window)
+        if candidate.metric_id in _WIDER_PROXIMITY_METRICS:
+            effective_proximity = max(effective_proximity, 200)
 
         # Detect transcript mode
         is_transcript = getattr(context, "document_type", "") == "transcript"

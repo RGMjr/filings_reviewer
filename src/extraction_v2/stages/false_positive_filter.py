@@ -1200,6 +1200,15 @@ def _rule_financial_context_on_customer_metric(
     # Table-sourced: header/stub path directly labels the cell — always fire
     # if any financial keyword appears anywhere in source_text.
     if bv.source_locator.table_id is not None:
+        # Exempt cm_large_customers_period_end from table financial context
+        # blocking when value is in a plausible customer count range (100-1M).
+        # Large customer counts commonly appear in tables alongside financial
+        # keywords (gross margin, total revenue) without being financial values.
+        if (
+            metric_id == "cm_large_customers_period_end"
+            and 100 <= bv.value <= 1_000_000
+        ):
+            return None
         if _FINANCIAL_CONTEXT_KEYWORD_RE.search(source_text):
             return "v2_financial_context_customer_metric"
         return None

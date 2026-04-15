@@ -1,6 +1,6 @@
 {
-  "baseline_date": "2026-04-15T16:08:22.289137+00:00",
-  "description": "Deprecate cm_arr/cm_mrr/cm_expansion_revenue: recall regression on Samsara expected (expansion_revenue removed from active extraction)",
+  "baseline_date": "2026-04-15T18:43:45.707608+00:00",
+  "description": "Wider proximity (200 chars) for LTV/CAC cohort metrics + table exemption for cm_large_customers_period_end",
   "overall": {
     "precision": 0.6905537459283387,
     "recall": 0.6347305389221557,

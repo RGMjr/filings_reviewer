@@ -3297,6 +3297,60 @@ class TestFinancialContextOnCustomerMetric:
         assert is_fp is True
         assert reason == "v2_financial_context_customer_metric"
 
+    def test_large_customers_table_exempt_in_range(self):
+        """cm_large_customers_period_end table-sourced in 100-1M range → NOT blocked by financial context."""
+        source = "gross margin 500"
+        bv = _make_table_bound_value("c1", 500.0, "500", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert reason != "v2_financial_context_customer_metric"
+
+    def test_large_customers_table_blocked_value_below_range(self):
+        """cm_large_customers_period_end table-sourced value=50 (below 100) → IS blocked."""
+        source = "total revenue 50"
+        bv = _make_table_bound_value("c1", 50.0, "50", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason == "v2_financial_context_customer_metric"
+
+    def test_large_customers_table_blocked_value_above_range(self):
+        """cm_large_customers_period_end table-sourced value=2_000_000 (above 1M) → IS blocked.
+
+        Note: 2,000,000 exceeds plausible customer count range and may be caught
+        by v2_magnitude_sanity before the financial context rule runs — both are
+        correct rejections.
+        """
+        source = "total revenue 2,000,000"
+        bv = _make_table_bound_value("c1", 2_000_000.0, "2,000,000", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason in ("v2_financial_context_customer_metric", "v2_magnitude_sanity")
+
+    def test_other_count_metric_table_not_exempt(self):
+        """cm_active_customers_total table-sourced value=500 → IS blocked (exemption is metric-specific)."""
+        source = "gross margin 500"
+        bv = _make_table_bound_value("c1", 500.0, "500", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total"
+        )
+        assert is_fp is True
+        assert reason == "v2_financial_context_customer_metric"
+
+    def test_large_customers_text_sourced_unchanged(self):
+        """cm_large_customers_period_end text-sourced → text path unchanged, still blocked when keyword is within 100 chars."""
+        source = "gross margin expanded to 78%. We had 500 large customers."
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT)
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_large_customers_period_end"
+        )
+        assert is_fp is True
+        assert reason == "v2_financial_context_customer_metric"
+
 
 # ============================================================================
 # Test: _rule_metric_definition_value (Step 3)
@@ -3458,6 +3512,8 @@ class TestSoftRuleConfidenceBypass:
 
     def test_soft_rule_enforced_at_low_confidence(self):
         """financial_context_customer_metric (soft) still fires at low confidence."""
+        # Use cm_active_customers_total — cm_large_customers_period_end is now
+        # exempt from the table financial context rule for values in 100-1M range.
         bv = _make_bound_value("c1", 3100.0, "3,100", Unit.COUNT, "seg-1")
         import dataclasses
         bv = dataclasses.replace(
@@ -3465,10 +3521,10 @@ class TestSoftRuleConfidenceBypass:
             binding_confidence=0.50,
             source_locator=SourceLocator(segment_id="seg-1", table_id="tbl-1"),
         )
-        source = "number of large customers 3,100 revenue gross profit ebitda"
+        source = "number of active customers 3,100 revenue gross profit ebitda"
         is_fp, reason = _is_v2_false_positive(
             bv, source,
-            metric_id="cm_large_customers_period_end",
+            metric_id="cm_active_customers_total",
             binding_confidence=0.50,
         )
         assert is_fp is True
