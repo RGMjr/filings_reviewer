@@ -359,6 +359,7 @@ Workflow commands for common tasks:
 | `/plan-execute` | Execute a multi-phase plan with parallel sub-agents per independent wave |
 | `/plan-review` | Review and critique a plan before execution |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 
 ### Skills (`.claude/skills/`)
 
