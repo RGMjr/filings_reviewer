@@ -1,4 +1,15 @@
 company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,section,is_trap,disposition,disposition_reason,split
+"Airbnb, Inc.",ABNB,2020-12-07,cm_revenue_by_cohort,93%,percent,,table,Host cohort retention 2014 cohort 93%,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),tuning
+"Airbnb, Inc.",ABNB,2020-12-07,cm_revenue_by_cohort,95%,percent,,table,Host Cohort Revenue Retention 2014 Cohort 95%,HIGH,MDNA,false,ACCEPT,Added by reviewer (pipeline missed),tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_monthly_active_users,3.3 billion,count,2021-07-31,text,3.3 billion,LOW,cover,False,ACCEPT,,tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_monthly_active_users,2.3 billion,count,2021-07-31,text,2.3 billion,LOW,cover,False,ACCEPT,,tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_monthly_active_users,1.6 billion,count,2021-07-31,text,1.6 billion,LOW,cover,False,ACCEPT,,tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_net_revenue_retention,125%,percent,2021-01-01 to 2021-12-31,html_table,125%,MEDIUM,unknown,False,ACCEPT,,tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_net_revenue_retention,126%,percent,2020-01-01 to 2020-12-31,html_table,126%,MEDIUM,unknown,False,ACCEPT,,tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_revenue_by_cohort,$6.4 million,currency,2016-01-01 to 2016-12-31,text,$6.4 million,MEDIUM,cover,False,EDIT,This is arr (revenue) from a specific cohort of customers (new customers),tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_revenue_by_cohort,$20.1 million,currency,2016-01-01 to 2016-12-31,text,$20.1 million,MEDIUM,cover,False,EDIT,,tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_arr,$100 million,currency,other,html_table,$100 million,LOW,unknown,False,ACCEPT,,tuning
+"Braze, Inc.",BRZE,2021-11-08,cm_arr,$200 million,currency,other,html_table,$200 million,LOW,unknown,False,ACCEPT,,tuning
 Maplebear Inc.,CART,2023-09-15,cm_monthly_active_users,7.7 million,count,2022-01-01 to 2022-12-31,filing,7.7 million,MEDIUM,unknown,False,ACCEPT,,test
 Maplebear Inc.,CART,2023-09-15,cm_purchase_transactions_overall,262.6 million,count,2022-01-01 to 2022-12-31,filing,262.6 million,MEDIUM,unknown,False,EDIT,wrong metric,test
 Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,13%,percent,2020-01-01 to 2020-12-31,filing,13%,HIGH,unknown,False,ACCEPT,,test
@@ -74,6 +85,25 @@ Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,1.8x,other,other,chart,
 Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,3.0x,other,other,chart,3.0x,LOW,unknown,False,ACCEPT,,tuning
 Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,4.3x,other,other,chart,4.3x,LOW,unknown,False,ACCEPT,,tuning
 Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,6.0x,other,other,chart,6.0x,LOW,unknown,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,543 million,count,other,text,543 million,LOW,cover,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,439,other,2026-01-01 to 2026-03-31,html_table,439,HIGH,unknown,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,467,other,2026-01-01 to 2026-03-31,html_table,467,HIGH,unknown,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,512,other,2026-01-01 to 2026-03-31,html_table,512,HIGH,unknown,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,532,other,2026-01-01 to 2026-03-31,html_table,532,HIGH,unknown,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2023-11-01,cm_purchase_transactions_overall,543,other,2026-01-01 to 2026-03-31,html_table,543,HIGH,unknown,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_purchase_transactions_overall,83,other,2018-01-01 to 2018-09-30,text,83,LOW,cover,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_purchase_transactions_overall,263,other,2018-01-01 to 2018-09-30,text,263,LOW,cover,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_purchase_transactions_overall,181,other,2018-01-01 to 2018-09-30,text,181,LOW,cover,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_purchase_transactions_overall,543,other,2020-01-01 to 2020-09-30,html_table,543,HIGH,unknown,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_purchase_transactions_overall,236 million,count,2020-07-01 to 2020-09-30,text,236 million,MEDIUM,mda,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_purchase_transactions_overall,543 million,count,2020-01-01 to 2020-09-30,text,543 million,MEDIUM,mda,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_purchase_transactions_overall,263 million,count,2019-01-01 to 2019-12-31,text,263 million,MEDIUM,mda,False,ACCEPT,,tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_revenue_by_cohort,1.38x,ratio,,chart,"marketplace GOV by consumer cohort, indexed to year 1",HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed),tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_revenue_by_cohort,1.39x,ratio,,chart,"marketplace GOV by cohort, indexed to year 1",HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed),tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_revenue_by_cohort,1.57x,ratio,,chart,"marketplace GOV by cohort, indexed to year 1",HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed),tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_revenue_by_cohort,32%,percent,2018,chart,marketplace GOV from New Consumers & Existing Consumers,HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed),tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_revenue_by_cohort,23%,percent,2019,chart,marketplace gov from new consumers & existing consumers,HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed),tuning
+"DoorDash, Inc.",DASH,2020-12-07,cm_revenue_by_cohort,14%,percent,2020,chart,marketplace GOV from New Consumers & Existing Consumers,HIGH,KEY_METRICS,false,ACCEPT,Added by reviewer (pipeline missed),tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,146%,percent,2018-06-30,text,146%,MEDIUM,cover,False,ACCEPT,,tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,141%,percent,2018-06-30,text,141%,MEDIUM,cover,False,ACCEPT,,tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,151%,percent,2018-06-30,text,151%,MEDIUM,cover,False,ACCEPT,,tuning
@@ -85,6 +115,23 @@ Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,6.0x,other,other,chart,
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_concentration,5%,percent,2019-06-30,text,5%,MEDIUM,cover,False,ACCEPT,,tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,60%,percent,2019-01-01 to 2019-06-30,text,60%,MEDIUM,cover,False,ACCEPT,,tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_customers_period_end,"8,800",count,2019-06-30,text,"8,800",MEDIUM,unknown,False,EDIT,wrong metric,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_monthly_active_users,40 million,count,2021-01-01 to 2021-03-31,text,40 million,LOW,cover,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_monthly_active_users,27 million,count,2019-12-31,text,27 million,LOW,cover,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_monthly_active_users,37 million,count,2019-12-31,text,37 million,LOW,cover,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_customers_period_end,1.8 million,count,2021-01-01 to 2021-03-31,text,1.8 million,LOW,cover,False,EDIT,these are paying subscribers (subset of monthly active users),tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_monthly_active_users,39.9,count,2021-01-01 to 2021-03-31,html_table,39.9,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_monthly_active_users,27.3,count,2019-01-01 to 2019-12-31,html_table,27.3,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_monthly_active_users,36.7,count,2020-01-01 to 2020-12-31,html_table,36.7,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_monthly_active_users,33.5,count,2020-01-01 to 2020-03-31,html_table,33.5,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_daily_active_users,5.2,count,2026-01-01 to 2026-03-31,table,5.2,LOW,cover,False,EDIT,misclassified as text versus table,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_daily_active_users,8.2,count,2026-01-01 to 2026-03-31,table,8.2,LOW,cover,False,EDIT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_daily_active_users,6.8,count,2026-01-01 to 2026-03-31,table,6.8,LOW,cover,False,EDIT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_daily_active_users,9.5,count,2026-01-01 to 2026-03-31,table,9.5,LOW,cover,False,EDIT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_new_customers_acquired,54%,other,other,chart,First Time Subscription Bookings by User Cohort54%,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_new_customers_acquired,59%,other,other,chart,First Time Subscription Bookings by User Cohort59%,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_new_customers_acquired,46%,other,other,chart,First Time Subscription Bookings by User Cohort46%,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_new_customers_acquired,41%,other,other,chart,First Time Subscription Bookings by User Cohort41%,MEDIUM,unknown,False,ACCEPT,,tuning
+"Duolingo, Inc.",DUOL,2021-07-26,cm_new_customers_acquired,47%,other,other,chart,First Time Subscription Bookings by User Cohort47%,MEDIUM,unknown,False,ACCEPT,,tuning
 Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,110%,percent,other,text,110%,LOW,mda,False,EDIT,"""annual net dollar-based retention rate was approximately 110%,...""",test
 Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,116%,percent,other,text,116%,LOW,cover,False,EDIT,"""...our three-year average annual net dollar-based retention rate, which averaged approximately 116%...""",test
 Flywire Corp,FLYW,2026-02-24,cm_net_revenue_retention,125%,percent,other,text,125%,LOW,mda,False,EDIT,"""...annual net dollar-based retention rate...""",test
@@ -265,6 +312,45 @@ SI,SI,2018-11-07,cm_customers_period_end,339,other,2018-09-30,text,339,LOW,cover
 SI,SI,2018-11-07,cm_customers_period_end,109,other,2018-09-30,text,109,LOW,cover,False,ACCEPT,,tuning
 SI,SI,2018-11-07,cm_customers_period_end,483 Digital Currency Customers,count,other,chart,483 Digital Currency Customers,LOW,unknown,False,ACCEPT,,tuning
 SI,SI,2018-11-07,cm_customers_period_end,21 customers $29 million in deposits,count,other,chart,21 customers $29 million in deposits,LOW,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2026-02-25,cm_net_revenue_retention,125%,percent,other,text,125%,LOW,cover,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2026-02-25,cm_large_customers_period_end,733,other,other,text,733,LOW,cover,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2026-02-25,cm_new_customers_acquired,740,other,2026-01-31,text,740,LOW,cover,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,158,percent,2020-05-01 to 2020-07-31,html_table,158,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,180,percent,2018-11-01 to 2019-01-31,html_table,180,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,169,percent,2019-02-01 to 2020-01-31,html_table,169,MEDIUM,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,223,percent,2019-05-01 to 2019-07-31,html_table,223,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,158 %,percent,2018-08-01 to 2019-07-31,table,158 %,MEDIUM,cover,False,EDIT,misclassified as text,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,150%,percent,2019-01-31,text,150%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,165,percent,2018-08-01 to 2018-10-31,html_table,165,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,187,percent,2019-02-01 to 2019-04-30,html_table,187,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,189,percent,2019-08-01 to 2019-10-31,html_table,189,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,171,percent,2020-02-01 to 2020-04-30,html_table,171,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_concentration,4%,percent,2020-02-01 to 2020-07-31,text,4%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_concentration,26%,percent,2020-02-01 to 2020-07-31,text,26%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_concentration,46%,percent,2020-01-01 to 2020-07-31,text,46%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_concentration,47%,percent,2020-01-01 to 2020-07-31,text,47%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,"3,117",count,2020-05-01 to 2020-07-31,html_table,"3,117",HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,"2,392",count,2020-07-31,html_table,"2,392",MEDIUM,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,"1,547",count,2019-05-01 to 2019-07-31,html_table,"1,547",HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,"1,194",count,2019-02-01 to 2019-04-30,html_table,"1,194",HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,"1,934",count,2019-08-01 to 2019-10-31,html_table,"1,934",HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,"2,720",count,2020-02-01 to 2020-04-30,html_table,"2,720",HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,948,other,2020-07-31,text,948,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_customers_period_end,702,other,2018-08-01 to 2018-10-31,html_table,702,HIGH,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_large_customers_period_end,22,other,2019-07-31,html_table,22,LOW,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_large_customers_period_end,56,other,2019-07-31,text,56,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_large_customers_period_end,41,other,other,html_table,41,LOW,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_large_customers_period_end,14,other,2018-08-01 to 2018-10-31,html_table,14,MEDIUM,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_large_customers_period_end,16,other,2019-02-01 to 2019-04-30,html_table,16,MEDIUM,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_large_customers_period_end,31,other,2019-08-01 to 2019-10-31,html_table,31,MEDIUM,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_large_customers_period_end,48,other,2020-02-01 to 2020-04-30,html_table,48,MEDIUM,unknown,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,158%,percent,2020-02-01 to 2020-07-31,text,158%,MEDIUM,mda,False,EDIT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_by_cohort,94%,percent,2020-02-01 to 2020-07-31,text,94%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_by_cohort,3%,percent,2020-02-01 to 2020-07-31,text,3%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_by_cohort,84%,percent,2019-02-01 to 2020-01-31,text,84%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_revenue_by_cohort,12%,percent,2019-02-01 to 2020-01-31,text,12%,MEDIUM,mda,False,ACCEPT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_net_revenue_retention,169%,percent,2019-02-01 to 2020-01-31,text,169%,MEDIUM,mda,False,EDIT,,tuning
+Snowflake Inc.,SNOW,2020-09-14,cm_new_customers_acquired,"1,400",count,2019-02-01 to 2020-01-31,text,"1,400",MEDIUM,mda,False,ACCEPT,,tuning
 "Tenable Holdings, Inc.",TENB,2018-07-24,cm_large_customers_period_end,"3,100",count,2016-12-31,text,"3,100",LOW,cover,False,EDIT,"""enterprise platform customers...for an annual amount of $5,000 or greater""",tuning
 "Tenable Holdings, Inc.",TENB,2018-07-24,cm_large_customers_period_end,"4,400",count,2016-12-31,text,"4,400",LOW,cover,False,EDIT,,tuning
 "Tenable Holdings, Inc.",TENB,2018-07-24,cm_new_customers_acquired,217,other,2017-04-01 to 2017-06-30,text,217,LOW,cover,False,ACCEPT,,tuning
