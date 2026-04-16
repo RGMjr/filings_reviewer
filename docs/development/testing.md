@@ -79,9 +79,12 @@ pytest -m transcript_gold_standard --transcript-split=test -v
 
 ### Presentation gold standard
 
-```bash
-pytest tests/unit/test_presentation_gold_standard.py -v
-```
+> Note: `tests/unit/test_presentation_gold_standard.py` does not exist. Directory discipline is enforced by `tests/unit/gold_standard/test_gs_directory_discipline.py` (planned — Phase 4 of the filing GS migration). Use the CLI validator directly:
+>
+> ```bash
+> python3 scripts/validate_presentation_extraction.py --form-type 8-K --baseline --verbose
+> python3 scripts/validate_presentation_extraction.py --form-type S-1 --baseline --verbose
+> ```
 
 ### Performance benchmarks
 
@@ -152,7 +155,7 @@ tests/
 │   ├── universe/                       # Universe builder unit tests
 │   ├── filing_fetcher/                 # FilingFetcher unit tests
 │   ├── scripts/                        # Script entry-point unit tests
-│   └── test_presentation_gold_standard.py  # Presentation GS evaluation
+│   └── gold_standard/test_gs_directory_discipline.py  # GS directory discipline (planned — Phase 4)
 │
 ├── integration/                        # Requires TEST_DATABASE_URL
 │   ├── conftest.py                     # DB fixtures: test_db_adapter, clean_db, fixture helpers
@@ -435,9 +438,12 @@ pytest -m transcript_gold_standard --transcript-update-baseline -v
 
 ### Presentation gold standard
 
-```bash
-pytest tests/unit/test_presentation_gold_standard.py -v
-```
+> Note: `tests/unit/test_presentation_gold_standard.py` does not exist. Directory discipline is enforced by `tests/unit/gold_standard/test_gs_directory_discipline.py` (planned — Phase 4 of the filing GS migration). Use the CLI validator directly:
+>
+> ```bash
+> python3 scripts/validate_presentation_extraction.py --form-type 8-K --baseline --verbose
+> python3 scripts/validate_presentation_extraction.py --form-type S-1 --baseline --verbose
+> ```
 
 ---
 

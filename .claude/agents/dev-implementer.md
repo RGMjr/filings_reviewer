@@ -31,7 +31,6 @@ You implement changes to non-extraction code: web routes, database layer, infras
 
 | Path | Description |
 |------|-------------|
-| `src/extraction/` | V1 extraction pipeline |
 | `src/extraction_v2/` | V2 extraction pipeline |
 | `config/metric_keywords.yaml` | Keyword patterns |
 | `src/review/candidate_generator.py` | Candidate generation |

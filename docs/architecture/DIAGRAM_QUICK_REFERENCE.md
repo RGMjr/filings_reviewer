@@ -166,7 +166,7 @@ C4 model has 4 levels (we document L1):
 ### From UML Component Diagram:
 1. **Hub-and-spoke**: Database Adapter is central hub
 2. **Clear layers**: Infrastructure → Business → Presentation
-3. **Dual extraction**: V1 and V2 coexist
+3. **V2 extraction**: V1 pipeline removed; V2 is the sole active extraction path
 4. **LLM is secondary**: Integration layer, not primary logic
 5. **Configuration-driven**: metric_keywords.yaml is authoritative
 

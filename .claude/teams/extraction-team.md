@@ -94,7 +94,7 @@ git commit -m "feat: <description of extraction change>"
 ## When to Use This Team
 
 - Adding/modifying keyword patterns in `metric_keywords.yaml`
-- Changing classifier logic in `src/extraction/` or `src/extraction_v2/`
+- Changing classifier logic in `src/extraction_v2/`
 - Modifying FP filter rules in `src/review/false_positive_filter.py`
 - Changing candidate generation in `src/review/candidate_generator.py`
 - Any change that could affect extraction precision or recall

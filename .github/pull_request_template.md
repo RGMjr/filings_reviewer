@@ -24,7 +24,6 @@ Check items that apply, or mark N/A if this PR doesn't touch extraction.
 -->
 
 **Does this PR modify any of these paths?**
-- `src/extraction/**`
 - `src/extraction_v2/**`
 - `config/metric_keywords.yaml`
 

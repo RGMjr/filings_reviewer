@@ -22,7 +22,6 @@ You review extraction code changes against the 5 core principles defined in `.cl
    ```
 
 2. **Identify extraction-related changes**: Filter for files in:
-   - `src/extraction/`
    - `src/extraction_v2/`
    - `config/metric_keywords.yaml`
    - `src/review/candidate_generator*`

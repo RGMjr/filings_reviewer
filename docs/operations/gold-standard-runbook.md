@@ -111,6 +111,13 @@ python3 scripts/validate_presentation_extraction.py --save-baseline
 pytest -m presentation_gold_standard -v
 ```
 
+> Note: no test currently uses the `presentation_gold_standard` marker — the above invocation is stale. Use the CLI validator directly:
+>
+> ```bash
+> python3 scripts/validate_presentation_extraction.py --form-type 8-K --baseline --verbose
+> python3 scripts/validate_presentation_extraction.py --form-type S-1 --baseline --verbose
+> ```
+
 ---
 
 ## 6. Full Validation Sweep

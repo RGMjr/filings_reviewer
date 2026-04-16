@@ -55,7 +55,7 @@ PipelineConfig.for_presentation() # Images enabled, min_paragraph_chars=20
 - `pipeline.py` — orchestrator
 - `models.py` — EvidencePack, Fact, PipelineResult dataclasses
 - `persistence.py` — DB write layer
-- `stages/false_positive_filter.py` — 36 FP rules (2,344 lines)
+- `stages/false_positive_filter.py` — 34 FP rules (2,344 lines)
 - `stages/value_binding.py` — number-to-metric binding (1,436 lines)
 - `stages/period_inference.py` — date/period extraction (1,246 lines)
 
