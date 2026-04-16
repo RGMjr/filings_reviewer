@@ -16,10 +16,9 @@ from pathlib import Path
 from bs4 import BeautifulSoup, Tag
 
 from src.review.boundary_detection import BoundaryDetector
-
-from .exceptions import EncodingError, HTMLParsingError, ValidationError
-from .models import SourceSegment
-from .validators import SegmentValidator
+from src.shared.extraction_exceptions import EncodingError, HTMLParsingError, ValidationError
+from src.shared.models import SourceSegment
+from src.shared.segment_validators import SegmentValidator
 
 logger = logging.getLogger(__name__)
 

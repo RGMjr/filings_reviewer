@@ -117,7 +117,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["*/tests/*", "*/__pycache__/*", "src/extraction/*"]
+omit = ["*/tests/*", "*/__pycache__/*"]
 
 [tool.coverage.report]
 fail_under = 75
@@ -209,7 +209,4 @@ check_untyped_defs = false        # Skip type inference in tests
 module = "src.infra.*"
 follow_imports = "skip"           # Don't apply --strict to infra imports
 
-# Exclude extraction imports from strict checks (prevents scope creep)
-[[tool.mypy.overrides]]
-module = "src.extraction.*"
-follow_imports = "skip"           # Don't apply --strict to extraction imports
+

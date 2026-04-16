@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
 
 from src.extraction_v2.models import (
@@ -21,11 +19,9 @@ from src.gold_standard.unified_comparison import (
     NormalizedExtraction,
     match_extractions_to_gold,
     partition_by_source_type,
-    v1_candidate_to_normalized,
     v2_fact_to_normalized,
 )
 from src.gold_standard.v2_validator import GoldStandardEntry
-from src.review.models import CandidateFeatures, ReviewCandidate
 
 # =============================================================================
 # Fixture helpers
@@ -107,41 +103,6 @@ def make_metric_fact(
         requires_review=False,
         review_status=ReviewStatus.AUTO_ACCEPTED,
         pipeline_version="2.0.0",
-    )
-
-
-def make_review_candidate(
-    suggested_metric_id: str = "cm_average_order_value",
-    parsed_value: Decimal | None = Decimal("100"),
-    suggestion_confidence: float | None = 0.8,
-    is_in_table: bool = False,
-    context_text: str = "test context",
-    candidate_id: int | None = 42,
-) -> ReviewCandidate:
-    """Create a minimal ReviewCandidate for testing."""
-    features = CandidateFeatures(
-        keyword_distance=5,
-        keyword_position="before",
-        is_in_table=is_in_table,
-        is_in_risk_factors=False,
-        contains_definition_language=False,
-        has_period_mention=False,
-        number_format="integer",
-    )
-    return ReviewCandidate(
-        filing_id=1,
-        company_id=1,
-        char_position=0,
-        context_text=context_text,
-        raw_number_text="100",
-        triggering_keyword="ARR",
-        keyword_distance=5,
-        keyword_position="before",
-        parsed_value=parsed_value,
-        suggested_metric_id=suggested_metric_id,
-        suggestion_confidence=suggestion_confidence,
-        features=features,
-        candidate_id=candidate_id,
     )
 
 
@@ -233,7 +194,9 @@ class TestMatchExtractionsToGold:
 
     def test_definition_only_entries_skipped(self) -> None:
         """Gold entry with is_definition_only=True doesn't count in metrics."""
-        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100", is_def_only=True)]
+        gold = [
+            make_gold_entry(metric_id="cm_average_order_value", raw_value="100", is_def_only=True)
+        ]
         extractions: list[NormalizedExtraction] = []
 
         result = match_extractions_to_gold(extractions, gold)
@@ -316,8 +279,12 @@ class TestMatchExtractionsToGold:
             make_gold_entry(metric_id="cm_nrr", raw_value="110"),
         ]
         extractions = [
-            make_normalized(metric_id="cm_average_order_value", value=100.0, extraction_id="e1"),  # TP
-            make_normalized(metric_id="cm_average_order_value", value=200.0, extraction_id="e2"),  # FP (wrong val)
+            make_normalized(
+                metric_id="cm_average_order_value", value=100.0, extraction_id="e1"
+            ),  # TP
+            make_normalized(
+                metric_id="cm_average_order_value", value=200.0, extraction_id="e2"
+            ),  # FP (wrong val)
             # cm_nrr not extracted → FN
         ]
 
@@ -383,49 +350,6 @@ class TestNormalizedConversions:
         normalized = v2_fact_to_normalized(fact)
         assert normalized.metric_id == "cm_average_order_value"
 
-    def test_v1_candidate_default_confidence(self) -> None:
-        """None suggestion_confidence → 0.5."""
-        candidate = make_review_candidate(suggestion_confidence=None)
-        normalized = v1_candidate_to_normalized(candidate)
-        assert normalized.confidence == pytest.approx(0.5)
-
-    def test_v1_candidate_explicit_confidence(self) -> None:
-        """Explicit suggestion_confidence is preserved."""
-        candidate = make_review_candidate(suggestion_confidence=0.75)
-        normalized = v1_candidate_to_normalized(candidate)
-        assert normalized.confidence == pytest.approx(0.75)
-
-    def test_v1_candidate_table_source_type(self) -> None:
-        """Candidate with is_in_table=True → source_type='table'."""
-        candidate = make_review_candidate(is_in_table=True)
-        normalized = v1_candidate_to_normalized(candidate)
-        assert normalized.source_type == "table"
-
-    def test_v1_candidate_text_source_type(self) -> None:
-        """Candidate with is_in_table=False → source_type='text'."""
-        candidate = make_review_candidate(is_in_table=False)
-        normalized = v1_candidate_to_normalized(candidate)
-        assert normalized.source_type == "text"
-
-    def test_v1_candidate_pipeline_label(self) -> None:
-        """v1_candidate_to_normalized sets pipeline='v1'."""
-        candidate = make_review_candidate()
-        normalized = v1_candidate_to_normalized(candidate)
-        assert normalized.pipeline == "v1"
-
-    def test_v1_candidate_no_candidate_id_generates_uuid(self) -> None:
-        """Candidate with candidate_id=None gets a UUID extraction_id."""
-        candidate = make_review_candidate(candidate_id=None)
-        normalized = v1_candidate_to_normalized(candidate)
-        assert normalized.extraction_id  # non-empty
-        assert len(normalized.extraction_id) == 36  # UUID format
-
-    def test_v1_candidate_with_candidate_id(self) -> None:
-        """Candidate with candidate_id uses it as extraction_id."""
-        candidate = make_review_candidate(candidate_id=99)
-        normalized = v1_candidate_to_normalized(candidate)
-        assert normalized.extraction_id == "99"
-
 
 # =============================================================================
 # TestPartitionBySourceType
@@ -436,7 +360,9 @@ class TestPartitionBySourceType:
     def test_partitions_by_segment_type(self) -> None:
         """Gold entries with mixed segment_types get split into correct buckets."""
         gold = [
-            make_gold_entry(metric_id="cm_average_order_value", raw_value="100", segment_type="text"),
+            make_gold_entry(
+                metric_id="cm_average_order_value", raw_value="100", segment_type="text"
+            ),
             make_gold_entry(metric_id="cm_nrr", raw_value="110", segment_type="table"),
             make_gold_entry(metric_id="cm_dau", raw_value="500", segment_type="text"),
         ]
@@ -448,7 +374,6 @@ class TestPartitionBySourceType:
 
         result = partition_by_source_type(
             gold_entries=gold,
-            v1_extractions=[],
             v2_full_extractions=extractions,
             v2_text_only_extractions=None,
         )
@@ -466,7 +391,6 @@ class TestPartitionBySourceType:
 
         result = partition_by_source_type(
             gold_entries=gold,
-            v1_extractions=[],
             v2_full_extractions=[],
             v2_text_only_extractions=None,
         )
@@ -477,11 +401,14 @@ class TestPartitionBySourceType:
 
     def test_v2_text_only_none_produces_none_result(self) -> None:
         """When v2_text_only_extractions=None, v2_text_only_result is None for all buckets."""
-        gold = [make_gold_entry(metric_id="cm_average_order_value", raw_value="100", segment_type="text")]
+        gold = [
+            make_gold_entry(
+                metric_id="cm_average_order_value", raw_value="100", segment_type="text"
+            )
+        ]
 
         result = partition_by_source_type(
             gold_entries=gold,
-            v1_extractions=[],
             v2_full_extractions=[],
             v2_text_only_extractions=None,
         )
@@ -491,7 +418,9 @@ class TestPartitionBySourceType:
     def test_partition_scores_computed_per_bucket(self) -> None:
         """Each bucket gets its own MatchingResult from all extractions."""
         gold = [
-            make_gold_entry(metric_id="cm_average_order_value", raw_value="100", segment_type="text"),
+            make_gold_entry(
+                metric_id="cm_average_order_value", raw_value="100", segment_type="text"
+            ),
             make_gold_entry(metric_id="cm_nrr", raw_value="110", segment_type="chart"),
         ]
         extractions = [
@@ -501,7 +430,6 @@ class TestPartitionBySourceType:
 
         result = partition_by_source_type(
             gold_entries=gold,
-            v1_extractions=[],
             v2_full_extractions=extractions,
             v2_text_only_extractions=None,
         )
@@ -515,7 +443,6 @@ class TestPartitionBySourceType:
         """Empty gold list returns empty partition dict."""
         result = partition_by_source_type(
             gold_entries=[],
-            v1_extractions=[],
             v2_full_extractions=[],
             v2_text_only_extractions=None,
         )

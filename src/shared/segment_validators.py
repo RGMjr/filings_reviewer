@@ -8,8 +8,8 @@ Provides validation functions for inputs and outputs of extraction modules
 import os
 from pathlib import Path
 
-from .exceptions import ValidationError
-from .models import SourceSegment
+from src.shared.extraction_exceptions import ValidationError
+from src.shared.models import SourceSegment
 
 
 class SegmentValidator:

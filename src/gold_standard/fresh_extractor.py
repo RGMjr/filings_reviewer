@@ -16,13 +16,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from src.extraction.html_segmenter import HTMLSegmenter
 from src.review import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
 from src.review.models import ReviewCandidate
+from src.shared.html_segmenter import HTMLSegmenter
 
 if TYPE_CHECKING:
-    from src.extraction.models import SourceSegment
+    from src.shared.models import SourceSegment
 
 logger = logging.getLogger(__name__)
 
