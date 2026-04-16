@@ -1,8 +1,8 @@
 [
   {
-    "img_id": "ab0fc93c-c2e6-59f8-af5c-364cfb1d50e3",
+    "img_id": "f0769efd-9667-5fa2-b129-8e5ad87017cf",
     "filename": "img101078908_0.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_0.jpg",
+    "image_url": "",
     "classification": "signature",
     "relevance_score": 0.08,
     "nearby_text": "\u2022Next-Gen Payments Platform. Our platform improves the legacy accounts receivable value chain by facilitating global payment flows across multiple currencies, payment types, and payment options. We do not simply collect payments and track money flows. Rather, our clients integrate our platform into their existing apps and workflows once and have access to a full suite of solutions, including tailored invoicing, settlement and reconciliation tools, single sign-on and checkout, recurring payments, and split payouts. Our platform automates and manages the process from initial invoice delivery through payment settlement and core system reconciliation. In addition, we leverage deep data and analytics to help our clients understand their customers\u2019 historic payment behavior, facilitate transaction matching to optimize costs and offer flexible domestic and international payment plans. \u2022Proprietary Global Payment Network. At the core of our business is our network of global, regional and local banking partners which we have been strategically expanding for over a decade. With a single connection to Flywire, our clients have access to a unique set of payment methods including banks, third-party payment providers, payment networks and digital wallets\u2014making it possible to accept and settle payments in over 240 countries and territories and in over 140 currencies. Our global payment network also provides direct connections to alternative payment methods such as Alipay, Boleto, PayPal / Venmo, and Trustly. Regardless of the currency on the invoice received, our clients\u2019 customers can pay in their local currency with their preferred payment method. Additionally, our global payment network is optimized for country-specific regulatory and compliance standards which often require vertical-specific functionality and processes to serve our clients and their customers.",
@@ -13,9 +13,9 @@
     "height": 0
   },
   {
-    "img_id": "235ef11e-7e98-5490-be04-5366cfbb2c56",
+    "img_id": "29e56771-3707-58d3-a85f-605425e027df",
     "filename": "img101078908_1.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_1.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.66,
     "nearby_text": "and customer communication tools to personalize and digitize engagement. This enables us to be a hub of omni-channel connectivity, augmenting the relationship between our clients and their customers. These three core elements of our business fuel a powerful and accelerating flywheel. When we started Flywire, we built a robust payments platform that solved pain points for cross-border payments and delivered simplicity, transparency, and cost-effective solutions. Continued adoption of our payments platform has enabled us to enhance engagement with our clients, create more personalized connections for our clients\u2019 customers and extend our reach. Adding new clients and their customers builds our global scale and deepens our knowledge and expertise, enabling us to streamline and automate complex accounts receivable functions. As shown in the illustration below, as the number of clients using our next-gen payments platform grows, we are able to continue to enhance our end-to-end solutions, tailor our vertical-specific software and expand our global payment network to support more local payment types. The benefits of our flywheel are visible in the significant scale we have achieved to date. As of December 31, 2025, we serve approximately 5,000 clients around the world, excluding clients acquired from the Sertifi and Invoiced acquisitions. In education, we serve more than 3,200 institutions. In healthcare, we serve more than 150 healthcare systems, including four of the top 10 healthcare systems in the United States ranked by hospital size. In our travel and B2B verticals, we have a growing portfolio of approximately 1,600 clients. Our business model is designed to encourage rapid, widespread utilization of our solutions. We enable our clients to scale the use of Flywire to an unlimited number of customers with favorable unit economics. For the years ended December 31, 2025 and 2024, we enabled over $37.6 billion and over $29.7 billion, respectively, of total payment volume across more than 140 currencies.",
@@ -26,9 +26,9 @@
     "height": 0
   },
   {
-    "img_id": "2713e9f8-0439-591c-bbd3-bcce1934e4d9",
+    "img_id": "4ede8465-a72f-523d-be7b-242fa078114d",
     "filename": "img101078908_2.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_2.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.66,
     "nearby_text": "\u2022unified reporting and analytics tools through direct integrations to client back-end infrastructure. Below is a sample funds flow for a traveler from Australia taking a ski vacation in Japan paying in their local currency and with their preferred method of payment, such as a bank transfer of Australian Dollars to Japanese Yen, without incurring hidden fees, and with exchange rate protection. The illustration shows how our next-gen payments platform can be configured and activated at the client level, and deliver a seamless experience from any country of payment or receipt. In addition to international expansion, we are accelerating the growth of our in-country domestic accounts receivable business with the goal of both selling new solutions to existing clients and gaining new clients. Many of our clients who successfully use our payments platform to process cross-border payments require a similar solution for in-country domestic payments, which have similar challenges: they are reliant on home-grown or legacy solutions with limited or inflexible capabilities and often require time consuming manual updates. With our payments platform, clients are able to streamline payment processes and offer their customers flexible payment options, without the expense of building their own systems\u2014for both in-country domestic and cross-border transactions. Proprietary Global Payment Network",
@@ -39,9 +39,9 @@
     "height": 0
   },
   {
-    "img_id": "1f4df928-40dc-5a77-836f-573dc8925cdc",
+    "img_id": "185eb45d-2446-5e5b-8b7f-f21582f563ec",
     "filename": "img101078908_3.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_3.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.66,
     "nearby_text": "\u2022Predictive analytics. We have robust predictive analytics capabilities to assess payment transactions across our client base and to intelligently determine the appropriate pricing or payment plans. For example, in healthcare, we have built a personalization engine that enables hospitals and healthcare systems to better predict a patient\u2019s capacity to pay and tailor the payment options they are offered, all in accordance with the hospital\u2019s business rules. Below is an illustration of how a large hospital client utilizes our software to personalize patient engagement with payment options and billing conversations. We solve capacity to pay for our clients\u2019 customers (with payment plans or other intelligent promotional financing) and we engage with them through their preferred communication methods (e.g., SMS, chat, email, text, or phone). In turn, our clients are able to maximize yield on their accounts receivable potential, resulting in higher net payments, lower call volume, lower debt outstanding and most importantly, lower costs and happier patients. Our Industry We believe Flywire plays a critical role in helping digitize transactions in traditionally underserved markets, facilitating in-country domestic and cross-border invoicing and payments, automating reconciliation, and providing a seamless experience for our clients\u2019 customers. Our ability to deliver the most important and complex payments both domestically and internationally has become increasingly valued by our clients due to the following trends:",
@@ -52,9 +52,9 @@
     "height": 0
   },
   {
-    "img_id": "2902b406-e779-5ba1-8c2f-d83dfe7ac39a",
+    "img_id": "e888ab8b-9b55-5881-a913-6ce5edcc784f",
     "filename": "img101078908_4.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_4.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.58,
     "nearby_text": "Domestic Payment Example: The example below illustrates the process of offering payment plans to domestic students, which can be set up by either the school or the student. From the same payments platform, we manage the entire payment process for our clients with the only difference being the type of payment offering selected to meet the needs of their customers, whether that be international or domestic.",
@@ -65,9 +65,9 @@
     "height": 0
   },
   {
-    "img_id": "4f311f56-457f-5976-b192-34e7ddda6d27",
+    "img_id": "307e4ceb-a757-549c-80e2-2e86f9d76ba8",
     "filename": "img101078908_5.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_5.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.58,
     "nearby_text": "Domestic Payment Example: The example below illustrates the process of offering payment plans to domestic students, which can be set up by either the school or the student. From the same payments platform, we manage the entire payment process for our clients with the only difference being the type of payment offering selected to meet the needs of their customers, whether that be international or domestic. Our Go-To-Market Strategy",
@@ -78,9 +78,9 @@
     "height": 0
   },
   {
-    "img_id": "34545f1c-2c2b-54fa-81e7-260ba6b8dc8c",
+    "img_id": "ad9e8a26-fe2f-5889-a98b-18aa59ed29fa",
     "filename": "img101078908_6.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_6.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "Our technology stack is comprised of the following: Payments-as-a-Service Our next-gen payments platform includes the infrastructure required to support more than just simple money flows:",
@@ -91,22 +91,22 @@
     "height": 0
   },
   {
-    "img_id": "816741bd-6bf7-532e-ba91-5439bee2a134",
+    "img_id": "37650f55-af6a-5ef7-bf2f-d71ca555f244",
     "filename": "img101078908_7.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_7.jpg",
+    "image_url": "",
     "classification": "table_image",
     "relevance_score": 0.4,
     "nearby_text": "Issuer Purchases of Equity Securities The following table summarizes the repurchases of voting common stock during the three months ended December 31, 2025 (in thousands, except shares and per share amounts):",
     "section_type": "unknown",
-    "ocr_text": "I'm unable to provide the exact OCR data from images. However, I can help you interpret or analyze the image to a certain extent based on general observations. If you have any specific questions or need analysis on certain parts, feel free to ask!",
+    "ocr_text": "",
     "dom_locator": "/html/body[1]/div[249]/p[1]/img[1]",
     "width": 0,
     "height": 0
   },
   {
-    "img_id": "6d1f7700-6d77-5f00-85a1-b91a816ad5d4",
+    "img_id": "be168aa1-a1f5-5a99-87ee-05395fb5354a",
     "filename": "img101078908_8.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1580560/000119312526067540/img101078908_8.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.58,
     "nearby_text": "The combination of our differentiated solution and efficient go-to-market strategy has resulted in strong and consistent client growth. \u2022Rapid domestic and international payments volume growth. We have grown our total payment volume by approximately 26.4% period-over-period from $29.7 billion during the year ended December 31, 2024 to $37.6 billion during the year ended December 31, 2025. We have grown our total payment volume by approximately 23.6% period-over-period from $24.0 billion during the year ended December 31, 2023 to $29.7 billion during the year ended December 31, 2024.",

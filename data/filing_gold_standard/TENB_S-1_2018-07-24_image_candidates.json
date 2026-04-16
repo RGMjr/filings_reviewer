@@ -1,8 +1,8 @@
 [
   {
-    "img_id": "644cb48f-1b5b-5cc5-b251-43faf609aaab",
+    "img_id": "f7e54c48-e044-59fa-aec1-f747b51db4e2",
     "filename": "g548092g85o93.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g548092g85o93.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "(Subject to Completion) Issued July 24, 2018 10,900,000 Shares COMMON STOCK Tenable Holdings, Inc. is offering 10,900,000 shares of its common stock. This is our initial public offering, and no public market currently exists for our shares of common stock. We anticipate that the initial public offering price will be between $20.00 and $22.00 per share.",
@@ -13,22 +13,22 @@
     "height": 0
   },
   {
-    "img_id": "91bf2e46-2989-5ffb-88eb-1cf7022553cb",
+    "img_id": "3a7587f4-1095-56d8-9ea8-f7d75c31875a",
     "filename": "g5480921.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g5480921.jpg",
+    "image_url": "",
     "classification": "table_image",
     "relevance_score": 0.4,
     "nearby_text": "Table of Contents Table of Contents tenable\u00ae Empowering organization to understand and reduce their cybersecurity risk Table of Contents",
     "section_type": "unknown",
-    "ocr_text": "I'm unable to analyze specific table images or extract text in real-time. The image you uploaded is a graphic related to \"tenable,\" which seems to be a brand or logo image, not a table. If you have another image or further details, feel free to share!",
+    "ocr_text": "",
     "dom_locator": "/html/body[1]/document[1]/type[1]/sequence[1]/filename[1]/description[1]/text[1]/p[3]/img[1]",
     "width": 0,
     "height": 0
   },
   {
-    "img_id": "cf2bc702-e0db-5f1a-9176-32a7c06bc93a",
+    "img_id": "9978c764-9f1f-56e5-8a4b-c6af99310d70",
     "filename": "g5480922.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g5480922.jpg",
+    "image_url": "",
     "classification": "table_image",
     "relevance_score": 0.4,
     "nearby_text": "tenable\u00ae Empowering organization to understand and reduce their cybersecurity risk Table of Contents Cyber Exposure Transforming how security is managed and measured 300 276 416 435 Cyber Exposure Trend 13.121 Total Assets Locations with High Cyber Exposure 5569 4932 Seattle 300 Los Angeles 270 New York 276 London 416 Shanghai 435 270 EXPOSURE SCORES Urgent Issues 3 CVE DESCRIPTION CVE-2016-4000 MS15-054: Vulnerability Microsoft CVE-2017-8896 MS14-052: Vulnerability in Group CVE-2016-7830 Wireshark 1.12.x<1.12.8 pcapng File 502 331 Cyber Exposure Score 700 Industry Average 600 500 400 300 200 100 0 1/1/18 2/1/18 3/1/18 4/1/18 5/1/18 6/1/18 Network Infrastructure Web Application Mobile Device IT Cloud IoT Laptop and Desktop Cloud Container Infrastructure Industrial Control System Enterprise IoT Unified visibility across the modern attack surface Translating vulnerability data into actionable business insights Server Table of Contents",
@@ -39,9 +39,9 @@
     "height": 0
   },
   {
-    "img_id": "08a0db49-a443-537d-b6e9-b9cf27611a4c",
+    "img_id": "c0315fc9-90b0-522d-84e7-c6407c6c2b2a",
     "filename": "g548092g31c30.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g548092g31c30.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.74,
     "nearby_text": "The following graphic illustrates the number of cumulative free Nessus unique downloads from 2004 through 2017: We believe that the cumulative number of unique downloads of the free version of Nessus is representative of our brand recognition among cybersecurity professionals and that continued growth in this number suggests broader awareness among potential customers. While we believe that the cumulative number of unique downloads may provide an indication of the growth and scale of our thought leadership and brand awareness, we do not expect this metric to necessarily correlate to future revenue growth opportunities, and we do not consider this metric a measure of our operating performance. The following are key company milestones:",
@@ -52,9 +52,9 @@
     "height": 0
   },
   {
-    "img_id": "1d63ff88-3aff-5ba6-b51e-55a3dcf005f3",
+    "img_id": "76a4b63a-f383-5650-a925-bfc5032ab4fa",
     "filename": "g548092g32x70.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g548092g32x70.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.8200000000000001,
     "nearby_text": "enterprise platform ARR as subscription and maintenance payments we would contractually expect to receive from enterprise platform customers over the following 12 months. Each cohort represents customers that made their initial purchase from us during a given year. For example, the 2014 cohort represents all customers that made their initial purchase from us between January 1, 2014 and December 31, 2014. We believe our ability to expand sales with customers is most effectively measured by our dollar-based net expansion rate. We utilize dollar-based net expansion rate to measure the long-term value of our customer relationships because it is driven by our ability to retain and expand the revenue generated from our existing customers. We calculate our dollar-based net expansion rate as follows:",
@@ -65,9 +65,9 @@
     "height": 0
   },
   {
-    "img_id": "a7ce5e6d-f6c6-5021-94cf-aa02a456f014",
+    "img_id": "1b63af1a-82d8-5d3b-9ce3-ab8f27af47ef",
     "filename": "g548092g40x17.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g548092g40x17.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.5,
     "nearby_text": "We offer the first and only Cyber Exposure platform. Our enterprise platform offerings, including Tenable.io, SecurityCenter and Industrial Security, are built to provide organizations with the breadth of visibility to accurately understand both traditional and modern attack surfaces and the depth of insight that stems from risk-based analytics, prioritization and benchmarking. Our Cyber Exposure platform automatically discovers assets, including those in cloud environments, and assesses these assets for the presence of vulnerabilities, internal and regulatory compliance violations, misconfigurations and other cybersecurity issues, analyzes and prioritizes cybersecurity risks based on business risk and provides an objective way to measure an organization\u2019s cyber exposure. The following diagram is a visual representation of our platform: 92",
@@ -78,9 +78,9 @@
     "height": 0
   },
   {
-    "img_id": "13bb5546-de46-52d8-8231-bdd1e0311f89",
+    "img_id": "7c4f2e44-3854-5973-bdc5-b4e299ac41bc",
     "filename": "g548092g01f74.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g548092g01f74.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "The foundation of our enterprise platform is our collection of data sensors: 93",
@@ -91,27 +91,27 @@
     "height": 0
   },
   {
-    "img_id": "0c7c64de-3ccf-5d1e-9904-0cba9e19e004",
+    "img_id": "d0d62c4c-dcd2-5bb0-9b71-d150bdaca967",
     "filename": "g548092egate3.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g548092egate3.jpg",
+    "image_url": "",
     "classification": "table_image",
     "relevance_score": 0.4,
     "nearby_text": "Table of Contents Table of Contents tenable\u00ae First Data uses Tenable to safeguard its global networks and operate more efficiently Nasdaq uses Tenable to secure IT and public cloud workloads globally, serving as a key provider of insight into Cyber Exposure against active cybersecurity threats TriMet uses Tenable to secure its modern attack surface, from IT to OT, and better understand cybersecurity risk as it continues its digital transformation First data, Nasdaq Table of Contents",
     "section_type": "unknown",
-    "ocr_text": "I'm unable to analyze or extract text from this image as it doesn't appear to contain a traditional table structure. It seems more like a graphic with several sections of text. Let me know if there's anything else you'd like help with!",
+    "ocr_text": "",
     "dom_locator": "/html/body[1]/document[1]/type[1]/sequence[1]/filename[1]/description[1]/text[1]/p[192]/img[1]",
     "width": 0,
     "height": 0
   },
   {
-    "img_id": "4d91b491-f3c2-5c93-9632-ae1307db15a5",
+    "img_id": "93273ba6-d79a-5c72-95cc-70397f0f5a09",
     "filename": "g5480924.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1660280/000119312518224207/g5480924.jpg",
+    "image_url": "",
     "classification": "table_image",
     "relevance_score": 0.4,
     "nearby_text": "tenable\u00ae First Data uses Tenable to safeguard its global networks and operate more efficiently Nasdaq uses Tenable to secure IT and public cloud workloads globally, serving as a key provider of insight into Cyber Exposure against active cybersecurity threats TriMet uses Tenable to secure its modern attack surface, from IT to OT, and better understand cybersecurity risk as it continues its digital transformation First data, Nasdaq Table of Contents tenable\u00ae Table of Contents",
     "section_type": "unknown",
-    "ocr_text": "The provided image does not contain a table or any text suitable for OCR extraction. It's simply a logo image of \"tenable\u00ae\" without textual data or a tabular structure.\n\nThus, there's no applicable JSON output for OCR data extraction. If you have a different image with tabular data, please share that for analysis.",
+    "ocr_text": "",
     "dom_locator": "/html/body[1]/document[1]/type[1]/sequence[1]/filename[1]/description[1]/text[1]/p[195]/img[1]",
     "width": 0,
     "height": 0
