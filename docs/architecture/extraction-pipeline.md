@@ -10,7 +10,7 @@
 
 This document specifies the architecture and implementation of the metric extraction pipeline. The pipeline transforms SEC filing HTML into structured, analysis-ready metrics data through a series of modular processing stages.
 
-**V2 is the sole production pipeline.** V1 has been retired and its code is kept in `src/extraction/` for historical reference only. See the [Appendix](#appendix-v1-pipeline-retired) at the bottom of this document for V1 stage documentation.
+**V2 is the sole production pipeline.** V1 has been retired and the `src/extraction/` package has been deleted. See the [Appendix](#appendix-v1-pipeline-retired) at the bottom of this document for V1 stage documentation.
 
 ### Pipeline Principles
 
@@ -171,6 +171,9 @@ The V2 pipeline (`src/extraction_v2/`) implements a 13-stage extraction workflow
 - header_path: e.g., `"Revenue" > "Q4 2024"`
 - stub_path: e.g., `"Customer Metrics" > "New Customers"`
 - Enables precise value-to-header binding
+- Column-scan broadcasting is guarded by two complementary checks:
+  1. `_stub_matches_different_metric` in `value_binding.py` — suppresses binding when the row stub starts with another tracked metric's specific_pattern.
+  2. `_stub_is_financial_line_item` / `_FINANCIAL_LINE_ITEM_STUB_RE` in `value_binding.py` — suppresses binding when the row stub is a financial statement line item (margin, EBITDA, gross profit, accounts payable, etc.) that should never bind to a customer/count metric. Allow-list in `_FINANCIAL_LINE_ITEM_STUB_ALLOW` for metrics whose stubs legitimately contain these terms. Defense-in-depth FP rule `_rule_stub_financial_line_item` in `false_positive_filter.py` provides a second layer.
 
 **ImageAsset:** Extracted image with classification and OCR results
 - Classification: chart, table_image, decorative, logo, signature

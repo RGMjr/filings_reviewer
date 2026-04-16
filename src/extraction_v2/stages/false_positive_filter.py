@@ -30,6 +30,10 @@ from typing import TYPE_CHECKING, Any
 
 from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import BoundValue, SectionType, Unit
+from src.extraction_v2.stages.value_binding import (
+    _FINANCIAL_LINE_ITEM_STUB_ALLOW,
+    _FINANCIAL_LINE_ITEM_STUB_RE,
+)
 from src.extraction_v2.unit_compatibility import _PERCENT_ONLY_METRICS
 from src.review.false_positive_filter import FalsePositiveFilter
 from src.review.number_parsing import NumberMatch
@@ -1534,6 +1538,34 @@ def _rule_stub_metric_contradiction(
     return None
 
 
+def _rule_stub_financial_line_item(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block table column-header bindings where source text contains a financial
+    statement line-item label (margin, EBITDA, gross profit, accounts payable, etc.).
+
+    For table_header bindings, source_text = header_path + stub_path + cell_text.
+    The metric keyword that triggered the binding is in header_path (column). When
+    source_text contains financial line-item terms, they are virtually always in
+    stub_path (row label), indicating the bound row belongs to a different metric.
+
+    Defense-in-depth complement to the upstream _bind_cells guard in value_binding.py.
+    Not applied to metrics in _FINANCIAL_LINE_ITEM_STUB_ALLOW.
+    """
+    if metric_id in _FINANCIAL_LINE_ITEM_STUB_ALLOW:
+        return None
+    if bv.binding_type != "table_header":
+        return None
+    if bv.source_locator.table_id is None:
+        return None
+    if not source_text:
+        return None
+    m = _FINANCIAL_LINE_ITEM_STUB_RE.search(source_text)
+    if m:
+        return f"v2_financial_line_item_stub:{m.group(0).lower()}"
+    return None
+
+
 def _rule_revenue_per_customer_fin_annotation(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
@@ -1646,6 +1678,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("chart_pricing_label", _rule_chart_pricing_label, True),
     ("tam_market_size", _rule_tam_market_size, True),
     ("stub_metric_contradiction", _rule_stub_metric_contradiction, False),
+    ("stub_financial_line_item", _rule_stub_financial_line_item, False),
 ]
 
 # Rules skipped in relaxed mode per document type.
