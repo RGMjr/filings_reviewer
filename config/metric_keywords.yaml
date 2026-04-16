@@ -720,6 +720,10 @@ cm_ltv_to_cac_ratio:
     - '\bltv\s*[:/]\s*cac(?:\s+ratio)?\b'
     - '\bltv\s+to\s+cac(?:\s+ratio)?\b'
     - '\blifetime\s+value\s+to\s+acquisition\s+cost\b'
+  specific_patterns:
+    - 'ltv\s*[:/]\s*cac\s+ratio'
+    - 'ltv\s+to\s+cac\s+ratio'
+    - 'lifetime\s+value\s+to\s+acquisition\s+cost'
 
 cm_ltv_to_cac_ratio_by_cohort:
   tier: 1
