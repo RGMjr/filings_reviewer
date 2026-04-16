@@ -2,7 +2,7 @@
 
 **Last Updated:** 2024-12-24
 
-> **Note:** This runbook was originally written for the V1 extraction pipeline and has been partially updated for V2. The V2 extraction pipeline (`src/extraction_v2/`) is now the sole production pipeline. V1 (`src/extraction/`) is retained for historical reference only. Where this document references V1 modules directly, treat those references as informational context rather than actionable instructions.
+> **Note:** This runbook was originally written for the V1 extraction pipeline and has been partially updated for V2. The V2 extraction pipeline (`src/extraction_v2/`) is now the sole production pipeline. V1 (`src/extraction/`) has been **deleted** from the repository. Where this document references V1 modules directly, treat those references as historical context only — the files no longer exist.
 
 This runbook documents the correct procedures for re-extracting and re-segmenting filings. **Following these procedures is critical** to avoid stale data issues.
 

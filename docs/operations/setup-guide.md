@@ -327,4 +327,4 @@ ruff check src/ tests/
 mypy src/review/ --strict
 ```
 
-Code style targets Python 3.11, line length 100. The `src/extraction/` (V1) directory is excluded from coverage and type checking.
+Code style targets Python 3.11, line length 100. The V1 `src/extraction/` package has been deleted; V1 modules that are still used moved to `src/shared/`.
