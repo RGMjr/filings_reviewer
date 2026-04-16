@@ -6,14 +6,9 @@ API endpoints for AJAX decision submission are in api.py.
 """
 
 import logging
-from datetime import datetime
-from decimal import Decimal
-
-# Import needed for type annotations
-from typing import TypedDict
 
 import nh3
-from flask import Blueprint, flash, g, redirect, request, url_for
+from flask import Blueprint, flash, redirect, request, url_for
 from markupsafe import Markup, escape
 
 from src.web.app import get_db
@@ -100,191 +95,33 @@ def _log_request_complete(response):
 
 
 # =============================================================================
-# Template Data Contracts (TypedDict)
-# =============================================================================
-# These TypedDict classes document the structure of data passed to templates.
-# They serve as both documentation and enable type checking.
-
-
-class PaginationData(TypedDict, total=False):
-    """Pagination metadata passed to templates.
-
-    Used by: filing_list.html
-
-    Note: Uses total=False because total_count, total_pages, has_prev, has_next
-    are only included when total_count is known.
-    """
-
-    # Always present
-    page: int  # Current page number (1-indexed)
-    per_page: int  # Items per page
-    offset: int  # Database query offset
-    limit: int  # Database query limit (same as per_page)
-
-    # Present only when total_count is known
-    total_count: int  # Total number of items
-    total_pages: int  # Total number of pages
-    has_prev: bool  # Whether there is a previous page
-    has_next: bool  # Whether there is a next page
-
-
-class ReviewProgress(TypedDict):
-    """Overall review progress across all filings.
-
-    Used by: filing_list.html
-    """
-
-    total_candidates: int  # Total candidates across all filings
-    pending_count: int  # Number of pending candidates
-    reviewed_count: int  # Number of reviewed candidates
-    skipped_count: int  # Number of skipped candidates
-    review_pct: float  # Percentage reviewed (0-100)
-    total_filings: int  # Total filings with candidates
-    filings_with_pending: int  # Filings that still have pending candidates
-
-
-class FilingListItem(TypedDict):
-    """Structure of a filing item in the filing list.
-
-    Used by: filing_list.html (in filings array)
-    """
-
-    filing_id: int
-    company_id: int
-    company_name: str
-    cik: str
-    accession_number: str
-    form_type: str
-    filing_date: datetime
-    total_candidates: int  # Total candidates for this filing
-    pending_count: int  # Pending candidates for this filing
-    reviewed_count: int  # Reviewed candidates for this filing
-    review_status: str  # Overall status: 'pending' or 'reviewed'
-    extraction_date: datetime  # When candidates were extracted (MIN created_at)
-
-
-class FilingData(TypedDict):
-    """Filing metadata passed to review interface.
-
-    Used by: review.html
-    """
-
-    filing_id: int
-    company_id: int
-    company_name: str
-    cik: str
-    accession_number: str
-    form_type: str
-    filing_date: datetime
-    file_path: str
-    status: str
-    total_pages: int | None
-    html_fetched: bool
-    sec_html_url: str | None  # Direct URL to primary HTML document on SEC EDGAR
-    created_at: datetime
-    updated_at: datetime
-
-
-class CandidateData(TypedDict, total=False):
-    """Structure of a review candidate with optional segment and decision fields.
-
-    Used by: review.html (in candidates array and current_candidate)
-
-    Note: Uses total=False because segment fields (segment_type, segment_html)
-    and decision fields (decision_id, decision, etc.) may be NULL depending on
-    whether the candidate has a source_segment_id or has been reviewed.
-    """
-
-    # Core candidate fields (always present)
-    candidate_id: int
-    filing_id: int
-    company_id: int
-    char_position: int
-    context_text: str
-    raw_number_text: str
-    triggering_keyword: str
-    keyword_distance: int
-    keyword_position: str
-    parsed_value: Decimal
-    parsed_unit: str | None
-    suggested_metric_id: str
-    suggestion_confidence: float
-    review_status: str  # 'pending', 'reviewed', 'skipped'
-    created_at: datetime
-
-    # Segment fields (from LEFT JOIN to source_segments)
-    segment_type: str | None  # 'table', 'paragraph', etc. - NULL if no source_segment_id
-    segment_html: str | None  # Raw HTML of segment - NULL if no source_segment_id
-    segment_html_table_only: (
-        str | None
-    )  # Table HTML preserved for dual display when value is truncated
-    features: dict | None  # JSONB features for ML pattern analysis
-
-    # Decision fields (present only if reviewed - from LEFT JOIN)
-    decision_id: int | None
-    decision: str | None  # 'accept', 'reject', 'reclassify'
-    assigned_metric_id: str | None
-    rejection_category: str | None
-    rejection_reason: str | None
-    reviewer_notes: str | None
-    reviewer_id: str | None
-    review_time_seconds: int | None
-    decision_created_at: datetime | None
-
-
-class DecisionData(TypedDict):
-    """Existing decision data for a reviewed candidate.
-
-    Used by: review.html (existing_decision)
-    """
-
-    decision_id: int
-    decision: str  # 'accept', 'reject', 'reclassify'
-    assigned_metric_id: str | None
-    rejection_category: str | None
-    rejection_reason: str | None
-    reviewer_notes: str | None
-    reviewer_id: str | None
-    review_time_seconds: int | None
-    created_at: datetime | None
-
-
-class MetricData(TypedDict):
-    """Active metric data for reclassify dropdown.
-
-    Used by: review.html (in metrics array)
-    """
-
-    metric_id: str
-    display_name: str
-    metric_class: str  # 'core', 'extended', etc.
-    primary_concept: str
-
-
-# =============================================================================
 # Page Routes
 # =============================================================================
 
 
 @review_bp.route("/")
+# DEPRECATED: V1 redirect, remove after 2026-07
 def index():
     """Redirect root to V2 filing list."""
     return redirect(url_for("review_unified.filing_list"))
 
 
 @review_bp.route("/filings")
+# DEPRECATED: V1 redirect, remove after 2026-07
 def filing_list():
     """Redirect to unified filing list."""
     return redirect(url_for("review_unified.filing_list"), 301)
 
 
 @review_bp.route("/review/<int:filing_id>")
+# DEPRECATED: V1 redirect, remove after 2026-07
 def review_filing(filing_id: int):
     """Redirect to unified review (text tab)."""
     return redirect(url_for("review_unified.review_filing", filing_id=filing_id, tab="text"), 301)
 
 
 @review_bp.route("/stats")
+# DEPRECATED: V1 redirect, remove after 2026-07
 def stats():
     """Redirect to unified stats."""
     return redirect(url_for("review_unified.stats"), 301)
@@ -298,6 +135,9 @@ def stats():
 @review_bp.route("/review/<int:filing_id>/next")
 def next_candidate(filing_id: int):
     """Navigate to next pending candidate, respecting active filters."""
+    logger.warning(
+        "V1 nav route '%s' accessed — should be unreachable post-V1-cutover", request.path
+    )
     db = get_db()
     current_id_raw = request.args.get("current_id", type=int)
 
@@ -349,6 +189,9 @@ def next_candidate(filing_id: int):
 @review_bp.route("/review/<int:filing_id>/candidate/<int:candidate_id>")
 def jump_to_candidate(filing_id: int, candidate_id: int):
     """Jump to specific candidate (canonical URL)."""
+    logger.warning(
+        "V1 nav route '%s' accessed — should be unreachable post-V1-cutover", request.path
+    )
     db = get_db()
 
     try:
@@ -380,131 +223,6 @@ def jump_to_candidate(filing_id: int, candidate_id: int):
 # =============================================================================
 
 # _validate_positive_int is imported from src.web.utils (re-exported at module top).
-
-
-def _paginate(page: int = 1, per_page: int = 50, total_count: int | None = None) -> PaginationData:
-    """
-    Calculate pagination metadata.
-
-    Args:
-        page: Current page number (1-indexed)
-        per_page: Items per page
-        total_count: Total number of items (if known)
-
-    Returns:
-        PaginationData with offset, limit, page, per_page, total_pages (if total_count provided)
-    """
-    page = max(1, page)  # Ensure page >= 1
-    per_page = max(1, min(100, per_page))  # Clamp between 1 and 100
-
-    offset = (page - 1) * per_page
-
-    result = {
-        "page": page,
-        "per_page": per_page,
-        "offset": offset,
-        "limit": per_page,
-    }
-
-    if total_count is not None:
-        result["total_count"] = total_count
-        result["total_pages"] = (total_count + per_page - 1) // per_page
-        result["has_prev"] = page > 1
-        result["has_next"] = page < result["total_pages"]
-
-    return result
-
-
-def _select_current_candidate(
-    candidates: list[CandidateData], requested_id: int | None
-) -> CandidateData | None:
-    """
-    Select the current candidate to display from a list of candidates.
-
-    Logic:
-    1. If requested_id provided and found → return that candidate
-    2. If requested_id provided but not found → flash warning, return first pending
-    3. If no requested_id → return first pending
-    4. If no pending candidates → return first candidate (or None if empty)
-
-    Args:
-        candidates: List of all candidates for the filing
-        requested_id: Candidate ID requested via query parameter (or None)
-
-    Returns:
-        The candidate to display, or None if candidates list is empty
-    """
-    if not candidates:
-        return None
-
-    if requested_id:
-        # Try to find the requested candidate
-        current = next(
-            (c for c in candidates if c["candidate_id"] == requested_id),
-            None,
-        )
-        if current:
-            return current
-
-        # Requested candidate not found, show warning and fall back
-        flash("Candidate not found, showing first pending", "warning")
-
-    # Return first pending candidate, or first candidate if none pending
-    return next(
-        (c for c in candidates if c["review_status"] == "pending"),
-        candidates[0],
-    )
-
-
-def _calculate_review_progress(candidates: list[CandidateData]) -> tuple[int, int, int]:
-    """
-    Calculate review progress from a list of candidates.
-
-    Args:
-        candidates: List of candidates with review_status field
-
-    Returns:
-        Tuple of (total_candidates, reviewed_count, pending_count)
-    """
-    total_candidates = len(candidates)
-    reviewed_count = sum(1 for c in candidates if c["review_status"] == "reviewed")
-    pending_count = sum(1 for c in candidates if c["review_status"] == "pending")
-
-    return total_candidates, reviewed_count, pending_count
-
-
-def _extract_decision_from_candidate(candidate: CandidateData | None) -> DecisionData | None:
-    """
-    Extract decision data from a candidate record.
-
-    Candidates from get_review_candidates_with_decisions() include decision fields
-    from a LEFT JOIN. This function extracts those fields into a separate dict.
-
-    **IMPORTANT**: Automated decisions (reviewer_id='hrv5_script') are treated as
-    suggestions that can be overridden by humans. They are returned so the UI can
-    display them, but the template should allow human reviewers to override them.
-
-    Args:
-        candidate: Candidate record with optional decision fields
-
-    Returns:
-        DecisionData dict if candidate has a decision, None otherwise
-    """
-    if not candidate or not candidate.get("decision_id"):
-        return None
-
-    return {
-        "decision_id": candidate["decision_id"],
-        "decision": candidate["decision"],
-        "assigned_metric_id": candidate.get("assigned_metric_id"),
-        "rejection_category": candidate.get("rejection_category"),
-        "rejection_reason": candidate.get("rejection_reason"),
-        "reviewer_notes": candidate.get("reviewer_notes"),
-        "reviewer_id": candidate.get("reviewer_id"),
-        "review_time_seconds": candidate.get("review_time_seconds"),
-        "created_at": candidate.get("decision_created_at"),
-        "is_automated": candidate.get("reviewer_id") == "hrv5_script",  # Flag automated decisions
-    }
 
 
 def _find_next_candidate(
@@ -599,74 +317,6 @@ def _find_next_candidate(
         # Current candidate not in filtered list (e.g., just reviewed it, or no current_id)
         # Return the first candidate in the filtered list
         return candidates[0]
-
-
-def _resolve_sec_filing_url(cik: str, accession_number: str, stored_url: str | None = None) -> str:
-    """
-    Resolve the correct SEC filing URL for the primary document.
-
-    Uses the latest S-1/S-1/A/F-1/F-1/A for the company so the link always
-    points to the most current version of the registration statement.
-
-    Args:
-        cik: Company CIK (can be any format, will be normalized)
-        accession_number: SEC accession number (with dashes, used for fallback)
-        stored_url: Optional stored URL from database (used as fallback)
-
-    Returns:
-        URL to the primary HTML document, or fallback to directory URL
-    """
-    import os
-
-    from src.infra.sec_client import SECClient
-
-    try:
-        user_agent = os.environ.get("SEC_USER_AGENT", "filings-reviewer info@example.com")
-        client = SECClient(user_agent=user_agent)
-
-        latest = client.get_latest_registration_filing(cik)
-        if latest and latest.primary_doc_url:
-            logger.debug(f"Resolved latest SEC filing URL: {latest.primary_doc_url}")
-            return latest.primary_doc_url
-
-    except Exception as e:
-        logger.warning(f"Failed to resolve latest SEC filing URL for CIK {cik}: {e}")
-
-    # Fallback: if stored URL exists and doesn't look like hardcoded primary.htm, use it
-    if stored_url and "primary.htm" not in stored_url.lower():
-        return stored_url
-
-    # Final fallback: directory URL
-    accession_no_dashes = accession_number.replace("-", "")
-    return f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{accession_no_dashes}/"
-
-
-def _get_active_metrics() -> list[MetricData]:
-    """
-    Get list of active metrics for dropdown.
-
-    Cached in Flask g object to avoid repeated queries.
-    Returns list sorted by logical grouping (customer count, transactions, revenue, etc.).
-
-    Ordering is generated dynamically from METRIC_DISPLAY_ORDER dict - the single source
-    of truth for dropdown ordering. See _build_metric_order_clause() for SQL generation.
-
-    Returns:
-        List[MetricData]: Active metrics with metric_id, display_name, metric_class, primary_concept
-    """
-    if "metrics" not in g:
-        db = get_db()
-        # Build ORDER BY clause from METRIC_DISPLAY_ORDER (single source of truth)
-        order_clause = _build_metric_order_clause()
-        metrics_sql = f"""
-            SELECT metric_id, display_name, metric_class, primary_concept
-            FROM metrics
-            WHERE status = 'active'
-            ORDER BY {order_clause}
-        """
-        g.metrics = db.query(metrics_sql)
-
-    return g.metrics
 
 
 # Metric ordering for dropdowns - semantic grouping by business category.

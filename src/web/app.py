@@ -464,52 +464,7 @@ def _register_context_processors(app: Flask) -> None:
 
 def _register_template_filters(app: Flask) -> None:
     """Register custom Jinja2 template filters."""
-
-    @app.template_filter("highlight_context")
-    def highlight_context_filter(context_text, raw_number_text, triggering_keyword):
-        """
-        Jinja2 filter to highlight number and keyword in context text.
-
-        Usage in template:
-            {{ candidate.context_text|highlight_context(
-                 candidate.raw_number_text,
-                 candidate.triggering_keyword
-               )|safe }}
-
-        Args:
-            context_text: The surrounding text context
-            raw_number_text: Exact number text to highlight
-            triggering_keyword: Metric keyword to underline
-
-        Returns:
-            Markup: HTML-safe string with highlighted number and keyword
-        """
-        from src.web.routes.review import _highlight_context
-
-        return _highlight_context(context_text, raw_number_text, triggering_keyword)
-
-    @app.template_filter("highlight_html")
-    def highlight_html_filter(html_content, raw_number_text, triggering_keyword):
-        """
-        Jinja2 filter to highlight number and keyword in HTML content (tables).
-
-        Usage in template:
-            {{ candidate.segment_html|highlight_html(
-                 candidate.raw_number_text,
-                 candidate.triggering_keyword
-               )|safe }}
-
-        Args:
-            html_content: HTML content (e.g., table markup)
-            raw_number_text: Exact number text to highlight
-            triggering_keyword: Metric keyword to underline
-
-        Returns:
-            Markup: HTML string with highlighted number and keyword
-        """
-        from src.web.routes.review import _highlight_html
-
-        return _highlight_html(html_content, raw_number_text, triggering_keyword)
+    # highlight_context and highlight_html filters removed 2026-07 (V1 review.html no longer rendered)
 
 
 # Convenience function for running directly
