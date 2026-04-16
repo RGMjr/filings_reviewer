@@ -3,7 +3,7 @@
 # (in addition to requirements.txt or requirements.lock for production deps)
 
 # Test framework
-pytest>=7.4.0
+pytest>=9.0.3
 
 # Coverage reporting
 pytest-cov>=4.1.0
