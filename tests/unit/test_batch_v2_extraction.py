@@ -492,3 +492,96 @@ class TestSummaryJSON:
         assert len(data["per_filing"]) == 2
         assert "run_date" in data
         assert "duration_seconds" in data
+
+
+class TestProcessFilingWorkerHtmlFallback:
+    """Tests for the DB html_content fallback when disk file is absent."""
+
+    def _make_pipeline_result(self):
+        result = MagicMock()
+        result.success = True
+        result.fact_count = 3
+        result.facts = []
+        result.definitions = []
+        result.segments = []
+        result.error_message = None
+        return result
+
+    def test_worker_falls_back_to_db_html_content(self):
+        """When disk file is missing but html_content is in DB, worker succeeds."""
+        from scripts.batch_v2_extraction import _process_filing_worker
+
+        html_content = "<html><body>SEC filing content</body></html>"
+        mock_pipeline_result = self._make_pipeline_result()
+
+        with patch("src.infra.db.DatabaseAdapter") as mock_db_cls:
+            mock_db = MagicMock()
+            mock_db.query.return_value = [{"html_content": html_content}]
+            mock_db_cls.return_value = mock_db
+
+            with patch("src.extraction_v2.pipeline.V2Pipeline") as mock_pipeline_cls:
+                mock_pipeline = MagicMock()
+                mock_pipeline.process.return_value = mock_pipeline_result
+                mock_pipeline_cls.return_value = mock_pipeline
+
+                result = _process_filing_worker(
+                    filing_id=99,
+                    html_path="/nonexistent/primary.htm",
+                    company_name="TestCo",
+                    company_id=1,
+                    cik="0001234",
+                    accession_number="0001234-24-000001",
+                    db_url="postgresql://test/db",
+                    config_dict={"dry_run": True},
+                )
+
+        assert result["success"] is True
+        assert result["fact_count"] == 3
+        assert mock_pipeline.process.called
+
+    def test_worker_fails_gracefully_when_no_html_content(self):
+        """When disk file is missing and DB has no html_content, worker returns failure."""
+        from scripts.batch_v2_extraction import _process_filing_worker
+
+        with patch("src.infra.db.DatabaseAdapter") as mock_db_cls:
+            mock_db = MagicMock()
+            mock_db.query.return_value = []
+            mock_db_cls.return_value = mock_db
+
+            result = _process_filing_worker(
+                filing_id=99,
+                html_path="/nonexistent/primary.htm",
+                company_name="TestCo",
+                company_id=1,
+                cik="0001234",
+                accession_number="0001234-24-000001",
+                db_url="postgresql://test/db",
+                config_dict={},
+            )
+
+        assert result["success"] is False
+        assert result["filing_id"] == 99
+        assert "not" in result["error"].lower()
+
+    def test_worker_fails_gracefully_on_db_error(self):
+        """When disk file is missing and DB query raises, worker returns failure (no raise)."""
+        from scripts.batch_v2_extraction import _process_filing_worker
+
+        with patch("src.infra.db.DatabaseAdapter") as mock_db_cls:
+            mock_db = MagicMock()
+            mock_db.query.side_effect = Exception("connection refused")
+            mock_db_cls.return_value = mock_db
+
+            result = _process_filing_worker(
+                filing_id=99,
+                html_path="/nonexistent/primary.htm",
+                company_name="TestCo",
+                company_id=1,
+                cik="0001234",
+                accession_number="0001234-24-000001",
+                db_url="postgresql://test/db",
+                config_dict={},
+            )
+
+        assert result["success"] is False
+        assert result["filing_id"] == 99
