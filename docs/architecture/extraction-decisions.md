@@ -16,7 +16,7 @@ Usage metrics (DAU/MAU/WAU) receive context-aware bonuses:
 - +0.5 for basic usage keyword matches (backward compatible)
 - Similar tiered bonuses apply to definition flags based on high-value metric presence
 
-**Implementation**: `src/extraction/segment_enricher.py`
+**Implementation**: `src/extraction/segment_enricher.py` (deleted — V1 retired)
 
 ---
 
@@ -41,7 +41,7 @@ Metric keywords moved to `config/metric_keywords.yaml`:
 - Environment override: `METRIC_KEYWORDS_CONFIG=/path/to/custom.yaml`
 - Fails fast with clear error if YAML cannot be loaded
 
-**Implementation**: `src/extraction/keyword_config.py`, `config/metric_keywords.yaml`
+**Implementation**: `src/shared/keyword_config.py`, `config/metric_keywords.yaml`
 
 ---
 
@@ -55,7 +55,7 @@ Automated detection of cohort analysis charts in filings:
 - Filters decorative images by size and naming patterns (icons, logos, bullets)
 - Use case: Identify high-value cohort analysis visualizations (ARR by cohort, LTV/CAC, retention curves)
 
-**Implementation**: `src/extraction/segment_enricher.py`, `src/extraction/cohort_chart_detector.py`
+**Implementation**: `src/extraction/segment_enricher.py`, `src/extraction/cohort_chart_detector.py` (both deleted — V1 retired)
 
 ---
 
@@ -95,7 +95,7 @@ Canonical metric IDs can have aliases for gold standard compatibility:
 - Used by `validate_against_gold_standard.py` for accurate precision/recall measurement
 - System always generates canonical IDs; aliases only used for comparison/validation
 
-**Implementation**: `src/extraction/keyword_config.py`, `scripts/validate_against_gold_standard.py`
+**Implementation**: `src/shared/keyword_config.py`, `scripts/validate_against_gold_standard.py`
 
 ---
 
@@ -108,7 +108,7 @@ Canonical metric IDs can have aliases for gold standard compatibility:
 - Alternative: Use `html_selector` (CSS selector) for source location if needed
 - DB columns retained for schema compatibility
 
-**Implementation**: `src/extraction/html_segmenter.py`
+**Implementation**: `src/shared/html_segmenter.py`
 
 ---
 
@@ -123,7 +123,7 @@ Two semantically distinct customer count metrics:
 - Both metrics exist in SQL with `status = 'active'`
 - METRIC_NAME_MAPPING in `value_extractor.py` routes LLM names to correct canonical ID
 
-**Implementation**: `src/extraction/value_extractor.py`, `config/metric_keywords.yaml`, `sql/01_metric_definitions.sql`
+**Implementation**: `src/extraction/value_extractor.py` (deleted — V1 retired), `config/metric_keywords.yaml`, `sql/01_metric_definitions.sql`
 
 ---
 
@@ -149,7 +149,7 @@ Tables inside `<div>` wrappers are now handled correctly:
 - Implementation: `html_segmenter.py` lines 278-288 (skip logic), 883 (marker extraction), 922-927 (truncation path)
 - Test coverage: `TestDivOnlyTableSkip`, `TestCompositeSplitTableMarkers` in test_html_segmenter.py
 
-**Implementation**: `src/extraction/html_segmenter.py`
+**Implementation**: `src/shared/html_segmenter.py`
 
 ---
 
