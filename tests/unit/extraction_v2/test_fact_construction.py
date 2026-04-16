@@ -978,7 +978,8 @@ def test_cohort_def_from_stub_path(
 ) -> None:
     """Acquisition cohort in stub_path populates cohort_def and cohort_type."""
     stage, ctx = _make_context_with_table(
-        stage, mock_context,
+        stage,
+        mock_context,
         header_texts=["Q1 2024", "Q2 2024"],
         stub_texts=["2021 Cohort", "2022 Cohort"],
     )
@@ -993,7 +994,8 @@ def test_cohort_def_from_header_path(
 ) -> None:
     """Tenure cohort in header_path is used when stub has no cohort pattern."""
     stage, ctx = _make_context_with_table(
-        stage, mock_context,
+        stage,
+        mock_context,
         header_texts=["0-12 months", "12-24 months"],
         stub_texts=["Revenue"],
     )
@@ -1008,7 +1010,8 @@ def test_stub_priority_over_header(
 ) -> None:
     """stub_path label wins over header_path label when both contain cohort patterns."""
     stage, ctx = _make_context_with_table(
-        stage, mock_context,
+        stage,
+        mock_context,
         header_texts=["0-12 months"],
         stub_texts=["2021 Cohort"],
     )
@@ -1023,7 +1026,8 @@ def test_no_cohort_for_generic_stubs(
 ) -> None:
     """Generic stub labels like Revenue/COGS leave cohort_def as None."""
     stage, ctx = _make_context_with_table(
-        stage, mock_context,
+        stage,
+        mock_context,
         header_texts=["Q1 2024"],
         stub_texts=["Revenue", "COGS"],
     )
@@ -1052,12 +1056,91 @@ def test_no_cohort_for_text_source(
     assert fact.cohort_type is None
 
 
+def test_customer_type_paid_from_prose_context(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Text fact with 'Paid Customers' in context_after → customer_type == 'Paid'."""
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_customers_period_end")
+    # text_span end=10; context_after = text[10:210]
+    segment_text = "We had 88,000" + "Paid Customers and more than 500,000 organizations"
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        segment_id="seg_1",
+        text_span=(0, 13),
+    )
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.segments = [make_segment("seg_1", text=segment_text)]
+    stage.process(mock_context)
+    fact = mock_context.facts[0]
+    assert fact.customer_type == "Paid"
+
+
+def test_customer_type_free_from_prose_context(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Text fact with 'Free subscription plan' in context_after → customer_type == 'Free'."""
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_customers_period_end")
+    segment_text = "We had 500,000" + " organizations on our Free subscription plan and growing"
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        segment_id="seg_1",
+        text_span=(0, 14),
+    )
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.segments = [make_segment("seg_1", text=segment_text)]
+    stage.process(mock_context)
+    fact = mock_context.facts[0]
+    assert fact.customer_type == "Free"
+
+
+def test_customer_type_none_for_plain_prose(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Text fact with generic context leaves customer_type as None."""
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_customers_period_end")
+    segment_text = "We had 100,000" + " year-over-year growth in customers driven by expansion"
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        segment_id="seg_1",
+        text_span=(0, 14),
+    )
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.segments = [make_segment("seg_1", text=segment_text)]
+    stage.process(mock_context)
+    fact = mock_context.facts[0]
+    assert fact.customer_type is None
+
+
+def test_cohort_def_not_extracted_from_prose_context(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """Text facts do not get cohort_def from prose — only table stub/header paths supply it."""
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_revenue_by_cohort")
+    segment_text = "We recognized 12,000" + " representing the 2017 Cohort contribution to revenue"
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        segment_id="seg_1",
+        text_span=(0, 20),
+    )
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.segments = [make_segment("seg_1", text=segment_text)]
+    stage.process(mock_context)
+    fact = mock_context.facts[0]
+    assert fact.cohort_def is None
+    assert fact.cohort_type is None
+
+
 def test_other_type_filtered_out(
     stage: FactConstructionStage, mock_context: PipelineContext
 ) -> None:
     """Labels that parse as 'other' cohort type are excluded from cohort_def."""
     stage, ctx = _make_context_with_table(
-        stage, mock_context,
+        stage,
+        mock_context,
         header_texts=["Q1 2024"],
         stub_texts=["Enterprise"],
     )
@@ -1087,7 +1170,7 @@ def test_most_specific_stub_wins(
     cells = [
         Cell(row=0, col=2, text="Q1 2024", is_header=True),
         Cell(row=1, col=0, text="Customer Metrics", is_stub=True),  # outer stub
-        Cell(row=1, col=1, text="2022 Cohort", is_stub=True),       # inner stub
+        Cell(row=1, col=1, text="2022 Cohort", is_stub=True),  # inner stub
         Cell(row=1, col=2, text="500"),
     ]
     table.cells = cells

@@ -219,8 +219,9 @@ class FactConstructionStage:
             bv, segment_lookup, table_lookup, image_lookup, context.config
         )
 
-        # Extract cohort definition from table stub/header paths
+        # Extract cohort definition from table stub/header paths (or prose context)
         cohort_def = self._extract_cohort_def(evidence)
+        customer_type = self._extract_customer_type(evidence)
 
         # Build the fact
         fact = MetricFact(
@@ -240,6 +241,7 @@ class FactConstructionStage:
             requires_review=True,
             review_status=ReviewStatus.PENDING_REVIEW,
             cohort_def=cohort_def,
+            customer_type=customer_type,
         )
         if fact.cohort_def is not None:
             fact.cohort_type, _ = parse_cohort_label(fact.cohort_def)
@@ -452,6 +454,43 @@ class FactConstructionStage:
             cohort_type, _ = parse_cohort_label(label)
             if cohort_type in ("acquisition", "tenure"):
                 return label
+
+        return None
+
+    @staticmethod
+    def _extract_customer_type(evidence: EvidencePack) -> str | None:
+        """Extract customer type (e.g. Paid, Free, Enterprise, SMB) from evidence context.
+
+        For table sources, scans stub_path and header_path labels.
+        For text sources, scans context_before + context_after.
+        Returns the first matching customer type, or None if no pattern matches.
+        """
+        if evidence.stub_path or evidence.header_path:
+            probe = " ".join(evidence.stub_path + evidence.header_path)
+        else:
+            # For prose, look only at the 75 chars immediately after the value.
+            # Customer-type labels follow the number in English ("88,000 Paid Customers"),
+            # so a narrow forward window captures the signal without pulling in
+            # unrelated segment labels elsewhere in the paragraph.
+            probe = evidence.context_after[:75]
+
+        patterns: list[tuple[str, str]] = [
+            (r"\bPaid\s+(?:Customer|Subscriber|User|Organization|Account)s?\b", "Paid"),
+            (
+                r"\bFree\s+(?:subscription|plan|tier|Customer|Subscriber|User|Organization|Account)s?\b",
+                "Free",
+            ),
+            (r"\bEnterprise\b", "Enterprise"),
+            (r"\bSMB\b|Small\s+and\s+Medium\s+Busin", "SMB"),
+        ]
+        for pattern, label in patterns:
+            if re.search(pattern, probe, re.IGNORECASE):
+                return label
+
+        # Large-customer threshold pattern — return matched string
+        m = re.search(r">\$[\d,]+[kKmM]?\s*(?:ARR|MRR|revenue)", probe, re.IGNORECASE)
+        if m:
+            return m.group(0).strip()
 
         return None
 

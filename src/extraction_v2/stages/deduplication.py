@@ -243,15 +243,19 @@ class DeduplicationStage:
         if not facts:
             return []
 
-        # Group by non-period identity fields + value tolerance
-        buckets: dict[tuple[str, str, str, str, str], list[MetricFact]] = {}
+        # Group by non-period identity fields + value tolerance.
+        # customer_type is intentionally excluded (like period): the same measurement
+        # can appear multiple times with different surrounding context, causing one
+        # mention to get a customer_type label and another not. Excluding customer_type
+        # lets these same-value duplicates merge; the most-specific label is then
+        # promoted to the primary (see below).
+        buckets: dict[tuple[str, str, str, str], list[MetricFact]] = {}
         for fact in facts:
             bucket_key = (
                 fact.canonical_metric_id,
                 fact.unit.value,
                 fact.scope.value,
                 fact.cohort_def or "",
-                fact.customer_type or "",
             )
             buckets.setdefault(bucket_key, []).append(fact)
 
@@ -319,6 +323,15 @@ class DeduplicationStage:
                             primary.period_start = donor.period_start
                             primary.period_end = donor.period_end
                             primary.period_type = donor.period_type
+                    # Promote the most-specific customer_type label from the group onto
+                    # the primary if the primary lacks one.  A fact labelled "Paid" from
+                    # a mention that clearly names the segment is more informative than a
+                    # label-less duplicate from a generic mention of the same value.
+                    if primary.customer_type is None:
+                        for f in group:
+                            if f.customer_type is not None and f.fact_id != primary.fact_id:
+                                primary.customer_type = f.customer_type
+                                break
                     new_ids = [f.fact_id for f in group if f.fact_id != primary.fact_id]
                     existing = set(primary.alternate_evidence)
                     primary.alternate_evidence.extend(
