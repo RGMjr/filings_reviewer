@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-15T22:03:57.457374+00:00",
-  "description": "AR exclusion corrects Tenable mislabel",
+  "baseline_date": "2026-04-16T16:05:43.491685+00:00",
+  "description": "Fix Samsara 115% CRR->NRR annotation",
   "overall": {
     "precision": 0.6918032786885245,
-    "recall": 0.6317365269461078,
-    "f1": 0.6604068857589984
+    "recall": 0.6336336336336337,
+    "f1": 0.6614420062695926
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -54,8 +54,8 @@
     },
     "Samsara Inc.": {
       "precision": 1.0,
-      "recall": 0.23809523809523808,
-      "f1": 0.3846153846153846
+      "recall": 0.24390243902439024,
+      "f1": 0.39215686274509803
     },
     "Slack Technologies": {
       "precision": 0.868421052631579,

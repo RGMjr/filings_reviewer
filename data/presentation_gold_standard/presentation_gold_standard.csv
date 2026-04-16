@@ -199,7 +199,7 @@ Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,390,other,2019-03-01 t
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,715,other,2019-03-01 to 2020-02-01,text,715,LOW,cover,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"10,000",count,2020-02-01,text,"10,000",MEDIUM,mda,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"25,000",count,2020-02-01,text,"25,000",MEDIUM,mda,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_customer_retention_rate,115%,percent,2021-10-30,text,115%,MEDIUM,mda,False,ACCEPT,,tuning
+Samsara Inc.,IOT,2021-12-06,cm_net_revenue_retention,115%,percent,2021-10-30,text,115%,MEDIUM,mda,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_net_revenue_retention,125%,percent,2021-10-30,text,125%,MEDIUM,mda,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,44%,percent,2021-10-30,text,44%,MEDIUM,mda,False,EDIT,"""approximately 44% of our ARR came from customers representing over $100,000 in ARR"", indicating this is revenue concentration",tuning
 Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,255,other,other,chart,"Number of Customers Over $100,000 in ARR255",LOW,unknown,False,EDIT,,tuning
