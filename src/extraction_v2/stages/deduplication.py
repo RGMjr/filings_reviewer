@@ -148,7 +148,7 @@ class DeduplicationStage:
 
         # Pre-group by identity fields (excluding value) for O(n) bucketing
         identity_buckets: dict[
-            tuple[str, date | None, date | None, str, str, str | None, str | None],
+            tuple[str, date | None, date | None, str, str, str, str],
             list[MetricFact],
         ] = {}
         for fact in facts:
@@ -158,8 +158,8 @@ class DeduplicationStage:
                 fact.period_end,
                 fact.unit.value,
                 fact.scope.value,
-                fact.cohort_def,
-                fact.customer_type,
+                fact.cohort_def or "",
+                fact.customer_type or "",
             )
             identity_buckets.setdefault(bucket_key, []).append(fact)
 
@@ -244,14 +244,14 @@ class DeduplicationStage:
             return []
 
         # Group by non-period identity fields + value tolerance
-        buckets: dict[tuple[str, str, str, str | None, str | None], list[MetricFact]] = {}
+        buckets: dict[tuple[str, str, str, str, str], list[MetricFact]] = {}
         for fact in facts:
             bucket_key = (
                 fact.canonical_metric_id,
                 fact.unit.value,
                 fact.scope.value,
-                fact.cohort_def,
-                fact.customer_type,
+                fact.cohort_def or "",
+                fact.customer_type or "",
             )
             buckets.setdefault(bucket_key, []).append(fact)
 
