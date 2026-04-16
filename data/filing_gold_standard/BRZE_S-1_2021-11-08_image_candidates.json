@@ -1,8 +1,8 @@
 [
   {
-    "img_id": "1d55e8c7-e663-5244-ab0c-c6e50db0710b",
+    "img_id": "86694408-5617-5940-b06b-fe13253ae328",
     "filename": "g40379g02s22.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g02s22.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "Subject to Completion. Dated November 8, 2021 8,000,000 Shares Class A Common Stock This is an initial public offering of shares of Class A common stock of Braze, Inc. We are offering 6,700,000 shares of Class A common stock and the selling stockholders identified in this prospectus are offering an additional 1,300,000 shares of Class A common stock. We will not receive any proceeds from the sale of shares by the selling stockholders.",
@@ -13,9 +13,9 @@
     "height": 0
   },
   {
-    "img_id": "d083244c-cdd3-5328-8998-e099aab0d0cd",
+    "img_id": "e95f21ed-a30d-5fb6-8173-1ab0dc99345b",
     "filename": "g40379g03q49.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g03q49.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "",
@@ -26,9 +26,9 @@
     "height": 0
   },
   {
-    "img_id": "6ba4e202-a55e-554c-8e31-3e2af5f38b25",
+    "img_id": "0f423f5d-03ab-5816-a815-f361e026b979",
     "filename": "g40379g01a02.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g01a02.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "",
@@ -39,9 +39,9 @@
     "height": 0
   },
   {
-    "img_id": "bb85e063-3892-5ee1-832e-4b7cc0510449",
+    "img_id": "5131780a-4be4-5fe0-9fb6-166f50924814",
     "filename": "g40379g00a04.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g00a04.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "",
@@ -52,9 +52,9 @@
     "height": 0
   },
   {
-    "img_id": "acde169c-86f3-59e8-9d01-0d456795ef64",
+    "img_id": "57e546ae-fc50-52e4-a41c-54c76d3030ae",
     "filename": "g40379g42h11.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g42h11.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.8200000000000001,
     "nearby_text": "performance obligations associated with the underlying subscription contract and premium professional service obligations as they are with respect to our GAAP revenue. This can result in timing differences between our GAAP revenue and ARR calculations. For our revenue calculated in accordance with GAAP, we recognize revenue related to contracts with customers in an amount that reflects the consideration to which we expect to be entitled in exchange for subscription and professional services. See the section titled \u201c\u2014 Critical Accounting Policies and Estimates\u201d for additional information regarding how we recognize revenue on a GAAP basis. Investors should not place undue reliance on ARR as an indicator of our future or expected results. Moreover, ARR may differ from similarly titled metrics presented by other companies and may not be comparable to such other metrics. Each cohort in the chart below represents customers that made their initial purchase from us in a given fiscal year. For example, the 2016 cohort includes all customers that had their initial purchase within the fiscal year 2016. This cohort increased their ARR from $6.4 million as of January 31, 2016 to $20.1 million as of January 31, 2021, representing a multiple of approximately 3.2x since fiscal year 2016. A further indication of the propensity of our customer relationships to expand over time is our dollar-based net retention rate. We calculate our dollar-based net retention rate as of a period end by starting with the ARR from the cohort of all customers as of 12 months prior to such period-end, or the Prior Period ARR. We then calculate the ARR from these same customers as of the current period-end, or the Current Period ARR. Current Period ARR includes any expansion and is net of contraction or attrition over the last 12 months but excludes ARR from new customers in the current period. We then divide the total Current Period ARR by the total Prior Period ARR to arrive at the point-in-time dollar-based net retention rate. We then calculate the weighted average point-in-time dollar-based net retention rates as of the last day of each month in the current trailing 12-month period to arrive at the dollar-based net retention rate. Our dollar-based net retention rate for the trailing 12 months ended July 31, 2021, January 31, 2021 and January 31, 2020 was 125%, 123% and 126%, respectively, for all our customers, and 135%, 133% and 127%, respectively, for our customers with ARR of $500,000 or more. Our customers frequently increase the number of our channels they utilize over time. Today, our in-product messaging channels consist of Content Cards, which embed personalized content into a brand\u2019s website or",
@@ -65,9 +65,9 @@
     "height": 0
   },
   {
-    "img_id": "550a2b17-43c4-54bf-a424-fbc1c1b6e724",
+    "img_id": "4872712d-1e1d-50f3-a472-8f27d54321dc",
     "filename": "g40379g88d88.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g88d88.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.66,
     "nearby_text": "Our comprehensive customer engagement platform enables authentic, real-time relationships between consumers and the brands they love. Our customers trust us with their most valuable assets: their customer relationships. We enable brands to perform three core functions: listen to their customers better, understand them more deeply and act on that understanding by communicating with them in a way that is human, relevant and personal. Our platform facilitates these core functions through five functional layers that are unified by an interactive feedback loop of continuously flowing data. Brands can easily and securely supplement that data by plugging into any layer of the technology stack via APIs. Additionally, using Braze Currents, they can continuously and automatically export consumer event and campaign interaction data to their internal data storage systems and to Braze partners. 96",
@@ -78,9 +78,9 @@
     "height": 0
   },
   {
-    "img_id": "cf0fc249-cb3b-5086-ae65-9699f2510542",
+    "img_id": "95222077-6287-5db1-955f-8f2625b57d04",
     "filename": "g40379g12s03.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g12s03.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "Orchestration 103",
@@ -91,9 +91,9 @@
     "height": 0
   },
   {
-    "img_id": "a60098b2-2ac1-58d8-b221-d240bc3c4975",
+    "img_id": "99063047-abec-532e-ad97-a2a821229630",
     "filename": "g40379g11a10.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g11a10.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.28,
     "nearby_text": "The below graphic displays what a Braze customer sees when creating a Canvas. Each Canvas has entry rules that define when the journey should begin for each user and the set of users to whom the journey should apply. In addition to the entry criteria, there are additional rules for each individual step of the journey that define which users reach that step and when. The below graphic depicts the set of rules associated with a particular step. 104",
@@ -104,9 +104,9 @@
     "height": 0
   },
   {
-    "img_id": "9c6937e5-74c7-5295-98c3-3322666cb77b",
+    "img_id": "947d7906-2863-5fef-a01f-cc31bfac1e88",
     "filename": "g40379g85j98.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g85j98.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "Personalization 106",
@@ -117,9 +117,9 @@
     "height": 0
   },
   {
-    "img_id": "d3b4707a-afa9-51d7-a897-10f5316e5a61",
+    "img_id": "510415c9-23ea-50da-b5cd-b40c91e1e079",
     "filename": "g40379g53s67.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g53s67.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "Action 107",
@@ -130,9 +130,9 @@
     "height": 0
   },
   {
-    "img_id": "f23bfd16-a1f0-58f4-9d90-633317199f8a",
+    "img_id": "dd62f35f-81a4-5969-ae89-59cd54c54589",
     "filename": "g40379g20h20.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g20h20.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.66,
     "nearby_text": "Our Customers Our platform is designed to serve the needs of customers across sizes, stages of growth, industries, and geographies. As of July 31, 2021, we had 1,119 customers, up from 890 customers as of January 31, 2021 and 728 customers as of January 31, 2020. Our customers span a wide variety of sizes and industries, and include: 109",
@@ -143,9 +143,9 @@
     "height": 0
   },
   {
-    "img_id": "d3ca9001-a955-5ff7-b67f-9cd9b2b0f3e3",
+    "img_id": "5843ee96-fac4-5345-ac2e-1b66fa3ea673",
     "filename": "g40379g13a10.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g13a10.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.58,
     "nearby_text": "Customer Case Studies The following are representative examples of how some of our customers have benefited from using Braze: Canva is a software-as-a-service company based in Sydney, Australia. Canva offers an online design and publishing platform and has a mission to empower everyone in the world to design anything and publish anywhere. The Situation",
@@ -156,9 +156,9 @@
     "height": 0
   },
   {
-    "img_id": "6fccff17-8063-56e5-ac93-33f44a1dc134",
+    "img_id": "105020c1-056f-56d6-887d-3d585bff4639",
     "filename": "g40379g13i03.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g13i03.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.36,
     "nearby_text": "The Impact By using our platform, Canva was able to increase engagement rates easily and at scale. Despite a significant increase in weekly email volume, Canva maintained a 99% email deliverability rate while increasing email open rates by 33% and engagement by 2.5% across millions of users. \u201cWith Braze, we\u2019re able to better serve the global design community quickly and at scale. The capabilities of the platform improve our flexible and creative messaging strategy, enabling us to evolve with our diverse set of users.\u201d Emily Stewart,",
@@ -169,9 +169,9 @@
     "height": 0
   },
   {
-    "img_id": "b12c5e7f-3041-56ed-81c4-5056848a59bc",
+    "img_id": "f593512b-3b99-5276-85fc-e4d534940e81",
     "filename": "g40379g12b13.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g12b13.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.36,
     "nearby_text": "By using our platform, Canva was able to increase engagement rates easily and at scale. Despite a significant increase in weekly email volume, Canva maintained a 99% email deliverability rate while increasing email open rates by 33% and engagement by 2.5% across millions of users. \u201cWith Braze, we\u2019re able to better serve the global design community quickly and at scale. The capabilities of the platform improve our flexible and creative messaging strategy, enabling us to evolve with our diverse set of users.\u201d Emily Stewart, Product Manager for MarTech",
@@ -182,9 +182,9 @@
     "height": 0
   },
   {
-    "img_id": "4061ca23-d532-5e69-b7cd-fddb6bc4bdeb",
+    "img_id": "5186cc3a-482e-5597-a12b-684decc59185",
     "filename": "g40379g16k05.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g16k05.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.28,
     "nearby_text": "Ibotta is a consumer software company based in Denver, Colorado. It is a free-to-use cash back rewards platform that has delivered $1 billion in cumulative cash rewards to its users for making purchases in-store, on mobile apps or via websites. The Situation",
@@ -195,9 +195,9 @@
     "height": 0
   },
   {
-    "img_id": "81bcdc74-6f8c-5855-b1f6-ba8771e42882",
+    "img_id": "55a59d0c-2dea-5033-a050-959abd7a68b4",
     "filename": "g40379g16m07.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g16m07.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.44,
     "nearby_text": "The Impact By curating highly-personalized experiences, Ibotta drives high value and engagement with its Savers. The customer shopping list email using our Connected Content feature had a 15% open rate, 1% click-through rate, and 8% conversion rate, an increase of approximately 200% from previous Ibotta campaigns. 111 \u201cConnected Content allows Ibotta to surface content that is highly personalized, helping to improve the experience and increase the value of our product for our users. This drastically improves the user experience and their relationship with Ibotta as a leading brand in helping consumers be rewarded for what they buy and where they shop.\u201d",
@@ -208,9 +208,9 @@
     "height": 0
   },
   {
-    "img_id": "3bdf11ea-e097-57d7-9cc0-1ab70fafc6a9",
+    "img_id": "96f44e22-b95b-554e-922e-717583bf56f7",
     "filename": "g40379g12b13.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g12b13.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.28,
     "nearby_text": "111 \u201cConnected Content allows Ibotta to surface content that is highly personalized, helping to improve the experience and increase the value of our product for our users. This drastically improves the user experience and their relationship with Ibotta as a leading brand in helping consumers be rewarded for what they buy and where they shop.\u201d Rich Donahue, Chief Marketing Officer",
@@ -221,9 +221,9 @@
     "height": 0
   },
   {
-    "img_id": "36e3c215-a09a-542c-8367-0c4e2166e78c",
+    "img_id": "d938ab2f-01c1-5f25-ae20-6b9f61451423",
     "filename": "g40379g12a01.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g12a01.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "PureGym Limited is a chain of low-cost health clubs headquartered in Leeds, West Yorkshire. It is Britain\u2019s largest gym chain by membership, with over 1,000,000 members registered to nearly 300 gyms across the UK. The Situation",
@@ -234,9 +234,9 @@
     "height": 0
   },
   {
-    "img_id": "b9cb2457-fee2-5934-9997-56d5791bbf10",
+    "img_id": "413d65e2-d869-561b-849b-cf5f672b837c",
     "filename": "g40379g12h11.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g12h11.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.36,
     "nearby_text": "The Impact PureGym increased email open rates by 69%, with former users who received retargeting emails showing a 206% higher conversion rate, as compared to emails sent to all users. Click-through rate also increased by 89% for these former users. 112 \u201cThe ex-member population is so important to our business\u2014as many as 20% of people who join PureGym each month are re-joiners. With Braze, we can engage them in the right ways, convert them, and bring them back to their local gyms.\u201d",
@@ -247,9 +247,9 @@
     "height": 0
   },
   {
-    "img_id": "c050dbc4-22a8-5078-b26e-1ce319d7dd35",
+    "img_id": "df5c8212-61a7-5844-9f88-38198b52d795",
     "filename": "g40379g12b13.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g12b13.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "112 \u201cThe ex-member population is so important to our business\u2014as many as 20% of people who join PureGym each month are re-joiners. With Braze, we can engage them in the right ways, convert them, and bring them back to their local gyms.\u201d James Edwards, Head of CRM",
@@ -260,9 +260,9 @@
     "height": 0
   },
   {
-    "img_id": "43c424e2-b63a-55d6-9a5d-ce767bd9d044",
+    "img_id": "46d92f81-2ec9-5f75-ab74-36b7c3823b94",
     "filename": "g40379g55d54.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g55d54.jpg",
+    "image_url": "",
     "classification": "chart",
     "relevance_score": 0.58,
     "nearby_text": "We believe our culture and core values are critical to our success and have delivered tangible financial and operational benefits to our customers, employees, and stockholders. We are a mission-driven company and have designed our core values as a guiding set of principles for our employees and business. Our core values are: 114",
@@ -273,9 +273,9 @@
     "height": 0
   },
   {
-    "img_id": "dcb7109b-cd5b-575a-b696-e9ab56723282",
+    "img_id": "5820ea8d-0f59-5422-a21c-a1dc2951b62b",
     "filename": "g40379g30s65.jpg",
-    "image_url": "https://www.sec.gov/Archives/edgar/data/1676238/000119312521322227/g40379g30s65.jpg",
+    "image_url": "",
     "classification": "unknown",
     "relevance_score": 0.2,
     "nearby_text": "",
