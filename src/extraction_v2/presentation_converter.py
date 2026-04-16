@@ -324,16 +324,39 @@ def convert_presentation_to_html(
             page_text: str = ""
             page_tables: list[list[list[str | None]]] = []
 
-            # --- Extract text and tables ---
-            try:
-                page_text = page.extract_text() or ""
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to extract text from page %d: %s", page_num, exc)
-
+            # --- Extract tables first (needed for bbox filtering of text) ---
             try:
                 page_tables = page.extract_tables() or []
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to extract tables from page %d: %s", page_num, exc)
+                page_tables = []
+
+            # --- Extract text, excluding regions covered by tables ---
+            # pdfplumber.extract_text() returns all text on the page including table
+            # cell content. When tables are also emitted as <table> HTML, this causes
+            # each table value to appear twice: once in a TABLE segment (with
+            # header/stub context) and once as a PARAGRAPH segment (no structure).
+            # The paragraph path produces FPs because proximity-based value binding
+            # cannot resolve row titles. Fix: filter page objects to exclude any
+            # character whose bounding box falls inside a detected table region.
+            try:
+                table_bboxes = [t.bbox for t in (page.find_tables() or [])]
+                if table_bboxes:
+                    def _not_in_any_table(obj: dict) -> bool:  # type: ignore[type-arg]
+                        ox0 = obj.get("x0", 0)
+                        otop = obj.get("top", 0)
+                        ox1 = obj.get("x1", 0)
+                        obot = obj.get("bottom", 0)
+                        for bx0, btop, bx1, bbot in table_bboxes:  # noqa: B023
+                            if ox0 >= bx0 and ox1 <= bx1 and otop >= btop and obot <= bbot:
+                                return False
+                        return True
+                    page_text = page.filter(_not_in_any_table).extract_text() or ""
+                else:
+                    page_text = page.extract_text() or ""
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to extract text from page %d: %s", page_num, exc)
+                page_text = ""
 
             # --- Title slide detection (first page only) ---
             section_type = "presentation_slide"
