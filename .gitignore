@@ -56,6 +56,9 @@ data/presentations/
 !data/presentation_results/*.json
 !data/presentation_results/*.csv
 
+# Image model pre-backfill snapshots — keep on disk, don't version binary models
+data/image_model/*_pre_backfill.*
+
 # Jupyter
 .ipynb_checkpoints/
 
