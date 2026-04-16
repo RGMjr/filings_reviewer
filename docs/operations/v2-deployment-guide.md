@@ -276,7 +276,7 @@ The V2 review interface is fully implemented (WP-21 complete, 2026-02-28) and ac
 python3 scripts/run_review_server.py
 ```
 
-Verify that the V2 review routes (`review_v2.py`, `api_v2.py`) and templates (`v2_filing_list.html`, `v2_review.html`, `v2_stats.html`) are functional. The V1 routes remain accessible but should not be the primary entry point for users after cutover.
+Verify that the V2 review routes (`review_v2.py`, `api_v2.py`) and templates (`v2_filing_list.html`, `v2_review.html`, `v2_stats.html`) are functional. The V1 routes emit deprecation warnings and redirect to the V2 UI; they are not a fallback entry point after cutover.
 
 ### Step 4: Update Ops Context
 
@@ -288,7 +288,7 @@ Record the cutover in `ops/ITERATION_CONTEXT.md`:
 - Batch extraction completed: N filings, M facts
 - Gold standard: P=XX.X%, R=XX.X%, F1=XX.X%
 - V2 review UI confirmed as primary
-- Rollback available: V1 data intact in source_segments / candidates tables
+- Rollback: redeploy prior V2 release image (V1 routes no longer a rollback target post-cutover)
 ```
 
 ---
@@ -361,13 +361,17 @@ V2 extraction is designed for safe rollback at any point:
 - **V1 data is untouched**: All V1 extraction results remain in `source_segments`, `candidates`,
   `metric_values`, and related tables
 - **No schema changes required for rollback**: Simply stop invoking V2 scripts
-- **Review UI rollback**: Point users back to V1 review routes at `/filings` (the V1 interface
-  remains operational)
+
+> **Note (post-V1-cutover, 2026-04-08):** The V1 review routes at `/filings` are no longer a
+> valid rollback target. They now emit warnings and redirect to the V2 UI. Rolling back means
+> redeploying the prior V2 release image via the Render dashboard (or equivalent Docker rollback),
+> not switching to V1 routes.
 
 To rollback:
 
 1. Stop any running batch extraction processes (`Ctrl+C` for graceful shutdown)
-2. Stop using V2 review routes; redirect users to V1 routes
+2. Redeploy the prior V2 release image via the Render dashboard (select the previous deploy and
+   click "Redeploy") or via Docker by pulling and running the previous tagged image
 3. No database cleanup is required — V2 tables remain but are simply not queried
 
 If you need to clear V2 data to rerun from scratch:
@@ -400,5 +404,5 @@ TRUNCATE v2_quality_scores, v2_metric_facts, v2_metric_definitions,
 - **Gold standard workflow**: `.claude/rules/gold-standard.md`
 - **Architecture reference**: `docs/architecture/extraction-pipeline.md`
 - **General setup**: `docs/operations/setup-guide.md`
-- **General deployment**: `docs/operations/deployment-guide.md`
+- **General deployment**: `docs/operations/v2-deployment-guide.md` (this file; pre-V2 guide archived at `docs/archive/ops/deployment-guide-pre-v2.md`)
 - **Ops context**: `ops/ITERATION_CONTEXT.md`

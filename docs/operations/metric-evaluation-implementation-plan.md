@@ -5,6 +5,19 @@
 
 ---
 
+> **Component status (updated 2026-04-16):**
+>
+> - `src/review/false_positive_filter.py` — **SHARED / V2 HOT PATH.** This file is imported by
+>   `src/extraction_v2/stages/false_positive_filter.py`. Any edits affect the live V2 extraction
+>   pipeline, not just legacy review candidates. Review changes carefully before committing.
+>
+> - `src/review/candidate_generator.py` — **V1-ONLY.** This module writes to the legacy
+>   `review_candidates` table, which is not part of the V2 fact tables (`v2_metric_facts`,
+>   `v2_segments`, etc.). It runs for legacy review candidate generation only and is not on the
+>   V2 extraction path.
+
+---
+
 ## Wave 1: YAML Config Changes (tier promotions + deprecations)
 
 Touches only `config/metric_keywords.yaml`. Can be validated with `pytest -x -q`.

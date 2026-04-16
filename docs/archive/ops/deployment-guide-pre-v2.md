@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-04-16** — This guide predates the V2 migration and references commands that no longer exist. See [`docs/operations/v2-deployment-guide.md`](../v2-deployment-guide.md) for the current deployment guide.
+
 # Deployment Guide
 
 **Version:** 2.0
