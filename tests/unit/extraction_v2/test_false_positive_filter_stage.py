@@ -40,6 +40,7 @@ from src.extraction_v2.stages.false_positive_filter import (
     _is_percent_in_keyword_clause,
     _is_v2_false_positive,
     _make_number_matches,
+    _rule_stub_financial_line_item,
 )
 
 # ============================================================================
@@ -3976,3 +3977,82 @@ class TestStubMetricContradiction:
             bv, source, metric_id="cm_net_revenue_retention"
         )
         assert reason != "v2_stub_metric_contradiction"
+
+
+# ============================================================================
+# Test: _rule_stub_financial_line_item (defense-in-depth FP rule)
+# ============================================================================
+
+
+class TestStubFinancialLineItemRule:
+    """Tests for _rule_stub_financial_line_item.
+
+    Defense-in-depth complement to the upstream _bind_cells guard.
+    Only fires for binding_type='table_header' with a non-empty source_text
+    containing a financial line-item term and a non-None table_id.
+    Not applied to metrics in _FINANCIAL_LINE_ITEM_STUB_ALLOW.
+
+    Rules are tested via _rule_stub_financial_line_item() directly to avoid
+    interference from earlier rules in _FP_RULES that also fire on financial
+    context (e.g. v2_financial_context_customer_metric, v2_percent_on_count).
+    End-to-end integration via _is_v2_false_positive is used only where the
+    rule is expected to be the FIRST to fire.
+    """
+
+    def test_net_margin_stub_rejected(self):
+        """binding_type='table_header', source_text contains 'net margin' → rejected.
+
+        Uses _is_v2_false_positive with Unit.COUNT so no earlier rule fires first.
+        """
+        bv = _make_table_bound_value("c1", 42.0, "42", Unit.COUNT)
+        source = "Active customers Net margin(2) 42"
+        is_fp, reason = _is_v2_false_positive(
+            bv, source, metric_id="cm_active_customers_total"
+        )
+        assert is_fp is True
+        assert reason is not None and reason.startswith("v2_financial_line_item_stub"), (
+            f"Expected v2_financial_line_item_stub reason, got: {reason!r}"
+        )
+
+    def test_gross_profit_rejected(self):
+        """source_text contains 'gross profit' → rule returns rejection reason."""
+        bv = _make_table_bound_value("c1", 500.0, "500", Unit.COUNT)
+        source = "Active customers Gross profit 500"
+        result = _rule_stub_financial_line_item(bv, source, "cm_active_customers_total")
+        assert result is not None and result.startswith("v2_financial_line_item_stub"), (
+            f"Expected v2_financial_line_item_stub reason, got: {result!r}"
+        )
+
+    def test_allow_list_not_rejected(self):
+        """cm_gross_margin_by_cohort with 'margin' in source_text → rule returns None."""
+        bv = _make_table_bound_value("c1", 65.0, "65%", Unit.PERCENT)
+        source = "Gross margin by cohort 2021 cohort margin 65%"
+        result = _rule_stub_financial_line_item(bv, source, "cm_gross_margin_by_cohort")
+        assert result is None, (
+            f"cm_gross_margin_by_cohort must not be rejected, got: {result!r}"
+        )
+
+    def test_non_table_header_not_rejected(self):
+        """binding_type='table_stub' → rule returns None."""
+        bv = BoundValue(
+            candidate_id="c1",
+            value=12.5,
+            value_raw="12.5%",
+            unit=Unit.PERCENT,
+            binding_type="table_stub",
+            binding_confidence=0.5,
+            source_locator=SourceLocator(table_id="tbl-1", cell_row=1, cell_col=1),
+        )
+        source = "Active customers Net margin 12.5%"
+        result = _rule_stub_financial_line_item(bv, source, "cm_active_customers_total")
+        assert result is None, (
+            f"table_stub binding must not trigger this rule, got: {result!r}"
+        )
+
+    def test_empty_source_text_not_rejected(self):
+        """Empty source_text → rule returns None (guard bails early)."""
+        bv = _make_table_bound_value("c1", 42.0, "42", Unit.COUNT)
+        result = _rule_stub_financial_line_item(bv, "", "cm_active_customers_total")
+        assert result is None, (
+            f"Empty source_text must not trigger this rule, got: {result!r}"
+        )

@@ -51,6 +51,33 @@ _WIDER_PROXIMITY_METRICS: frozenset[str] = frozenset({
     "cm_cac_payback_period",
 })
 
+# Pattern matching financial statement line-item labels in table stub rows.
+# When a customer-metric keyword triggers a column-header binding, rows whose
+# stub label matches this pattern are financial statement line items — not
+# customer metrics — and should be skipped.
+_FINANCIAL_LINE_ITEM_STUB_RE: re.Pattern = re.compile(
+    r"\b(?:"
+    r"margin"
+    r"|ebitda"
+    r"|(?:gross|net)\s+(?:income|loss|profit)"
+    r"|operating\s+(?:income|loss|expenses?|margin)"
+    r"|cost\s+of\s+(?:revenue|sales|goods)"
+    r"|accounts?\s+(?:payable|receivable)"
+    r"|accrued\s+(?:expenses?|liabilities)"
+    r"|net\s+cash"
+    r"|(?:total\s+)?liabilities?"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Metrics for which financial line-item stubs are acceptable row labels
+# (e.g., cm_gross_margin_by_cohort legitimately measures a margin metric).
+_FINANCIAL_LINE_ITEM_STUB_ALLOW: frozenset[str] = frozenset({
+    "cm_gross_margin_by_cohort",
+    "cm_revenue_concentration",
+})
+
+
 class ValueBindingStage:
     """
     Stage 7: Value Binding.
@@ -577,6 +604,18 @@ class ValueBindingStage:
                         idx,
                         cell.stub_path,
                         conflicting,
+                    )
+                    continue
+
+            if iterate_rows and cell.stub_path and candidate.metric_id not in _FINANCIAL_LINE_ITEM_STUB_ALLOW:
+                stub_text = " ".join(cell.stub_path)
+                if _FINANCIAL_LINE_ITEM_STUB_RE.search(stub_text):
+                    logger.debug(
+                        "Skipping column-scan binding for %s at row %d: "
+                        "stub_path %r is a financial line item",
+                        candidate.metric_id,
+                        idx,
+                        cell.stub_path,
                     )
                     continue
 
