@@ -31,7 +31,6 @@ package "Filings Reviewer System" {
     }
 
     package "Extraction Pipeline" {
-        component [Extraction V1] as extraction_v1 <<business>>
         component [Extraction V2] as extraction_v2 <<business>>
         component [V2 Stages:\n- Candidate Generation\n- Section Classification\n- Value Binding\n- Fact Construction\n- OCR/Image Processing\n- Deduplication\n- Validation] as v2_stages <<business>>
     }
@@ -95,7 +94,6 @@ universe --> company_mapping : builds
 pool --> db_adapter : manages connections
 db_adapter --> postgres : reads/writes
 
-extraction_v1 --> db_adapter : stores results
 extraction_v2 --> v2_stages : orchestrates
 v2_stages --> extraction_v2 : sub-components
 v2_stages --> openai_client : analyzes with LLM
@@ -122,7 +120,6 @@ v2_validator --> extraction_v2 : compares
 fresh_extractor --> extraction_v2 : extracts
 
 config --> v2_stages : keyword patterns
-config --> extraction_v1 : keyword patterns
 
 @enduml
 ```
@@ -142,8 +139,7 @@ config --> extraction_v1 : keyword patterns
 - **Company Mapping**: Maps companies to SEC identifiers
 
 ### Extraction Pipeline
-- **V1 Extraction**: Production extraction pipeline
-- **V2 Extraction**: Unified pipeline for transcripts/presentations
+- **V2 Extraction**: Sole production extraction pipeline (V1 retired 2026-04-08)
   - **V2 Stages**: 15 sequential processing stages including candidate generation, OCR, deduplication, validation
 
 ### Review & Analysis

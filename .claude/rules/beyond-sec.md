@@ -11,6 +11,7 @@ paths:
   - "scripts/*transcript*.py"
   - "data/transcript_gold_standard/**"
   - "data/presentation_gold_standard/**"
+  - "data/filing_gold_standard/**"
 ---
 
 # Beyond SEC: Transcripts & Presentations
@@ -42,14 +43,27 @@ Data: `data/transcript_gold_standard/` (`*_reviewed.csv`, 91 annotations, 20 fil
 
 ## Presentation Gold Standard Workflow
 
+8-K investor presentations write to `data/presentation_gold_standard/`:
+
 ```bash
-python3 scripts/preannotate_presentations.py           # generate candidates
-python3 scripts/review_presentation_annotations.py     # review
-python3 scripts/merge_presentation_annotations.py      # merge (60/40 split)
-python3 scripts/validate_presentation_extraction.py    # R/P/F1
+python3 scripts/preannotate_presentations.py --filing-type 8-K           # generate candidates
+python3 scripts/review_presentation_annotations.py --form-type 8-K       # review
+python3 scripts/merge_presentation_annotations.py --form-type 8-K        # merge (60/40 split)
+python3 scripts/validate_presentation_extraction.py --form-type 8-K      # R/P/F1
 ```
 
-Data: `data/presentation_gold_standard/`. File index: `_file_index.json`.
+S-1/F-1/10-K HTML filings use the same scripts but write to `data/filing_gold_standard/`:
+
+```bash
+python3 scripts/preannotate_presentations.py --filing-type S-1           # generate candidates
+python3 scripts/review_presentation_annotations.py --form-type S-1       # review
+python3 scripts/merge_presentation_annotations.py --form-type S-1        # merge (60/40 split)
+python3 scripts/validate_presentation_extraction.py --form-type S-1      # R/P/F1
+```
+
+`preannotate_presentations.py` routes output automatically by `--filing-type`: 8-K goes to `data/presentation_gold_standard/`, all other forms go to `data/filing_gold_standard/`.
+
+Data: `data/presentation_gold_standard/` (8-K) or `data/filing_gold_standard/` (S-1/F-1/10-K). File index: `_file_index.json` in each directory.
 
 ## Presentation Image Annotations
 

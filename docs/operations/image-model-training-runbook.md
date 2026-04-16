@@ -7,7 +7,8 @@ The image relevance model is a scikit-learn classifier that scores SEC filing an
 | Source | Location |
 |--------|----------|
 | SEC filing image review decisions | PostgreSQL `image_review_decisions` table |
-| Presentation image review decisions | `data/presentation_gold_standard/_image_decisions.json` |
+| 8-K presentation image review decisions | `data/presentation_gold_standard/_image_decisions.json` |
+| S-1/F-1/10-K filing image review decisions | `data/filing_gold_standard/_image_decisions.json` |
 
 Trained model and supporting files are written to `data/image_model/`.
 
@@ -24,8 +25,10 @@ Trained model and supporting files are written to `data/image_model/`.
 ## Prerequisites
 
 - `DATABASE_URL` set in `.env` (required to read SEC image review decisions)
-- Presentation gold standard candidate files present: `data/presentation_gold_standard/{key}_image_candidates.json` for each filing reviewed
-- `data/presentation_gold_standard/_image_decisions.json` present and populated
+- Presentation gold standard candidate files present in the appropriate directory:
+  - 8-K: `data/presentation_gold_standard/{key}_image_candidates.json`
+  - S-1/F-1/10-K: `data/filing_gold_standard/{key}_image_candidates.json`
+- Corresponding `_image_decisions.json` present and populated in each directory used
 
 ---
 

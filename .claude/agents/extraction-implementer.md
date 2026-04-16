@@ -14,7 +14,6 @@ You implement changes to extraction code, keyword config, and false positive rul
 ## Key Files
 
 - `config/metric_keywords.yaml` — authoritative keyword patterns
-- `src/extraction/` — V1 extraction pipeline
 - `src/extraction_v2/` — V2 extraction pipeline
 - `src/review/candidate_generator.py` — candidate generation
 - `src/review/false_positive_filter.py` — FP filter rules

@@ -16,7 +16,7 @@ paths:
 
 - Each route module has a paired API blueprint (page renders + JSON endpoints)
 - API auth: `_check_api_key` before_request hook in each API blueprint, configured via `FILINGS_API_KEY` env var
-- Presentation image state: `src/web/pres_image_store.py` (file-based, reads `data/presentation_gold_standard/_image_decisions.json`)
+- Presentation image state: `src/web/pres_image_store.py` (file-based). Image decisions are stored per-directory: `data/presentation_gold_standard/_image_decisions.json` for 8-K filings and `data/filing_gold_standard/_image_decisions.json` for S-1/F-1/10-K filings. The store routes automatically based on key format.
 - Blueprint registration and DB setup: `src/web/app.py`
 
 ## Templates and Static

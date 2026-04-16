@@ -5,7 +5,7 @@
 ## Key Files
 
 - `config/metric_keywords.yaml` — Authoritative metric patterns (primary, context, negative keywords)
-- `src/extraction/keyword_matching.py` — V1 keyword matcher
+- `src/review/keyword_matching.py` — keyword matcher (lives in src/review/, not src/extraction/)
 - `src/extraction_v2/stages/keyword_scan.py` — V2 keyword scanner
 - `src/extraction_v2/stages/text_proximity.py` — V2 value binding from text
 - `src/extraction_v2/stages/table_binding.py` — V2 value binding from tables

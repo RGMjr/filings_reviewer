@@ -21,7 +21,7 @@
 │         ↓ manages                                              │
 │         ↓ connections                                          │
 │   ┌─────────────────────────────────────────┐                │
-│   │  Extraction Pipeline (V1 & V2)          │                │
+│   │  Extraction Pipeline (V2)               │                │
 │   │  ┌────────────────────────────────────┐ │                │
 │   │  │ V2 Stages (15 sequential):         │ │                │
 │   │  │ - Candidate Generation             │ │                │
@@ -127,8 +127,7 @@
 - Maps companies to SEC identifiers
 
 ### Layer 3: Extraction & Processing (Core Logic)
-- **V1 Pipeline**: Production extraction for standard filings
-- **V2 Pipeline**: 15-stage unified pipeline for transcripts/presentations
+- **V2 Pipeline**: Sole production extraction pipeline (V1 retired 2026-04-08); 15-stage unified pipeline for all filing types
 - Integrates LLM (OpenAI) for enhanced analysis
 - Processes images via Vision API
 
@@ -150,7 +149,7 @@
 
 ### Layer 7: Configuration (Cross-Cutting)
 - `metric_keywords.yaml` - authoritative metric patterns
-- Applied to both V1 and V2 extraction
+- Applied to V2 extraction pipeline
 
 ---
 
@@ -165,7 +164,7 @@
    ↓
 3. UniverseBuilder (identifies relevant filings)
    ↓
-4. Extraction V1/V2 Pipeline
+4. Extraction V2 Pipeline
    ├─ Rule-based: metric_keywords.yaml patterns
    ├─ LLM-based: OpenAI for enhanced analysis
    ├─ Vision: Claude Vision for image/table extraction
@@ -211,10 +210,9 @@
 
 ## Key Architectural Decisions
 
-### 1. **Dual Extraction Pipelines**
-- **V1**: Battle-tested for standard filings
-- **V2**: New unified pipeline for diverse document types
-- Both coexist during transition period
+### 1. **V2 as Sole Extraction Pipeline**
+- **V2**: Unified production pipeline for all document types (SEC filings, transcripts, presentations)
+- V1 extraction was retired 2026-04-08; V2 is the sole production pipeline
 
 ### 2. **Rule-Based First**
 - Keyword matching (fast, reliable) is primary
@@ -251,7 +249,7 @@
 - **Extraction depends on**: Keyword config, Database, LLM
 - **Review depends on**: Extraction results, Database
 - **Web Interface depends on**: Extraction, Review, Database
-- **Validation depends on**: Extraction V1/V2
+- **Validation depends on**: Extraction V2
 
 ---
 

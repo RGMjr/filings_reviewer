@@ -237,7 +237,7 @@ config = get_high_recall_config()
 
 A separate review workflow for presentation images (e.g., investor day slides) under `/review/pres-images/`. Unlike the SEC filing image review (which is DB-backed), this workflow is file-based:
 
-- State is persisted to `data/presentation_gold_standard/_image_decisions.json` via `src/web/pres_image_store.py`
+- State is persisted per-directory via `src/web/pres_image_store.py`: presentation GS uses `data/presentation_gold_standard/_image_decisions.json` (8-K filings), filing GS uses `data/filing_gold_standard/_image_decisions.json` (S-1/F-1/10-K filings)
 - Route: `src/web/routes/review_pres_images.py`
 - Filing selection: `pres_image_filing_list.html`; review UI: `review_pres_images.html`
 

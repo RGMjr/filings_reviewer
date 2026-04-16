@@ -80,7 +80,7 @@ This document compares UML Component Diagrams and C4 System Context Diagrams for
 
 ### UML View (Internal Data Flow)
 ```
-SEC Client → Filing Fetcher → Extraction V1/V2 → Database
+SEC Client → Filing Fetcher → Extraction V2 → Database
      ↓                              ↓
 Company Mapping          Vision Client → OpenAI API
                          (LLM Integration)
@@ -115,7 +115,7 @@ This repository currently documents **L1 (System Context)**. The C4 model has th
 Would show major runtime containers:
 - Web Application Container (Flask)
 - Batch Processing Container (Universe Builder, Filing Fetcher)
-- Extraction Container (V1/V2 pipelines)
+- Extraction Container (V2 pipeline)
 - Database Container (PostgreSQL)
 - LLM Integration Container
 
