@@ -4,7 +4,6 @@ name: Gold Standard Validation
 on:
   pull_request:
     paths:
-      - 'src/extraction/**'
       - 'src/extraction_v2/**'
       - 'config/metric_keywords.yaml'
       - 'config/metric_keywords/**'
@@ -84,7 +83,7 @@ jobs:
         if: steps.baseline-check.outputs.baseline_exists == 'true'
         run: |
           if [ "${{ steps.gold-standard.outputs.exit_code }}" != "0" ]; then
-            echo "::warning file=src/extraction::Gold standard validation detected potential regressions. Review the test output before merging."
+            echo "::warning file=src/extraction_v2::Gold standard validation detected potential regressions. Review the test output before merging."
             echo ""
             echo "## Gold Standard Results" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY

@@ -212,7 +212,7 @@ class DocsChecker:
         expected_components = {
             "UniverseBuilder": SRC / "universe" / "universe_builder.py",
             "FilingFetcher": SRC / "filing_fetcher" / "filing_fetcher.py",
-            "HTMLSegmenter": SRC / "extraction" / "html_segmenter.py",
+            "HTMLSegmenter": SRC / "shared" / "html_segmenter.py",
             "CandidateGenerationStage": SRC / "extraction_v2" / "stages" / "candidate_generation.py",
             "ValueBindingStage": SRC / "extraction_v2" / "stages" / "value_binding.py",
             "DefinitionExtractionStage": SRC / "extraction_v2" / "stages" / "definition_extraction.py",

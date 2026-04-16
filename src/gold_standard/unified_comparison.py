@@ -1,9 +1,8 @@
 """
-Unified 3-way comparison of V1 vs V2 vs Gold Standard extraction.
+Unified comparison of V2 vs Gold Standard extraction.
 
 Provides dataclasses and a runner for evaluating extraction pipelines
-against the gold standard dataset, computing precision/recall/F1 metrics
-and surfacing gains/regressions between pipelines.
+against the gold standard dataset, computing precision/recall/F1 metrics.
 
 Usage::
 
@@ -19,7 +18,6 @@ from __future__ import annotations
 import csv
 import json
 import logging
-import uuid
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -28,7 +26,6 @@ from typing import Any
 from src.extraction_v2.models import MetricFact, SourceType
 from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
 from src.gold_standard.baseline import MetricScores
-from src.gold_standard.fresh_extractor import segment_and_generate
 from src.gold_standard.v2_validator import (
     GOLD_STANDARD_CSV,
     GOLD_STANDARD_DIR,
@@ -36,7 +33,6 @@ from src.gold_standard.v2_validator import (
     normalize_metric_id,
     normalize_value,
 )
-from src.review.models import ReviewCandidate
 from src.shared.keyword_config import metrics_are_equivalent
 
 logger = logging.getLogger(__name__)
@@ -52,7 +48,7 @@ class NormalizedExtraction:
     """
     Pipeline-agnostic representation of a single extracted metric value.
 
-    Used to compare V1 and V2 outputs on equal footing against gold standard.
+    Used to compare V2 outputs against the gold standard.
     """
 
     extraction_id: str
@@ -62,62 +58,13 @@ class NormalizedExtraction:
     period_start: date | None
     period_end: date | None
     confidence: float
-    pipeline: str  # "v1" | "v2"
+    pipeline: str  # "v2"
     raw_context: str  # first 200 chars for debugging
 
 
 # ---------------------------------------------------------------------------
 # Conversion helpers
 # ---------------------------------------------------------------------------
-
-
-def v1_candidate_to_normalized(candidate: ReviewCandidate) -> NormalizedExtraction:
-    """
-    Convert a V1 ReviewCandidate to a NormalizedExtraction.
-
-    V1 does not carry structured period information, so period_start/period_end
-    are always None. Source type is derived from the candidate's features if
-    available, falling back to "unknown".
-    """
-    if candidate.candidate_id is not None:
-        extraction_id = str(candidate.candidate_id)
-    else:
-        extraction_id = str(uuid.uuid4())
-
-    metric_id = normalize_metric_id(candidate.suggested_metric_id or "")
-
-    value: float | None = None
-    if candidate.parsed_value is not None:
-        try:
-            value = float(candidate.parsed_value)
-        except (ValueError, TypeError):
-            value = None
-
-    # Derive source_type from features
-    source_type = "unknown"
-    if candidate.features is not None:
-        if candidate.features.is_in_table:
-            source_type = "table"
-        else:
-            source_type = "text"
-
-    confidence = (
-        candidate.suggestion_confidence if candidate.suggestion_confidence is not None else 0.5
-    )
-
-    raw_context = (candidate.context_text or "")[:200]
-
-    return NormalizedExtraction(
-        extraction_id=extraction_id,
-        metric_id=metric_id,
-        value=value,
-        source_type=source_type,
-        period_start=None,
-        period_end=None,
-        confidence=confidence,
-        pipeline="v1",
-        raw_context=raw_context,
-    )
 
 
 def v2_fact_to_normalized(fact: MetricFact) -> NormalizedExtraction:
@@ -423,14 +370,12 @@ class SourceTypeScores:
 
     source_type: str
     gold_count: int
-    v1_result: MatchingResult
     v2_full_result: MatchingResult
     v2_text_only_result: MatchingResult | None
 
 
 def partition_by_source_type(
     gold_entries: list[GoldStandardEntry],
-    v1_extractions: list[NormalizedExtraction],
     v2_full_extractions: list[NormalizedExtraction],
     v2_text_only_extractions: list[NormalizedExtraction] | None,
     value_tolerance: float = 0.02,
@@ -444,7 +389,6 @@ def partition_by_source_type(
 
     Args:
         gold_entries: All gold standard entries for this scope.
-        v1_extractions: V1 normalized extractions.
         v2_full_extractions: V2 full (including images) normalized extractions.
         v2_text_only_extractions: V2 text-only normalized extractions, or None.
         value_tolerance: Fractional value match tolerance.
@@ -466,7 +410,6 @@ def partition_by_source_type(
             if e.has_numeric_value
             and normalize_metric_id(e.metric_id) not in ("", "cm_not_a_customer_metric")
         )
-        v1_result = match_extractions_to_gold(v1_extractions, entries, value_tolerance)
         v2_full_result = match_extractions_to_gold(v2_full_extractions, entries, value_tolerance)
         v2_text_only_result = (
             match_extractions_to_gold(v2_text_only_extractions, entries, value_tolerance)
@@ -476,7 +419,6 @@ def partition_by_source_type(
         result[source_type] = SourceTypeScores(
             source_type=source_type,
             gold_count=gold_count,
-            v1_result=v1_result,
             v2_full_result=v2_full_result,
             v2_text_only_result=v2_text_only_result,
         )
@@ -540,11 +482,8 @@ class CompanyComparison:
 
     company_name: str
     gold_entries: list[GoldStandardEntry]
-    v1_scores: PipelineScores
     v2_full_scores: PipelineScores
     v2_text_only_scores: PipelineScores | None
-    v2_gains: list[GoldStandardEntry]  # Gold entries V2 found that V1 missed
-    v2_regressions: list[GoldStandardEntry]  # Gold entries V1 found that V2 missed
     image_gains: list[GoldStandardEntry]  # Found by V2-full but not V2-text-only
 
 
@@ -556,19 +495,16 @@ class CompanyComparison:
 @dataclass
 class UnifiedReport:
     """
-    Complete 3-way comparison report across all companies.
+    Complete comparison report across all companies.
 
     Contains per-company breakdowns, aggregate P/R/F1 scores for each pipeline,
-    source-type partitioned scores, and an overall verdict.
+    and source-type partitioned scores.
     """
 
     companies: list[CompanyComparison]
-    v1_overall: MetricScores
     v2_full_overall: MetricScores
     v2_text_only_overall: MetricScores | None
     by_source_type: dict[str, SourceTypeScores]
-    verdict: str  # "V2_READY" | "V2_NOT_READY"
-    verdict_reasons: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dictionary."""
@@ -607,11 +543,8 @@ class UnifiedReport:
                 {
                     "company_name": cc.company_name,
                     "gold_count": len(cc.gold_entries),
-                    "v1": ps_dict(cc.v1_scores),
                     "v2_full": ps_dict(cc.v2_full_scores),
                     "v2_text_only": ps_dict(cc.v2_text_only_scores),
-                    "v2_gains": [e.metric_id for e in cc.v2_gains],
-                    "v2_regressions": [e.metric_id for e in cc.v2_regressions],
                     "image_gains": [e.metric_id for e in cc.image_gains],
                 }
             )
@@ -620,7 +553,6 @@ class UnifiedReport:
         for st, scores in self.by_source_type.items():
             by_st[st or "(unclassified)"] = {
                 "gold_count": scores.gold_count,
-                "v1": mr_dict(scores.v1_result),
                 "v2_full": mr_dict(scores.v2_full_result),
                 "v2_text_only": (
                     mr_dict(scores.v2_text_only_result)
@@ -631,12 +563,9 @@ class UnifiedReport:
 
         return {
             "companies": companies_list,
-            "v1_overall": ms_dict(self.v1_overall),
             "v2_full_overall": ms_dict(self.v2_full_overall),
             "v2_text_only_overall": ms_dict(self.v2_text_only_overall),
             "by_source_type": by_st,
-            "verdict": self.verdict,
-            "verdict_reasons": self.verdict_reasons,
         }
 
     def print_summary(self) -> None:
@@ -646,23 +575,16 @@ class UnifiedReport:
         print("=" * 70)
 
         # Per-company table
-        header = f"{'Company':<30} {'V1 F1':>7} {'V2Full F1':>10} {'V2Text F1':>10} {'V2Gains':>8} {'V2Regr':>7}"
+        header = f"{'Company':<30} {'V2Full F1':>10} {'V2Text F1':>10}"
         print(f"\n{header}")
-        print("-" * 70)
+        print("-" * 52)
         for cc in self.companies:
             v2t_f1 = f"{cc.v2_text_only_scores.f1:.1%}" if cc.v2_text_only_scores else "   N/A"
             name = cc.company_name[:29]
-            print(
-                f"{name:<30} "
-                f"{cc.v1_scores.f1:>7.1%} "
-                f"{cc.v2_full_scores.f1:>10.1%} "
-                f"{v2t_f1:>10} "
-                f"{len(cc.v2_gains):>8} "
-                f"{len(cc.v2_regressions):>7}"
-            )
+            print(f"{name:<30} {cc.v2_full_scores.f1:>10.1%} {v2t_f1:>10}")
 
         # Overall
-        print("\n" + "-" * 70)
+        print("\n" + "-" * 52)
         v2t_text = (
             f"  V2-text-only: P={self.v2_text_only_overall.precision:.1%} "
             f"R={self.v2_text_only_overall.recall:.1%} "
@@ -672,9 +594,6 @@ class UnifiedReport:
         )
         print(
             f"\nOVERALL:\n"
-            f"  V1:           P={self.v1_overall.precision:.1%} "
-            f"R={self.v1_overall.recall:.1%} "
-            f"F1={self.v1_overall.f1:.1%}\n"
             f"  V2-full:      P={self.v2_full_overall.precision:.1%} "
             f"R={self.v2_full_overall.recall:.1%} "
             f"F1={self.v2_full_overall.f1:.1%}\n"
@@ -684,9 +603,9 @@ class UnifiedReport:
         # Source-type breakdown
         if self.by_source_type:
             print("\nBY SOURCE TYPE:")
-            hdr2 = f"  {'SegType':<12} {'Gold':>5} {'V1 F1':>7} {'V2Full F1':>10} {'V2Text F1':>10}"
+            hdr2 = f"  {'SegType':<12} {'Gold':>5} {'V2Full F1':>10} {'V2Text F1':>10}"
             print(hdr2)
-            print("  " + "-" * 46)
+            print("  " + "-" * 39)
             for st, scores in sorted(self.by_source_type.items()):
                 label = st or "(unclass)"
                 v2t_f1_str = (
@@ -697,15 +616,10 @@ class UnifiedReport:
                 print(
                     f"  {label:<12} "
                     f"{scores.gold_count:>5} "
-                    f"{scores.v1_result.f1:>7.1%} "
                     f"{scores.v2_full_result.f1:>10.1%} "
                     f"{v2t_f1_str}"
                 )
 
-        # Verdict
-        print(f"\nVERDICT: {self.verdict}")
-        for reason in self.verdict_reasons:
-            print(f"  - {reason}")
         print("=" * 70 + "\n")
 
 
@@ -727,15 +641,14 @@ def _aggregate_metric_scores(results: list[MatchingResult]) -> MetricScores:
 
 class UnifiedComparisonRunner:
     """
-    Orchestrates a 3-way comparison of V1, V2-full, and V2-text-only pipelines.
+    Orchestrates a comparison of V2-full and V2-text-only pipelines.
 
     For each company in the gold standard dataset, it:
       1. Loads gold standard entries from the CSV.
-      2. Runs V1 extraction via fresh_extractor.segment_and_generate().
-      3. Runs V2-full extraction via V2Pipeline.process().
-      4. Optionally runs V2-text-only (no image/chart stages).
-      5. Matches all outputs against the gold standard.
-      6. Aggregates per-company and overall scores, then generates a verdict.
+      2. Runs V2-full extraction via V2Pipeline.process().
+      3. Optionally runs V2-text-only (no image/chart stages).
+      4. Matches all outputs against the gold standard.
+      5. Aggregates per-company and overall scores, then generates a verdict.
     """
 
     def __init__(
@@ -802,12 +715,9 @@ class UnifiedComparisonRunner:
             empty_scores = MetricScores(precision=0.0, recall=0.0, f1=0.0)
             return UnifiedReport(
                 companies=[],
-                v1_overall=empty_scores,
                 v2_full_overall=empty_scores,
                 v2_text_only_overall=None if self.skip_image_comparison else empty_scores,
                 by_source_type={},
-                verdict="V2_NOT_READY",
-                verdict_reasons=["No companies processed."],
             )
 
         company_comparisons: list[CompanyComparison] = []
@@ -821,7 +731,6 @@ class UnifiedComparisonRunner:
 
             metadata = self._load_metadata(company_name)
 
-            v1_extractions = self._run_v1(company_name, filing_path)
             v2_full_extractions = self._run_v2(
                 company_name, filing_path, metadata, enable_images=True
             )
@@ -831,9 +740,6 @@ class UnifiedComparisonRunner:
                     company_name, filing_path, metadata, enable_images=False
                 )
 
-            v1_result = match_extractions_to_gold(
-                v1_extractions, entries, self.value_tolerance, company_name
-            )
             v2_full_result = match_extractions_to_gold(
                 v2_full_extractions, entries, self.value_tolerance, company_name
             )
@@ -843,27 +749,12 @@ class UnifiedComparisonRunner:
                     v2_text_extractions, entries, self.value_tolerance, company_name
                 )
 
-            v1_scores = _pipeline_scores_from_result("v1", v1_result)
             v2_full_scores = _pipeline_scores_from_result("v2_full", v2_full_result)
             v2_text_scores: PipelineScores | None = (
                 _pipeline_scores_from_result("v2_text_only", v2_text_result)
                 if v2_text_result is not None
                 else None
             )
-
-            # V2 gains: gold entries V2-full found but V1 missed
-            v1_matched_gold = {id(p.gold_entry) for p in v1_result.tp_pairs}
-            v2_full_matched_gold = {id(p.gold_entry) for p in v2_full_result.tp_pairs}
-            v2_gains: list[GoldStandardEntry] = [
-                p.gold_entry
-                for p in v2_full_result.tp_pairs
-                if id(p.gold_entry) not in v1_matched_gold
-            ]
-            v2_regressions: list[GoldStandardEntry] = [
-                p.gold_entry
-                for p in v1_result.tp_pairs
-                if id(p.gold_entry) not in v2_full_matched_gold
-            ]
 
             # Image gains: found by V2-full but not V2-text-only
             image_gains: list[GoldStandardEntry] = []
@@ -879,20 +770,15 @@ class UnifiedComparisonRunner:
                 CompanyComparison(
                     company_name=company_name,
                     gold_entries=entries,
-                    v1_scores=v1_scores,
                     v2_full_scores=v2_full_scores,
                     v2_text_only_scores=v2_text_scores,
-                    v2_gains=v2_gains,
-                    v2_regressions=v2_regressions,
                     image_gains=image_gains,
                 )
             )
 
         # Aggregate overall scores
-        v1_results = [cc.v1_scores.matching_result for cc in company_comparisons]
         v2_full_results = [cc.v2_full_scores.matching_result for cc in company_comparisons]
 
-        v1_overall = _aggregate_metric_scores(v1_results)
         v2_full_overall = _aggregate_metric_scores(v2_full_results)
         v2_text_only_overall: MetricScores | None = None
         if not self.skip_image_comparison:
@@ -908,19 +794,14 @@ class UnifiedComparisonRunner:
         all_gold: list[GoldStandardEntry] = [
             e for cc in company_comparisons for e in cc.gold_entries
         ]
-        all_v1: list[NormalizedExtraction] = []
         all_v2_full: list[NormalizedExtraction] = []
         all_v2_text: list[NormalizedExtraction] | None = (
             [] if not self.skip_image_comparison else None
         )
 
         for cc in company_comparisons:
-            # Re-use extractions from the company scores tp_pairs + fp + fn
-            # Re-collect the normalized extractions by re-running is expensive;
-            # instead collect them from the MatchingResult tp_pairs and fp lists.
-            for pair in cc.v1_scores.matching_result.tp_pairs:
-                all_v1.append(pair.extraction)
-            all_v1.extend(cc.v1_scores.matching_result.fp_extractions)
+            # Re-use extractions from the company scores tp_pairs + fp lists.
+            # Re-running extraction would be expensive; collect from MatchingResult.
             for pair in cc.v2_full_scores.matching_result.tp_pairs:
                 all_v2_full.append(pair.extraction)
             all_v2_full.extend(cc.v2_full_scores.matching_result.fp_extractions)
@@ -931,83 +812,17 @@ class UnifiedComparisonRunner:
 
         by_source_type = partition_by_source_type(
             all_gold,
-            all_v1,
             all_v2_full,
             all_v2_text,
             self.value_tolerance,
         )
 
-        # Verdict logic
-        verdict, verdict_reasons = self._compute_verdict(
-            v1_overall, v2_full_overall, v2_text_only_overall, company_comparisons
-        )
-
         return UnifiedReport(
             companies=company_comparisons,
-            v1_overall=v1_overall,
             v2_full_overall=v2_full_overall,
             v2_text_only_overall=v2_text_only_overall,
             by_source_type=by_source_type,
-            verdict=verdict,
-            verdict_reasons=verdict_reasons,
         )
-
-    def _compute_verdict(
-        self,
-        v1_overall: MetricScores,
-        v2_full_overall: MetricScores,
-        v2_text_only_overall: MetricScores | None,
-        companies: list[CompanyComparison],
-    ) -> tuple[str, list[str]]:
-        """
-        Determine V2_READY / V2_NOT_READY verdict.
-
-        V2_READY if:
-          - V2 text-only F1 >= V1 F1 - 0.05
-          - No company has V2 text-only recall drop > 0.15 vs V1
-
-        Args:
-            v1_overall: Aggregate V1 scores.
-            v2_full_overall: Aggregate V2-full scores.
-            v2_text_only_overall: Aggregate V2-text-only scores, or None.
-            companies: Per-company comparison objects.
-
-        Returns:
-            Tuple of (verdict_string, list_of_reason_strings).
-        """
-        reasons: list[str] = []
-
-        if v2_text_only_overall is None:
-            return "V2_NOT_READY", [
-                "V2 text-only scores not available (skip_image_comparison=True)."
-            ]
-
-        # Check overall F1 threshold
-        f1_drop = v1_overall.f1 - v2_text_only_overall.f1
-        if f1_drop > 0.05:
-            reasons.append(
-                f"V2 text-only F1 ({v2_text_only_overall.f1:.1%}) is more than 5pp below "
-                f"V1 F1 ({v1_overall.f1:.1%}) — drop = {f1_drop:.1%}."
-            )
-
-        # Check per-company recall drops
-        for cc in companies:
-            if cc.v2_text_only_scores is None:
-                continue
-            recall_drop = cc.v1_scores.recall - cc.v2_text_only_scores.recall
-            if recall_drop > 0.15:
-                reasons.append(
-                    f"{cc.company_name}: V2 text-only recall dropped {recall_drop:.1%} "
-                    f"(V1={cc.v1_scores.recall:.1%}, V2={cc.v2_text_only_scores.recall:.1%})."
-                )
-
-        if reasons:
-            return "V2_NOT_READY", reasons
-
-        return "V2_READY", [
-            f"V2 text-only F1 ({v2_text_only_overall.f1:.1%}) >= V1 F1 ({v1_overall.f1:.1%}) - 5pp threshold.",
-            "No company has V2 text-only recall drop > 15pp vs V1.",
-        ]
 
     def _load_gold_standard(self) -> dict[str, list[GoldStandardEntry]]:
         """
@@ -1075,34 +890,6 @@ class UnifiedComparisonRunner:
             period_start=period_start,
             period_end=period_end,
         )
-
-    def _run_v1(
-        self,
-        company_name: str,
-        filing_path: Path,
-    ) -> list[NormalizedExtraction]:
-        """
-        Run V1 extraction on a filing and return normalized extractions.
-
-        Args:
-            company_name: Company name for logging.
-            filing_path: Path to filing.html.
-
-        Returns:
-            List of NormalizedExtraction from V1.
-        """
-        try:
-            candidates, segment_count, error = segment_and_generate(filing_path)
-            if error:
-                logger.warning("V1 extraction error for %s: %s", company_name, error)
-                return []
-            logger.debug(
-                "V1 %s: %d segments, %d candidates", company_name, segment_count, len(candidates)
-            )
-            return [v1_candidate_to_normalized(c) for c in candidates]
-        except Exception as exc:
-            logger.error("V1 extraction exception for %s: %s", company_name, exc)
-            return []
 
     def _run_v2(
         self,
