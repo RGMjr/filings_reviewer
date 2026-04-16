@@ -28,7 +28,7 @@ configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 # Ordered list of schema migrations (dependency order matters).
-# Excludes 00_init_databases.sql (Docker-only) and 06_cmasb_analysis_queries.sql (views).
+# Excludes 00_init_databases.sql (Docker-only).
 MIGRATIONS = [
     "01_create_schema.sql",
     "02_add_filing_storage.sql",
@@ -56,6 +56,7 @@ MIGRATIONS = [
     "19_add_predicted_relevance.sql",
     "20_add_auto_rejected_status.sql",
     "21_create_image_cache.sql",
+    "22_seed_missing_metrics.sql",
 ]
 
 BOOTSTRAP_DDL = """

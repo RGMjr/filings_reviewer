@@ -55,7 +55,6 @@ MIGRATION_ORDER = [
     "04_add_post_combination.sql",
     "04_seed_metrics_taxonomy.sql",
     "05_add_business_type_exclusions.sql",
-    "06_cmasb_analysis_queries.sql",
     "07_create_review_schema.sql",
     "08_add_richness_metadata.sql",
     "08_add_suppressed_candidates.sql",
@@ -76,6 +75,7 @@ MIGRATION_ORDER = [
     "19_add_predicted_relevance.sql",
     "20_add_auto_rejected_status.sql",
     "21_create_image_cache.sql",
+    "22_seed_missing_metrics.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
