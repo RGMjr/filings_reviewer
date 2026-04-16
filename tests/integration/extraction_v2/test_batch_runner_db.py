@@ -60,7 +60,7 @@ _TEST_TICKER = "BATC"
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def test_company_id(test_db_adapter: DatabaseAdapter) -> int:
     """Insert test company and return company_id."""
     with test_db_adapter.get_connection() as conn:
@@ -98,6 +98,7 @@ def cleanup_test_filings(test_db_adapter: DatabaseAdapter, test_company_id: int)
     def _delete() -> None:
         with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
+                cur.execute("SET LOCAL lock_timeout = '3s'")
                 cur.execute(
                     "DELETE FROM filings WHERE company_id = %(cid)s",
                     {"cid": test_company_id},
