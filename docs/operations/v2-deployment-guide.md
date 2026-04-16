@@ -97,9 +97,11 @@ Before promoting V2 to primary, validate extraction quality against the gold sta
 
 | Metric | Minimum | Current Baseline |
 |--------|---------|-----------------|
-| Precision | 75% | 92.8% |
-| Recall | 55% | 77.6% |
-| F1 Score | 65% | 84.5% |
+| Precision | 75% | 68.1% |
+| Recall | 55% | 63.4% |
+| F1 Score | 65% | 65.6% |
+
+> **Note**: Current Baseline values are V2 SEC methodology (15 gold standard companies, V2 pipeline only), as of 2026-04-16 (commit `09a8f64`). These differ from the original V1 GR methodology numbers (P=92.8%, R=77.6%, F1=84.5%) which used a different validation approach. V2 baseline is stored in `data/gold_standard/v2_baseline.json`.
 
 ### Run Gold Standard Validation
 

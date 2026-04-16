@@ -32,11 +32,13 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
 
 **Current Tier 1 recall gaps (focus areas):**
-- `cm_revenue_by_cohort` — F1=31%, recall=23%. Needs better keyword patterns and value binding for cohort revenue tables.
-- `cm_balance_by_cohort` — F1=0%. Needs gold standard cases and extraction support.
-- `cm_gross_margin_by_cohort` — F1=0%. Needs gold standard cases and extraction support.
-- `cm_ltv_to_cac_ratio` — F1=46%, recall=33%. Often missed due to varied formatting.
-- `cm_customer_retention_rate` — F1=50%. Low coverage, easily confused with NRR.
+- `cm_revenue_by_cohort` — F1=31%, recall=23%. Wider-proximity was evaluated and rejected for this metric (FNs are table/chart-based; widening would add FPs without recovering TPs). Remaining gap is chart-pipeline.
+- `cm_balance_by_cohort` — F1=0%. GS exists (10 Robinhood rows); all FNs are chart-embedded. Blocked on chart pipeline improvements.
+- `cm_gross_margin_by_cohort` — F1=0%. GS exists (9 Farfetch rows); all FNs are chart images. Blocked on chart pipeline improvements.
+- `cm_ltv_to_cac_ratio` — F1=50% (updated 2026-04-16). `specific_patterns` confidence boost + `_WIDER_PROXIMITY_METRICS` membership landed in commits `dd5c90a`/`09a8f64`.
+- `cm_customer_retention_rate` — F1=50%. GS thinness (1 row Chewy); retention family dedup and FP rules are conservative; no text fix available per pipeline investigation.
+
+Text-pipeline Tier 1 recall work concluded 2026-04-16 (commits dd5c90a, 09a8f64); remaining gaps are chart-pipeline.
 
 **Tier 2 guidance:** Accept current performance. Simplify or relax FP rules for Tier 2 metrics if they create maintenance burden or interfere with Tier 1.
 
