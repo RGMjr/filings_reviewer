@@ -1,11 +1,28 @@
 """
-Human-in-the-loop review system for metric extraction.
+Shared extraction library and V1 candidate generator.
 
-This module provides tools for:
-- Generating candidate metrics for human review
-- Recording review decisions
-- Analyzing patterns in accepted vs rejected candidates
-- Generating improved extraction rules
+This package has two roles:
+
+1. **Shared extraction library (used by V2 pipeline):**
+   - ``false_positive_filter`` — FalsePositiveFilter, used by
+     ``src/extraction_v2/stages/false_positive_filter.py``
+   - ``number_parsing`` — NumberMatch, used by
+     ``src/extraction_v2/stages/value_binding.py``
+   - ``respectively_parser`` — detect_respectively_pattern, used by
+     ``src/extraction_v2/stages/value_binding.py``
+   - ``boundary_detection`` — BoundaryDetector, used by
+     ``src/shared/html_segmenter.py``
+
+2. **V1 candidate generator (legacy):**
+   - ``candidate_generator``, ``helpers``, ``pattern_analyzer``,
+     ``confidence_scoring``, ``feature_extraction`` — write to the
+     legacy ``review_candidates`` table; used by gold-standard fresh
+     extractor and legacy scripts. Scheduled for removal with the
+     ``review_candidates`` table migration.
+
+Do NOT rename or move the shared modules (role 1) without coordinating
+changes in ``src/extraction_v2/`` and ``src/shared/``.
+See ``src/review/README.md`` for full details.
 """
 
 from src.review.candidate_generator import CandidateGenerator

@@ -3,7 +3,7 @@
 Purpose: Give AI coding agents the minimum, project-specific context to be productive here. Follow these conventions and examples; prefer concrete patterns over generic advice.
 
 ## Big Picture
-- Pipeline: UniverseBuilder → FilingFetcher → HTMLSegmenter → MetricClassifier → Value/Definition Extraction → QualityScorer → Database.
+- Pipeline: UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → V2QualityScorer → Database.
 - Architecture: infra (Postgres, SEC, validation), universe (discovery), filing_fetcher (retrieval), extraction (segmentation/classification/extraction), review (human-in-the-loop), web (Flask UI), llm (OpenAI integration). See [src](../src) and [docs/README.md](../docs/README.md).
 - Design tenets: Rule-based first (reduce LLM cost), strict provenance (every value links to its source segment), idempotent upserts, conservative classification (require BOTH signals), table-aware matching.
 
@@ -71,7 +71,7 @@ Purpose: Give AI coding agents the minimum, project-specific context to be produ
   ```
 
 ## Non-obvious Behavior
-- Docker image default `CMD` runs tests without coverage; override to run scripts (e.g., `docker run --rm -it <image> python scripts/run_phase1b_extraction.py`).
+- Docker image default `CMD` runs tests without coverage; override to run scripts (e.g., `docker run --rm -it <image> python3 scripts/batch_v2_extraction.py`).
 - Health check `/health` introspects pool stats when pooling is enabled.
 
 Keep changes minimal and aligned with these patterns. When adding new components, mirror directory placement and adapt existing adapters/blueprints rather than inventing new frameworks.

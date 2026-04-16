@@ -456,7 +456,7 @@ Filing Metadata (CIK, accession number, form type)
 | Web UI (Flask) | Complete | Human review interface |
 | **Overall** | **Production Ready** | V2 is sole production pipeline |
 
-> **Note:** V1 extraction code (`src/extraction/`) is retained for historical reference only. It is not used in any production pipeline.
+> **Note:** The `src/extraction/` package has been deleted from the codebase. See `docs/architecture/extraction-pipeline.md` for the current V2 extraction architecture.
 
 ---
 

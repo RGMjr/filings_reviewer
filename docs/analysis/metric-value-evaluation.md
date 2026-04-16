@@ -6,6 +6,14 @@
 
 ---
 
+> **Historical note:** This evaluation was conducted while V1 and V2 coexisted. As of 2026-04-08,
+> V2 is the sole production extraction pipeline. `src/review/candidate_generator.py` (V1) still
+> runs for legacy review candidates but is no longer part of the V2 extraction path. V1 counts
+> in this analysis (e.g., "V1=8 rules" in the FP burden table) are historical and reflect the
+> state at the time of evaluation.
+
+---
+
 ## Executive Summary
 
 | Category | Count | Metrics |
