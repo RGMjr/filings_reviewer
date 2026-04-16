@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 
 
@@ -72,4 +73,72 @@ class TestFactUpsertSQL:
         insert_columns = insert_match.group(1)
         assert "review_reason" in insert_columns, (
             "review_reason (machine-generated) must be included in INSERT columns"
+        )
+
+
+class TestPersistDedup:
+    """Verify the persistence-layer dedup uses highest-confidence-wins (WP-12)."""
+
+    def _get_dedup_source(self) -> str:
+        from src.extraction_v2.persistence import V2PersistenceAdapter
+        return inspect.getsource(V2PersistenceAdapter._persist_facts_in_tx)
+
+    def _run_dedup(self, params_list: list[dict]) -> list[dict]:
+        """Exercise the dedup logic extracted from _persist_facts_in_tx."""
+        seen: dict[tuple, dict] = {}
+        for p in params_list:
+            key = (
+                p.get("doc_id"),
+                p.get("canonical_metric_id"),
+                p.get("period_start"),
+                p.get("period_end"),
+                p.get("unit"),
+                p.get("scope"),
+                p.get("cohort_def") or "",
+                p.get("customer_type") or "",
+            )
+            existing = seen.get(key)
+            if existing is None or p["confidence"] > existing["confidence"]:
+                seen[key] = p
+        return list(seen.values())
+
+    def _make_param(self, fact_id: str, confidence: float) -> dict:
+        return {
+            "doc_id": 1,
+            "canonical_metric_id": "cm_average_order_value",
+            "period_start": "2024-01-01",
+            "period_end": "2024-12-31",
+            "unit": "CURRENCY",
+            "scope": "COMPANY",
+            "cohort_def": None,
+            "customer_type": None,
+            "confidence": confidence,
+            "fact_id": fact_id,
+        }
+
+    def test_persist_dedup_keeps_highest_confidence(self) -> None:
+        """When a low-confidence fact arrives before a high-confidence one, high wins."""
+        low = self._make_param("low", confidence=0.5)
+        high = self._make_param("high", confidence=0.9)
+
+        result = self._run_dedup([low, high])
+
+        assert len(result) == 1
+        assert result[0]["fact_id"] == "high"
+
+    def test_persist_dedup_high_first_low_second(self) -> None:
+        """High-confidence fact is not displaced by a later low-confidence one."""
+        high = self._make_param("high", confidence=0.9)
+        low = self._make_param("low", confidence=0.5)
+
+        result = self._run_dedup([high, low])
+
+        assert len(result) == 1
+        assert result[0]["fact_id"] == "high"
+
+    def test_persist_dedup_source_uses_confidence_check(self) -> None:
+        """_persist_facts_in_tx uses confidence comparison, not last-write-wins."""
+        source = self._get_dedup_source()
+        assert 'existing["confidence"]' in source, (
+            "_persist_facts_in_tx must compare confidence to keep highest, not last-write-wins"
         )

@@ -693,7 +693,7 @@ class V2PersistenceAdapter:
 
         # Deduplicate by identity key to avoid unique constraint violations when
         # the pipeline produces two facts with the same (metric, period, unit,
-        # scope, cohort) tuple. Keep the last occurrence (highest confidence).
+        # scope, cohort) tuple. Keep the highest-confidence occurrence.
         seen: dict[tuple, dict] = {}
         for p in params_list:
             key = (
@@ -706,7 +706,9 @@ class V2PersistenceAdapter:
                 p["cohort_def"] or "",
                 p["customer_type"] or "",
             )
-            seen[key] = p
+            existing = seen.get(key)
+            if existing is None or p["confidence"] > existing["confidence"]:
+                seen[key] = p
         deduped = list(seen.values())
 
         cur.executemany(sql, deduped)

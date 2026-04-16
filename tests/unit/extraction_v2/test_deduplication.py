@@ -839,3 +839,83 @@ class TestGroupingPerformance:
 
         # Each value is far from others, so 10 groups
         assert len(groups) == 10
+
+
+# ============================================================================
+# Key Normalization Tests (Fix 1 + Fix 2)
+# ============================================================================
+
+
+class TestDeduplicationKeyNormalization:
+    """Tests for None→"" normalization in dedup bucket keys (WP-xx)."""
+
+    def test_none_vs_empty_string_cohort_in_same_fuzzy_bucket(self) -> None:
+        """Facts with cohort_def=None and cohort_def="" land in the same fuzzy-period bucket.
+
+        Fix 1b: _fuzzy_period_dedup normalizes cohort_def/customer_type to "" in the
+        bucket key so that None and "" are treated as the same sentinel value —
+        matching the SQL unique index COALESCE behaviour.
+        """
+        stage = DeduplicationStage()
+
+        # A: HTML_TABLE, no period, cohort=None
+        fact_a = make_fact(
+            fact_id="fact-a",
+            source_type=SourceType.HTML_TABLE,
+            confidence=0.9,
+            period_start=None,
+            period_end=None,
+            cohort_def=None,
+        )
+        # B: TEXT, period=2024, cohort=None — same bucket as A after Fix 1b
+        fact_b = make_fact(
+            fact_id="fact-b",
+            source_type=SourceType.TEXT,
+            confidence=0.6,
+            period_start=date(2024, 1, 1),
+            period_end=date(2024, 12, 31),
+            cohort_def=None,
+        )
+        # C: OCR_TABLE, period=2024, cohort="" — same bucket as A/B after Fix 1b
+        fact_c = make_fact(
+            fact_id="fact-c",
+            source_type=SourceType.OCR_TABLE,
+            confidence=0.7,
+            period_start=date(2024, 1, 1),
+            period_end=date(2024, 12, 31),
+            cohort_def="",
+        )
+
+        result = stage._fuzzy_period_dedup([fact_a, fact_b, fact_c], tolerance=0.02)
+
+        # All three collapse to one fact: A wins (HTML_TABLE), gets period from B/C,
+        # and B and C appear in alternate_evidence.
+        assert len(result) == 1
+        winner = result[0]
+        assert winner.fact_id == "fact-a"
+        assert winner.period_start == date(2024, 1, 1)
+        assert "fact-b" in winner.alternate_evidence
+        assert "fact-c" in winner.alternate_evidence
+
+    def test_none_vs_empty_string_cohort_in_same_identity_bucket(self) -> None:
+        """_group_duplicates places cohort_def=None and cohort_def="" in the same bucket.
+
+        Fix 1a: _group_duplicates normalizes cohort_def/customer_type to "" in the
+        bucket key so these facts are compared to each other rather than silently
+        placed in separate buckets. Note: is_duplicate_of compares cohort_def
+        directly (None != ""), so they still emerge as two separate 1-element groups
+        within the shared bucket — but they were at least evaluated together,
+        matching the SQL COALESCE identity view.
+        """
+        stage = DeduplicationStage()
+
+        fact_none = make_fact(fact_id="f-none", cohort_def=None, value=100.0)
+        fact_empty = make_fact(fact_id="f-empty", cohort_def="", value=100.0)
+
+        groups = stage._group_duplicates([fact_none, fact_empty], tolerance=0.02)
+
+        # Same bucket (after normalization), but is_duplicate_of sees None != "" →
+        # two separate 1-element groups, not one merged group.
+        assert len(groups) == 2
+        group_sizes = sorted(len(g) for g in groups)
+        assert group_sizes == [1, 1]
