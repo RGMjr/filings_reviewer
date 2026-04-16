@@ -1,0 +1,3858 @@
+{
+  "CART_S-1_2023-09-15:249062b5-547f-50d4-8056-5f55c11fb5c0": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "249062b5-547f-50d4-8056-5f55c11fb5c0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:ed330407-cfe1-5497-983f-70f7f72dce2d": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "ed330407-cfe1-5497-983f-70f7f72dce2d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:50f33833-8f35-5c45-ab26-407d355968a1": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "50f33833-8f35-5c45-ab26-407d355968a1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:8e49a60d-e863-57c6-8994-82fa7bd0f236": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "8e49a60d-e863-57c6-8994-82fa7bd0f236",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:e45e44e5-e983-51ef-be5f-a1517ea86d48": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "e45e44e5-e983-51ef-be5f-a1517ea86d48",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:2ab748b8-ca9e-5c90-aef8-c0328233861b": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "2ab748b8-ca9e-5c90-aef8-c0328233861b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:57f3e655-08ff-5aa0-97a4-4e4da6682a46": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "57f3e655-08ff-5aa0-97a4-4e4da6682a46",
+    "decision": "relevant",
+    "chart_type": "stacked_bar",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:d2b0ec4b-0298-5eac-a043-0ecc471ae868": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "d2b0ec4b-0298-5eac-a043-0ecc471ae868",
+    "decision": "relevant",
+    "chart_type": "stacked_bar",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:406bcd52-09a9-5842-938f-a9136ab6dda0": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "406bcd52-09a9-5842-938f-a9136ab6dda0",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:5e4bb023-6831-5a38-875c-41882937c699": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "5e4bb023-6831-5a38-875c-41882937c699",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:36169925-2ef7-52de-8cb4-1cc4ef6b2e41": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "36169925-2ef7-52de-8cb4-1cc4ef6b2e41",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:1e2cca6c-5ca1-543d-b058-bb288a10af37": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "1e2cca6c-5ca1-543d-b058-bb288a10af37",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:20b8f3bc-e8d5-5bef-97be-91ef22775c4d": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "20b8f3bc-e8d5-5bef-97be-91ef22775c4d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:d90f6654-41db-59ec-9cff-60b47930c238": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "d90f6654-41db-59ec-9cff-60b47930c238",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:2f5e7c52-cea7-53fe-aa92-e11f921efe53": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "2f5e7c52-cea7-53fe-aa92-e11f921efe53",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:9c126443-1f77-5e4c-b8b2-494aa3609e17": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "9c126443-1f77-5e4c-b8b2-494aa3609e17",
+    "decision": "relevant",
+    "chart_type": "stacked_bar",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:3d31b240-13c6-5b2a-825e-0755dceb5e9e": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "3d31b240-13c6-5b2a-825e-0755dceb5e9e",
+    "decision": "relevant",
+    "chart_type": "stacked_bar",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:a2ebe374-fe56-534a-9a43-38dee08dd9ca": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "a2ebe374-fe56-534a-9a43-38dee08dd9ca",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:b23c5d71-2117-5f6e-9dc6-2afc9ef46f24": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "b23c5d71-2117-5f6e-9dc6-2afc9ef46f24",
+    "decision": "relevant",
+    "chart_type": "stacked_bar",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:885edd34-04a9-5b60-8028-5c26e02f4084": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "885edd34-04a9-5b60-8028-5c26e02f4084",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:e2c7cd51-d8f0-5938-9b55-c7c63e3cdb2c": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "e2c7cd51-d8f0-5938-9b55-c7c63e3cdb2c",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:4e232bac-87f4-5b0f-8ca0-1b2b191bc645": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "4e232bac-87f4-5b0f-8ca0-1b2b191bc645",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:cb8ffaf3-1ace-5915-a50a-537a9f14b4b4": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "cb8ffaf3-1ace-5915-a50a-537a9f14b4b4",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:c879887f-b3ba-5cab-9538-3296abeb67a7": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "c879887f-b3ba-5cab-9538-3296abeb67a7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:3510fb22-d4d5-5e8e-98df-0c97224f5d93": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "3510fb22-d4d5-5e8e-98df-0c97224f5d93",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:f45c17a7-6a70-555e-8edc-daa9afc11a65": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "f45c17a7-6a70-555e-8edc-daa9afc11a65",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:a2528616-982f-5d38-bc17-007598975a04": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "a2528616-982f-5d38-bc17-007598975a04",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:5ed2db72-fa05-56f8-af10-b8e2c2023f75": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "5ed2db72-fa05-56f8-af10-b8e2c2023f75",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:e97629a7-a6e0-5d7b-b5d4-788f3cc178b3": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "e97629a7-a6e0-5d7b-b5d4-788f3cc178b3",
+    "decision": "relevant",
+    "chart_type": "cohort_table",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:814d7f6f-8b4d-58da-b9d0-5aa9f17dd2f6": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "814d7f6f-8b4d-58da-b9d0-5aa9f17dd2f6",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:91586fa2-702e-5180-b40e-bf79bc9c835f": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "91586fa2-702e-5180-b40e-bf79bc9c835f",
+    "decision": "relevant",
+    "chart_type": "cohort_table",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:97721f8f-64ec-5a7f-a6d0-d8cf61e08a85": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "97721f8f-64ec-5a7f-a6d0-d8cf61e08a85",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:2e0c033d-e4d4-5134-9bbd-2ea212bb2d20": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "2e0c033d-e4d4-5134-9bbd-2ea212bb2d20",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:764a74d9-a45f-5b15-a43c-91776a180728": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "764a74d9-a45f-5b15-a43c-91776a180728",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:bf923e8b-a559-53ab-a2fd-e6585846b0e0": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "bf923e8b-a559-53ab-a2fd-e6585846b0e0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:f698fb1c-f40f-543f-ae7a-766de57a7ed0": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "f698fb1c-f40f-543f-ae7a-766de57a7ed0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:c21ccc5b-5ba0-5ac8-92ed-70afaee467fa": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "c21ccc5b-5ba0-5ac8-92ed-70afaee467fa",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:18c10c01-8c91-5169-abb3-44134a588c46": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "18c10c01-8c91-5169-abb3-44134a588c46",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:bb3d8bbf-6345-5ea5-91b9-26fbb26036b4": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "bb3d8bbf-6345-5ea5-91b9-26fbb26036b4",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:93156282-0448-568f-845d-998b1309504e": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "93156282-0448-568f-845d-998b1309504e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:0d89c55f-99ce-5cf4-af6f-31b08fc6b846": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "0d89c55f-99ce-5cf4-af6f-31b08fc6b846",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:47639e66-5849-584d-b7ea-33b99c29514c": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "47639e66-5849-584d-b7ea-33b99c29514c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:29d228f3-67be-56f8-b4c9-8323ede8bd30": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "29d228f3-67be-56f8-b4c9-8323ede8bd30",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:eedb9c03-ec7c-5b3f-b837-4f74f36db4de": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "eedb9c03-ec7c-5b3f-b837-4f74f36db4de",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:b04344b5-9c29-5fdf-ac70-fae23af4e21d": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "b04344b5-9c29-5fdf-ac70-fae23af4e21d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:65af6e19-9a1a-51d8-96ce-adbf762ce029": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "65af6e19-9a1a-51d8-96ce-adbf762ce029",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:1d128c97-a4c0-57b2-bc8c-e6f8f35da38b": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "1d128c97-a4c0-57b2-bc8c-e6f8f35da38b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:5d44fb41-469e-5937-baa5-ca50f0baf2a6": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "5d44fb41-469e-5937-baa5-ca50f0baf2a6",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:b3608bae-4a18-58bd-89fb-08b52d6ca3ec": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "b3608bae-4a18-58bd-89fb-08b52d6ca3ec",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:7faeb86d-827e-5060-9c1b-7adfc686a45e": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "7faeb86d-827e-5060-9c1b-7adfc686a45e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:c675da51-36f4-5231-a38b-2ff320f8d3d5": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "c675da51-36f4-5231-a38b-2ff320f8d3d5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:1cf330ca-67a8-5a66-afff-91d68072b7d2": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "1cf330ca-67a8-5a66-afff-91d68072b7d2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:365061fb-554c-5798-97bc-e5ed638dcbc3": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "365061fb-554c-5798-97bc-e5ed638dcbc3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:6c57739d-8c34-5fd3-bdec-4e57d0a469f1": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "6c57739d-8c34-5fd3-bdec-4e57d0a469f1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:118069bf-0c01-52b0-87a3-8bf53755ec16": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "118069bf-0c01-52b0-87a3-8bf53755ec16",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:6fbf6d61-4ad4-5dc7-ba8d-bd5cf8e23d59": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "6fbf6d61-4ad4-5dc7-ba8d-bd5cf8e23d59",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:3cf429fc-81e5-5c7a-88b1-32194787d312": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "3cf429fc-81e5-5c7a-88b1-32194787d312",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:b90b4b45-d5a4-5fd6-b92a-c8709f1ec0d0": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "b90b4b45-d5a4-5fd6-b92a-c8709f1ec0d0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:4f9b2eb2-9165-5304-b58f-856b6b2e139a": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "4f9b2eb2-9165-5304-b58f-856b6b2e139a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:894dc221-2f49-5b76-8444-3e8fa99114e3": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "894dc221-2f49-5b76-8444-3e8fa99114e3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:be2108e4-f132-5505-9210-4196d84f6224": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "be2108e4-f132-5505-9210-4196d84f6224",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:a97e2f78-ed6e-55c8-964c-cf181c8e0793": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "a97e2f78-ed6e-55c8-964c-cf181c8e0793",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:bfaab8c8-fdaf-5d0a-96e5-7b25024ba0e0": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "bfaab8c8-fdaf-5d0a-96e5-7b25024ba0e0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:5f00bc6a-1d64-53d7-b03f-de1946e40c4d": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "5f00bc6a-1d64-53d7-b03f-de1946e40c4d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:04b5bf82-8085-59a5-be93-749749f72fcb": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "04b5bf82-8085-59a5-be93-749749f72fcb",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:bcc26678-560e-5751-b9ec-60c6ab33ca12": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "bcc26678-560e-5751-b9ec-60c6ab33ca12",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:a1c98d8c-7c5f-5413-8356-6c82292de6b1": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "a1c98d8c-7c5f-5413-8356-6c82292de6b1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:4159a796-f34d-5ab3-8d60-6f023c25d26d": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "4159a796-f34d-5ab3-8d60-6f023c25d26d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:94342416-55a5-5276-97d7-6ff66b0e0c0f": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "94342416-55a5-5276-97d7-6ff66b0e0c0f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:b8e0bf6b-a18f-5a83-b244-213f3f051005": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "b8e0bf6b-a18f-5a83-b244-213f3f051005",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:76a0f06c-9695-5374-9005-5ab7649072a6": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "76a0f06c-9695-5374-9005-5ab7649072a6",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:74e01623-c4e9-506b-80de-1994399bbc60": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "74e01623-c4e9-506b-80de-1994399bbc60",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:803f8b08-7cea-556a-883a-c40165bd45ad": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "803f8b08-7cea-556a-883a-c40165bd45ad",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:d9434776-53e6-5e51-b82b-06faae89cfad": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "d9434776-53e6-5e51-b82b-06faae89cfad",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:93d9f93a-beb3-55b2-8730-8b1c6d84955a": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "93d9f93a-beb3-55b2-8730-8b1c6d84955a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:95978975-426d-5c35-8030-9058a25f7414": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "95978975-426d-5c35-8030-9058a25f7414",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:eae5e259-5ce4-5df6-8801-004d5ed6d404": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "eae5e259-5ce4-5df6-8801-004d5ed6d404",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:3a4fa008-cc7b-55b8-b5c8-4de3058c9777": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "3a4fa008-cc7b-55b8-b5c8-4de3058c9777",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:60ec041e-1587-5ba1-b860-23d49bde3203": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "60ec041e-1587-5ba1-b860-23d49bde3203",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:ff796dc4-faa6-54fd-9d5b-1fba33744281": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "ff796dc4-faa6-54fd-9d5b-1fba33744281",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:c176fff7-b870-5541-88ee-7f962d26c54c": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "c176fff7-b870-5541-88ee-7f962d26c54c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:0887eae5-494a-565b-b300-7b792921f317": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "0887eae5-494a-565b-b300-7b792921f317",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CART_S-1_2023-09-15:a0df6f86-b8bf-5917-854a-685fbfa65ca8": {
+    "key": "CART_S-1_2023-09-15",
+    "img_id": "a0df6f86-b8bf-5917-854a-685fbfa65ca8",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:ec56f63e-7fa8-5f08-a581-a8994feb9359": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "ec56f63e-7fa8-5f08-a581-a8994feb9359",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:dc946fcd-8fe7-5659-a2a1-03458f51bbc3": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "dc946fcd-8fe7-5659-a2a1-03458f51bbc3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:ec0ebf4b-7bfe-5553-acbf-7f539d89491a": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "ec0ebf4b-7bfe-5553-acbf-7f539d89491a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:7b6f9854-00fd-5c37-b5d5-4cabe7ce3b27": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "7b6f9854-00fd-5c37-b5d5-4cabe7ce3b27",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:b04fe4a8-48d7-5f3b-931a-fe01f96e3e7e": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "b04fe4a8-48d7-5f3b-931a-fe01f96e3e7e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:ab38254a-8f36-5d13-b270-37c0c1d2eb9b": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "ab38254a-8f36-5d13-b270-37c0c1d2eb9b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:ed3f243a-f398-5d46-82c2-0f4fb18c074f": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "ed3f243a-f398-5d46-82c2-0f4fb18c074f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:4a9952c7-d516-5224-8c1b-55e23b78b7f4": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "4a9952c7-d516-5224-8c1b-55e23b78b7f4",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:2824b061-98d4-5b0a-95ed-39c7583b0d54": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "2824b061-98d4-5b0a-95ed-39c7583b0d54",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:ec593a57-d6bd-59dd-a262-4aae9f5968bb": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "ec593a57-d6bd-59dd-a262-4aae9f5968bb",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:54b4d3eb-e1d6-5a87-940b-25dbfa15b792": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "54b4d3eb-e1d6-5a87-940b-25dbfa15b792",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:212340b5-3a09-5072-97a7-81dcaa52afc7": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "212340b5-3a09-5072-97a7-81dcaa52afc7",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:fc8ef533-508a-59e9-8008-1258bd810dbc": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "fc8ef533-508a-59e9-8008-1258bd810dbc",
+    "decision": "relevant",
+    "chart_type": "line_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:42c7730b-0ba7-58e4-98e8-87cbedfdb287": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "42c7730b-0ba7-58e4-98e8-87cbedfdb287",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:68f9ece0-36b4-5407-b410-af3013032cbc": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "68f9ece0-36b4-5407-b410-af3013032cbc",
+    "decision": "relevant",
+    "chart_type": "line_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:ec28f5ad-e660-5785-b82e-25def7282069": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "ec28f5ad-e660-5785-b82e-25def7282069",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:04abc62c-8472-57c0-ad15-f60669e78cb7": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "04abc62c-8472-57c0-ad15-f60669e78cb7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:d88d6ddc-0394-5e10-b3b7-d18e1477abae": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "d88d6ddc-0394-5e10-b3b7-d18e1477abae",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:c5459fbb-f080-5498-b1e3-6108e292df18": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "c5459fbb-f080-5498-b1e3-6108e292df18",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:b3a1f965-7942-511a-b9c0-0a054005de4c": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "b3a1f965-7942-511a-b9c0-0a054005de4c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:cb290ef5-1452-5612-8ea8-af4816c563c0": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "cb290ef5-1452-5612-8ea8-af4816c563c0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:3eef0702-8cca-5bc9-ad1e-bc4249146b11": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "3eef0702-8cca-5bc9-ad1e-bc4249146b11",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:e6da4c7d-63f1-5504-abca-053469baa4c3": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "e6da4c7d-63f1-5504-abca-053469baa4c3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:2a0736c4-eb58-5615-b977-b1e2919ee9d4": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "2a0736c4-eb58-5615-b977-b1e2919ee9d4",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:7299481e-e68c-5996-bf76-d4f270b8804f": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "7299481e-e68c-5996-bf76-d4f270b8804f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:71614f70-b2db-5b9f-9286-024afe41ec9d": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "71614f70-b2db-5b9f-9286-024afe41ec9d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:9837665d-dbd5-5548-86ed-4d899a666663": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "9837665d-dbd5-5548-86ed-4d899a666663",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:4f7fe300-3483-5d7c-8d44-5717923509e3": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "4f7fe300-3483-5d7c-8d44-5717923509e3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:72eddc9e-fb3d-52a4-9e24-4a4326692822": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "72eddc9e-fb3d-52a4-9e24-4a4326692822",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:cf51e5eb-d0fc-549e-aca3-7d13f64352ea": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "cf51e5eb-d0fc-549e-aca3-7d13f64352ea",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:f102f74f-075f-5b71-b97f-1ffaf8ce3177": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "f102f74f-075f-5b71-b97f-1ffaf8ce3177",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:dd5c4a5c-911f-5a81-af5e-3664cd736f40": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "dd5c4a5c-911f-5a81-af5e-3664cd736f40",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:bd45356f-8b38-5f41-ac52-05208207fd23": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "bd45356f-8b38-5f41-ac52-05208207fd23",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CHWY_S-1_2019-06-12:c368e1e3-044b-5307-88b5-63d83bce794c": {
+    "key": "CHWY_S-1_2019-06-12",
+    "img_id": "c368e1e3-044b-5307-88b5-63d83bce794c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:2e88db3f-0465-5534-94b7-dbadb44965ff": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "2e88db3f-0465-5534-94b7-dbadb44965ff",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:1ea55717-df24-53f7-b227-102e1cc938b4": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "1ea55717-df24-53f7-b227-102e1cc938b4",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:77bf01bf-0933-519e-ad2e-7bcfc3144226": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "77bf01bf-0933-519e-ad2e-7bcfc3144226",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:323c52ca-1f8f-5f77-ae69-ae3c52fc7c9a": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "323c52ca-1f8f-5f77-ae69-ae3c52fc7c9a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:384e7018-d39e-5cef-b206-5d42d09e78e1": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "384e7018-d39e-5cef-b206-5d42d09e78e1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:b46ff4ff-4796-5d93-914a-acd63fc92310": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "b46ff4ff-4796-5d93-914a-acd63fc92310",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:01baa3bc-20f0-5734-b0d6-4fd2b7f95720": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "01baa3bc-20f0-5734-b0d6-4fd2b7f95720",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:3db05eb8-30f5-5983-836a-42202b2857ce": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "3db05eb8-30f5-5983-836a-42202b2857ce",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:e7ec14db-0e61-5cfb-a19e-72d5b649d3f7": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "e7ec14db-0e61-5cfb-a19e-72d5b649d3f7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:4050acfe-61e6-5c51-888c-7d9044423b82": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "4050acfe-61e6-5c51-888c-7d9044423b82",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:fcac6966-6938-507c-aaba-2444726b732c": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "fcac6966-6938-507c-aaba-2444726b732c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:319a77a6-388d-5407-8c5d-cae7fbbc7bd0": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "319a77a6-388d-5407-8c5d-cae7fbbc7bd0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:1a830039-a9e5-5390-b7e6-82a011e9f9a2": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "1a830039-a9e5-5390-b7e6-82a011e9f9a2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:162bf83a-763d-5761-8dc2-04b35d180ad9": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "162bf83a-763d-5761-8dc2-04b35d180ad9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:f8ca9c2c-a65c-5735-89ee-60564382bc4c": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "f8ca9c2c-a65c-5735-89ee-60564382bc4c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:45888993-d49b-5701-8640-2f2220d0c224": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "45888993-d49b-5701-8640-2f2220d0c224",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:64a92c87-5dad-5ca8-bab1-658eae3d3862": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "64a92c87-5dad-5ca8-bab1-658eae3d3862",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:de598c2d-b5d5-54a6-b718-2fb9c0e9ab33": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "de598c2d-b5d5-54a6-b718-2fb9c0e9ab33",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DDOG_S-1_2019-09-17:8d3248a8-a178-59e9-83ce-132f7efd3bc9": {
+    "key": "DDOG_S-1_2019-09-17",
+    "img_id": "8d3248a8-a178-59e9-83ce-132f7efd3bc9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:fc56eed6-69f9-532f-8522-e815605d7760": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "fc56eed6-69f9-532f-8522-e815605d7760",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:a274097a-1f10-51c6-a1c7-cb85b5c4d960": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "a274097a-1f10-51c6-a1c7-cb85b5c4d960",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:c91ae293-eff6-5242-a62a-4d7b55706e26": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "c91ae293-eff6-5242-a62a-4d7b55706e26",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:31401c57-1f63-5ae3-9b85-bc9a47f8ea73": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "31401c57-1f63-5ae3-9b85-bc9a47f8ea73",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:229d0fc9-a485-50f5-bf50-ca66f2cce4c2": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "229d0fc9-a485-50f5-bf50-ca66f2cce4c2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:b558c667-ab47-5414-94be-254a4c360ed4": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "b558c667-ab47-5414-94be-254a4c360ed4",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:fb5707f1-3f16-5112-9422-213c81d4f85f": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "fb5707f1-3f16-5112-9422-213c81d4f85f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:d87c573e-a2e5-540a-b2a8-c04adaab62c8": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "d87c573e-a2e5-540a-b2a8-c04adaab62c8",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "GTLB_S-1_2021-10-12:fa183464-9dc9-50a6-a8ed-bc14039e7794": {
+    "key": "GTLB_S-1_2021-10-12",
+    "img_id": "fa183464-9dc9-50a6-a8ed-bc14039e7794",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:7b78bf53-06d1-5496-bcc6-853f8dd02e8d": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "7b78bf53-06d1-5496-bcc6-853f8dd02e8d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:dcee63ba-ece4-568d-af48-6fe4045392a1": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "dcee63ba-ece4-568d-af48-6fe4045392a1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:d418660d-be72-5d69-b31b-22fd72029715": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "d418660d-be72-5d69-b31b-22fd72029715",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:b68adf21-869b-53b1-9813-35e417391f7d": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "b68adf21-869b-53b1-9813-35e417391f7d",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:bb627550-53b2-5b5f-8af2-46981df293a7": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "bb627550-53b2-5b5f-8af2-46981df293a7",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:67615338-28fd-53df-849a-f006f0fdc917": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "67615338-28fd-53df-849a-f006f0fdc917",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:9d501527-4940-52d5-ba8e-a87576e0950e": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "9d501527-4940-52d5-ba8e-a87576e0950e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:8af860ca-cdae-5764-b58d-d8a1c613f4a2": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "8af860ca-cdae-5764-b58d-d8a1c613f4a2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:02e0c297-559e-5902-adf8-e8558b979870": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "02e0c297-559e-5902-adf8-e8558b979870",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:cbbfcae8-eddf-51db-8b48-bc105ac1a998": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "cbbfcae8-eddf-51db-8b48-bc105ac1a998",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:36aaf3e7-9997-5e11-9132-6ab7923b49c9": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "36aaf3e7-9997-5e11-9132-6ab7923b49c9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:96c59cd5-1274-5959-90f6-4562345c395b": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "96c59cd5-1274-5959-90f6-4562345c395b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:53e93ad0-0001-54b6-bf6c-a19e87b81efd": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "53e93ad0-0001-54b6-bf6c-a19e87b81efd",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:bdac4238-f42d-51f8-b6d1-af1b6684e67a": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "bdac4238-f42d-51f8-b6d1-af1b6684e67a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:7c0a1afb-d1ba-5bc3-b17f-1c9d3033fe32": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "7c0a1afb-d1ba-5bc3-b17f-1c9d3033fe32",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:cbdcf270-791e-5fa9-a844-98e7df47943c": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "cbdcf270-791e-5fa9-a844-98e7df47943c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:7d7bc169-44e8-5bfa-9581-b78cd87316a1": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "7d7bc169-44e8-5bfa-9581-b78cd87316a1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:b3e472cb-0ec7-5e99-8bf6-2efea1e22adf": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "b3e472cb-0ec7-5e99-8bf6-2efea1e22adf",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:dd93c500-f10e-58cc-a8a8-b440cc501ee5": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "dd93c500-f10e-58cc-a8a8-b440cc501ee5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:28e819fe-a3c9-504d-880a-bca04da5892f": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "28e819fe-a3c9-504d-880a-bca04da5892f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:dec8d525-0906-569e-8159-a5f7d99f3be7": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "dec8d525-0906-569e-8159-a5f7d99f3be7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "HOOD_S-1_2021-10-08:a0da658e-5d49-5d4e-9e24-db76e55f82c8": {
+    "key": "HOOD_S-1_2021-10-08",
+    "img_id": "a0da658e-5d49-5d4e-9e24-db76e55f82c8",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:ab0fc93c-c2e6-59f8-af5c-364cfb1d50e3": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "ab0fc93c-c2e6-59f8-af5c-364cfb1d50e3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:235ef11e-7e98-5490-be04-5366cfbb2c56": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "235ef11e-7e98-5490-be04-5366cfbb2c56",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:2713e9f8-0439-591c-bbd3-bcce1934e4d9": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "2713e9f8-0439-591c-bbd3-bcce1934e4d9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:1f4df928-40dc-5a77-836f-573dc8925cdc": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "1f4df928-40dc-5a77-836f-573dc8925cdc",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:2902b406-e779-5ba1-8c2f-d83dfe7ac39a": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "2902b406-e779-5ba1-8c2f-d83dfe7ac39a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:4f311f56-457f-5976-b192-34e7ddda6d27": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "4f311f56-457f-5976-b192-34e7ddda6d27",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:34545f1c-2c2b-54fa-81e7-260ba6b8dc8c": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "34545f1c-2c2b-54fa-81e7-260ba6b8dc8c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:816741bd-6bf7-532e-ba91-5439bee2a134": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "816741bd-6bf7-532e-ba91-5439bee2a134",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "FLYW_10-K_2026-02-24:6d1f7700-6d77-5f00-85a1-b91a816ad5d4": {
+    "key": "FLYW_10-K_2026-02-24",
+    "img_id": "6d1f7700-6d77-5f00-85a1-b91a816ad5d4",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:0675c98e-f0a8-5be6-9b2f-66db3c155e83": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "0675c98e-f0a8-5be6-9b2f-66db3c155e83",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:03ed6699-0287-5f1f-b451-c961a9a82a06": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "03ed6699-0287-5f1f-b451-c961a9a82a06",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:3fd13542-a8fb-5301-b7a1-3fdc42e942aa": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "3fd13542-a8fb-5301-b7a1-3fdc42e942aa",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:9eb7b088-6e3d-5e62-8976-a1b9e0b6af73": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "9eb7b088-6e3d-5e62-8976-a1b9e0b6af73",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:e0d3db89-9bb7-5f76-ac62-0ea342b64704": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "e0d3db89-9bb7-5f76-ac62-0ea342b64704",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:b377051e-2a54-56f0-b3bf-7b50e2e90ad7": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "b377051e-2a54-56f0-b3bf-7b50e2e90ad7",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:ac48bad4-3de0-5d84-8f3a-4544dfa4bb0a": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "ac48bad4-3de0-5d84-8f3a-4544dfa4bb0a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:8420e6b1-abd0-5dea-b962-0abfa70f73ed": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "8420e6b1-abd0-5dea-b962-0abfa70f73ed",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:ff16590d-0cea-59c0-a5fc-06c323e436d3": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "ff16590d-0cea-59c0-a5fc-06c323e436d3",
+    "decision": "relevant",
+    "chart_type": "line_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:596a2c51-51bb-5a06-b4d2-2db0b473a5dc": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "596a2c51-51bb-5a06-b4d2-2db0b473a5dc",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:e2e775a7-609d-5139-bb21-9416b7c39f58": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "e2e775a7-609d-5139-bb21-9416b7c39f58",
+    "decision": "relevant",
+    "chart_type": "line_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:150dc64d-5e8b-505e-9537-336e7eb920ef": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "150dc64d-5e8b-505e-9537-336e7eb920ef",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:4f25d341-a367-5a8f-8702-24528a294e22": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "4f25d341-a367-5a8f-8702-24528a294e22",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:35d750ec-89b8-5a6e-b939-72c45a70ddb1": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "35d750ec-89b8-5a6e-b939-72c45a70ddb1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:65412782-31f9-51df-8e59-61f43416a338": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "65412782-31f9-51df-8e59-61f43416a338",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:44788f70-f7b9-50b8-99ae-4f0d8ff0842e": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "44788f70-f7b9-50b8-99ae-4f0d8ff0842e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:53537dd3-04c6-5046-9e63-be1e02d13377": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "53537dd3-04c6-5046-9e63-be1e02d13377",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:23f6252f-431c-5dab-b539-100d81e088f9": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "23f6252f-431c-5dab-b539-100d81e088f9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:4e468dcf-0fd6-5138-a67a-bd2458585b1e": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "4e468dcf-0fd6-5138-a67a-bd2458585b1e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:7ccce1ea-4a19-5879-9e0a-c395127102d1": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "7ccce1ea-4a19-5879-9e0a-c395127102d1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:ef0e622e-5d74-504c-be56-8bc650608025": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "ef0e622e-5d74-504c-be56-8bc650608025",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:2e3e5c65-c41a-588e-b510-93a096cf54c1": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "2e3e5c65-c41a-588e-b510-93a096cf54c1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "CURV_S-1_2021-06-30:fe6e868f-d6dc-5f8b-b754-c6d54ac1ab78": {
+    "key": "CURV_S-1_2021-06-30",
+    "img_id": "fe6e868f-d6dc-5f8b-b754-c6d54ac1ab78",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:22636fbf-03f2-53d2-a55e-b6bb785219ce": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "22636fbf-03f2-53d2-a55e-b6bb785219ce",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:1bd87e41-8c87-54ed-9c06-0964fc47bca7": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "1bd87e41-8c87-54ed-9c06-0964fc47bca7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:42e65f5e-ba27-5802-9df1-d9bf4461bd57": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "42e65f5e-ba27-5802-9df1-d9bf4461bd57",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:4c506d6d-809b-5f40-b92d-5aa7d087c6e7": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "4c506d6d-809b-5f40-b92d-5aa7d087c6e7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:ea4423e3-fb43-5b0d-9da5-5f287687a5c8": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "ea4423e3-fb43-5b0d-9da5-5f287687a5c8",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:f0734dd7-3fe6-51a7-a203-9c7b963ce914": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "f0734dd7-3fe6-51a7-a203-9c7b963ce914",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:ce1bfe18-eb82-514e-a388-3ec7b602be3d": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "ce1bfe18-eb82-514e-a388-3ec7b602be3d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:09bd6801-a7a9-5402-bb24-6dbd7546576d": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "09bd6801-a7a9-5402-bb24-6dbd7546576d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:072d408d-bbaa-5ffd-8db3-238b5094db1b": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "072d408d-bbaa-5ffd-8db3-238b5094db1b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:c6a2598c-2cfc-550a-ad37-02229ab409ea": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "c6a2598c-2cfc-550a-ad37-02229ab409ea",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:ee5d4407-d2f5-5b7f-9bda-1e1aa29b3a79": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "ee5d4407-d2f5-5b7f-9bda-1e1aa29b3a79",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:a96bb0bd-87ae-5f1c-857b-ab1a1284e611": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "a96bb0bd-87ae-5f1c-857b-ab1a1284e611",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:acc0ce3f-8548-5e6b-8c1f-42eb87fca731": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "acc0ce3f-8548-5e6b-8c1f-42eb87fca731",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:b509022a-a435-56af-b831-cbc522920d73": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "b509022a-a435-56af-b831-cbc522920d73",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:34b1a6c6-626b-56c4-a26b-8dabb53e99e2": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "34b1a6c6-626b-56c4-a26b-8dabb53e99e2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:14f1aed7-995b-50c8-90ee-8d2d0b60959e": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "14f1aed7-995b-50c8-90ee-8d2d0b60959e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:e4db171f-65f6-5431-aa46-7754d61103fd": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "e4db171f-65f6-5431-aa46-7754d61103fd",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:b8ddef0f-98be-50ea-b69b-2f102e0c2a38": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "b8ddef0f-98be-50ea-b69b-2f102e0c2a38",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:d413b825-20da-5393-b460-93c8e1974920": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "d413b825-20da-5393-b460-93c8e1974920",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:8ae176d2-e7a8-586b-9537-475214815567": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "8ae176d2-e7a8-586b-9537-475214815567",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:35ad0a40-167e-51e4-a9a2-9882513f888d": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "35ad0a40-167e-51e4-a9a2-9882513f888d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:16262e91-62d9-5380-abe4-e0cbc2f58225": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "16262e91-62d9-5380-abe4-e0cbc2f58225",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:f46cdf5a-7209-504f-ad0f-9d2e89013ccd": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "f46cdf5a-7209-504f-ad0f-9d2e89013ccd",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:ddcabddb-fea0-50a6-9829-efe0c2b651a7": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "ddcabddb-fea0-50a6-9829-efe0c2b651a7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "IOT_S-1_2021-12-06:88c5816f-2819-5158-a43a-d42d84ea7447": {
+    "key": "IOT_S-1_2021-12-06",
+    "img_id": "88c5816f-2819-5158-a43a-d42d84ea7447",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:84dc281a-3174-599a-b6fa-24755d96634b": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "84dc281a-3174-599a-b6fa-24755d96634b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:daaa89ef-84b3-56ff-9954-7d86a61f49dc": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "daaa89ef-84b3-56ff-9954-7d86a61f49dc",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:8476249b-3237-59d2-b806-6f175bbf1cbd": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "8476249b-3237-59d2-b806-6f175bbf1cbd",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:f3d243a2-188e-59d5-94c6-8f0fe1bf37c9": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "f3d243a2-188e-59d5-94c6-8f0fe1bf37c9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:1a348f88-f112-5c2a-8525-9462b0a0f889": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "1a348f88-f112-5c2a-8525-9462b0a0f889",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:635b51b3-9de9-5321-852f-5d8b99d4d214": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "635b51b3-9de9-5321-852f-5d8b99d4d214",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:2e400521-aa9e-50ce-9230-fbcf8001f87b": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "2e400521-aa9e-50ce-9230-fbcf8001f87b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:a56e7f54-5db4-5d5e-87e4-ea3d70234f5a": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "a56e7f54-5db4-5d5e-87e4-ea3d70234f5a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:2dd95e38-440a-5330-9b66-21f8585c1a1e": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "2dd95e38-440a-5330-9b66-21f8585c1a1e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:a9c6d39d-a9b6-50af-a47e-605c9137ce72": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "a9c6d39d-a9b6-50af-a47e-605c9137ce72",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:3595baf6-bd40-51f7-ab19-e9ae1520cf3a": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "3595baf6-bd40-51f7-ab19-e9ae1520cf3a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:423f0851-1f72-5345-8979-fcf64df6e865": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "423f0851-1f72-5345-8979-fcf64df6e865",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:82a6c54f-f150-5bcc-ad68-6f4d04c5a5ec": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "82a6c54f-f150-5bcc-ad68-6f4d04c5a5ec",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:6e4a8eee-cfc9-5e1c-b78b-26bb91960c60": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "6e4a8eee-cfc9-5e1c-b78b-26bb91960c60",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "KC_F-1_2020-09-23:5cc5e97b-220c-54c2-bdf2-e9fc8a3e3eb8": {
+    "key": "KC_F-1_2020-09-23",
+    "img_id": "5cc5e97b-220c-54c2-bdf2-e9fc8a3e3eb8",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:88b043b5-3a03-5be8-bdcb-df133deffa7a": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "88b043b5-3a03-5be8-bdcb-df133deffa7a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:054d8bcf-089f-539c-891c-56902f4ae432": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "054d8bcf-089f-539c-891c-56902f4ae432",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:65963000-f518-518e-86b3-979ebd8db167": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "65963000-f518-518e-86b3-979ebd8db167",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:bff18ac8-ccae-5042-b944-96714ab839ff": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "bff18ac8-ccae-5042-b944-96714ab839ff",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:09d0d8a8-5c03-5769-89b0-165a5e78d567": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "09d0d8a8-5c03-5769-89b0-165a5e78d567",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:703e1692-89d4-5e69-8fa7-2dbf2e609f1e": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "703e1692-89d4-5e69-8fa7-2dbf2e609f1e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:b6b95a4e-c6ac-5351-8374-b13219d20fd0": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "b6b95a4e-c6ac-5351-8374-b13219d20fd0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "NETS_F-1_2017-03-21:f7001a74-4c03-54f2-889a-c2694ad0153a": {
+    "key": "NETS_F-1_2017-03-21",
+    "img_id": "f7001a74-4c03-54f2-889a-c2694ad0153a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:2dc87d4b-b954-513f-85b5-53fe8cdbde22": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "2dc87d4b-b954-513f-85b5-53fe8cdbde22",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:c7693499-cf68-5007-b791-8596b7e3ae4d": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "c7693499-cf68-5007-b791-8596b7e3ae4d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:46a476bf-ff67-55a9-a3d0-81fc2b0b2ba2": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "46a476bf-ff67-55a9-a3d0-81fc2b0b2ba2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:b2a671ca-d83b-5976-95da-421acc446138": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "b2a671ca-d83b-5976-95da-421acc446138",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:b132a671-b800-58e1-98ed-bb450d3faf09": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "b132a671-b800-58e1-98ed-bb450d3faf09",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:318f2a88-597a-5f05-9bc8-c828fe1e8698": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "318f2a88-597a-5f05-9bc8-c828fe1e8698",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:71b957d5-3d85-5066-9e1a-25704b117e5e": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "71b957d5-3d85-5066-9e1a-25704b117e5e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:e419e080-ec31-529c-b665-a0d0269c07b3": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "e419e080-ec31-529c-b665-a0d0269c07b3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:6e010d28-b74c-5986-bb78-b00bbed5777e": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "6e010d28-b74c-5986-bb78-b00bbed5777e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:2c84e483-3695-58cf-b62e-fbb1f108b331": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "2c84e483-3695-58cf-b62e-fbb1f108b331",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:29e4ac9f-b176-5ab8-b6cb-4979235a70c9": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "29e4ac9f-b176-5ab8-b6cb-4979235a70c9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "SI_S-1_2018-11-07:46c78d58-d634-5814-9f6c-7edc59ade4d2": {
+    "key": "SI_S-1_2018-11-07",
+    "img_id": "46c78d58-d634-5814-9f6c-7edc59ade4d2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:644cb48f-1b5b-5cc5-b251-43faf609aaab": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "644cb48f-1b5b-5cc5-b251-43faf609aaab",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:91bf2e46-2989-5ffb-88eb-1cf7022553cb": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "91bf2e46-2989-5ffb-88eb-1cf7022553cb",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:cf2bc702-e0db-5f1a-9176-32a7c06bc93a": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "cf2bc702-e0db-5f1a-9176-32a7c06bc93a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:08a0db49-a443-537d-b6e9-b9cf27611a4c": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "08a0db49-a443-537d-b6e9-b9cf27611a4c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:1d63ff88-3aff-5ba6-b51e-55a3dcf005f3": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "1d63ff88-3aff-5ba6-b51e-55a3dcf005f3",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:a7ce5e6d-f6c6-5021-94cf-aa02a456f014": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "a7ce5e6d-f6c6-5021-94cf-aa02a456f014",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:13bb5546-de46-52d8-8231-bdd1e0311f89": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "13bb5546-de46-52d8-8231-bdd1e0311f89",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:0c7c64de-3ccf-5d1e-9904-0cba9e19e004": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "0c7c64de-3ccf-5d1e-9904-0cba9e19e004",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "TENB_S-1_2018-07-24:4d91b491-f3c2-5c93-9632-ae1307db15a5": {
+    "key": "TENB_S-1_2018-07-24",
+    "img_id": "4d91b491-f3c2-5c93-9632-ae1307db15a5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:12c1dd0b-2abd-5233-a41e-cfb85ed23f0a": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "12c1dd0b-2abd-5233-a41e-cfb85ed23f0a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:15fa5dde-7038-521c-89e9-8b31aa3df60a": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "15fa5dde-7038-521c-89e9-8b31aa3df60a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:8bad1082-adff-598e-afe6-bd861fbcedad": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "8bad1082-adff-598e-afe6-bd861fbcedad",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:c166ef4c-7fab-59ac-97d0-e3718707f004": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "c166ef4c-7fab-59ac-97d0-e3718707f004",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:c0779bc2-acfa-548e-a3af-addd698078c1": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "c0779bc2-acfa-548e-a3af-addd698078c1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:c0753e3e-e024-5e4a-a9b9-f8a8304168d9": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "c0753e3e-e024-5e4a-a9b9-f8a8304168d9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:119e6b34-6ae8-59a7-acd5-f3ca01309024": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "119e6b34-6ae8-59a7-acd5-f3ca01309024",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:4543f3a8-eac2-594a-b1a8-30879d9a27c5": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "4543f3a8-eac2-594a-b1a8-30879d9a27c5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:ff24695f-6b7c-5faa-b036-bda52fb58673": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "ff24695f-6b7c-5faa-b036-bda52fb58673",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:17366d82-8f92-5f20-956d-8eac64f593b9": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "17366d82-8f92-5f20-956d-8eac64f593b9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:d2bae3cd-d91e-519d-919f-a39dcb23c989": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "d2bae3cd-d91e-519d-919f-a39dcb23c989",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:870c4fcc-a37b-5464-b819-60f910c91c42": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "870c4fcc-a37b-5464-b819-60f910c91c42",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:39eae24e-12ff-507e-8568-e56ffa77881f": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "39eae24e-12ff-507e-8568-e56ffa77881f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:f8a0ea6d-2d9a-5fa2-b647-ed36ab1a3592": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "f8a0ea6d-2d9a-5fa2-b647-ed36ab1a3592",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SI_S-1_2025-07-25:b355a4c3-7ec0-5147-899c-97625c05c495": {
+    "key": "SI_S-1_2025-07-25",
+    "img_id": "b355a4c3-7ec0-5147-899c-97625c05c495",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:735afbd1-67eb-5c51-a01b-073fb9f0d8d0": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "735afbd1-67eb-5c51-a01b-073fb9f0d8d0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:81718bb1-9e89-5d90-9569-c4dc5dd78d05": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "81718bb1-9e89-5d90-9569-c4dc5dd78d05",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:9f2c6430-842d-5533-bc4a-cad781b6b095": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "9f2c6430-842d-5533-bc4a-cad781b6b095",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:45a78671-51d1-5e0a-8dc8-445cab0f0f9d": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "45a78671-51d1-5e0a-8dc8-445cab0f0f9d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:61e9765f-c335-5273-bac3-fa87bba1f62d": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "61e9765f-c335-5273-bac3-fa87bba1f62d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:acbc4421-2965-576f-9d6d-9945146dca44": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "acbc4421-2965-576f-9d6d-9945146dca44",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:a88b95d8-c0c1-5386-9d79-15b021531da1": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "a88b95d8-c0c1-5386-9d79-15b021531da1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:0138b47f-6bb1-539f-a3f3-f7e777b43185": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "0138b47f-6bb1-539f-a3f3-f7e777b43185",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:f7744f4b-2f8d-5013-bd34-26cfe9c405bc": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "f7744f4b-2f8d-5013-bd34-26cfe9c405bc",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:bfb1fd02-958a-5a8d-aa4a-cf13c4229e38": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "bfb1fd02-958a-5a8d-aa4a-cf13c4229e38",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:c229f57a-3a08-5b00-9470-07df8930edce": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "c229f57a-3a08-5b00-9470-07df8930edce",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:dc6b7dc4-06fe-51b8-94c6-82bba3c02b73": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "dc6b7dc4-06fe-51b8-94c6-82bba3c02b73",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:d6d51521-97cb-5b07-8cb4-7482ec05a946": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "d6d51521-97cb-5b07-8cb4-7482ec05a946",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:17e679f4-bd92-5d37-b5de-fd75e897f60d": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "17e679f4-bd92-5d37-b5de-fd75e897f60d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:ba712f43-3799-5b1e-8780-18bf36377413": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "ba712f43-3799-5b1e-8780-18bf36377413",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:8e9bd5ba-54dc-5cd8-ae26-0da448a3fcb3": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "8e9bd5ba-54dc-5cd8-ae26-0da448a3fcb3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:72064f52-693b-5b8c-aad4-36be2dcf9c8f": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "72064f52-693b-5b8c-aad4-36be2dcf9c8f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:d7436ef4-3753-5a0f-ab71-1659ede96174": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "d7436ef4-3753-5a0f-ab71-1659ede96174",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:1a965998-6350-5051-adad-e1c733ecd0f3": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "1a965998-6350-5051-adad-e1c733ecd0f3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:74cfff27-9551-5d06-b5ac-c44d87b3db18": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "74cfff27-9551-5d06-b5ac-c44d87b3db18",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:e8b24158-0200-5e30-a59b-ae47877b707e": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "e8b24158-0200-5e30-a59b-ae47877b707e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:d0de977e-ab15-5e7b-b06d-2c8fb247e5bb": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "d0de977e-ab15-5e7b-b06d-2c8fb247e5bb",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:b85fb17a-f812-57eb-a6f3-6e3b4afe0e94": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "b85fb17a-f812-57eb-a6f3-6e3b4afe0e94",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:7341b78c-72e1-5c12-acf4-ee5d3642eb4e": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "7341b78c-72e1-5c12-acf4-ee5d3642eb4e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:959ab44f-bfe4-5f33-b272-d8a4778f6d1c": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "959ab44f-bfe4-5f33-b272-d8a4778f6d1c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:f6206bff-bf14-5e82-b501-0ba1616c8ab7": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "f6206bff-bf14-5e82-b501-0ba1616c8ab7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:b6d1e487-3ef5-5189-872b-c84dd0fc0b21": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "b6d1e487-3ef5-5189-872b-c84dd0fc0b21",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:ea329a73-e3a7-5594-8d07-373e07e679a5": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "ea329a73-e3a7-5594-8d07-373e07e679a5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:8700aa03-f152-5251-be1c-3456c2113625": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "8700aa03-f152-5251-be1c-3456c2113625",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:ffa0e9b1-edd0-5bd0-a188-fcf4d108f233": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "ffa0e9b1-edd0-5bd0-a188-fcf4d108f233",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:71891b89-48fc-5e6f-bd26-8120895fce28": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "71891b89-48fc-5e6f-bd26-8120895fce28",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:ab1df88b-5811-5b19-9c6c-87d50370a2e7": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "ab1df88b-5811-5b19-9c6c-87d50370a2e7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:2c1eceb5-6d9c-5a17-8c96-ac17b5febe33": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "2c1eceb5-6d9c-5a17-8c96-ac17b5febe33",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:c23d68bf-e394-5e61-9e74-6b3c55da5957": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "c23d68bf-e394-5e61-9e74-6b3c55da5957",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:0f1b1315-5a9f-5816-86fc-9dd857fbf61f": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "0f1b1315-5a9f-5816-86fc-9dd857fbf61f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:047de207-6444-59f1-96b4-52f31f633da1": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "047de207-6444-59f1-96b4-52f31f633da1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:8b0addb4-cc3a-5307-a505-f29fd228abd0": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "8b0addb4-cc3a-5307-a505-f29fd228abd0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:65b907d7-c696-538f-b072-f2ecbce07210": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "65b907d7-c696-538f-b072-f2ecbce07210",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:73007522-33bd-575a-ad5a-d85b5a7483ba": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "73007522-33bd-575a-ad5a-d85b5a7483ba",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:a312177f-1681-5f4a-b446-cf904b9983c1": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "a312177f-1681-5f4a-b446-cf904b9983c1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:d362e48d-00f1-5e3f-bacb-d13cb7ad61b5": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "d362e48d-00f1-5e3f-bacb-d13cb7ad61b5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:11f3a6df-22a1-5027-a4c6-9e88aa473c7c": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "11f3a6df-22a1-5027-a4c6-9e88aa473c7c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:37df8f56-3096-581d-8622-54d5831250f3": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "37df8f56-3096-581d-8622-54d5831250f3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:14fe2d7e-75d3-5d03-9f88-4ec565f5d78c": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "14fe2d7e-75d3-5d03-9f88-4ec565f5d78c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:61beb770-aca2-5e1c-b6a0-c3af9ce49e7d": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "61beb770-aca2-5e1c-b6a0-c3af9ce49e7d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:ac7d41b1-8d9b-51f6-b5c1-bba3d01e1b9c": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "ac7d41b1-8d9b-51f6-b5c1-bba3d01e1b9c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:b43168e8-e79f-5187-893b-aade6b23b56f": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "b43168e8-e79f-5187-893b-aade6b23b56f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:9d63df8b-4dc4-5e2d-92f7-b480f4009b19": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "9d63df8b-4dc4-5e2d-92f7-b480f4009b19",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:d8248460-f978-5246-a582-0401f2db78a1": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "d8248460-f978-5246-a582-0401f2db78a1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:f56bd2f7-4c0a-5c2f-bce5-f8dff19f146b": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "f56bd2f7-4c0a-5c2f-bce5-f8dff19f146b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:4c1c0034-ae24-534e-968f-ebca6c0ea2eb": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "4c1c0034-ae24-534e-968f-ebca6c0ea2eb",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:e8418cb8-9702-5e99-8b0a-d2edaca9a98c": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "e8418cb8-9702-5e99-8b0a-d2edaca9a98c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:06cc9fe6-3de9-5334-98ee-4f9eef157ea0": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "06cc9fe6-3de9-5334-98ee-4f9eef157ea0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:71e25d5e-6344-5c51-9e67-076620a87257": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "71e25d5e-6344-5c51-9e67-076620a87257",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:3057e387-f885-50ff-b166-c1494f030cfc": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "3057e387-f885-50ff-b166-c1494f030cfc",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:2d3ea66d-8f70-5b57-a8a9-1d0bd363484f": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "2d3ea66d-8f70-5b57-a8a9-1d0bd363484f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:2caeb7f4-54c0-51c9-99a3-1df48482a44f": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "2caeb7f4-54c0-51c9-99a3-1df48482a44f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:94695a8f-4ffb-5fa9-a6a4-2d3ff3706f1e": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "94695a8f-4ffb-5fa9-a6a4-2d3ff3706f1e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:83bc0c6c-7a16-51a5-92d0-2e0e5d6bd753": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "83bc0c6c-7a16-51a5-92d0-2e0e5d6bd753",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:5e871e9a-59f5-5284-ba9f-59d786ad4c18": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "5e871e9a-59f5-5284-ba9f-59d786ad4c18",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:01996413-5998-54c1-8d50-95bacfba7d4a": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "01996413-5998-54c1-8d50-95bacfba7d4a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:174be1af-8b13-58f1-a456-30ad7983608f": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "174be1af-8b13-58f1-a456-30ad7983608f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:8ab46307-0f93-5bcb-965f-f313b9c0391b": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "8ab46307-0f93-5bcb-965f-f313b9c0391b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:65d54a95-d475-5b58-9360-24d87ee1c37f": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "65d54a95-d475-5b58-9360-24d87ee1c37f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:2276df78-3112-53f3-bceb-57e74b8004ca": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "2276df78-3112-53f3-bceb-57e74b8004ca",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:b1c3e0f2-4c78-558d-8d45-7f2b0fd399ba": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "b1c3e0f2-4c78-558d-8d45-7f2b0fd399ba",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:5cb3976e-dbe8-50ea-8e8d-7c032e35d90d": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "5cb3976e-dbe8-50ea-8e8d-7c032e35d90d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:45d7f7f7-a6fd-5848-9fcb-b7e4f956eaf7": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "45d7f7f7-a6fd-5848-9fcb-b7e4f956eaf7",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:62c1be3b-c72a-539b-a8ca-896fce4ed5be": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "62c1be3b-c72a-539b-a8ca-896fce4ed5be",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:58b606e9-0c87-569e-b566-b2f4fed4b41b": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "58b606e9-0c87-569e-b566-b2f4fed4b41b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:11224f8c-386f-5268-b4b7-829f2fd4c38e": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "11224f8c-386f-5268-b4b7-829f2fd4c38e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "ABNB_S-1_2020-12-07:16a2278a-5466-5399-93ac-1ba23de8b1c0": {
+    "key": "ABNB_S-1_2020-12-07",
+    "img_id": "16a2278a-5466-5399-93ac-1ba23de8b1c0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:1d55e8c7-e663-5244-ab0c-c6e50db0710b": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "1d55e8c7-e663-5244-ab0c-c6e50db0710b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:d083244c-cdd3-5328-8998-e099aab0d0cd": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "d083244c-cdd3-5328-8998-e099aab0d0cd",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:6ba4e202-a55e-554c-8e31-3e2af5f38b25": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "6ba4e202-a55e-554c-8e31-3e2af5f38b25",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:bb85e063-3892-5ee1-832e-4b7cc0510449": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "bb85e063-3892-5ee1-832e-4b7cc0510449",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:acde169c-86f3-59e8-9d01-0d456795ef64": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "acde169c-86f3-59e8-9d01-0d456795ef64",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:550a2b17-43c4-54bf-a424-fbc1c1b6e724": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "550a2b17-43c4-54bf-a424-fbc1c1b6e724",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:cf0fc249-cb3b-5086-ae65-9699f2510542": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "cf0fc249-cb3b-5086-ae65-9699f2510542",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:a60098b2-2ac1-58d8-b221-d240bc3c4975": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "a60098b2-2ac1-58d8-b221-d240bc3c4975",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:9c6937e5-74c7-5295-98c3-3322666cb77b": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "9c6937e5-74c7-5295-98c3-3322666cb77b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:d3b4707a-afa9-51d7-a897-10f5316e5a61": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "d3b4707a-afa9-51d7-a897-10f5316e5a61",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:f23bfd16-a1f0-58f4-9d90-633317199f8a": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "f23bfd16-a1f0-58f4-9d90-633317199f8a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:d3ca9001-a955-5ff7-b67f-9cd9b2b0f3e3": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "d3ca9001-a955-5ff7-b67f-9cd9b2b0f3e3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:6fccff17-8063-56e5-ac93-33f44a1dc134": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "6fccff17-8063-56e5-ac93-33f44a1dc134",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:b12c5e7f-3041-56ed-81c4-5056848a59bc": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "b12c5e7f-3041-56ed-81c4-5056848a59bc",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:4061ca23-d532-5e69-b7cd-fddb6bc4bdeb": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "4061ca23-d532-5e69-b7cd-fddb6bc4bdeb",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:81bcdc74-6f8c-5855-b1f6-ba8771e42882": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "81bcdc74-6f8c-5855-b1f6-ba8771e42882",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:3bdf11ea-e097-57d7-9cc0-1ab70fafc6a9": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "3bdf11ea-e097-57d7-9cc0-1ab70fafc6a9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:36e3c215-a09a-542c-8367-0c4e2166e78c": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "36e3c215-a09a-542c-8367-0c4e2166e78c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:b9cb2457-fee2-5934-9997-56d5791bbf10": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "b9cb2457-fee2-5934-9997-56d5791bbf10",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:c050dbc4-22a8-5078-b26e-1ce319d7dd35": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "c050dbc4-22a8-5078-b26e-1ce319d7dd35",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:43c424e2-b63a-55d6-9a5d-ce767bd9d044": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "43c424e2-b63a-55d6-9a5d-ce767bd9d044",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "BRZE_S-1_2021-11-08:dcb7109b-cd5b-575a-b696-e9ab56723282": {
+    "key": "BRZE_S-1_2021-11-08",
+    "img_id": "dcb7109b-cd5b-575a-b696-e9ab56723282",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:69e94643-3bd0-5ee4-bb2b-b66a061e8757": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "69e94643-3bd0-5ee4-bb2b-b66a061e8757",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:21349129-8a20-55f9-82dc-db4213f9aa7f": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "21349129-8a20-55f9-82dc-db4213f9aa7f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:b6438d09-80bd-5152-b430-898589253a94": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "b6438d09-80bd-5152-b430-898589253a94",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:b3c72967-29b8-53f3-88fa-a451c480a728": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "b3c72967-29b8-53f3-88fa-a451c480a728",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:6d2be319-eaaa-528a-93a3-f7e8a67e485f": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "6d2be319-eaaa-528a-93a3-f7e8a67e485f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:ec314886-b515-5422-9741-b1350ea10893": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "ec314886-b515-5422-9741-b1350ea10893",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:b8abbc56-93bc-5b62-9fa6-35bd861828ab": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "b8abbc56-93bc-5b62-9fa6-35bd861828ab",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:ba6674b9-33c8-5de9-9f31-4d1fe28ae6e5": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "ba6674b9-33c8-5de9-9f31-4d1fe28ae6e5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:3f74d31b-912c-5b9a-91ce-bc9f720ba010": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "3f74d31b-912c-5b9a-91ce-bc9f720ba010",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:6ec468ed-2980-5223-af2d-083dee1f0559": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "6ec468ed-2980-5223-af2d-083dee1f0559",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:0d373253-0d9c-5494-9638-5927f5bc5148": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "0d373253-0d9c-5494-9638-5927f5bc5148",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:ac93548c-6499-5064-bf2b-73183f6e24ad": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "ac93548c-6499-5064-bf2b-73183f6e24ad",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:666cdda0-b9f2-5e77-911c-1e10e65a27fe": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "666cdda0-b9f2-5e77-911c-1e10e65a27fe",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:b2bcb81a-8f4d-58b4-9d80-d15f1e4bebdc": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "b2bcb81a-8f4d-58b4-9d80-d15f1e4bebdc",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:ad1a565c-b0df-5a35-a849-13db2785f4f9": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "ad1a565c-b0df-5a35-a849-13db2785f4f9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:6e7af454-7977-510b-a25e-b4c5cd216730": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "6e7af454-7977-510b-a25e-b4c5cd216730",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:944275a5-68c0-50f5-8120-78fb0fe65f3f": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "944275a5-68c0-50f5-8120-78fb0fe65f3f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:951109ae-a925-5853-94f0-b82537765c72": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "951109ae-a925-5853-94f0-b82537765c72",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:8c1404a3-dc78-5a36-9dc4-0081777340d8": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "8c1404a3-dc78-5a36-9dc4-0081777340d8",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:79e251b3-9b6e-558f-8fd2-a41743a6bf0d": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "79e251b3-9b6e-558f-8fd2-a41743a6bf0d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:e8b98f6b-c421-50ba-b48a-00b10b707c24": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "e8b98f6b-c421-50ba-b48a-00b10b707c24",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:b245146d-5560-5524-8025-9d1b6bd4029f": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "b245146d-5560-5524-8025-9d1b6bd4029f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:941b0d1e-498c-5d11-b32d-507b48d869ba": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "941b0d1e-498c-5d11-b32d-507b48d869ba",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:06d1b1a4-99a0-5c4a-b685-54b2a5c28a5b": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "06d1b1a4-99a0-5c4a-b685-54b2a5c28a5b",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:f22373da-0308-5d24-9574-8eb4da1d72fe": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "f22373da-0308-5d24-9574-8eb4da1d72fe",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:de13ceed-ee55-5506-a97b-d38718f1e7ab": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "de13ceed-ee55-5506-a97b-d38718f1e7ab",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:f88ec044-b8dc-53e0-ab89-08898c7238b7": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "f88ec044-b8dc-53e0-ab89-08898c7238b7",
+    "decision": "relevant",
+    "chart_type": "cohort_table",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:73b6728b-a973-54a1-a607-b8a4ab46ad63": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "73b6728b-a973-54a1-a607-b8a4ab46ad63",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:1236d080-edf6-504c-ac8e-7869485433ad": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "1236d080-edf6-504c-ac8e-7869485433ad",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:48dcb81d-e0a4-55d7-b208-1c7aa2040c49": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "48dcb81d-e0a4-55d7-b208-1c7aa2040c49",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:eb4ff383-462a-5c03-88e8-91d219067ca2": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "eb4ff383-462a-5c03-88e8-91d219067ca2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:8d5567eb-788e-5a2f-819c-5d384ccdcaaa": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "8d5567eb-788e-5a2f-819c-5d384ccdcaaa",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:98f215f0-b495-5155-a676-266564792f2b": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "98f215f0-b495-5155-a676-266564792f2b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:d26e3f4c-78b6-5e91-b479-9cfeb04d270c": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "d26e3f4c-78b6-5e91-b479-9cfeb04d270c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:9bebf52a-e9c2-5c8a-86fd-36c0add3457c": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "9bebf52a-e9c2-5c8a-86fd-36c0add3457c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:9a2c055f-5640-5fc2-90d9-e5e8fa9d3a3b": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "9a2c055f-5640-5fc2-90d9-e5e8fa9d3a3b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:87cf0bd6-3a89-56e5-b40f-f5c25fb0b582": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "87cf0bd6-3a89-56e5-b40f-f5c25fb0b582",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:f2788c15-cc80-5bf2-89db-63777e270fc2": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "f2788c15-cc80-5bf2-89db-63777e270fc2",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:3b9ec027-0f32-50fe-b6dc-694144814851": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "3b9ec027-0f32-50fe-b6dc-694144814851",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:68b1ca04-1ba3-5063-bc8d-961a176481e0": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "68b1ca04-1ba3-5063-bc8d-961a176481e0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:7e603975-1559-5385-b7ef-3d1496b8816e": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "7e603975-1559-5385-b7ef-3d1496b8816e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:0ab4a9d6-550d-5628-9b7d-914923653f08": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "0ab4a9d6-550d-5628-9b7d-914923653f08",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:ad5cf2cf-7b5e-5306-900a-01372e442157": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "ad5cf2cf-7b5e-5306-900a-01372e442157",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:47f03a65-678e-58fc-a78e-1f80ec9f5368": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "47f03a65-678e-58fc-a78e-1f80ec9f5368",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:19a6a270-9b71-5d71-b4ba-e1f2573ef314": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "19a6a270-9b71-5d71-b4ba-e1f2573ef314",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:946a6511-e452-5873-ac33-b86085d42176": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "946a6511-e452-5873-ac33-b86085d42176",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:39f12bba-5161-571d-a42a-bc6c4952dca6": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "39f12bba-5161-571d-a42a-bc6c4952dca6",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:f22ded28-4dfd-5595-9a52-60479fb03b24": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "f22ded28-4dfd-5595-9a52-60479fb03b24",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:774f2893-e07d-58f8-85cf-75217d803af4": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "774f2893-e07d-58f8-85cf-75217d803af4",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:cf811966-16a6-549f-bd62-83893162a1de": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "cf811966-16a6-549f-bd62-83893162a1de",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:c77d0566-46f2-5907-a3ad-93bc830094ec": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "c77d0566-46f2-5907-a3ad-93bc830094ec",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:0c6c8d67-0931-5506-bf19-9b7be4ead724": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "0c6c8d67-0931-5506-bf19-9b7be4ead724",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:00682cfa-ab3e-5f84-8acd-5d58a9f21c0d": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "00682cfa-ab3e-5f84-8acd-5d58a9f21c0d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:d2a77b1b-90bd-5446-b3b2-d6d836b4ff8f": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "d2a77b1b-90bd-5446-b3b2-d6d836b4ff8f",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:f5cf43dc-0a39-55f4-b0f6-bfa5117c2c85": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "f5cf43dc-0a39-55f4-b0f6-bfa5117c2c85",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:44ba377d-c708-5079-8b7a-85c105fbe11c": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "44ba377d-c708-5079-8b7a-85c105fbe11c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DASH_S-1_2020-12-07:9fa20a6d-6e8e-5750-91f0-ab5878ee2557": {
+    "key": "DASH_S-1_2020-12-07",
+    "img_id": "9fa20a6d-6e8e-5750-91f0-ab5878ee2557",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:e9c03300-4df3-54ab-b032-71654324f128": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "e9c03300-4df3-54ab-b032-71654324f128",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:401ac720-96f8-5a92-b8b2-fc68c04d9cac": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "401ac720-96f8-5a92-b8b2-fc68c04d9cac",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:d685c449-3fe1-55d8-8cfc-175ef5d945ec": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "d685c449-3fe1-55d8-8cfc-175ef5d945ec",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:c78706cb-f4fd-52d2-84c9-5f7ec9bb9654": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "c78706cb-f4fd-52d2-84c9-5f7ec9bb9654",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:5f688fc5-f5c3-570a-b2dc-07956f92f7b0": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "5f688fc5-f5c3-570a-b2dc-07956f92f7b0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:fcf10f96-bac9-5aec-9e61-10223a173d82": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "fcf10f96-bac9-5aec-9e61-10223a173d82",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:e99624fa-122a-5a49-b5df-1c0aef83f6c9": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "e99624fa-122a-5a49-b5df-1c0aef83f6c9",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:38a89009-5b40-51f6-a52a-b2d079e6198d": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "38a89009-5b40-51f6-a52a-b2d079e6198d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:443a355e-1f22-5f89-9e0c-4fba1f11077f": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "443a355e-1f22-5f89-9e0c-4fba1f11077f",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:ae782fbd-b905-5daa-bb23-7c4aeae513a7": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "ae782fbd-b905-5daa-bb23-7c4aeae513a7",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:18b16b7c-99c3-53fb-aa71-19adc849a6b1": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "18b16b7c-99c3-53fb-aa71-19adc849a6b1",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:57ab1ee1-71e2-56ad-856d-0cadea7c1f7c": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "57ab1ee1-71e2-56ad-856d-0cadea7c1f7c",
+    "decision": "relevant",
+    "chart_type": "bar_chart",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:1ce7b473-61a1-5448-83c1-b775ca1911af": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "1ce7b473-61a1-5448-83c1-b775ca1911af",
+    "decision": "relevant",
+    "chart_type": "cohort_parfait",
+    "rejection_reason": "",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:c2879b04-b025-501b-843e-0866577d7ec3": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "c2879b04-b025-501b-843e-0866577d7ec3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:b6825a0e-dec4-599e-9610-b14827f93b7a": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "b6825a0e-dec4-599e-9610-b14827f93b7a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:35d54f08-7de0-5b06-a1bf-6f6631d702aa": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "35d54f08-7de0-5b06-a1bf-6f6631d702aa",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:3c2827c1-f0d1-5446-84d8-2c49c1be24d3": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "3c2827c1-f0d1-5446-84d8-2c49c1be24d3",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:67e44bac-e2bd-5d4e-8303-0522d06bf18d": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "67e44bac-e2bd-5d4e-8303-0522d06bf18d",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:ec986da9-4387-57a9-8dd8-13c27b8d71ae": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "ec986da9-4387-57a9-8dd8-13c27b8d71ae",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:84f50c3a-3756-5fb2-8d19-fecc70400a8b": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "84f50c3a-3756-5fb2-8d19-fecc70400a8b",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:daad9b80-2ec6-55e6-a4f1-c2e058e7c6fa": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "daad9b80-2ec6-55e6-a4f1-c2e058e7c6fa",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:5410094b-1e39-53d2-8e27-391a3686831c": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "5410094b-1e39-53d2-8e27-391a3686831c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:9bc13b28-b8fa-577b-a4c4-c51b505f3396": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "9bc13b28-b8fa-577b-a4c4-c51b505f3396",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:37dc762c-ba34-525b-bd49-93d078443cf8": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "37dc762c-ba34-525b-bd49-93d078443cf8",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:79f33a46-fc1f-57cd-8f52-8955ed850453": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "79f33a46-fc1f-57cd-8f52-8955ed850453",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:b70aad83-f58c-5cfa-9766-d3bd4860c3f0": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "b70aad83-f58c-5cfa-9766-d3bd4860c3f0",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:8f7ae028-62e5-5025-b43b-5f967279a918": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "8f7ae028-62e5-5025-b43b-5f967279a918",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:392997d8-5d6b-5f2a-9f82-1a2a51fc94e1": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "392997d8-5d6b-5f2a-9f82-1a2a51fc94e1",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:ae2bdd99-b122-53c1-8045-6be078f609ff": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "ae2bdd99-b122-53c1-8045-6be078f609ff",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:97746f23-9e1a-568c-9eff-67f331198171": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "97746f23-9e1a-568c-9eff-67f331198171",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:0143c307-65cc-5863-b1d7-9ded465eab4c": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "0143c307-65cc-5863-b1d7-9ded465eab4c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:7edcac92-564a-5b12-ba65-a584d5580d66": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "7edcac92-564a-5b12-ba65-a584d5580d66",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:c41d0310-0188-5b73-b4a8-91db206d5c44": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "c41d0310-0188-5b73-b4a8-91db206d5c44",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:c5573456-27ea-5115-a7fb-6281bea64389": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "c5573456-27ea-5115-a7fb-6281bea64389",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:aa6135b1-abfe-5256-ab19-871680bb3e64": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "aa6135b1-abfe-5256-ab19-871680bb3e64",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:370f95aa-4f76-592e-b0b1-ec0b63b1e838": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "370f95aa-4f76-592e-b0b1-ec0b63b1e838",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:502dde01-c9fe-5ed2-9058-bc189f9300cb": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "502dde01-c9fe-5ed2-9058-bc189f9300cb",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "DUOL_S-1_2021-07-26:c4e7d4c5-58cd-5250-9924-1e943319ddf5": {
+    "key": "DUOL_S-1_2021-07-26",
+    "img_id": "c4e7d4c5-58cd-5250-9924-1e943319ddf5",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:11b37f98-5816-5937-aaa6-8e3d83a77c8e": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "11b37f98-5816-5937-aaa6-8e3d83a77c8e",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:56cd0a13-1a17-5bb4-bd1d-3f8c377dbe8a": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "56cd0a13-1a17-5bb4-bd1d-3f8c377dbe8a",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:159c3237-4507-57f1-9e1a-ed0b27eeb14c": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "159c3237-4507-57f1-9e1a-ed0b27eeb14c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:caa7d0c3-3c19-5b20-93b6-5755fc3aef50": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "caa7d0c3-3c19-5b20-93b6-5755fc3aef50",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:8fa0cd25-f150-508a-b278-774afdef9956": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "8fa0cd25-f150-508a-b278-774afdef9956",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:6153c214-3023-5da6-ac0e-705f9c91ee2c": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "6153c214-3023-5da6-ac0e-705f9c91ee2c",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "wrong_subject",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:a768e99b-248f-5aca-8bf4-352e2e9dd7da": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "a768e99b-248f-5aca-8bf4-352e2e9dd7da",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:cbaf18dc-8181-52db-8c45-ef3e34817536": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "cbaf18dc-8181-52db-8c45-ef3e34817536",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:24e4fafb-e597-54b6-93d8-0dcf997508ca": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "24e4fafb-e597-54b6-93d8-0dcf997508ca",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "not_a_chart",
+    "notes": ""
+  },
+  "SNOW_S-1_2020-09-14:db9eccc1-1f50-54d6-a5b6-1252be647f50": {
+    "key": "SNOW_S-1_2020-09-14",
+    "img_id": "db9eccc1-1f50-54d6-a5b6-1252be647f50",
+    "decision": "not_relevant",
+    "chart_type": "",
+    "rejection_reason": "decorative",
+    "notes": ""
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "version": "1.0",
+  "description": "Company-level train/test split for presentation gold standard. Test companies are held out entirely \u2014 never used for tuning. Only tuning companies are used during pipeline development.",
+  "tuning_companies": [
+    "ABNB",
+    "BRZE",
+    "CHWY",
+    "CURV",
+    "DASH",
+    "DDOG",
+    "DUOL",
+    "IOT",
+    "KC",
+    "NETS",
+    "SI",
+    "SNOW",
+    "TENB"
+  ],
+  "test_companies": [
+    "CART",
+    "FLYW",
+    "GTLB",
+    "HOOD"
+  ],
+  "companies": {
+    "ABNB": {
+      "split": "tuning",
+      "sector": "Marketplace",
+      "presentations": [
+        "2020-12-07"
+      ],
+      "annotation_count": 2
+    },
+    "BRZE": {
+      "split": "tuning",
+      "sector": "SaaS",
+      "presentations": [
+        "2021-11-08"
+      ],
+      "annotation_count": 7
+    },
+    "CART": {
+      "split": "test",
+      "sector": "Marketplace",
+      "presentations": [
+        "2023-09-15"
+      ],
+      "annotation_count": 25
+    },
+    "CHWY": {
+      "split": "tuning",
+      "sector": "E-commerce",
+      "presentations": [
+        "2019-06-12"
+      ],
+      "annotation_count": 16
+    },
+    "CURV": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2021-06-30"
+      ],
+      "annotation_count": 40
+    },
+    "DASH": {
+      "split": "tuning",
+      "sector": "Marketplace",
+      "presentations": [
+        "2020-12-07"
+      ],
+      "annotation_count": 14
+    },
+    "DDOG": {
+      "split": "tuning",
+      "sector": "SaaS",
+      "presentations": [
+        "2019-09-17"
+      ],
+      "annotation_count": 14
+    },
+    "DUOL": {
+      "split": "tuning",
+      "sector": "Consumer Tech",
+      "presentations": [
+        "2021-07-26"
+      ],
+      "annotation_count": 26
+    },
+    "FLYW": {
+      "split": "test",
+      "sector": "Fintech",
+      "presentations": [
+        "2026-02-24"
+      ],
+      "annotation_count": 3
+    },
+    "GTLB": {
+      "split": "test",
+      "sector": "SaaS",
+      "presentations": [
+        "2021-10-12"
+      ],
+      "annotation_count": 31
+    },
+    "HOOD": {
+      "split": "test",
+      "sector": "Fintech",
+      "presentations": [
+        "10/8/21"
+      ],
+      "annotation_count": 41
+    },
+    "IOT": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2021-12-06"
+      ],
+      "annotation_count": 24
+    },
+    "KC": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2020-09-23"
+      ],
+      "annotation_count": 21
+    },
+    "NETS": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2017-03-21"
+      ],
+      "annotation_count": 43
+    },
+    "SI": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2018-11-07"
+      ],
+      "annotation_count": 11
+    },
+    "SNOW": {
+      "split": "tuning",
+      "sector": "SaaS",
+      "presentations": [
+        "2020-09-14"
+      ],
+      "annotation_count": 41
+    },
+    "TENB": {
+      "split": "tuning",
+      "sector": "Unknown",
+      "presentations": [
+        "2018-07-24"
+      ],
+      "annotation_count": 10
+    }
+  },
+  "statistics": {
+    "total_annotations": 369,
+    "tuning_annotations": 269,
+    "test_annotations": 100,
+    "test_pct": 0.271
+  },
+  "source_files": [
+    "ABNB_S-1_2020-12-07_reviewed.csv",
+    "BRZE_S-1_2021-11-08_reviewed.csv",
+    "CART_S-1_2023-09-15_reviewed.csv",
+    "CHWY_S-1_2019-06-12_reviewed.csv",
+    "CURV_S-1_2021-06-30_reviewed.csv",
+    "DASH_S-1_2020-12-07_reviewed.csv",
+    "DDOG_S-1_2019-09-17_reviewed.csv",
+    "DUOL_S-1_2021-07-26_reviewed.csv",
+    "FLYW_10-K_2026-02-24_reviewed.csv",
+    "GTLB_S-1_2021-10-12_reviewed.csv",
+    "HOOD_S-1_2021-10-08_reviewed.csv",
+    "IOT_S-1_2021-12-06_reviewed.csv",
+    "KC_F-1_2020-09-23_reviewed.csv",
+    "NETS_F-1_2017-03-21_reviewed.csv",
+    "SI_S-1_2018-11-07_reviewed.csv",
+    "SI_S-1_2025-07-25_reviewed.csv",
+    "SNOW_S-1_2020-09-14_reviewed.csv",
+    "TENB_S-1_2018-07-24_reviewed.csv"
+  ]
+}

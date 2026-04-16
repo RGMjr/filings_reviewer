@@ -5,9 +5,16 @@ Presentation Extraction Validator — Measure V2 pipeline performance on investo
 Runs the V2 pipeline (with presentation config) on cached HTML presentations,
 compares against manual annotations, and reports recall/precision/F1.
 
+The source directory is routed by --form-type:
+  8-K   → data/presentation_gold_standard/   (presentation_gold_standard.csv)
+  other → data/filing_gold_standard/         (filing_gold_standard.csv)
+
 Usage:
-    # Run validation against full gold standard
+    # Run validation against full gold standard (8-K presentations, default)
     python3 scripts/validate_presentation_extraction.py
+
+    # Run validation against S-1 filing gold standard
+    python3 scripts/validate_presentation_extraction.py --form-type S-1
 
     # Run against tuning split only (for pipeline development)
     python3 scripts/validate_presentation_extraction.py --split tuning
@@ -490,8 +497,8 @@ def main():
         type=Path,
         default=None,
         help=(
-            "Path to annotations CSV. Defaults to "
-            "data/presentation_gold_standard/presentation_gold_standard.csv."
+            "Path to annotations CSV. Defaults to the merged GS CSV in the "
+            "directory selected by --form-type."
         ),
     )
     parser.add_argument(
@@ -503,10 +510,31 @@ def main():
             "Use 'tuning' during development; use 'test' only for external reporting."
         ),
     )
+    parser.add_argument(
+        "--form-type",
+        default="8-K",
+        metavar="TYPE",
+        help=(
+            "Form type to validate: 8-K (default) uses data/presentation_gold_standard/, "
+            "all other values (S-1, F-1, 10-K, 10-Q) use data/filing_gold_standard/."
+        ),
+    )
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.INFO)
+
+    # Route to correct GS directory based on form type
+    global GOLD_STANDARD_DIR, GOLD_STANDARD_CSV, SPLIT_JSON, FILE_INDEX_PATH
+    global BASELINE_PATH, TUNING_BASELINE_PATH, TEST_BASELINE_PATH
+    if args.form_type != "8-K":
+        GOLD_STANDARD_DIR = ROOT / "data" / "filing_gold_standard"
+        GOLD_STANDARD_CSV = GOLD_STANDARD_DIR / "filing_gold_standard.csv"
+        SPLIT_JSON = GOLD_STANDARD_DIR / "split.json"
+        FILE_INDEX_PATH = GOLD_STANDARD_DIR / "_file_index.json"
+        BASELINE_PATH = RESULTS_DIR / "filing_baseline.json"
+        TUNING_BASELINE_PATH = RESULTS_DIR / "filing_baseline_tuning.json"
+        TEST_BASELINE_PATH = RESULTS_DIR / "filing_baseline_test.json"
 
     # Resolve annotations path
     annotations_path = args.annotations or GOLD_STANDARD_CSV

@@ -2,9 +2,13 @@
 """
 Merge Presentation Annotations and Create Train/Test Split.
 
-Combines all reviewed annotation CSVs from data/presentation_gold_standard/
-into a single canonical gold standard file, then assigns companies to
-tuning (60%) or test (40%) splits.
+Combines all reviewed annotation CSVs from the appropriate gold standard
+directory into a single canonical gold standard file, then assigns companies
+to tuning (60%) or test (40%) splits.
+
+Output directory is routed by --form-type:
+  8-K   → data/presentation_gold_standard/   → presentation_gold_standard.csv
+  other → data/filing_gold_standard/         → filing_gold_standard.csv
 
 Split design:
   - Company-level splits (NOT individual presentations) to prevent data leakage
@@ -15,12 +19,16 @@ The split assignment is deterministic (same output every run) once companies
 are assigned. The split.json file is the source of truth.
 
 Output:
-  data/presentation_gold_standard/presentation_gold_standard.csv  — full merged set
-  data/presentation_gold_standard/split.json                      — tuning/test assignment
+  {gold_standard_dir}/presentation_gold_standard.csv  — full merged set (8-K)
+  {gold_standard_dir}/filing_gold_standard.csv        — full merged set (non-8-K)
+  {gold_standard_dir}/split.json                      — tuning/test assignment
 
 Usage:
     # Merge all reviewed files (auto-detect from data/presentation_gold_standard/)
     python3 scripts/merge_presentation_annotations.py
+
+    # Merge S-1 filing annotations
+    python3 scripts/merge_presentation_annotations.py --form-type S-1
 
     # Specify reviewed files explicitly
     python3 scripts/merge_presentation_annotations.py \\
@@ -45,9 +53,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-GOLD_STANDARD_DIR = ROOT / "data" / "presentation_gold_standard"
-OUTPUT_CSV = GOLD_STANDARD_DIR / "presentation_gold_standard.csv"
-SPLIT_JSON = GOLD_STANDARD_DIR / "split.json"
+
+def _gs_output_dir(form_type: str) -> Path:
+    return ROOT / "data" / ("presentation_gold_standard" if form_type == "8-K" else "filing_gold_standard")
 
 # Sector metadata — extend as more companies are added to the gold standard
 COMPANY_SECTORS: dict[str, str] = {
@@ -150,12 +158,12 @@ def dedup_annotations(rows: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def load_existing_split() -> dict | None:
+def load_existing_split(split_json: Path) -> dict | None:
     """Load split.json if it exists."""
-    if not SPLIT_JSON.exists():
+    if not split_json.exists():
         return None
     try:
-        return json.loads(SPLIT_JSON.read_text())
+        return json.loads(split_json.read_text())
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -215,7 +223,7 @@ def validate_split(split: dict, rows: list[dict]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def write_gold_standard(rows: list[dict], split: dict, dry_run: bool) -> None:
+def write_gold_standard(rows: list[dict], split: dict, output_csv: Path, gold_standard_dir: Path, dry_run: bool) -> None:
     """Write merged gold standard CSV with split column added."""
     enriched = []
     for row in rows:
@@ -226,22 +234,24 @@ def write_gold_standard(rows: list[dict], split: dict, dry_run: bool) -> None:
     fieldnames = OUTPUT_FIELDNAMES + ["split"]
 
     if dry_run:
-        print(f"\n  [DRY RUN] Would write {len(enriched)} rows to {OUTPUT_CSV}")
+        print(f"\n  [DRY RUN] Would write {len(enriched)} rows to {output_csv}")
         return
 
-    GOLD_STANDARD_DIR.mkdir(parents=True, exist_ok=True)
-    with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
+    gold_standard_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(enriched)
 
-    print(f"  Wrote: {OUTPUT_CSV} ({len(enriched)} annotations)")
+    print(f"  Wrote: {output_csv} ({len(enriched)} annotations)")
 
 
 def write_split_json(
     split: dict,
     rows: list[dict],
     source_files: list[str],
+    split_json: Path,
+    gold_standard_dir: Path,
     dry_run: bool,
 ) -> None:
     """Write split.json with company assignments and statistics."""
@@ -295,9 +305,9 @@ def write_split_json(
         print(f"    Test:   {test_tickers}")
         return
 
-    GOLD_STANDARD_DIR.mkdir(parents=True, exist_ok=True)
-    SPLIT_JSON.write_text(json.dumps(split_doc, indent=2))
-    print(f"  Wrote: {SPLIT_JSON}")
+    gold_standard_dir.mkdir(parents=True, exist_ok=True)
+    split_json.write_text(json.dumps(split_doc, indent=2))
+    print(f"  Wrote: {split_json}")
 
 
 # ---------------------------------------------------------------------------
@@ -390,7 +400,26 @@ def main():
         action="store_true",
         help="Show what would be written without writing files",
     )
+    parser.add_argument(
+        "--form-type",
+        choices=["8-K", "S-1", "F-1", "10-K", "10-Q"],
+        default="8-K",
+        dest="form_type",
+        help=(
+            "Filing type being merged (default: 8-K). "
+            "Controls source/output directory: 8-K → data/presentation_gold_standard/, "
+            "other → data/filing_gold_standard/. "
+            "Output CSV is named presentation_gold_standard.csv (8-K) or "
+            "filing_gold_standard.csv (other)."
+        ),
+    )
     args = parser.parse_args()
+
+    # Resolve paths from form type
+    gold_standard_dir = _gs_output_dir(args.form_type)
+    csv_name = "presentation_gold_standard.csv" if args.form_type == "8-K" else "filing_gold_standard.csv"
+    output_csv = gold_standard_dir / csv_name
+    split_json = gold_standard_dir / "split.json"
 
     # Find input files
     if args.inputs:
@@ -399,12 +428,12 @@ def main():
         # Exclude preannotated files and the consolidated output itself
         input_files = sorted(
             p
-            for p in GOLD_STANDARD_DIR.glob("*_reviewed.csv")
-            if "_preannotated" not in p.name and p != OUTPUT_CSV
+            for p in gold_standard_dir.glob("*_reviewed.csv")
+            if "_preannotated" not in p.name and p != output_csv
         )
 
     if not input_files:
-        print(f"No reviewed CSV files found in {GOLD_STANDARD_DIR}", file=sys.stderr)
+        print(f"No reviewed CSV files found in {gold_standard_dir}", file=sys.stderr)
         print("Run review_presentation_annotations.py first.", file=sys.stderr)
         sys.exit(1)
 
@@ -442,10 +471,10 @@ def main():
         else DEFAULT_TEST_COMPANIES
     )
     tickers = {r.get("ticker", "") for r in deduped_rows if r.get("ticker", "")}
-    existing_split = load_existing_split()
+    existing_split = load_existing_split(split_json)
 
     if existing_split and not args.re_split:
-        print(f"  Using existing split from {SPLIT_JSON}")
+        print(f"  Using existing split from {split_json}")
     else:
         print(f"  Computing {'new' if args.re_split else 'initial'} split...")
 
@@ -464,10 +493,10 @@ def main():
     # Write outputs
     print()
     source_files = [f.name for f in input_files]
-    write_gold_standard(deduped_rows, split, dry_run=args.dry_run)
-    write_split_json(split, deduped_rows, source_files, dry_run=args.dry_run)
+    write_gold_standard(deduped_rows, split, output_csv=output_csv, gold_standard_dir=gold_standard_dir, dry_run=args.dry_run)
+    write_split_json(split, deduped_rows, source_files, split_json=split_json, gold_standard_dir=gold_standard_dir, dry_run=args.dry_run)
 
-    print(f"\n  Done. Gold standard ready at: {GOLD_STANDARD_DIR}")
+    print(f"\n  Done. Gold standard ready at: {gold_standard_dir}")
 
 
 if __name__ == "__main__":

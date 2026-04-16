@@ -48,8 +48,7 @@ def _progress_from_candidates(key: str, candidates: list[dict], decisions: dict)
     total = len(candidates)
     reviewed = sum(1 for c in candidates if f"{key}:{c['img_id']}" in decisions)
     skipped = sum(
-        1 for c in candidates
-        if decisions.get(f"{key}:{c['img_id']}", {}).get("decision") == "skip"
+        1 for c in candidates if decisions.get(f"{key}:{c['img_id']}", {}).get("decision") == "skip"
     )
     return {"total": total, "reviewed": reviewed, "skipped": skipped, "pending": total - reviewed}
 
@@ -65,18 +64,21 @@ def index():
         candidates = load_candidates(key)
         progress = _progress_from_candidates(key, candidates, decisions)
         relevant = sum(
-            1 for c in candidates
+            1
+            for c in candidates
             if decisions.get(f"{key}:{c['img_id']}", {}).get("decision") == "relevant"
         )
-        filings.append({
-            "key": key,
-            "ticker": _ticker_from_key(key),
-            "total": progress["total"],
-            "reviewed": progress["reviewed"],
-            "skipped": progress["skipped"],
-            "pending": progress["pending"],
-            "relevant": relevant,
-        })
+        filings.append(
+            {
+                "key": key,
+                "ticker": _ticker_from_key(key),
+                "total": progress["total"],
+                "reviewed": progress["reviewed"],
+                "skipped": progress["skipped"],
+                "pending": progress["pending"],
+                "relevant": relevant,
+            }
+        )
 
     filings.sort(key=lambda f: (f["pending"] == 0, f["key"]))
 
@@ -90,7 +92,7 @@ def review_filing(key: str):
     if not candidates:
         abort(404)
 
-    decisions = load_decisions()
+    decisions = load_decisions(key)
     # Annotate candidates with decision data
     for c in candidates:
         d = decisions.get(f"{key}:{c['img_id']}")
