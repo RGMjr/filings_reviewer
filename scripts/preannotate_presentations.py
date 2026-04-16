@@ -12,6 +12,10 @@ Unlike preannotate_transcript.py (which uses an LLM), this script uses the
 rule-based V2 pipeline directly. Output CSVs contain one row per extracted
 MetricFact with empty disposition/disposition_reason columns for human review.
 
+Output directory is routed by filing type:
+    8-K  → data/presentation_gold_standard/
+    other → data/filing_gold_standard/
+
 Usage:
     # 8-K investor presentations (default)
     python3 scripts/preannotate_presentations.py --ticker CRM ADBE MSFT --limit 2
@@ -24,8 +28,9 @@ Usage:
 
 Output:
     data/presentation_gold_standard/{TICKER}_{DATE}_preannotated.csv         (8-K)
-    data/presentation_gold_standard/{TICKER}_{FORM}_{DATE}_preannotated.csv  (non-8-K)
-    data/presentation_gold_standard/_file_index.json
+    data/presentation_gold_standard/{TICKER}_{FORM}_{DATE}_preannotated.csv  (8-K with form in key)
+    data/filing_gold_standard/{TICKER}_{FORM}_{DATE}_preannotated.csv        (non-8-K)
+    {output_dir}/_file_index.json
 """
 
 from __future__ import annotations
@@ -57,8 +62,10 @@ from src.infra.sec_presentation_source import SECPresentationSource  # noqa: E40
 
 logger = logging.getLogger("preannotate_presentations")
 
-# Output directory for gold standard CSVs
-OUTPUT_DIR = ROOT / "data" / "presentation_gold_standard"
+
+def _gs_output_dir(form_type: str) -> Path:
+    return ROOT / "data" / ("presentation_gold_standard" if form_type == "8-K" else "filing_gold_standard")
+
 
 # Non-8-K filing types supported via the registration/periodic filing path
 _SEC_FILING_TYPES = {"S-1", "F-1", "10-K", "10-Q"}
@@ -411,6 +418,7 @@ def run_preannotation(
         document_type = "sec_filing"
         csv_source_type = "filing"
 
+    OUTPUT_DIR = _gs_output_dir(filing_type)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Load existing file index if present
@@ -828,8 +836,9 @@ def main() -> int:
         images_only=args.images_only,
     )
 
+    output_dir = _gs_output_dir(args.filing_type)
     print(
-        f"\nDone. File index written to {OUTPUT_DIR / '_file_index.json'} "
+        f"\nDone. File index written to {output_dir / '_file_index.json'} "
         f"({len(file_index)} entries total)",
         file=sys.stderr,
     )

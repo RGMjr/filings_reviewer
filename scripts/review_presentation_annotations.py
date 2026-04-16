@@ -18,12 +18,17 @@ Trap detection: synthetic false positives may be injected by preannotate_present
 If a trap is ACCEPTED rather than REJECTED, a warning is shown. Trap detection rate
 is tracked per session; a warning is shown if detection rate < 80%.
 
-Output:
-  data/presentation_gold_standard/{TICKER}_{DATE}_reviewed.csv
+Output directory is routed by --form-type:
+  8-K   → data/presentation_gold_standard/{TICKER}_{DATE}_reviewed.csv
+  other → data/filing_gold_standard/{TICKER}_{FORM}_{DATE}_reviewed.csv
 
 Usage:
     python3 scripts/review_presentation_annotations.py \\
         data/presentation_gold_standard/CRM_2025-02-26_preannotated.csv
+
+    # Review S-1 filing annotations
+    python3 scripts/review_presentation_annotations.py \\
+        data/filing_gold_standard/DDOG_S-1_2019-09-19_preannotated.csv --form-type S-1
 
     # Review multiple files back-to-back
     python3 scripts/review_presentation_annotations.py \\
@@ -48,13 +53,15 @@ sys.path.insert(0, str(ROOT))
 
 from src.gold_standard.transcript_metrics import ACTIVE_METRICS  # noqa: E402
 
-OUTPUT_DIR = ROOT / "data" / "presentation_gold_standard"
-_URL_INDEX_PATH = OUTPUT_DIR / "_url_index.json"
+
+def _gs_output_dir(form_type: str) -> Path:
+    return ROOT / "data" / ("presentation_gold_standard" if form_type == "8-K" else "filing_gold_standard")
 
 
-def _load_url_index() -> dict[str, str]:
+def _load_url_index(output_dir: Path) -> dict[str, str]:
+    url_index_path = output_dir / "_url_index.json"
     try:
-        return json.loads(_URL_INDEX_PATH.read_text(encoding="utf-8"))
+        return json.loads(url_index_path.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -164,9 +171,9 @@ def load_reviewed(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
-def write_reviewed(path: Path, rows: list[dict]) -> None:
+def write_reviewed(path: Path, rows: list[dict], output_dir: Path) -> None:
     """Write reviewed annotations to output CSV."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=OUTPUT_FIELDNAMES, extrasaction="ignore")
         writer.writeheader()
@@ -513,13 +520,13 @@ def _parse_key_from_filename(stem: str) -> tuple[str, str, str]:
     return ticker, date, ticker
 
 
-def review_file(input_path: Path, resume: bool) -> None:
+def review_file(input_path: Path, resume: bool, output_dir: Path) -> None:
     """
     Run the review loop for a single pre-annotated CSV file.
     """
     # Determine output path
     stem = input_path.stem.replace("_preannotated", "")
-    out_path = OUTPUT_DIR / f"{stem}_reviewed.csv"
+    out_path = output_dir / f"{stem}_reviewed.csv"
 
     # Load candidates
     candidates = load_candidates(input_path)
@@ -566,7 +573,7 @@ def review_file(input_path: Path, resume: bool) -> None:
         print(f"Output: {out_path}")
         return
 
-    url_index = _load_url_index()
+    url_index = _load_url_index(output_dir)
     index_key = input_path.stem.replace("_preannotated", "")
     doc_url = url_index.get(index_key)
 
@@ -600,7 +607,7 @@ def review_file(input_path: Path, resume: bool) -> None:
 
         # Save after each annotation (so progress is not lost on interruption)
         all_reviewed = already_reviewed + reviewed_this_session
-        write_reviewed(out_path, all_reviewed)
+        write_reviewed(out_path, all_reviewed, output_dir)
 
     # Add missed metrics
     added = collect_add_annotations(ticker, date, company)
@@ -608,7 +615,7 @@ def review_file(input_path: Path, resume: bool) -> None:
 
     # Final save
     all_reviewed = already_reviewed + reviewed_this_session
-    write_reviewed(out_path, all_reviewed)
+    write_reviewed(out_path, all_reviewed, output_dir)
 
     # Print session stats (only for this session's decisions)
     stats = compute_session_stats(reviewed_this_session)
@@ -633,6 +640,7 @@ def main():
             Examples:
               %(prog)s data/presentation_gold_standard/CRM_2025-02-26_preannotated.csv
               %(prog)s data/presentation_gold_standard/*.csv --resume
+              %(prog)s data/filing_gold_standard/DDOG_S-1_2019-09-19_preannotated.csv --form-type S-1
         """
         ),
     )
@@ -647,14 +655,27 @@ def main():
         action="store_true",
         help="Resume a partially completed review session",
     )
+    parser.add_argument(
+        "--form-type",
+        choices=["8-K", "S-1", "F-1", "10-K", "10-Q"],
+        default="8-K",
+        dest="form_type",
+        help=(
+            "Filing type being reviewed (default: 8-K). "
+            "Controls output directory: 8-K → data/presentation_gold_standard/, "
+            "other → data/filing_gold_standard/."
+        ),
+    )
     args = parser.parse_args()
+
+    output_dir = _gs_output_dir(args.form_type)
 
     for input_path in args.inputs:
         if not input_path.exists():
             print(f"ERROR: File not found: {input_path}", file=sys.stderr)
             sys.exit(1)
 
-        review_file(input_path, resume=args.resume)
+        review_file(input_path, resume=args.resume, output_dir=output_dir)
 
         if len(args.inputs) > 1:
             cont = prompt_optional(
