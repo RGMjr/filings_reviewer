@@ -9,7 +9,7 @@ company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,
 "Datadog, Inc.",DDOG,2019-09-17,cm_gross_revenue_retention,90%,percent,other,text,90%,LOW,cover,False,EDIT,"""dollar-based gross retention rate"" not customer retention"
 "Datadog, Inc.",DDOG,2019-09-17,cm_arr,"$100,000",currency,2019-06-30,text,"$100,000",MEDIUM,cover,False,REJECT,"this is part of the definition of ""large customers"" -- defines the threshold for calculating which customers are counted in cm_large_customers_period_end"
 "Datadog, Inc.",DDOG,2019-09-17,cm_arr,$1.0 million,currency,2019-06-30,text,$1.0 million,MEDIUM,cover,False,REJECT,"this is the definition of large customers ""we had 42 customers with ARR of $1.0 million or more"", not the actual ARR"
-"Datadog, Inc.",DDOG,2019-09-17,cm_arr,"$200,000",currency,2019-06-30,text,"$200,000",MEDIUM,cover,False,EDIT,"This is the average ARR for one type of ""large customer"" (""defined as having 5,000 or more employees"")"
+"Datadog, Inc.",DDOG,2019-09-17,cm_arr,"$200,000",currency,2019-06-30,text,"$200,000",MEDIUM,cover,False,REJECT,metric_deprecated
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,$4.8 million,currency,2014-12-31,text,$4.8 million,MEDIUM,cover,False,EDIT,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to ..."")"
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,$19.2 million,currency,2014-12-31,text,$19.2 million,MEDIUM,cover,False,EDIT,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to $19.2 million..."")"
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_concentration,14%,percent,2019-06-30,text,14%,MEDIUM,cover,False,ACCEPT,
