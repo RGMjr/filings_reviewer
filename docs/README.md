@@ -83,7 +83,7 @@ Active and historical plans for reference.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** | Everyone |
+| **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** (V1 GR methodology — V2 current baseline: see v2.7 changelog entry above) | Everyone |
 | **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Known issues and limitations | Developers |
 
 ### Archive (Historical Reference)
@@ -373,6 +373,13 @@ Internal prompt templates for consistent, efficient task execution. Skills reduc
 ---
 
 ## Version History
+
+### v2.7 — 2026-04-16 — Tier 1 Recall — Text Pipeline Concluded
+
+- `dd5c90a`: Add `_WIDER_PROXIMITY_METRICS` frozenset in `value_binding.py:46-52` — 200-char window for cm_balance_by_cohort, cm_gross_margin_by_cohort, cm_ltv_to_cac_ratio, cm_ltv_to_cac_ratio_by_cohort, cm_cac_payback_period. Add `cm_large_customers_period_end` table FP exemption at `false_positive_filter.py:1211-1215`.
+- `09a8f64`: Add `specific_patterns` confidence boost for cm_ltv_to_cac_ratio in `config/metric_keywords.yaml`. F1 46%→50%.
+- `v2_baseline.json` updated: P=68.06%, R=63.36%, F1=65.63% (15 companies, V2 SEC methodology).
+- Remaining Tier 1 recall gaps (cm_revenue_by_cohort, cm_balance_by_cohort, cm_gross_margin_by_cohort) are chart-pipeline — text-pipeline Tier 1 recall work is concluded.
 
 ### Version 2.6 (Current - 2026-04-08)
 - ✅ Gold standard expanded to 15 companies (467 GS entries); `golden_set_260408.csv` is now the authoritative CSV

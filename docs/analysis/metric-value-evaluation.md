@@ -11,7 +11,7 @@
 | Category | Count | Metrics |
 |----------|-------|---------|
 | **Deprecate** | 3 | cm_arr, cm_mrr, cm_expansion_revenue |
-| **Promote to Tier 1** | 3 | cm_large_customers_period_end, cm_new_customers_acquired, cm_customers_period_end_by_tenure |
+| **Promote to Tier 1** | 3 | cm_large_customers_period_end, cm_new_customers_acquired, cm_customers_period_end_by_tenure | (Resolved — cm_large_customers_period_end is in Tier 1 per current .claude/rules/v2-pipeline.md) |
 | **Keep Tier 1** | 12 | (no changes) |
 | **Keep Tier 2** | 10 | (no changes) |
 
@@ -112,7 +112,7 @@ The user's intuition is correct: standalone ARR is noise. When ARR is qualified 
 - Customer signal: Yes -- canonical unit economics ratio
 - GS: Filing=9, Presentation=6
 - FP burden: V2=5, V1=1. Moderate
-- Performance: F1=46%, recall=33%
+- Performance: F1=50% (updated 2026-04-16 per commit `09a8f64`; pre-09a8f64 was F1=46%, recall=33% — updated recall pending fresh diagnostic)
 - Action: None
 
 **cm_ltv_to_cac_ratio_by_cohort**
@@ -212,7 +212,7 @@ The user's intuition is correct: standalone ARR is noise. When ARR is qualified 
 
 **cm_cac_payback_period**
 - Customer signal: Yes -- unit economics metric
-- GS: Filing=1. Very rare
+- GS: 0 rows (no gold-standard coverage as of 2026-04-16). Metric is unscorable until GS cases are added. This is a GS-coverage gap, not an extraction gap.
 - FP burden: V2=2, V1=0. Minimal
 - Action: None
 
