@@ -2,12 +2,11 @@
 V2 Quality Scoring Adapter.
 
 Ports V1 quality scoring rubrics to work with V2 pipeline outputs.
-Writes results to V1's filing_metric_incidence table for analytics compatibility.
+Scores are computed but no longer persisted (filing_metric_incidence write removed).
 
 Design principles:
 - Direct port of 5 scoring dimensions from V1 quality_scorer.py
 - Maps V2 MetricFact → V1 scoring inputs
-- Idempotent: DELETE + INSERT pattern (matches V1)
 - Script-layer only (not a pipeline stage) — needs company_id not in PipelineContext
 """
 

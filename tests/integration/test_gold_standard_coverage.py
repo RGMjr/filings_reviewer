@@ -20,11 +20,11 @@ from pathlib import Path
 
 import pytest
 
-from src.extraction.html_segmenter import HTMLSegmenter
-from src.extraction.models import SourceSegment
 from src.review import CandidateGenerator
 from src.review.config import CandidateGenerationConfig
 from src.review.models import ReviewCandidate
+from src.shared.html_segmenter import HTMLSegmenter
+from src.shared.models import SourceSegment
 
 logger = logging.getLogger(__name__)
 
