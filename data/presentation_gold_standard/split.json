@@ -5,7 +5,6 @@
     "ABNB",
     "BRZE",
     "CHWY",
-    "CRM",
     "CURV",
     "DASH",
     "DDOG",
@@ -43,7 +42,7 @@
       "presentations": [
         "2021-11-08"
       ],
-      "annotation_count": 9
+      "annotation_count": 7
     },
     "CART": {
       "split": "test",
@@ -60,15 +59,6 @@
         "2019-06-12"
       ],
       "annotation_count": 13
-    },
-    "CRM": {
-      "split": "tuning",
-      "sector": "SaaS",
-      "presentations": [
-        "2025-12-03",
-        "2026-02-25"
-      ],
-      "annotation_count": 5
     },
     "CURV": {
       "split": "tuning",
@@ -93,7 +83,7 @@
       "presentations": [
         "2019-09-17"
       ],
-      "annotation_count": 11
+      "annotation_count": 10
     },
     "DUOL": {
       "split": "tuning",
@@ -150,7 +140,7 @@
       "presentations": [
         "2021-12-06"
       ],
-      "annotation_count": 44
+      "annotation_count": 22
     },
     "KC": {
       "split": "tuning",
@@ -222,10 +212,10 @@
     }
   },
   "statistics": {
-    "total_annotations": 368,
-    "tuning_annotations": 277,
+    "total_annotations": 338,
+    "tuning_annotations": 247,
     "test_annotations": 91,
-    "test_pct": 0.247
+    "test_pct": 0.269
   },
   "source_files": [
     "ABNB_S-1_2020-12-07_reviewed.csv",

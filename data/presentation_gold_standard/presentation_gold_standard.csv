@@ -8,8 +8,6 @@ company,ticker,date,metric_id,value,unit,period,source_type,raw_text,confidence,
 "Braze, Inc.",BRZE,2021-11-08,cm_net_revenue_retention,126%,percent,2020-01-01 to 2020-12-31,html_table,126%,MEDIUM,unknown,False,ACCEPT,,tuning
 "Braze, Inc.",BRZE,2021-11-08,cm_revenue_by_cohort,$6.4 million,currency,2016-01-01 to 2016-12-31,text,$6.4 million,MEDIUM,cover,False,EDIT,This is arr (revenue) from a specific cohort of customers (new customers),tuning
 "Braze, Inc.",BRZE,2021-11-08,cm_revenue_by_cohort,$20.1 million,currency,2016-01-01 to 2016-12-31,text,$20.1 million,MEDIUM,cover,False,EDIT,,tuning
-"Braze, Inc.",BRZE,2021-11-08,cm_arr,$100 million,currency,other,html_table,$100 million,LOW,unknown,False,ACCEPT,,tuning
-"Braze, Inc.",BRZE,2021-11-08,cm_arr,$200 million,currency,other,html_table,$200 million,LOW,unknown,False,ACCEPT,,tuning
 Maplebear Inc.,CART,2023-09-15,cm_monthly_active_users,7.7 million,count,2022-01-01 to 2022-12-31,filing,7.7 million,MEDIUM,unknown,False,ACCEPT,,test
 Maplebear Inc.,CART,2023-09-15,cm_purchase_transactions_overall,262.6 million,count,2022-01-01 to 2022-12-31,filing,262.6 million,MEDIUM,unknown,False,EDIT,wrong metric,test
 Maplebear Inc.,CART,2023-09-15,cm_revenue_concentration,13%,percent,2020-01-01 to 2020-12-31,filing,13%,HIGH,unknown,False,ACCEPT,,test
@@ -44,11 +42,6 @@ Maplebear Inc.,CART,2023-09-15,cm_revenue_by_cohort,2.42,ratio,Year 3,image,2.42
 "Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,297,currency,2016-01-01 to 2016-12-31,html_table,297,MEDIUM,unknown,False,EDIT,"revenue per active customer, not active customer count",tuning
 "Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,310,currency,2017-01-01 to 2017-12-31,html_table,310,MEDIUM,unknown,False,EDIT,,tuning
 "Chewy, Inc.",CHWY,2019-06-12,cm_revenue_per_customer,334,currency,2018-01-01 to 2018-12-31,html_table,334,MEDIUM,unknown,False,EDIT,"revenue per active customer, not customer count",tuning
-"Salesforce, Inc.",CRM,2025-12-03,cm_arr,$1.4 billion,currency,2025-07-31 to 2025-10-31,presentation,$1.4 billion,MEDIUM,cover,False,EDIT,period was incorrect,tuning
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$800 million,currency,other,presentation,$800 million,LOW,cover,False,ACCEPT,,tuning
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$2.9 billion,currency,other,presentation,$2.9 billion,LOW,cover,False,ACCEPT,,tuning
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$1.1 billion,currency,other,presentation,$1.1 billion,LOW,cover,False,ACCEPT,,tuning
-"Salesforce, Inc.",CRM,2026-02-25,cm_arr,$6.6 billion,currency,other,presentation,$6.6 billion,LOW,cover,False,ACCEPT,,tuning
 Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.2 million,count,2021-05-01,text,3.2 million,MEDIUM,mda,False,ACCEPT,,tuning
 Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.0 million,count,2020-05-02,html_table,3.0 million,MEDIUM,unknown,False,ACCEPT,,tuning
 Torrid Holdings Inc.,CURV,2021-06-30,cm_active_customers_total,3.4 million,count,2020-05-02,html_table,3.4 million,MEDIUM,unknown,False,ACCEPT,,tuning
@@ -108,7 +101,6 @@ Torrid Holdings Inc.,CURV,2021-06-30,cm_ltv_to_cac_ratio,6.0x,other,other,chart,
 "Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,141%,percent,2018-06-30,text,141%,MEDIUM,cover,False,ACCEPT,,tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_net_revenue_retention,151%,percent,2018-06-30,text,151%,MEDIUM,cover,False,ACCEPT,,tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_gross_revenue_retention,90%,percent,other,text,90%,LOW,cover,False,EDIT,"""dollar-based gross retention rate"" not customer retention",tuning
-"Datadog, Inc.",DDOG,2019-09-17,cm_arr,"$200,000",currency,2019-06-30,text,"$200,000",MEDIUM,cover,False,EDIT,"This is the average ARR for one type of ""large customer"" (""defined as having 5,000 or more employees"")",tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,$4.8 million,currency,2014-12-31,text,$4.8 million,MEDIUM,cover,False,EDIT,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to ..."")",tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_by_cohort,$19.2 million,currency,2014-12-31,text,$19.2 million,MEDIUM,cover,False,EDIT,"This is for one cohort of customers (""this cohort increased their ARR from $4.8 million as of December 31, 2014 to $19.2 million..."")",tuning
 "Datadog, Inc.",DDOG,2019-09-17,cm_revenue_concentration,14%,percent,2019-06-30,text,14%,MEDIUM,cover,False,ACCEPT,,tuning
@@ -199,32 +191,17 @@ Gitlab Inc.,GTLB,2021-10-12,cm_active_customers_total,"11,000",count,other,text,
 "Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$175 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$175,LOW,unknown,FALSE,ACCEPT,,test
 "Robinhood Markets, Inc.",HOOD,10/8/21,cm_revenue_by_cohort,$326 ,currency,other,chart,Annual Revenue by Annual Cohort ($mm)$326,LOW,unknown,FALSE,ACCEPT,,test
 INTUIT INC.,INTU,2025-11-20,cm_customers_period_end,100 million,count,other,presentation,100 million,LOW,cover,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$500,currency,other,chart,Samsara Timeline$500,LOW,unknown,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"13,000",count,2021-10-30,text,"13,000",LOW,cover,False,EDIT,"wrong metric captured. ""Core Customers"" is the label on this value",tuning
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,700,other,2021-10-30,text,700,LOW,cover,False,EDIT,"this is labeled ""customers with ARR > $100K"", indicating that it's a count of large customers",tuning
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,255,other,2019-03-01 to 2020-02-01,text,255,LOW,cover,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,452,other,2019-03-01 to 2020-02-01,text,452,LOW,cover,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,390,other,2019-03-01 to 2020-02-01,text,390,LOW,cover,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,715,other,2019-03-01 to 2020-02-01,text,715,LOW,cover,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$92,other,other,chart,ARR (in millions)$92,LOW,unknown,False,EDIT,wrong metric,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$122,other,other,chart,ARR (in millions)$122,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$153,other,other,chart,ARR (in millions)$153,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$194,other,other,chart,ARR (in millions)$194,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$222,other,other,chart,ARR (in millions)$222,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$293,other,other,chart,ARR (in millions)$293,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$341,other,other,chart,ARR (in millions)$341,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$382,other,other,chart,ARR (in millions)$382,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$437,other,other,chart,ARR (in millions)$437,LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,$493,other,other,chart,ARR (in millions)$493,LOW,unknown,False,EDIT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"10,000",count,2020-02-01,text,"10,000",MEDIUM,mda,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_customers_period_end,"25,000",count,2020-02-01,text,"25,000",MEDIUM,mda,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_customer_retention_rate,115%,percent,2021-10-30,text,115%,MEDIUM,mda,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_net_revenue_retention,125%,percent,2021-10-30,text,125%,MEDIUM,mda,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,44%,percent,2021-10-30,text,44%,MEDIUM,mda,False,EDIT,"""approximately 44% of our ARR came from customers representing over $100,000 in ARR"", indicating this is revenue concentration",tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"194,366",other,2019-03-01 to 2020-02-01,html_table,"194,366",HIGH,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"341,198",other,2020-02-01 to 2021-01-30,html_table,"341,198",HIGH,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"293,052",other,2020-02-01 to 2020-10-31,html_table,"293,052",HIGH,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"492,838",other,2021-02-01 to 2021-10-30,html_table,"492,838",HIGH,unknown,False,ACCEPT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,255,other,other,chart,"Number of Customers Over $100,000 in ARR255",LOW,unknown,False,EDIT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,452,other,other,chart,"Number of Customers Over $100,000 in ARR452",LOW,unknown,False,EDIT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_revenue_concentration,390,other,other,chart,"Number of Customers Over $100,000 in ARR390",LOW,unknown,False,EDIT,,tuning
@@ -236,13 +213,6 @@ Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,285,other,other,chart,
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,326,other,other,chart,"Number of Customers Over $100,000 in ARR326",LOW,unknown,False,EDIT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,518,other,other,chart,"Number of Customers Over $100,000 in ARR518",LOW,unknown,False,EDIT,,tuning
 Samsara Inc.,IOT,2021-12-06,cm_large_customers_period_end,615,other,other,chart,"Number of Customers Over $100,000 in ARR615",LOW,unknown,False,EDIT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"92,036",other,2019-03-01 to 2019-05-04,html_table,"92,036",MEDIUM,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"122,010",other,2019-06-01 to 2019-08-03,html_table,"122,010",MEDIUM,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"153,418",other,2019-09-01 to 2019-11-02,html_table,"153,418",MEDIUM,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"221,705",other,2020-03-01 to 2020-05-02,html_table,"221,705",MEDIUM,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"252,826",other,2020-06-01 to 2020-08-01,html_table,"252,826",MEDIUM,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"382,102",other,2021-03-01 to 2021-05-01,html_table,"382,102",MEDIUM,unknown,False,ACCEPT,,tuning
-Samsara Inc.,IOT,2021-12-06,cm_arr,"436,889",other,2021-05-01 to 2021-07-31,html_table,"436,889",MEDIUM,unknown,False,ACCEPT,,tuning
 Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_net_revenue_retention,161,percent,2020-01-01 to 2020-06-30,html_table,161,LOW,unknown,False,ACCEPT,,tuning
 Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_net_revenue_retention,155,percent,2020-01-01 to 2020-06-30,html_table,155,LOW,unknown,False,ACCEPT,,tuning
 Kingsoft Cloud Holdings Ltd,KC,2020-09-23,cm_customers_period_end,112,count,2017-12-31,html_table,112,LOW,cover,False,EDIT,"comes from row ""Number of Public Could Service Premium Customers"" in table",tuning
