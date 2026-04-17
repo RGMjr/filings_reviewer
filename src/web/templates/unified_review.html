@@ -334,16 +334,22 @@
         </div>
         {% endif %}
 
-        {# Chart evidence crop (shown when source_locator has img_id + bbox) #}
+        {# Chart evidence image — bbox crop when available, otherwise full image #}
         {% set loc = current_fact.source_locator if current_fact.source_locator is mapping else {} %}
         {% set bbox = loc.bbox if loc.bbox is mapping else {} %}
-        {% if loc.img_id and bbox %}
+        {% if loc.img_id %}
         <div class="mb-3">
           <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">Chart Evidence</label>
           <div>
+            {% if bbox and bbox.w and bbox.h %}
             <img src="{{ url_for('review_unified.image_crop', img_id=loc.img_id, x=bbox.x|int, y=bbox.y|int, w=bbox.w|int, h=bbox.h|int) }}"
-                 alt="Chart evidence"
+                 alt="Chart evidence (cropped to data point)"
                  style="max-width:400px;border:1px solid #ccc;">
+            {% else %}
+            <img src="{{ url_for('review_unified.image_crop', img_id=loc.img_id) }}"
+                 alt="Chart evidence (full chart)"
+                 style="max-width:600px;border:1px solid #ccc;">
+            {% endif %}
           </div>
         </div>
         {% endif %}
@@ -567,7 +573,7 @@
 <div class="container-fluid image-review-container"
      id="review-container"
      data-filing-id="{{ filing.filing_id }}"
-     data-candidate-id="{{ current_image.image_candidate_id if current_image else '' }}"
+     data-img-id="{{ current_image.img_id if current_image else '' }}"
      data-candidates='{{ all_image_candidates | tojson }}'
      data-decision-id="{{ current_image.image_decision_id if current_image and current_image.image_decision_id else '' }}">
 
@@ -612,14 +618,14 @@
         <div class="card-body p-0 thumbnail-list-container">
           <div class="list-group list-group-flush">
             {% for candidate in image_candidates %}
-            {% set is_current = current_image and candidate.image_candidate_id == current_image.image_candidate_id %}
-            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, image_candidate_id=candidate.image_candidate_id, image_status=image_filters.status, tab='images') }}"
+            {% set is_current = current_image and candidate.img_id == current_image.img_id %}
+            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, img_id=candidate.img_id, image_status=image_filters.status, tab='images') }}"
                class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.review_status == 'reviewed' else '' }}"
-               data-candidate-id="{{ candidate.image_candidate_id }}">
+               data-img-id="{{ candidate.img_id }}">
               <div class="d-flex align-items-center gap-2">
                 <div class="thumbnail-preview">
                   <img src="{{ candidate.image_url }}"
-                       alt="{{ candidate.image_alt or 'Image ' ~ loop.index }}"
+                       alt="Image {{ loop.index }}"
                        loading="lazy"
                        onerror="if(!this.dataset.retried){this.dataset.retried='1';var m=this.src.match(/\/Archives\/edgar\/data\/(\d+)\/(\d+)\/([^?]+)/);if(m){this.src='/images/cache/'+m[1]+'/'+m[2]+'/'+m[3];return;}}this.style.display='none';this.nextElementSibling.style.display='flex';">
                   <div class="thumbnail-placeholder" style="display: none;">
@@ -663,7 +669,7 @@
           <div class="d-flex justify-content-between align-items-start mb-3">
             <div>
               <h5 class="mb-1">
-                Image #{% for c in image_candidates %}{% if c.image_candidate_id == current_image.image_candidate_id %}{{ loop.index }}{% endif %}{% endfor %}
+                Image #{% for c in image_candidates %}{% if c.img_id == current_image.img_id %}{{ loop.index }}{% endif %}{% endfor %}
               </h5>
               <small class="text-muted">{{ current_image.image_src }}</small>
             </div>
@@ -689,7 +695,7 @@
           <div class="main-image-container text-center mb-3">
             <a href="{{ current_image.image_url }}" target="_blank" rel="noopener noreferrer">
               <img src="{{ current_image.image_url }}"
-                   alt="{{ current_image.image_alt or 'Image candidate' }}"
+                   alt="Image candidate"
                    class="main-image"
                    onerror="if(!this.dataset.retried){this.dataset.retried='1';var m=this.src.match(/\/Archives\/edgar\/data\/(\d+)\/(\d+)\/([^?]+)/);if(m){this.src='/images/cache/'+m[1]+'/'+m[2]+'/'+m[3];return;}}this.style.display='none';document.getElementById('image-error').style.display='block';">
             </a>
@@ -707,10 +713,6 @@
             <span class="mx-2">&bull;</span>
             {% endif %}
             <span>{{ current_image.image_src }}</span>
-            {% if current_image.image_alt %}
-            <span class="mx-2">&bull;</span>
-            <span title="Alt text">{{ current_image.image_alt|truncate(50) }}</span>
-            {% endif %}
           </div>
 
           {% if current_image.review_status == 'pending' %}
@@ -796,9 +798,9 @@
           {% endif %}
 
           <form id="decision-form" style="display: none;"
-                data-candidate-id="{{ current_image.image_candidate_id }}"
+                data-img-id="{{ current_image.img_id }}"
                 data-filing-id="{{ filing.filing_id }}">
-            <input type="hidden" name="image_candidate_id" value="{{ current_image.image_candidate_id }}">
+            <input type="hidden" name="img_id" value="{{ current_image.img_id }}">
             <input type="hidden" name="decision" id="decision-input">
             <input type="hidden" name="chart_type" id="chart-type-input">
             <input type="hidden" name="rejection_reason" id="rejection-reason-input">
@@ -825,19 +827,6 @@
             <label class="form-label fw-semibold small">Preceding Text</label>
             <div class="preceding-text-box">
               {{ current_image.preceding_text or 'No preceding text captured' }}
-            </div>
-          </div>
-
-          <div class="context-section mb-3">
-            <label class="form-label fw-semibold small">Detected Keywords</label>
-            <div class="keyword-badges">
-              {% if current_image.detected_keywords %}
-                {% for keyword in current_image.detected_keywords %}
-                <span class="badge bg-info keyword-badge">{{ keyword }}</span>
-                {% endfor %}
-              {% else %}
-              <span class="text-muted small">None detected</span>
-              {% endif %}
             </div>
           </div>
 
@@ -880,13 +869,6 @@
               {% else %}
               <span class="badge bg-light text-dark">Unknown</span>
               {% endif %}
-            </div>
-          </div>
-
-          <div class="context-section mb-3">
-            <label class="form-label fw-semibold small">Image Position</label>
-            <div>
-              Image {{ current_image.image_index or '?' }} of {{ all_image_candidates|length }} in filing
             </div>
           </div>
 
@@ -1195,7 +1177,7 @@ document.addEventListener('keydown', function(e) {
   });
 })();
 </script>
-<script src="{{ url_for('static', filename='js/review_images.js') }}"></script>
+<script src="{{ url_for('static', filename='js/review_images_v2.js') }}"></script>
 
 {# Shared datalist for all active metrics -- used by correction and missed-metric inputs #}
 <datalist id="all-metrics-datalist">
