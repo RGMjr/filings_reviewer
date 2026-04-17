@@ -97,6 +97,7 @@ class MockVisionClient:
         prompt: str,
         detail: str = "high",
         max_tokens: int = 2000,
+        response_format: dict[str, str] | None = None,
     ) -> VisionResponse:
         if self.call_count >= len(self.responses):
             raise IndexError(f"No more mock responses (call_count={self.call_count})")

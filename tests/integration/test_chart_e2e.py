@@ -38,6 +38,7 @@ class MockVisionClient:
         prompt: str,
         detail: str = "high",
         max_tokens: int = 2000,
+        response_format: dict[str, str] | None = None,
     ) -> VisionResponse:
         """Return a realistic chart JSON response."""
         self.call_count += 1

@@ -102,6 +102,67 @@ class OCRExtractionStage:
             re.sub(r"^```(?:json)?\s*\n?", "", text.strip(), flags=re.MULTILINE).rstrip("`").strip()
         )
 
+    @classmethod
+    def _parse_chart_json(cls, content: str) -> dict[str, Any] | None:
+        """Parse vision response JSON, attempting a light-touch repair on failure.
+
+        JSON mode should prevent this, but cached responses from before JSON mode
+        was enabled — or a truncated response hitting max_tokens mid-array — can
+        still produce invalid JSON. Trim to the last balanced brace before giving up.
+        """
+        import json
+
+        stripped = cls._strip_code_fences(content)
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+
+        repaired = cls._repair_truncated_json(stripped)
+        if repaired is None:
+            return None
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+
+    @staticmethod
+    def _repair_truncated_json(text: str) -> str | None:
+        """Attempt to recover a valid JSON object from a truncated response.
+
+        Walks the string tracking brace/bracket depth outside of strings and
+        returns the shortest prefix that forms a balanced top-level object.
+        Returns None if no balanced object is found.
+        """
+        if not text or not text.lstrip().startswith("{"):
+            return None
+        depth = 0
+        in_string = False
+        escape = False
+        last_balanced = -1
+        start = text.find("{")
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{" or ch == "[":
+                depth += 1
+            elif ch == "}" or ch == "]":
+                depth -= 1
+                if depth == 0 and text[start] == "{" and ch == "}":
+                    last_balanced = i
+        if last_balanced == -1:
+            return None
+        return text[start : last_balanced + 1]
+
     def _should_process(self, asset: ImageAsset) -> bool:
         """
         Determine if image should be processed.
@@ -223,7 +284,6 @@ class OCRExtractionStage:
             FileNotFoundError: If image file doesn't exist
             ValueError: If API returns invalid response
         """
-        import json
         from pathlib import Path
 
         # Validate file path
@@ -244,15 +304,14 @@ class OCRExtractionStage:
                 prompt=self._get_table_extraction_prompt(),
                 detail="high",  # High detail for accurate OCR
                 max_tokens=2000,
+                response_format={"type": "json_object"},
             )
 
-            # Parse JSON response
-            try:
-                ocr_data = json.loads(self._strip_code_fences(response.content))
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse OCR response as JSON: {e}")
+            # Parse JSON response; attempt a best-effort repair before giving up
+            ocr_data = self._parse_chart_json(response.content)
+            if ocr_data is None:
+                logger.error(f"Failed to parse OCR response as JSON for {asset.img_id}")
                 logger.debug(f"Response content: {response.content[:500]}")
-                # Fallback: store raw text but mark for manual capture
                 asset.ocr_text = response.content
                 asset.processed = True
                 asset.confidence = 0.0
@@ -553,7 +612,6 @@ time periods, or definitions that help interpret the chart's data.
             FileNotFoundError: If image file doesn't exist
             ValueError: If API returns invalid response
         """
-        import json
         from pathlib import Path
 
         from src.extraction_v2.models import ChartData, ChartSeries, ChartType, DataPoint
@@ -576,15 +634,14 @@ time periods, or definitions that help interpret the chart's data.
                 prompt=self._get_chart_extraction_prompt(nearby_text=asset.nearby_text),
                 detail="high",  # High detail for accurate label extraction
                 max_tokens=2000,
+                response_format={"type": "json_object"},
             )
 
-            # Parse JSON response
-            try:
-                chart_response = json.loads(self._strip_code_fences(response.content))
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse chart response as JSON: {e}")
+            # Parse JSON response; attempt a best-effort repair before giving up
+            chart_response = self._parse_chart_json(response.content)
+            if chart_response is None:
+                logger.error(f"Failed to parse chart response as JSON for {asset.img_id}")
                 logger.debug(f"Response content: {response.content[:500]}")
-                # Mark for manual capture - couldn't parse response
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True

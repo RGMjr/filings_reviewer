@@ -113,6 +113,9 @@ cm_new_customers_acquired:
     # FIX-FP-STOCK: Stock inventory ("settled shares held exclusively for this program") is not
     # a new-customer acquisition count (Robinhood stock reward program)
     - '\b(?:settled\s+)?shares?\s+(?:held|of\s+stock|inventory)\b'
+    # FIX-FP-CHART-SEGMENT: "44.4% New Consumers in 2017" style annotations are chart segment
+    # labels for share-of-X (e.g., FTCH Order Contribution Margin), not acquisition counts.
+    - '\b\d+(?:\.\d+)?%\s+(?:new|existing)\s+(?:consumers?|customers?)\b'
 
 cm_customers_period_end:
   tier: 2

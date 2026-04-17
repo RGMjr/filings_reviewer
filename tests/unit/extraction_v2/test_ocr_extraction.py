@@ -47,10 +47,12 @@ class MockVisionClient:
         prompt: str,
         detail: str = "high",
         max_tokens: int = 2000,
+        response_format: dict[str, str] | None = None,
     ) -> VisionResponse:
         """Return next mocked response."""
         if self.call_count >= len(self.responses):
             raise IndexError(f"No more mock responses available (call_count={self.call_count})")
+        self.last_response_format = response_format
         response = self.responses[self.call_count]
         self.call_count += 1
         return response
@@ -507,6 +509,84 @@ class TestChartExtraction:
         assert asset.processed is True
         assert asset.confidence == 0.0
         assert asset.requires_manual_capture is True
+
+    def test_chart_extraction_repairs_truncated_json(self, temp_image_file: Path) -> None:
+        """Truncated JSON (e.g., hit max_tokens mid-annotation) should be repaired.
+
+        Vision mode should prevent this, but cached pre-JSON-mode responses can
+        still be truncated. The repair trims back to the last balanced brace so
+        we recover metadata + any fully-closed sections rather than dropping the
+        whole chart.
+        """
+        truncated = (
+            '{"chart_type": "bar", "title": "Marketplace Order Contribution Margin", '
+            '"x_axis_label": "Year", "y_axis_label": "%", "confidence": 0.85, '
+            '"series": [], "annotations": [{"text": "44.4% New Consumers in 2017", '
+            '"value": 44.4, "unit": "percent", "category": "New Consumers", '
+            '"period": "2017"}]}'
+            ' extra garbage after the object, followed by {"broken": '  # unterminated tail
+        )
+        mock_response = VisionResponse(
+            content=truncated,
+            model="gpt-4o",
+            prompt_tokens=1500,
+            completion_tokens=200,
+            cost_usd=0.05,
+            latency_ms=400,
+        )
+        mock_client = MockVisionClient(responses=[mock_response])
+        stage = OCRExtractionStage(vision_client=mock_client)
+        asset = ImageAsset(
+            img_id="test_chart_repair",
+            filename="ftch_margin.png",
+            nearby_text="",
+            width=1000,
+            height=700,
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+            file_path=str(temp_image_file),
+        )
+
+        stage.process_chart(asset)
+
+        assert asset.processed is True
+        assert asset.requires_manual_capture is False
+        assert asset.chart_data is not None
+        assert asset.chart_data.title == "Marketplace Order Contribution Margin"
+        assert len(asset.chart_data.annotations) == 1
+        assert asset.chart_data.annotations[0].value == 44.4
+
+    def test_chart_extraction_passes_json_mode(self, temp_image_file: Path) -> None:
+        """Chart extraction should request JSON mode from the vision client."""
+        mock_response = VisionResponse(
+            content='{"chart_type": "bar", "title": "t", "x_axis_label": "", '
+            '"y_axis_label": "", "confidence": 0.8, "series": [], '
+            '"annotations": [{"text": "x", "value": 1.0, "unit": "count", '
+            '"category": "", "period": ""}]}',
+            model="gpt-4o",
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost_usd=0.01,
+            latency_ms=100,
+        )
+        mock_client = MockVisionClient(responses=[mock_response])
+        stage = OCRExtractionStage(vision_client=mock_client)
+        asset = ImageAsset(
+            img_id="test_chart_json_mode",
+            filename="chart.png",
+            nearby_text="",
+            width=800,
+            height=600,
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+            file_path=str(temp_image_file),
+        )
+
+        stage.process_chart(asset)
+
+        assert mock_client.last_response_format == {"type": "json_object"}
 
     def test_chart_extraction_no_valid_points(self, temp_image_file: Path) -> None:
         """Chart with unparseable data points should mark for manual capture."""
