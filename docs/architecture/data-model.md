@@ -748,6 +748,24 @@ Created `idx_v2_metric_facts_identity_unique`, a partial unique index on `v2_met
 
 ## Schema 15, 16, and 23: Constraint Updates
 
+### Migration 25 (`sql/25_cross_source_confirmation.sql`)
+
+Adds two columns to `v2_metric_facts` to support the cross-source confirmation pass introduced in `DeduplicationStage`:
+
+```sql
+ALTER TABLE v2_metric_facts ADD COLUMN cross_source_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE v2_metric_facts ADD COLUMN confirming_source_types TEXT[] NOT NULL DEFAULT '{}';
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `cross_source_confirmed` | `boolean NOT NULL DEFAULT FALSE` | Set to `TRUE` by `DeduplicationStage._annotate_cross_source_confirmation` when CHART and TEXT (or TABLE) facts agree on the same (metric, period, value) slot. Indicates the fact was independently corroborated by multiple source types. |
+| `confirming_source_types` | `text[] NOT NULL DEFAULT '{}'` | Array of `source_type` values that confirmed this fact (e.g., `'{CHART,TEXT}'`). Populated in the same post-dedup annotation pass. Empty array for unconfirmed facts. |
+
+This is the current latest migration (Migration 25).
+
+---
+
 ### Migration 23 (`sql/23_chart_source_dedup.sql`)
 
 Extends `idx_v2_metric_facts_identity_unique` (introduced in Migration 10) from 8 identity columns to 9 by adding `source_type` as the final column. This change allows a chart-sourced fact (`source_type = 'chart'`) and a text-sourced fact (`source_type = 'text'`) for the same metric+period+cohort slot to coexist as distinct rows, which is required by the `ChartFactBridgeStage`. The `MetricFact.identity_tuple()` method in `src/extraction_v2/models.py` was updated in parallel to return a 9-tuple.
