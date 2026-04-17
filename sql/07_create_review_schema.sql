@@ -106,7 +106,7 @@ CREATE TABLE review_decisions (
     CONSTRAINT check_decision CHECK (decision IN ('accept', 'reject', 'reclassify')),
     CONSTRAINT check_rejection_category CHECK (
         rejection_category IS NULL OR
-        rejection_category IN ('wrong_metric', 'not_a_metric', 'wrong_value', 'wrong_period', 'duplicate', 'other')
+        rejection_category IN ('wrong_metric', 'not_a_metric', 'wrong_value', 'wrong_period', 'part_of_date', 'duplicate', 'other')
     ),
     CONSTRAINT check_accept_has_metric CHECK (
         decision != 'accept' OR assigned_metric_id IS NOT NULL
