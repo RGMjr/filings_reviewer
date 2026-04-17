@@ -23,7 +23,7 @@ mypy src/review/ --strict          # Type checking
 
 ## Database
 
-PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_tables`. Shared: `companies`, `filings`. Legacy V1 tables still present (not yet migrated): `review_candidates`, `source_segments`, `image_review_candidates`, `suppressed_candidates`, `review_decisions` — see `docs/architecture/v1-table-deprecation-plan.md`. Schema files in `sql/` (00-27). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_tables`. Shared: `companies`, `filings`. Legacy V1 tables still present (not yet migrated): `review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions` — see `docs/architecture/v1-table-deprecation-plan.md`. Schema files in `sql/` (00-30). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 ## Testing Standards
 
@@ -59,7 +59,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 2. **Provenance tracking**: Every extracted value links to source segment
 3. **Idempotent operations**: Re-running any stage is safe (upserts)
 4. **Conservative classification**: "Require BOTH" signals to minimize false positives
-5. **Image pipeline is active**: Do not delete image-processing code (`src/llm/vision_client.py`, `src/extraction_v2/` image/OCR stages, `src/web/routes/review_images.py`, image scripts). The image review system is complete and in use.
+5. **Image pipeline is active**: Do not delete image-processing code (`src/llm/vision_client.py`, `src/extraction_v2/` image/OCR stages, `src/web/routes/review_unified.py` + `api_unified.py` image endpoints, image scripts). The image review system is complete and in use.
 
 ## Compact Instructions
 

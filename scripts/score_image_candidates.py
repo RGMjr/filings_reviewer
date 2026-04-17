@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """
-Score image review candidates using the trained relevance model.
+Score V2 image review candidates with the trained relevance model.
 
-Loads the trained model from data/image_model/relevance_model.joblib,
-scores all (or unscored) candidates in the database, and writes
-predicted_relevance back to image_review_candidates.
+Loads the model from data/image_model/relevance_model.joblib, scores rows from
+v2_image_assets, and writes predicted_relevance back keyed on img_id. Non-chart
+images (decorative / logo / signature) are excluded from the queue and skipped.
 
 Usage:
-    # Score only unscored candidates (default)
+    # Score only unscored rows (default)
     python3 scripts/score_image_candidates.py
 
-    # Rescore all candidates (overwrite existing scores)
+    # Rescore all rows (overwrite existing scores)
     python3 scripts/score_image_candidates.py --rescore-all
 
-    # Dry run — print scores without writing to DB
+    # Dry run — print scores without writing
     python3 scripts/score_image_candidates.py --dry-run
+
+    # Auto-reject pending rows below a threshold
+    python3 scripts/score_image_candidates.py --auto-reject-threshold 0.05
 """
 
 import argparse
@@ -28,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import joblib
 from dotenv import load_dotenv
 
-from src.shared.image_features import engineer_features
+from src.shared.image_features import engineer_features, v2_row_to_features_input
 
 logger = logging.getLogger(__name__)
 
@@ -36,63 +39,20 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL = ROOT / "data" / "image_model" / "relevance_model.joblib"
 
 
-def normalize_db_row(row: dict) -> dict:
-    """Convert a raw image_review_candidates DB row to the common feature dict format.
-
-    The DB schema uses different column names than the training CSV, so this
-    function maps them to the keys expected by engineer_features().
-    """
-    # Parse detected_keywords: Postgres TEXT[] arrives as a list or "{a,b}" string
-    detected_keywords = row.get("detected_keywords") or []
-    if isinstance(detected_keywords, str):
-        detected_keywords = [
-            k.strip()
-            for k in detected_keywords.strip("{}").split(",")
-            if k.strip()
-        ]
-    keyword_count = len(detected_keywords)
-
-    preceding_text = row.get("preceding_text") or ""
-    text_length = len(preceding_text)
-
-    w = row.get("image_width")
-    h = row.get("image_height")
-    has_dimensions = int(w is not None and h is not None)
-    image_area = (float(w) * float(h)) if has_dimensions else 0.0
-
-    return {
-        "cohort_confidence": row.get("cohort_confidence"),
-        "cohort_keyword_nearby": row.get("cohort_keyword_nearby"),
-        "keyword_count": keyword_count,
-        "text_length": text_length,
-        "preceding_text": preceding_text,
-        "has_dimensions": has_dimensions,
-        "image_area": image_area,
-        # classification is not stored on SEC candidates — leave blank
-        "classification": row.get("classification") or "",
-        "detection_tier": row.get("detection_tier"),
-        # DB uses image_src; shared module expects filename
-        "filename": row.get("image_src") or "",
-        # All rows in image_review_candidates are SEC images
-        "source": "sec",
-    }
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Score image candidates with relevance model"
+        description="Score v2_image_assets rows with the image relevance model"
     )
     parser.add_argument("--model", type=str, default=str(DEFAULT_MODEL),
                         help="Path to trained model file")
     parser.add_argument("--rescore-all", action="store_true",
-                        help="Rescore all candidates, not just unscored ones")
+                        help="Rescore all rows, not just unscored ones")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print scores without writing to DB")
     parser.add_argument(
         "--auto-reject-threshold", type=float, default=None, metavar="THRESHOLD",
-        help="Candidates scoring below this threshold are marked review_status='auto_rejected'. "
-             "Only applied to pending candidates. Requires migration 20 to be applied first. "
-             "Example: --auto-reject-threshold 0.05",
+        help="Rows scoring below this are marked review_status='auto_rejected'. "
+             "Only applied to pending rows. Example: --auto-reject-threshold 0.05",
     )
     parser.add_argument("--database-url", type=str)
     args = parser.parse_args()
@@ -117,90 +77,102 @@ def main() -> None:
     from src.infra.db import DatabaseAdapter
     db = DatabaseAdapter(db_url)
 
-    # Fetch candidates to score
+    base_where = (
+        "classification NOT IN ('decorative', 'logo', 'signature') "
+        "AND filename IS NOT NULL AND filename != ''"
+    )
     if args.rescore_all:
-        sql = "SELECT * FROM image_review_candidates ORDER BY image_candidate_id"
-        logger.info("Fetching all candidates...")
+        sql = f"""
+            SELECT img_id, filename, nearby_text, classification,
+                   relevance_score, width, height, review_status
+            FROM v2_image_assets
+            WHERE {base_where}
+            ORDER BY img_id
+        """
+        logger.info("Fetching all v2_image_assets rows...")
     else:
-        sql = "SELECT * FROM image_review_candidates WHERE predicted_relevance IS NULL ORDER BY image_candidate_id"
-        logger.info("Fetching unscored candidates...")
+        sql = f"""
+            SELECT img_id, filename, nearby_text, classification,
+                   relevance_score, width, height, review_status
+            FROM v2_image_assets
+            WHERE predicted_relevance IS NULL AND {base_where}
+            ORDER BY img_id
+        """
+        logger.info("Fetching unscored v2_image_assets rows...")
 
-    candidates = db.query(sql)
-    logger.info("Found %d candidates to score", len(candidates))
+    rows = db.query(sql)
+    logger.info("Found %d rows to score", len(rows))
 
-    if not candidates:
+    if not rows:
         logger.info("Nothing to score.")
         return
 
-    X = engineer_features([normalize_db_row(c) for c in candidates])
+    X = engineer_features([v2_row_to_features_input(r) for r in rows])
     scores = model.predict_proba(X)[:, 1]
 
-    # Distribution summary
     thresholds = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
     logger.info("Score distribution:")
     logger.info("  Mean: %.3f | Min: %.3f | Max: %.3f", scores.mean(), scores.min(), scores.max())
     for t in thresholds:
         n = (scores >= t).sum()
-        logger.info("  >= %.1f: %d candidates (%.1f%%)", t, n, 100 * n / len(scores))
+        logger.info("  >= %.1f: %d rows (%.1f%%)", t, n, 100 * n / len(scores))
 
     auto_reject_threshold = args.auto_reject_threshold
     if auto_reject_threshold is not None:
         n_would_reject = sum(
-            1 for s, c in zip(scores, candidates, strict=True)
-            if s < auto_reject_threshold and c.get("review_status") == "pending"
+            1 for s, r in zip(scores, rows, strict=True)
+            if s < auto_reject_threshold and r.get("review_status") == "pending"
         )
-        logger.info("Auto-reject threshold: %.3f — would reject %d pending candidates",
+        logger.info("Auto-reject threshold: %.3f — would reject %d pending rows",
                     auto_reject_threshold, n_would_reject)
 
     if args.dry_run:
         logger.info("Dry run — not writing to DB")
-        # Print top candidates
-        ranked = sorted(zip(scores, candidates, strict=True), key=lambda x: -x[0])
+        ranked = sorted(zip(scores, rows, strict=True), key=lambda x: -x[0])
         logger.info("\nTop 10 by predicted relevance:")
-        for score, c in ranked[:10]:
-            logger.info("  %.3f | %s | %s | tier=%s",
-                        score, c.get("image_candidate_id"),
-                        c.get("image_src", ""), c.get("detection_tier", ""))
+        for score, r in ranked[:10]:
+            logger.info("  %.3f | %s | %s | classification=%s",
+                        score, r.get("img_id"),
+                        r.get("filename", ""), r.get("classification", ""))
         if auto_reject_threshold is not None:
-            logger.info("\nCandidates that would be auto-rejected (score < %.3f, pending only):",
+            logger.info("\nRows that would be auto-rejected (score < %.3f, pending only):",
                         auto_reject_threshold)
             reject_ranked = sorted(
-                [(s, c) for s, c in zip(scores, candidates, strict=True)
-                 if s < auto_reject_threshold and c.get("review_status") == "pending"],
+                [(s, r) for s, r in zip(scores, rows, strict=True)
+                 if s < auto_reject_threshold and r.get("review_status") == "pending"],
                 key=lambda x: x[0],
             )
-            for score, c in reject_ranked[:20]:
-                logger.info("  %.4f | %s | tier=%s",
-                            score, c.get("image_src", ""), c.get("detection_tier", ""))
+            for score, r in reject_ranked[:20]:
+                logger.info("  %.4f | %s | classification=%s",
+                            score, r.get("filename", ""), r.get("classification", ""))
         return
 
-    # Batch update: write predicted_relevance and optionally auto-reject pending candidates
     update_sql = """
-        UPDATE image_review_candidates
+        UPDATE v2_image_assets
         SET predicted_relevance = %(score)s
-        WHERE image_candidate_id = %(candidate_id)s
+        WHERE img_id = %(img_id)s
     """
     auto_reject_sql = """
-        UPDATE image_review_candidates
+        UPDATE v2_image_assets
         SET review_status = 'auto_rejected'
-        WHERE image_candidate_id = %(candidate_id)s
+        WHERE img_id = %(img_id)s
           AND review_status = 'pending'
     """
     updated = 0
     auto_rejected = 0
-    for cand, score in zip(candidates, scores, strict=True):
+    for row, score in zip(rows, scores, strict=True):
         db.execute(update_sql, {
             "score": round(float(score), 4),
-            "candidate_id": cand["image_candidate_id"],
+            "img_id": row["img_id"],
         })
         updated += 1
         if auto_reject_threshold is not None and score < auto_reject_threshold:
-            db.execute(auto_reject_sql, {"candidate_id": cand["image_candidate_id"]})
+            db.execute(auto_reject_sql, {"img_id": row["img_id"]})
             auto_rejected += 1
 
-    logger.info("Updated %d candidates with predicted_relevance scores", updated)
+    logger.info("Updated %d rows with predicted_relevance scores", updated)
     if auto_reject_threshold is not None:
-        logger.info("Auto-rejected %d pending candidates (score < %.3f)",
+        logger.info("Auto-rejected %d pending rows (score < %.3f)",
                     auto_rejected, auto_reject_threshold)
 
 

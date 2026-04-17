@@ -225,7 +225,7 @@ def test_review_filing_pagination(client, mock_db, mock_render_template):
     mock_db.query.return_value = [FILING_ROW]
     mock_db.get_v2_facts_for_filing.return_value = [FACT_ROW]
     mock_db.count_v2_facts_for_filing.return_value = 150
-    mock_db.get_image_review_candidates_for_filing.return_value = []
+    mock_db.get_image_review_candidates_for_filing_v2.return_value = []
 
     client.get("/v2/review/1?page=2&per_page=50")
 
@@ -243,7 +243,7 @@ def test_review_filing_pagination_in_template(client, mock_db, mock_render_templ
     mock_db.query.return_value = [FILING_ROW]
     mock_db.get_v2_facts_for_filing.return_value = [FACT_ROW]
     mock_db.count_v2_facts_for_filing.return_value = 75
-    mock_db.get_image_review_candidates_for_filing.return_value = []
+    mock_db.get_image_review_candidates_for_filing_v2.return_value = []
 
     client.get("/v2/review/1?per_page=50")
 

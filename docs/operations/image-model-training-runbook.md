@@ -32,29 +32,11 @@ Trained model and supporting files are written to `data/image_model/`.
 
 ---
 
-## Step 0: Backfill Image Dimensions (one-time / as needed)
+## Step 0: Image Dimensions (no longer needed)
 
-Many SEC candidates are inserted with `NULL` `image_width`/`image_height` because the HTML `<img>` tag lacked explicit dimension attributes. The features `has_dimensions` and `image_area_clipped` default to `0` for these rows, which degrades model accuracy.
+The V2 extractor (`batch_v2_extraction.py`) captures `width` and `height` on `v2_image_assets` at extraction time, so a separate dimension-backfill step is no longer required. (The V1 `backfill_image_dimensions.py` script was removed in the Phase B V1 image-review retirement.)
 
-Run this step whenever a significant number of candidates lack dimension data (e.g., after a bulk ingestion or before the first model training on a new set of filings).
-
-```bash
-# Dry run — show how many candidates are missing dimensions
-python3 scripts/backfill_image_dimensions.py --dry-run
-
-# Fill from DB cache only (fast, no SEC requests)
-python3 scripts/backfill_image_dimensions.py
-
-# Also fetch uncached images live from SEC EDGAR (slow — respects 100ms rate limit)
-python3 scripts/backfill_image_dimensions.py --live-fetch
-
-# Limit to N candidates (useful for testing)
-python3 scripts/backfill_image_dimensions.py --limit 50
-```
-
-The script reads image bytes from the `image_cache` table, parses pixel dimensions with Pillow, updates `image_review_candidates`, and clears `predicted_relevance` on updated rows so they are re-scored automatically.
-
-After running, proceed to **Step 4** (score candidates) before exporting training data.
+Proceed directly to **Step 1**.
 
 ---
 

@@ -10,6 +10,8 @@ As of 2026-04-08, V2 is the production extraction pipeline. This document tracks
 
 **`metric_definitions` (V1)** — V1 per-filing extracted definitions. All consumers migrated to `v2_metric_definitions` or `metrics`. Dropped by `sql/27_drop_v1_metric_tables.sql` (2026-04-17).
 
+**`image_review_candidates` / `image_review_decisions`** — V1 image review tables. Replaced by `v2_image_assets` (review columns added in `sql/28`) and new `v2_image_review_decisions` (`sql/29`). Unified review UI (`src/web/routes/review_unified.py`) reads V2 directly; the `bridge_v2_images_to_review_candidates` db method and V1 routes/templates were retired. Dropped by `sql/30_drop_v1_image_review.sql` (2026-04-17). Backfill tool: `scripts/migrate_image_decisions_to_v2.py` (idempotent, run before applying sql/30 in production).
+
 ## Remaining V1 Tables
 
 ### `review_candidates` — HIGH difficulty
@@ -35,16 +37,6 @@ As of 2026-04-08, V2 is the production extraction pipeline. This document tracks
 - `src/gold_standard/fresh_extractor.py` — indirectly (HTMLSegmenter writes to this via persistence)
 
 **Migration path:** V2 has `v2_segments` (stored as `Segment` in pipeline context but not always persisted). Migration requires ensuring V2 segment data is persisted and accessible at review time, then updating db.py queries.
-
----
-
-### `image_review_candidates` — MEDIUM difficulty
-
-**Consumers:**
-- `src/infra/db.py` — `get_image_review_candidates_for_filing()`, `bridge_v2_images_to_review_candidates()`
-- `src/web/routes/review_unified.py` — lines 341, 348 (the **V2 unified review UI** reads this table for the image review tab)
-
-**Note:** This is the highest-priority migration because it blocks removal of the last V1 table reference from the V2 review UI. Migration requires a V2-native image review table and updating `review_unified.py`.
 
 ---
 

@@ -276,21 +276,6 @@ def _process_filing_worker(
             {"filing_id": filing_id},
         )
 
-        # Bridge v2_image_assets → image_review_candidates so new filings
-        # automatically appear in the Images tab of the review UI.
-        if accession_number:
-            try:
-                bridged = db.bridge_v2_images_to_review_candidates(
-                    filing_id=filing_id,
-                    company_id=company_id,
-                    cik=cik,
-                    accession_number=accession_number,
-                )
-                if bridged:
-                    _logger.info(f"Bridged {bridged} image candidates for filing {filing_id}")
-            except Exception as e:
-                _logger.warning(f"Image candidate bridge failed for filing {filing_id}: {e}")
-
         return {
             "filing_id": filing_id,
             "success": True,

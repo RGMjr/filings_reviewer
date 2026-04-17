@@ -112,6 +112,63 @@ FEATURE_NAMES: list[str] = [
 ]
 
 
+def derive_detection_tier(
+    classification: str | None,
+    relevance_score: float | None,
+    width: int | None,
+    height: int | None,
+) -> str:
+    """
+    Map V2 image attributes to the V1 detection-tier label.
+
+    Logic mirrors `bridge_v2_images_to_review_candidates` so UI tier badges
+    render consistently for V2-native rows.
+    """
+    cls = (classification or "").lower()
+    rel = float(relevance_score or 0.0)
+    w = int(width or 0)
+    h = int(height or 0)
+    if cls == "chart" and rel >= 0.6:
+        return "tier_1_cohort"
+    if cls in ("chart", "table_image") and w >= 300 and h >= 300:
+        return "tier_2_large"
+    return "tier_3_all"
+
+
+def v2_row_to_features_input(row: dict) -> dict:
+    """
+    Convert a raw `v2_image_assets` row to the common feature-dict format
+    expected by `engineer_features`.
+
+    V2 does not carry V1's `detected_keywords[]`, `cohort_keyword_nearby`, or
+    `image_index`. The model was trained with those features so we synthesize
+    sensible proxies (constant 0 for `keyword_count`; `relevance_score >= 0.6`
+    for `cohort_keyword_nearby` — matching the V1 bridge heuristic).
+    """
+    nearby_text = row.get("nearby_text") or ""
+    relevance = float(row.get("relevance_score") or 0.0)
+    width = row.get("width")
+    height = row.get("height")
+    has_dimensions = int(width is not None and height is not None)
+    image_area = (float(width) * float(height)) if has_dimensions else 0.0
+
+    return {
+        "cohort_confidence": relevance,
+        "cohort_keyword_nearby": int(relevance >= 0.6),
+        "keyword_count": 0,
+        "text_length": len(nearby_text),
+        "preceding_text": nearby_text,
+        "has_dimensions": has_dimensions,
+        "image_area": image_area,
+        "classification": row.get("classification") or "",
+        "detection_tier": derive_detection_tier(
+            row.get("classification"), relevance, width, height
+        ),
+        "filename": row.get("filename") or "",
+        "source": "sec",
+    }
+
+
 def engineer_features(rows: list[dict]) -> np.ndarray:
     """Convert normalized row dicts to a (N x 21) feature matrix.
 

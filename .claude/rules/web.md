@@ -8,8 +8,7 @@ paths:
 ## Route Modules
 
 - `src/web/routes/review.py` / `api.py`: Text/metric review interface (page + JSON API)
-- `src/web/routes/review_images.py` / `api_images.py`: Image review (DB-backed, SEC filings)
-- `src/web/routes/review_unified.py` / `api_unified.py`: Unified V2 extraction review interface (replaces review_v2 / api_v2)
+- `src/web/routes/review_unified.py` / `api_unified.py`: Unified V2 extraction review interface (text + image tabs). Image endpoints read/write V2-native tables (`v2_image_assets`, `v2_image_review_decisions`) keyed on `img_id` UUIDs; paired JS is `static/js/review_images_v2.js`.
 - `src/web/routes/review_pres_images.py`: Presentation image review (file-based, `/review/pres-images/`)
 
 ## Conventions

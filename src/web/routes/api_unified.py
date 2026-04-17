@@ -7,6 +7,7 @@ manually adding metric facts that the pipeline missed.
 """
 
 import logging
+import uuid as _uuid
 from typing import Any
 
 import psycopg
@@ -283,7 +284,7 @@ def create_image_decision():
             return jsonify({"status": "error", "message": error}), 400
 
         # Extract fields
-        image_candidate_id = data["image_candidate_id"]
+        img_id = data["img_id"]
         decision = data["decision"]
         chart_type = data.get("chart_type")
         rejection_reason = data.get("rejection_reason")
@@ -291,9 +292,9 @@ def create_image_decision():
         review_time_seconds = data.get("review_time_seconds")
 
         # Validate candidate exists
-        candidate = db.get_image_review_candidate(image_candidate_id)
+        candidate = db.get_image_review_candidate_v2(img_id)
         if not candidate:
-            logger.warning(f"Image candidate not found: {image_candidate_id}")
+            logger.warning(f"V2 image not found: {img_id}")
             return (
                 jsonify({"status": "error", "message": "Image candidate not found"}),
                 404,
@@ -301,9 +302,7 @@ def create_image_decision():
 
         # Check for existing decision
         if candidate.get("decision"):
-            logger.warning(
-                f"Image candidate {image_candidate_id} already has decision"
-            )
+            logger.warning(f"V2 image {img_id} already has decision")
             return (
                 jsonify(
                     {"status": "error", "message": "Candidate already has a decision"}
@@ -311,9 +310,9 @@ def create_image_decision():
                 409,
             )
 
-        # Insert the decision (also updates candidate status atomically)
-        decision_id = db.insert_image_review_decision(
-            image_candidate_id=image_candidate_id,
+        # Insert the decision (also updates v2_image_assets.review_status atomically)
+        decision_id = db.insert_image_review_decision_v2(
+            img_id=img_id,
             decision=decision,
             chart_type=chart_type,
             rejection_reason=rejection_reason,
@@ -322,13 +321,12 @@ def create_image_decision():
         )
 
         logger.info(
-            f"Created image decision {decision_id} for candidate "
-            f"{image_candidate_id}: {decision}"
+            f"Created v2 image decision {decision_id} for img_id={img_id}: {decision}"
         )
 
         # Get next candidate for navigation
         filing_id = candidate["filing_id"]
-        next_cand = _get_next_image_candidate_info(db, filing_id, image_candidate_id)
+        next_cand = _get_next_image_candidate_info(db, filing_id, img_id)
 
         response: dict[str, Any] = {
             "status": "success",
@@ -347,7 +345,7 @@ def create_image_decision():
 
     except psycopg.errors.UniqueViolation:
         logger.warning(
-            f"Duplicate decision for image candidate {data.get('image_candidate_id')}"
+            f"Duplicate decision for v2 image {data.get('img_id')}"
         )
         return (
             jsonify(
@@ -359,7 +357,7 @@ def create_image_decision():
     except psycopg.errors.ForeignKeyViolation as e:
         logger.warning(f"Foreign key violation: {e}")
         return (
-            jsonify({"status": "error", "message": "Invalid image_candidate_id"}),
+            jsonify({"status": "error", "message": "Invalid img_id"}),
             400,
         )
 
@@ -376,128 +374,102 @@ def create_image_decision():
 
 
 @api_unified_bp.route(
-    "/image-candidates/<int:image_candidate_id>/skip", methods=["POST"]
+    "/image-candidates/<uuid:img_id>/skip", methods=["POST"]
 )
-def skip_image_candidate(image_candidate_id: int):
+def skip_image_candidate(img_id):
     """
-    Skip an image candidate without making a decision.
-
-    Updates the candidate's status to 'skipped' and returns the next candidate.
+    Skip a V2 image without making a decision.
 
     Returns:
-        200: Candidate skipped successfully
-        {
-            "status": "success",
-            "next_candidate": {
-                "image_candidate_id": int,
-                "url": str
-            } | null
-        }
-
-        404: Candidate not found
-        {
-            "status": "error",
-            "message": str
-        }
-
-        500: Internal server error
-        {
-            "status": "error",
-            "message": str
-        }
+        200: Skipped — returns next_candidate for navigation (or null when queue empty).
+        404: Image not found.
+        500: Internal server error.
     """
+    img_id_str = str(img_id)
     db = get_db()
 
     try:
-        # Validate candidate exists
-        candidate = db.get_image_review_candidate(image_candidate_id)
+        candidate = db.get_image_review_candidate_v2(img_id_str)
         if not candidate:
-            logger.warning(f"Skip: Image candidate not found: {image_candidate_id}")
+            logger.warning(f"Skip: v2 image not found: {img_id_str}")
             return (
                 jsonify({"status": "error", "message": "Image candidate not found"}),
                 404,
             )
 
-        # Update status to skipped
-        success = db.update_image_candidate_status(image_candidate_id, "skipped")
+        success = db.skip_image_candidate_v2(img_id_str)
         if not success:
-            logger.error(f"Failed to update status for candidate {image_candidate_id}")
+            logger.error(f"Failed to skip v2 image {img_id_str}")
             return (
                 jsonify({"status": "error", "message": "Failed to skip candidate"}),
                 500,
             )
 
-        logger.info(f"Skipped image candidate {image_candidate_id}")
+        logger.info(f"Skipped v2 image {img_id_str}")
 
-        # Get next candidate for navigation
         filing_id = candidate["filing_id"]
-        next_cand = _get_next_image_candidate_info(db, filing_id, image_candidate_id)
+        next_cand = _get_next_image_candidate_info(db, filing_id, img_id_str)
 
         return jsonify({
             "status": "success",
-            "skipped_candidate_id": image_candidate_id,
+            "skipped_img_id": img_id_str,
             "next_candidate": next_cand,
         }), 200
 
     except psycopg.DatabaseError as e:
-        logger.error(f"Database error skipping image candidate: {e}", exc_info=True)
+        logger.error(f"Database error skipping v2 image: {e}", exc_info=True)
         return (
             jsonify({"status": "error", "message": "Database error occurred"}),
             500,
         )
 
     except Exception as e:
-        logger.error(f"Unexpected error skipping image candidate: {e}", exc_info=True)
+        logger.error(f"Unexpected error skipping v2 image: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
 @api_unified_bp.route(
-    "/image-candidates/<int:image_candidate_id>/unskip", methods=["POST"]
+    "/image-candidates/<uuid:img_id>/unskip", methods=["POST"]
 )
-def unskip_image_candidate(image_candidate_id: int):
+def unskip_image_candidate(img_id):
     """
-    Undo a skip — reset a skipped candidate's status back to 'pending'.
+    Undo a skip — revert v2_image_assets.review_status back to 'pending'.
 
     Returns:
-        200: Candidate reset to pending
-        {
-            "status": "success",
-            "candidate_id": int,
-            "url": str
-        }
-
-        404: Candidate not found or not skipped
-        500: Internal server error
+        200: Reverted to pending.
+        400: Image is not in 'skipped' status.
+        404: Image not found.
     """
+    img_id_str = str(img_id)
     db = get_db()
 
     try:
-        candidate = db.get_image_review_candidate(image_candidate_id)
+        candidate = db.get_image_review_candidate_v2(img_id_str)
         if not candidate:
             return jsonify({"status": "error", "message": "Image candidate not found"}), 404
 
         if candidate.get("review_status") != "skipped":
             return jsonify({"status": "error", "message": "Candidate is not skipped"}), 400
 
-        success = db.update_image_candidate_status(image_candidate_id, "pending")
+        success = db.unskip_image_candidate_v2(img_id_str)
         if not success:
             return jsonify({"status": "error", "message": "Failed to unskip candidate"}), 500
 
         filing_id = candidate["filing_id"]
-        logger.info(f"Unskipped image candidate {image_candidate_id}")
+        logger.info(f"Unskipped v2 image {img_id_str}")
 
         return jsonify({
             "status": "success",
-            "candidate_id": image_candidate_id,
-            "url": f"/review/images/{filing_id}?image_candidate_id={image_candidate_id}",
+            "img_id": img_id_str,
+            "url": f"/v2/review/{filing_id}?img_id={img_id_str}&tab=images",
         }), 200
 
     except psycopg.DatabaseError as e:
-        logger.error(f"Database error unskipping candidate: {e}", exc_info=True)
+        logger.error(f"Database error unskipping v2 image: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Database error occurred"}), 500
 
     except Exception as e:
-        logger.error(f"Unexpected error unskipping candidate: {e}", exc_info=True)
+        logger.error(f"Unexpected error unskipping v2 image: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
@@ -530,29 +502,31 @@ def delete_image_decision(image_decision_id: int):
     db = get_db()
 
     try:
-        # Get the candidate_id before deleting (for response)
-        decision_info = db.get_image_decision_by_id(image_decision_id)
-        if not decision_info:
-            logger.warning(f"Image decision not found for undo: {image_decision_id}")
+        # Look up img_id before deleting (for response body)
+        rows = db.query(
+            "SELECT img_id FROM v2_image_review_decisions WHERE image_decision_id = %(id)s",
+            {"id": image_decision_id},
+        )
+        if not rows:
+            logger.warning(f"V2 image decision not found for undo: {image_decision_id}")
             return (
                 jsonify({"status": "error", "message": "Decision not found"}),
                 404,
             )
 
-        candidate_id = decision_info["image_candidate_id"]
+        img_id_str = str(rows[0]["img_id"])
 
-        # Delete the decision (also resets candidate status)
-        success = db.delete_image_review_decision(image_decision_id)
+        success = db.delete_image_review_decision_v2(image_decision_id)
         if not success:
-            logger.error(f"Failed to delete image decision {image_decision_id}")
+            logger.error(f"Failed to delete v2 image decision {image_decision_id}")
             return (
                 jsonify({"status": "error", "message": "Failed to delete decision"}),
                 500,
             )
 
-        logger.info(f"Deleted image decision {image_decision_id}")
+        logger.info(f"Deleted v2 image decision {image_decision_id}")
 
-        return jsonify({"status": "success", "candidate_id": candidate_id}), 200
+        return jsonify({"status": "success", "img_id": img_id_str}), 200
 
     except psycopg.DatabaseError as e:
         logger.error(f"Database error deleting image decision: {e}", exc_info=True)
@@ -744,12 +718,16 @@ def _validate_image_decision_request(data: dict[str, Any]) -> str | None:
     Returns:
         Error message if validation fails, None if valid
     """
-    # Validate image_candidate_id
-    image_candidate_id = data.get("image_candidate_id")
-    if image_candidate_id is None:
-        return "image_candidate_id is required"
-    if not isinstance(image_candidate_id, int) or image_candidate_id <= 0:
-        return "image_candidate_id must be a positive integer"
+    # Validate img_id (UUID string — v2_image_assets.img_id)
+    img_id = data.get("img_id")
+    if not img_id:
+        return "img_id is required"
+    if not isinstance(img_id, str):
+        return "img_id must be a UUID string"
+    try:
+        _uuid.UUID(img_id)
+    except (ValueError, AttributeError):
+        return "img_id must be a valid UUID"
 
     # Validate decision
     decision = data.get("decision")
@@ -796,38 +774,32 @@ def _validate_image_decision_request(data: dict[str, Any]) -> str | None:
 def _get_next_image_candidate_info(
     db,
     filing_id: int,
-    current_candidate_id: int,
+    current_img_id: str,
 ) -> dict[str, Any] | None:
     """
-    Get the next pending image candidate for navigation.
+    Get the next pending V2 image for navigation.
 
-    Args:
-        db: Database adapter
-        filing_id: Current filing ID
-        current_candidate_id: Current candidate ID
-
-    Returns:
-        Dict with image_candidate_id and url, or None if no more candidates
+    Returns dict with `img_id` and `url`, or None if no more candidates.
     """
-    next_candidate = db.get_next_pending_image_candidate(
+    next_candidate = db.get_next_pending_image_candidate_v2(
         filing_id=filing_id,
-        current_candidate_id=current_candidate_id,
+        current_img_id=current_img_id,
     )
 
-    # No more pending candidates — fall back to first skipped (wrap around)
+    # No more pending — fall back to first skipped (wrap around)
     if not next_candidate:
-        next_candidate = db.get_next_pending_image_candidate(
+        next_candidate = db.get_next_pending_image_candidate_v2(
             filing_id=filing_id,
-            current_candidate_id=None,
+            current_img_id=None,
             include_skipped=True,
         )
 
     if not next_candidate:
         return None
 
-    next_id = next_candidate["image_candidate_id"]
+    next_id = str(next_candidate["img_id"])
 
     return {
-        "image_candidate_id": next_id,
-        "url": f"/v2/review/{filing_id}?image_candidate_id={next_id}&tab=images",
+        "img_id": next_id,
+        "url": f"/v2/review/{filing_id}?img_id={next_id}&tab=images",
     }
