@@ -746,62 +746,8 @@ class V2PersistenceAdapter:
         scores: list[Any],
         filing_id: int,
     ) -> int:
-        """
-        Persist quality scores to V1's filing_metric_incidence table.
-
-        Uses DELETE + INSERT for idempotency (matches V1 pattern).
-
-        Args:
-            scores: List of FilingMetricIncidence objects from V2QualityScorer
-            filing_id: Database filing ID
-
-        Returns:
-            Number of rows inserted
-        """
-        if not scores:
-            return 0
-
-        with self._db.transaction() as conn:
-            with conn.cursor() as cur:
-                # Delete existing scores for this filing
-                cur.execute(
-                    "DELETE FROM filing_metric_incidence WHERE filing_id = %(filing_id)s",
-                    {"filing_id": filing_id},
-                )
-
-                # Insert new scores
-                sql = """
-                    INSERT INTO filing_metric_incidence (
-                        filing_id, company_id, metric_id,
-                        metric_disclosed_flag,
-                        num_numeric_segments, num_definition_segments, num_methodology_segments,
-                        primary_definition_segment_id, primary_methodology_segment_id,
-                        quality_overall_score, quality_definition_score,
-                        quality_methodology_score, quality_completeness_score,
-                        quality_comparability_score,
-                        alignment_flag, quality_notes,
-                        has_cohort_breakdown_flag, has_tenure_breakdown_flag,
-                        has_acquisition_cohort_flag
-                    )
-                    VALUES (
-                        %(filing_id)s, %(company_id)s, %(metric_id)s,
-                        %(metric_disclosed_flag)s,
-                        %(num_numeric_segments)s, %(num_definition_segments)s, %(num_methodology_segments)s,
-                        %(primary_definition_segment_id)s, %(primary_methodology_segment_id)s,
-                        %(quality_overall_score)s, %(quality_definition_score)s,
-                        %(quality_methodology_score)s, %(quality_completeness_score)s,
-                        %(quality_comparability_score)s,
-                        %(alignment_flag)s, %(quality_notes)s,
-                        %(has_cohort_breakdown_flag)s, %(has_tenure_breakdown_flag)s,
-                        %(has_acquisition_cohort_flag)s
-                    )
-                """
-                params_list = [score.to_dict() for score in scores]
-                cur.executemany(sql, params_list)
-                count = len(params_list)
-
-        logger.debug(f"Inserted {count} quality scores for filing_id={filing_id}")
-        return count
+        """No-op stub. V1 filing_metric_incidence table has been dropped."""
+        return 0
 
     def _persist_definitions_in_tx(
         self,

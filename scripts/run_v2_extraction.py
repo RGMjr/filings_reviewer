@@ -35,7 +35,6 @@ from dotenv import load_dotenv  # noqa: E402
 
 from src.extraction_v2.persistence import V2PersistenceAdapter  # noqa: E402
 from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline  # noqa: E402
-from src.extraction_v2.quality_scoring import V2QualityScorer  # noqa: E402
 from src.infra.db import DatabaseAdapter  # noqa: E402
 
 load_dotenv()
@@ -184,9 +183,6 @@ def main():
         help="Min confidence for auto-accept (default: 0.90)",
     )
     parser.add_argument("--no-images", action="store_true", help="Disable image extraction")
-    parser.add_argument(
-        "--skip-quality", action="store_true", help="Skip quality scoring (filing_metric_incidence)"
-    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     parser.add_argument(
         "--timeout",
@@ -274,21 +270,6 @@ def main():
             print(f"  Facts:       {persist_result.facts_upserted}")
             print(f"  Definitions: {persist_result.definitions_upserted}")
 
-            # Quality scoring
-            if not args.skip_quality:
-                try:
-                    scorer = V2QualityScorer()
-                    scores = scorer.score_filing(
-                        filing_id=filing["filing_id"],
-                        company_id=filing["company_id"],
-                        facts=result.facts,
-                        definitions=result.definitions,
-                        segments=result.segments,
-                    )
-                    quality_count = adapter.persist_quality_scores(scores, filing["filing_id"])
-                    print(f"  Quality:     {quality_count} metric scores")
-                except Exception as e:
-                    logger.warning(f"Quality scoring failed (non-fatal): {e}")
         else:
             print(f"\nERROR persisting results: {persist_result.errors}", file=sys.stderr)
             sys.exit(1)
