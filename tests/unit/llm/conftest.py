@@ -7,6 +7,20 @@ import pytest
 from src.llm.cache import CacheConfig
 
 
+@pytest.fixture(autouse=True)
+def _disable_llm_cache_db(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure LLMCache self-disables in unit tests.
+
+    Other test suites (e.g. integration conftests) may set DATABASE_URL at
+    the process level. LLMCache checks DATABASE_URL at instantiation time,
+    so when VisionClient/OpenAIClient builds its cache during a unit test
+    run, it can connect to a real Postgres and serve cached responses —
+    which breaks tests that expect a fresh API call. Unsetting the var here
+    forces the cache into its disabled path for every llm unit test.
+    """
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+
 @pytest.fixture
 def mock_openai_response():
     """Create a mock OpenAI API response."""
