@@ -10,8 +10,7 @@ Ground-up redesign: 10x faster parsing (lxml), stable XPath locators, full table
 
 ## Pipeline Stages (`src/extraction_v2/stages/`)
 
-ingestion → candidate_generation → section_classification → value_binding → period_inference → deduplication → false_positive_filter → fact_construction → validation (+ ocr_extraction / image_triage for image-enabled runs) → chart_fact_bridge (after ocr_extraction, when enable_chart_fact_bridge=True)
-# Note: stage ordering above differs from extraction-pipeline.md; reconcile in a future docs pass.
+ingestion → section_classification → table_reconstruction → image_triage → ocr_extraction → candidate_generation → value_binding → false_positive_filter → period_inference → fact_construction → definition_extraction → deduplication → validation → chart_fact_bridge (optional, when enable_chart_fact_bridge=True)
 
 ## Usage
 
@@ -41,7 +40,7 @@ When improving keywords, FP rules, or value binding, prioritize **Tier 1** metri
 
 Text-pipeline Tier 1 recall work concluded 2026-04-16 (commits dd5c90a, 09a8f64); remaining gaps are chart-pipeline.
 
-**Chart bridge extension point:** `_COHORT_GATE_EXEMPT` is a set of metric IDs in `ChartFactBridgeStage` that skip the cohort-structure check on series names. Add a metric to this set when its chart data does not follow vintage-year or elapsed-period conventions but should still be bridged (e.g., tenure bucket labels for `cm_ltv_to_cac_ratio`).
+**Chart bridge extension point:** `_COHORT_GATE_EXEMPT` is a set of metric IDs in `src/extraction_v2/chart/metric_classifier.py` that skip the cohort-structure check on series names. Add a metric to this set when its chart data does not follow vintage-year or elapsed-period conventions but should still be bridged (e.g., tenure bucket labels for `cm_ltv_to_cac_ratio`).
 
 **Tier 2 guidance:** Accept current performance. Simplify or relax FP rules for Tier 2 metrics if they create maintenance burden or interfere with Tier 1.
 
@@ -71,10 +70,11 @@ PipelineConfig.for_presentation() # Images enabled, min_paragraph_chars=20
 | FP filter too aggressive | Recall drops on valid mentions | Test with gold standard filings |
 | FP filter too loose | Precision drops | Check per-company precision in GS |
 | Number pattern change | Year fragments extracted as values | NUMBER_PATTERN must exclude 4-digit years |
+| 2-digit year column headers (`20`, `21`, `22`, `23`) | FPs in fiscal-year table columns | `_rule_truncated_year` handles this; requires N±1 neighbor + `[CELL]`/`[ROW]` markers |
 | Proximity window change | Binding wrong values to metrics | Keep window conservative (~250 chars) |
 
 ## Key FP Filter Notes
 
-- `NUMBER_PATTERN` has no left-side word boundary — "M365" → extracts "365". Year-like values (4-digit numbers) must be excluded separately.
+- `NUMBER_PATTERN` has no left-side word boundary — "M365" → extracts "365". Year-like values (4-digit numbers) must be excluded separately. 2-digit fiscal-year column headers (`20`–`35`) are caught by `_rule_truncated_year` via N±1 adjacency check; sub-spans of longer digit runs (e.g., `"20"` inside `"2023"`) are caught by the embedded-digit-run sub-rule.
 - Growth rate percents ("up N% year-over-year") are only filtered by `_rule_growth_rate_percent` when a scale count also appears in the same segment. If the sentence has no absolute count, the percent is treated as the metric value.
 - Transcript converter: speaker-pattern check must run **before** section detection. If reversed, Operator intro lines containing "question-and-answer" can trigger QA section detection and drop prepared-remarks speaker turns.

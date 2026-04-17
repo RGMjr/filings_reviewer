@@ -159,6 +159,10 @@ DATE_CONTEXT_PATTERNS: list[Pattern[str]] = [
         r"Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?,?\s+\d{1,2}\b",
         re.IGNORECASE,
     ),
+    # DFP-2: DD, YYYY — day immediately before a 4-digit year, month on a prior line or cell.
+    # Catches "30, 2024" or "31, 2023" where the month name has wrapped or is in a separate cell.
+    # Narrow enough (requires 4-digit year starting with 20) to avoid prose false matches.
+    re.compile(r"\b\d{1,2}\s*,\s*20\d{2}\b"),
 ]
 
 # Patterns that indicate a number is NOT a metric (contextual false positives)

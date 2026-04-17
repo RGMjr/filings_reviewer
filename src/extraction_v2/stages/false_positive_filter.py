@@ -338,6 +338,49 @@ def _rule_year_fragment(bv: BoundValue, source_text: str, metric_id: str) -> str
     return None
 
 
+def _rule_truncated_year(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+    """Catch digit fragments from two patterns:
+
+    1. Embedded in a longer contiguous digit run — e.g. "20" inside "2023" when
+       the proximity window sliced the year. Adjacent-digit check is a strict
+       correctness guard: a sub-span of a digit run is never a valid number.
+
+    2. Two-digit fiscal-year column header — e.g. "20", "21", "22", "23" from
+       a table header row like "| 20 | 21 | 22 | 23 |". Requires [CELL]/[ROW]
+       markers and a sequential neighbor (N±1) in the same source_text.
+    """
+    if bv.unit != Unit.COUNT:
+        return None
+    raw = (bv.value_raw or "").strip()
+    if not raw or not raw.isdigit():
+        return None
+
+    raw_escaped = re.escape(raw)
+    occurrences = [m.start() for m in re.finditer(raw_escaped, source_text)]
+    if occurrences:
+        all_embedded = True
+        for pos in occurrences:
+            end = pos + len(raw)
+            before = source_text[pos - 1] if pos > 0 else ""
+            after = source_text[end] if end < len(source_text) else ""
+            if not (before.isdigit() or after.isdigit()):
+                all_embedded = False
+                break
+        if all_embedded:
+            return "v2_truncated_year"
+
+    if len(raw) == 2 and bv.value is not None and 15 <= bv.value <= 35:
+        if _TABLE_MARKER_RE.search(source_text):
+            n = int(raw)
+            prev_str = str(n - 1).zfill(2)
+            next_str = str(n + 1).zfill(2)
+            if re.search(rf"\b{re.escape(prev_str)}\b", source_text) or \
+               re.search(rf"\b{re.escape(next_str)}\b", source_text):
+                return "v2_two_digit_year_header"
+
+    return None
+
+
 # Metrics that should never take negative values (counts, rates, ratios, currencies).
 # Negative values on these metrics are almost always year fragments (e.g., -2019)
 # or parsing artifacts from context windows containing subtraction expressions.
@@ -1650,6 +1693,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("garbage_value", _rule_garbage_value, False),
     ("negative_value", _rule_negative_value, False),
     ("year_fragment", _rule_year_fragment, False),
+    ("truncated_year", _rule_truncated_year, False),
     ("linearized_table", _rule_linearized_table, True),
     ("financial_annotation", _rule_financial_annotation, True),
     ("financial_sbc", _rule_financial_sbc, True),
@@ -1978,6 +2022,8 @@ class FalsePositiveFilterStage:
 
     V2-native rules (run first):
     - Year values for ALL unit types (V1 only handles unit=count)
+    - Truncated year fragments: sub-spans of longer digit runs (v2_truncated_year) and
+      2-digit fiscal-year column headers like "20"/"21" in table header rows (v2_two_digit_year_header)
     - Linearized table text ([CELL]/[ROW] marker detection) — skipped in relaxed mode
     - Financial table annotations ("In thousands", "stock-based compensation") — skipped in relaxed mode
     - Company ranking names ("Fortune 100", "Forbes 500")
