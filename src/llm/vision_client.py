@@ -18,14 +18,18 @@ Future Improvements:
        - ChartValueExtractor.extract() -> extract values from each image
        See VIS-2a for planned caching to avoid repeated SEC downloads.
 """
+
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 import time
 from dataclasses import dataclass
 
 from openai import APIConnectionError, APIError, OpenAI, RateLimitError
+
+from src.llm.cache import CacheConfig, LLMCache
 
 logger = logging.getLogger(__name__)
 
@@ -116,14 +120,17 @@ class VisionClient:
     DEFAULT_MAX_RETRIES: int = 3
     BASE_BACKOFF_SECONDS: float = 1.0
 
-    def __init__(self, model: str = "gpt-4o") -> None:
+    def __init__(self, model: str = "gpt-4o", cache_config: CacheConfig | None = None) -> None:
         """Initialize VisionClient.
 
         Args:
             model: OpenAI model to use (default: gpt-4o)
+            cache_config: Optional cache configuration. If None, uses defaults from
+                environment. Cache is disabled automatically when DATABASE_URL is unset.
         """
         self.model = model
         self._client = OpenAI()  # Uses OPENAI_API_KEY from env
+        self._cache = LLMCache(cache_config)
 
     def analyze_image(
         self,
@@ -158,6 +165,30 @@ class VisionClient:
 
         if max_retries is None:
             max_retries = self.DEFAULT_MAX_RETRIES
+
+        # Compute SHA-256 of image bytes once; used as part of the cache key
+        # so that different images with identical prompts produce distinct keys.
+        image_sha256 = hashlib.sha256(image_bytes).hexdigest()
+
+        # Cache lookup — returns immediately with zero cost if entry exists
+        cached = self._cache.get(
+            model=self.model,
+            system_message="",
+            prompt=prompt,
+            temperature=0.0,  # placeholder for key stability; not passed to API
+            max_tokens=max_tokens,
+            image_sha256=image_sha256,
+            detail=detail,
+        )
+        if cached:
+            return VisionResponse(
+                content=cached.content,
+                model=self.model,
+                prompt_tokens=cached.input_tokens,
+                completion_tokens=cached.output_tokens,
+                cost_usd=0.0,
+                latency_ms=0,
+            )
 
         # Encode image as base64
         b64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
@@ -203,9 +234,22 @@ class VisionClient:
                 completion_tokens = usage.completion_tokens if usage else 0
 
                 # Calculate cost (per 1M tokens)
-                cost_usd = (
-                    (prompt_tokens / 1_000_000) * self.COST_PER_1M_INPUT_TOKENS
-                    + (completion_tokens / 1_000_000) * self.COST_PER_1M_OUTPUT_TOKENS
+                cost_usd = (prompt_tokens / 1_000_000) * self.COST_PER_1M_INPUT_TOKENS + (
+                    completion_tokens / 1_000_000
+                ) * self.COST_PER_1M_OUTPUT_TOKENS
+
+                # Store result in cache for future calls on same image/prompt
+                self._cache.set(
+                    model=self.model,
+                    system_message="",
+                    prompt=prompt,
+                    temperature=0.0,  # placeholder for key stability; not passed to API
+                    max_tokens=max_tokens,
+                    response_content=response.choices[0].message.content or "",
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    image_sha256=image_sha256,
+                    detail=detail,
                 )
 
                 return VisionResponse(
