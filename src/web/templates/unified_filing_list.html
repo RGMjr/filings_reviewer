@@ -145,7 +145,7 @@
               {% endif %}
             </td>
             <td>
-              <a href="{{ url_for('review_unified.review_filing', filing_id=f.filing_id) }}"
+              <a href="{{ url_for('review_unified.review_filing', filing_id=f.filing_id) }}?status=pending_review&tab=text&list_sort_by={{ sort_by }}&list_sort_dir={{ sort_dir }}&list_document_type={{ current_document_type if current_document_type != 'all' else '' }}&list_hide_completed={{ 1 if hide_completed else 0 }}"
                  class="btn btn-sm btn-outline-primary">
                 Review
               </a>

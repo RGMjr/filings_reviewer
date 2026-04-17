@@ -4058,10 +4058,7 @@ class DatabaseAdapter:
         # Construct base URL (mirrors sec_client.fetch_image URL logic)
         cik_stripped = cik.lstrip("0") or "0"
         accession_no_dashes = accession_number.replace("-", "")
-        base_url = (
-            f"https://www.sec.gov/Archives/edgar/data/"
-            f"{cik_stripped}/{accession_no_dashes}/"
-        )
+        base_url = f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{accession_no_dashes}/"
 
         inserted = 0
         for row in rows:
@@ -4349,9 +4346,7 @@ class DatabaseAdapter:
     # Image Cache Methods
     # =============================================================================
 
-    def get_cached_image(
-        self, cik: str, accession_no: str, filename: str
-    ) -> dict | None:
+    def get_cached_image(self, cik: str, accession_no: str, filename: str) -> dict | None:
         """
         Retrieve a cached image from the image_cache table.
 
@@ -4556,7 +4551,9 @@ class DatabaseAdapter:
             doc_type_filter = "AND d.document_type = %(document_type)s"
             params["document_type"] = document_type
         if hide_completed:
-            completed_filter = "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
+            completed_filter = (
+                "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
+            )
 
         sql = f"""
             WITH text_progress AS (
@@ -4659,6 +4656,97 @@ class DatabaseAdapter:
         """
         result = self.query(sql, params if params else None)
         return result[0]["cnt"] if result else 0
+
+    def get_next_filing_with_pending_facts(
+        self,
+        current_filing_id: int,
+        document_type: str | None = None,
+        hide_completed: bool = False,
+        sort_by: str = "date",
+        sort_dir: str = "desc",
+    ) -> int | None:
+        """Return the filing_id of the next filing with pending text facts.
+
+        Uses the same sort/filter logic as get_unified_filings_for_review and
+        finds the first row after the current filing (by ROW_NUMBER) that still
+        has facts_pending > 0.
+
+        Args:
+            current_filing_id: The filing_id of the filing currently being reviewed.
+            document_type: Optional filter — "sec_filing" or "earnings_call".
+            hide_completed: If True, restrict candidates to filings with pending work.
+            sort_by: Column to sort by (same options as get_unified_filings_for_review).
+            sort_dir: "asc" or "desc".
+
+        Returns:
+            filing_id of the next eligible filing, or None if none exists.
+        """
+        sort_map = {
+            "company": "c.company_name",
+            "date": "f.filing_date",
+            "text_progress": "COALESCE(tp.facts_pending, 0)",
+            "image_progress": "COALESCE(ip.images_pending, 0)",
+        }
+        order_col = sort_map.get(sort_by, "f.filing_date")
+        order_dir = "ASC" if sort_dir == "asc" else "DESC"
+
+        doc_type_filter = ""
+        completed_filter = ""
+        params: dict[str, Any] = {"current_filing_id": current_filing_id}
+        if document_type is not None:
+            doc_type_filter = "AND d.document_type = %(document_type)s"
+            params["document_type"] = document_type
+        if hide_completed:
+            completed_filter = (
+                "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
+            )
+
+        sql = f"""
+            WITH text_progress AS (
+                SELECT
+                    mf.doc_id AS filing_id,
+                    COUNT(mf.fact_id) AS fact_count,
+                    COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS facts_pending,
+                    COUNT(CASE WHEN mf.review_status IN ('accepted', 'auto_accepted') THEN 1 END) AS facts_accepted,
+                    COUNT(CASE WHEN mf.review_status IN ('rejected', 'corrected') THEN 1 END) AS facts_rejected
+                FROM v2_metric_facts mf
+                GROUP BY mf.doc_id
+            ),
+            image_progress AS (
+                SELECT
+                    irc.filing_id,
+                    COUNT(irc.image_candidate_id) AS image_count,
+                    COUNT(CASE WHEN irc.review_status = 'pending' THEN 1 END) AS images_pending,
+                    COUNT(CASE WHEN irc.review_status = 'reviewed' THEN 1 END) AS images_reviewed
+                FROM image_review_candidates irc
+                GROUP BY irc.filing_id
+            ),
+            candidates AS (
+                SELECT
+                    f.filing_id,
+                    ROW_NUMBER() OVER (ORDER BY {order_col} {order_dir} NULLS LAST, c.company_name) AS rn,
+                    COALESCE(tp.facts_pending, 0) AS facts_pending
+                FROM filings f
+                JOIN companies c ON f.company_id = c.company_id
+                JOIN v2_documents d ON d.filing_id = f.filing_id
+                LEFT JOIN text_progress tp ON tp.filing_id = f.filing_id
+                LEFT JOIN image_progress ip ON ip.filing_id = f.filing_id
+                WHERE (f.is_spac IS NOT TRUE)
+                {doc_type_filter}
+                {completed_filter}
+            ),
+            current_rn AS (
+                SELECT rn FROM candidates WHERE filing_id = %(current_filing_id)s
+            )
+            SELECT filing_id
+            FROM candidates
+            WHERE rn > (SELECT rn FROM current_rn)
+              AND facts_pending > 0
+            ORDER BY rn ASC
+            LIMIT 1
+        """
+        result = self.query(sql, params)
+        return result[0]["filing_id"] if result else None
 
     def get_v2_facts_for_filing(
         self,

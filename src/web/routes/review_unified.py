@@ -9,6 +9,7 @@ import logging
 import threading
 import time
 from typing import Any
+from urllib.parse import urlencode
 
 from flask import (
     Blueprint,
@@ -229,6 +230,31 @@ def review_filing(filing_id: int):
         if active_tab not in ("text", "images"):
             active_tab = "text"
 
+        # List-page sort context (threaded from Review button for cross-filing navigation)
+        list_sort_by = request.args.get("list_sort_by", "date")
+        if list_sort_by not in VALID_FILING_SORT_COLUMNS:
+            list_sort_by = "date"
+        list_sort_dir = request.args.get("list_sort_dir", "desc")
+        if list_sort_dir not in ("asc", "desc"):
+            list_sort_dir = "desc"
+        raw_list_doc_type = request.args.get("list_document_type", "")
+        list_document_type = (
+            raw_list_doc_type if raw_list_doc_type in VALID_DOCUMENT_TYPES else None
+        )
+        list_hide_completed = request.args.get("list_hide_completed", "0") == "1"
+
+        next_filing_params: dict[str, Any] = {
+            "current_filing_id": filing_id,
+            "list_sort_by": list_sort_by,
+            "list_sort_dir": list_sort_dir,
+            "list_hide_completed": 1 if list_hide_completed else 0,
+        }
+        if list_document_type:
+            next_filing_params["list_document_type"] = list_document_type
+        next_filing_url = (
+            url_for("review_unified.next_filing") + "?" + urlencode(next_filing_params)
+        )
+
         # ---------------------------------------------------------------
         # Text tab data (always loaded — needed for progress counts)
         # ---------------------------------------------------------------
@@ -320,9 +346,7 @@ def review_filing(filing_id: int):
             # otherwise fall back to the EDGAR filing directory.
             sec_filing_url = filing.get("sec_html_url")
             if not sec_filing_url and filing.get("cik") and filing.get("accession_number"):
-                sec_filing_url = _build_sec_directory_url(
-                    filing["cik"], filing["accession_number"]
-                )
+                sec_filing_url = _build_sec_directory_url(filing["cik"], filing["accession_number"])
 
         # Current filter state
         current_filters = {
@@ -360,7 +384,9 @@ def review_filing(filing_id: int):
         image_pending = sum(1 for c in all_image_candidates if c["review_status"] == "pending")
         image_reviewed = sum(1 for c in all_image_candidates if c["review_status"] == "reviewed")
         image_skipped = sum(1 for c in all_image_candidates if c["review_status"] == "skipped")
-        image_auto_rejected = sum(1 for c in all_image_candidates if c["review_status"] == "auto_rejected")
+        image_auto_rejected = sum(
+            1 for c in all_image_candidates if c["review_status"] == "auto_rejected"
+        )
 
         # SEC directory URL for image linking
         sec_url = _build_sec_directory_url(
@@ -409,11 +435,67 @@ def review_filing(filing_id: int):
             image_decisions=IMAGE_DECISIONS,
             review_statuses_images=IMAGE_REVIEW_STATUSES,
             sec_url=sec_url,
+            next_filing_url=next_filing_url,
         )
 
     except Exception as e:
         logger.error(f"Error in unified review for filing_id={filing_id}: {e}")
         flash("Error loading review.", "danger")
+        return redirect(url_for("review_unified.filing_list"))
+
+
+@review_unified_bp.route("/next-filing")
+def next_filing():
+    """Redirect to the next filing with pending text facts."""
+    db = get_db()
+    try:
+        current_filing_id = request.args.get("current_filing_id", type=int)
+        if not current_filing_id:
+            flash("No current filing specified.", "warning")
+            return redirect(url_for("review_unified.filing_list"))
+
+        raw_sort = request.args.get("list_sort_by", "date")
+        sort_by = raw_sort if raw_sort in VALID_FILING_SORT_COLUMNS else "date"
+        raw_dir = request.args.get("list_sort_dir", "desc")
+        sort_dir = "asc" if raw_dir == "asc" else "desc"
+        raw_doc_type = request.args.get("list_document_type", "")
+        document_type = raw_doc_type if raw_doc_type in VALID_DOCUMENT_TYPES else None
+        hide_completed = request.args.get("list_hide_completed", "0") == "1"
+
+        next_id = db.get_next_filing_with_pending_facts(
+            current_filing_id=current_filing_id,
+            document_type=document_type,
+            hide_completed=hide_completed,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+        )
+
+        if next_id:
+            params = urlencode(
+                {
+                    "status": "pending_review",
+                    "tab": "text",
+                    "list_sort_by": sort_by,
+                    "list_sort_dir": sort_dir,
+                    "list_hide_completed": 1 if hide_completed else 0,
+                    **({"list_document_type": document_type} if document_type else {}),
+                }
+            )
+            return redirect(f"/v2/review/{next_id}?{params}")
+
+        flash("No more filings with pending facts.", "info")
+        list_params = urlencode(
+            {
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+                **({"document_type": document_type} if document_type else {}),
+            }
+        )
+        return redirect(url_for("review_unified.filing_list") + "?" + list_params)
+
+    except Exception as e:
+        logger.error(f"Error in next_filing: {e}")
+        flash("Error finding next filing.", "danger")
         return redirect(url_for("review_unified.filing_list"))
 
 
