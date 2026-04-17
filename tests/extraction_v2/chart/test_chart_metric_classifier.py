@@ -179,3 +179,53 @@ def test_revenue_chart_rejected_when_orders_dominates_title(
 def test_cohort_gate_exempt_set_applies_only_to_ltv_to_cac() -> None:
     assert "cm_ltv_to_cac_ratio" in _COHORT_GATE_EXEMPT
     assert "cm_revenue_by_cohort" not in _COHORT_GATE_EXEMPT
+
+
+def test_annotation_scoring_capped_at_08(classifier: ChartMetricClassifier) -> None:
+    # Must keep raw score below _MAX_POSSIBLE_RAW (8.3) in BOTH n=1 and n=5 cases,
+    # otherwise normalization clamp at 1.0 masks the cap. Use a minimal chart with
+    # only y_axis + cohort-gate signal, so raw stays small:
+    #   with cap: raw = 1.5 (y_axis "margin") + 0.8 (cap) = 2.3  → score ≈ 0.277
+    #   no cap n=5: raw = 1.5 + 5*0.8 = 5.5 → score ≈ 0.663 (distinct from 0.277)
+    def _chart_with_n_anns(n: int) -> ChartData:
+        return ChartData(
+            chart_type=ChartType.STACKED_BAR,
+            title="",
+            y_axis_label="margin",
+            x_axis_label="",
+            series=[ChartSeries(name="2020")],
+            annotations=[ChartAnnotation(text="gross margin by cohort") for _ in range(n)],
+        )
+
+    _, score_1 = classifier.classify(_chart_with_n_anns(1))
+    _, score_5 = classifier.classify(_chart_with_n_anns(5))
+    assert score_5 == score_1
+    assert score_1 < 0.5
+
+
+def test_ltv_cac_gate_accepts_common_phrasings() -> None:
+    from src.extraction_v2.chart.metric_classifier import _metric_gate
+
+    def _chart_with_title(title: str) -> ChartData:
+        return ChartData(
+            chart_type=ChartType.BAR,
+            title=title,
+            y_axis_label="Ratio (x)",
+            x_axis_label="Tenure",
+            series=[ChartSeries(name="All Customers", points=[DataPoint(x="1 Year", y=1.8)])],
+        )
+
+    positives = [
+        "LTV to CAC Ratio by Tenure",
+        "LTV:CAC Over Time",
+        "LTV/CAC by Cohort",
+        "LTV vs CAC Analysis",
+    ]
+    for title in positives:
+        assert _metric_gate("cm_ltv_to_cac_ratio", _chart_with_title(title)), (
+            f"expected gate to accept: {title!r}"
+        )
+
+    assert not _metric_gate(
+        "cm_ltv_to_cac_ratio", _chart_with_title("LTV and CAC Analysis")
+    )

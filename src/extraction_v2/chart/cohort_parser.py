@@ -113,7 +113,9 @@ class CohortParser:
         point: DataPoint | None,
         filing_date: date,
     ) -> CohortPeriod | None:
-        if not (series is None or not chart.series) or not chart.annotations:
+        if chart.series and any(s.points for s in chart.series):
+            return None  # series path should have handled this
+        if not chart.annotations:
             return None
         for ann in chart.annotations:
             if not ann.period:

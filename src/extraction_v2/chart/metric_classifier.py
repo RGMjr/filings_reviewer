@@ -74,7 +74,7 @@ def _metric_gate(metric_id: str, chart: ChartData) -> bool:
     if metric_id == "cm_ltv_to_cac_ratio":
         combined = chart.title + " " + chart.y_axis_label
         return bool(
-            re.search(r"ltv\s*[:/ to]+\s*cac", combined, re.IGNORECASE)
+            re.search(r"ltv\s*(?::|/|\s+to\s+|\s+vs\.?\s+)\s*cac", combined, re.IGNORECASE)
             or re.search(r"lifetime\s+value.*acquisition\s+cost", combined, re.IGNORECASE)
         )
     return False
@@ -102,7 +102,8 @@ def _score_metric(
     if patterns and _any_match(patterns, chart.x_axis_label + " " + nearby_text[:1500]):
         raw += 1.0
     if patterns:
-        raw += 0.8 * sum(1 for ann in chart.annotations if _any_match(patterns, ann.text))
+        ann_hits = sum(1 for ann in chart.annotations if _any_match(patterns, ann.text))
+        raw += min(0.8, 0.8 * ann_hits)
     if excl and _any_match(excl, chart.title + " " + chart.y_axis_label):
         raw -= 5.0
 

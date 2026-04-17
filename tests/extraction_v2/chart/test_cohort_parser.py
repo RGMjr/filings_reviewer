@@ -119,3 +119,14 @@ def test_regime_dispatch_order_prefers_series_year_over_elapsed() -> None:
     assert result is not None
     assert result.period_end == date(2021, 12, 31)
     assert result.confidence == 0.85
+
+
+def test_annotation_fallback_returns_none_when_series_populated() -> None:
+    ann = ChartAnnotation(
+        text="2019 cohort data", value=None, unit="", category="Cohort 2019", period="2019"
+    )
+    series = ChartSeries(name="2019", points=[DataPoint(x="2020", y=100.0)])
+    chart = _chart(series=[series], annotations=[ann])
+    parser = _parser()
+    result = parser._parse_annotations_regime(chart, series, series.points[0], date(2021, 1, 1))
+    assert result is None
