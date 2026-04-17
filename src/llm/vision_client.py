@@ -140,6 +140,7 @@ class VisionClient:
         detail: str = "high",
         max_tokens: int = 2000,
         max_retries: int | None = None,
+        response_format: dict[str, str] | None = None,
     ) -> VisionResponse:
         """Send image to Vision LLM for analysis.
 
@@ -149,6 +150,9 @@ class VisionClient:
             detail: Image detail level ("high" for accuracy, "low" for speed/cost)
             max_tokens: Maximum response tokens
             max_retries: Maximum retry attempts (default: 3)
+            response_format: Optional OpenAI response_format, e.g.
+                ``{"type": "json_object"}`` to force valid JSON output. Requires
+                the word "JSON" to appear in the prompt. Included in the cache key.
 
         Returns:
             VisionResponse with content and metadata
@@ -170,6 +174,11 @@ class VisionClient:
         # so that different images with identical prompts produce distinct keys.
         image_sha256 = hashlib.sha256(image_bytes).hexdigest()
 
+        # Serialize response_format for cache key (None and json_object must produce distinct keys)
+        response_format_key = (
+            response_format.get("type", "none") if response_format else "none"
+        )
+
         # Cache lookup — returns immediately with zero cost if entry exists
         cached = self._cache.get(
             model=self.model,
@@ -179,6 +188,7 @@ class VisionClient:
             max_tokens=max_tokens,
             image_sha256=image_sha256,
             detail=detail,
+            response_format=response_format_key,
         )
         if cached:
             return VisionResponse(
@@ -220,11 +230,15 @@ class VisionClient:
             try:
                 start_ms = int(time.time() * 1000)
 
-                response = self._client.chat.completions.create(
-                    model=self.model,
-                    messages=[user_message],
-                    max_tokens=max_tokens,
-                )
+                create_kwargs: dict = {
+                    "model": self.model,
+                    "messages": [user_message],
+                    "max_tokens": max_tokens,
+                }
+                if response_format is not None:
+                    create_kwargs["response_format"] = response_format
+
+                response = self._client.chat.completions.create(**create_kwargs)
 
                 latency_ms = int(time.time() * 1000) - start_ms
 
@@ -250,6 +264,7 @@ class VisionClient:
                     output_tokens=completion_tokens,
                     image_sha256=image_sha256,
                     detail=detail,
+                    response_format=response_format_key,
                 )
 
                 return VisionResponse(

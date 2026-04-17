@@ -138,6 +138,29 @@ class TestExclusionPatternNewCustomers:
 
         assert "cm_new_customers_acquired" not in matched_metrics
 
+    def test_percent_segment_label_excludes_new_customers(self) -> None:
+        """Chart segment labels like '44.4% New Consumers in 2017' (FTCH Order
+        Contribution Margin annotations) should not match cm_new_customers_acquired.
+        """
+        text = "Marketplace Order Contribution Margin 44.4% New Consumers in 2017"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        matched_metrics = {m.metric_id for m in matches}
+
+        assert "cm_new_customers_acquired" not in matched_metrics
+
+    def test_prose_new_customers_still_matches_despite_percentage_nearby(self) -> None:
+        """Real prose — 'acquired 500 new consumers, which was 44.4% of total' —
+        must still match; the exclusion only fires on '<number>% new/existing
+        consumers' without intervening words.
+        """
+        text = "We acquired 500 new consumers, which was 44.4% of our total base"
+        matcher = KeywordMatcher()
+        matches = matcher.find_all_keywords(text)
+        matched_metrics = {m.metric_id for m in matches}
+
+        assert "cm_new_customers_acquired" in matched_metrics
+
 
 class TestExclusionPatternLTV:
     """Tests for LTV-related exclusion patterns."""
