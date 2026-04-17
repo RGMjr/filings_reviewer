@@ -640,13 +640,16 @@ class TestFuzzyPeriodDedup:
         assert "fact-2023" in ids
 
     def test_same_metric_different_values_kept_separate(self) -> None:
-        """Same metric with different values should not be merged."""
+        """Two facts with same metric/period but different values and source_types
+        are kept as separate facts — they represent distinct measurements."""
         stage = DeduplicationStage()
         facts = [
             make_fact(
                 fact_id="fact-100",
                 metric_id="cm_average_order_value",
                 value=100.0,
+                source_type=SourceType.HTML_TABLE,
+                confidence=0.9,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
             ),
@@ -654,6 +657,8 @@ class TestFuzzyPeriodDedup:
                 fact_id="fact-200",
                 metric_id="cm_average_order_value",
                 value=200.0,
+                source_type=SourceType.TEXT,
+                confidence=0.8,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
             ),
@@ -661,7 +666,11 @@ class TestFuzzyPeriodDedup:
 
         result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
 
+        # Different values AND different source_types → kept separate under migration-23 index.
         assert len(result) == 2
+        result_ids = {f.fact_id for f in result}
+        assert "fact-100" in result_ids
+        assert "fact-200" in result_ids
 
     def test_mix_of_exact_and_fuzzy_duplicates(self) -> None:
         """Mix of exact and fuzzy period duplicates handled correctly in one pass."""
@@ -772,6 +781,105 @@ class TestFuzzyPeriodDedup:
 
         assert len(result) == 1
         assert result[0].fact_id == "fact-with-period"
+
+    def test_period_transfer_and_different_value_both_survive(self) -> None:
+        """Period-transfer does not force-collapse facts with different values.
+
+        fact_a (HTML_TABLE, no period) merges with fact_donor (HTML_TABLE, period=2020)
+        in the fuzzy pass, gaining period via transfer.
+        fact_b (HTML_TABLE, period=2020, value=150k) is beyond 2% tolerance so it stays
+        as a separate primary. Both fact_a (with transferred period) and fact_b survive
+        as distinct facts; the DB unique index (migration 23 includes source_type) treats
+        them as separate rows since their values differ.
+        """
+        stage = DeduplicationStage()
+
+        fact_a = make_fact(
+            fact_id="fact-a",
+            metric_id="cm_customers_period_end",
+            value=100000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.HTML_TABLE,
+            confidence=0.95,
+            period_start=None,
+            period_end=None,
+        )
+        fact_donor = make_fact(
+            fact_id="fact-donor",
+            metric_id="cm_customers_period_end",
+            value=100000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.HTML_TABLE,
+            confidence=0.80,
+            period_start=date(2020, 1, 1),
+            period_end=date(2020, 12, 31),
+        )
+        fact_b = make_fact(
+            fact_id="fact-b",
+            metric_id="cm_customers_period_end",
+            value=150000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.HTML_TABLE,
+            confidence=0.70,
+            period_start=date(2020, 1, 1),
+            period_end=date(2020, 12, 31),
+        )
+
+        result = stage._fuzzy_period_dedup([fact_a, fact_donor, fact_b], tolerance=0.02)
+
+        # fact_a merges with fact_donor (same value ≈100k, compatible periods) → gains period.
+        # fact_b stays separate (150k is > 2% away from 100k).
+        # Both fact_a (with transferred period) and fact_b survive.
+        assert len(result) == 2
+        result_ids = {f.fact_id for f in result}
+        assert "fact-a" in result_ids
+        assert "fact-b" in result_ids
+
+    def test_distinct_customer_type_facts_kept_separate(self) -> None:
+        """Facts with distinct customer_type values are kept as separate facts."""
+        stage = DeduplicationStage()
+
+        f1 = make_fact(
+            fact_id="fact-paid",
+            metric_id="cm_customers_period_end",
+            value=88000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.TEXT,
+            confidence=0.90,
+            period_start=date(2019, 1, 31),
+            period_end=date(2019, 1, 31),
+            customer_type="Paid",
+        )
+        f2 = make_fact(
+            fact_id="fact-free",
+            metric_id="cm_customers_period_end",
+            value=500000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.TEXT,
+            confidence=0.90,
+            period_start=date(2019, 1, 31),
+            period_end=date(2019, 1, 31),
+            customer_type="Free",
+        )
+        f3 = make_fact(
+            fact_id="fact-total",
+            metric_id="cm_customers_period_end",
+            value=600000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.TEXT,
+            confidence=0.85,
+            period_start=date(2019, 1, 31),
+            period_end=date(2019, 1, 31),
+            customer_type=None,
+        )
+
+        result = stage._fuzzy_period_dedup([f1, f2, f3], tolerance=0.02)
+
+        assert len(result) == 3
+        result_ids = {f.fact_id for f in result}
+        assert result_ids == {"fact-paid", "fact-free", "fact-total"}
+        for fact in result:
+            assert fact.alternate_evidence == []
 
 
 # ============================================================================

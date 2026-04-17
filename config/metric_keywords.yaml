@@ -528,6 +528,9 @@ cm_gross_margin_by_cohort:
     # Order Contribution Margin only when cohort context (new/existing consumers) is nearby
     - '\border\s+contribution\s+margin[^.;]{0,80}\b(?:new|existing|cohort|consumer|customer)\b'
     - '\b(?:new|existing)\s+(?:consumer|customer)[^.;]{0,80}\border\s+contribution\s+margin\b'
+  specific_patterns:
+    - 'contribution\s+margin\s+by\s+cohort'
+    - 'cohort\s+contribution\s+margin'
 
 cm_arr:
   tier: 2

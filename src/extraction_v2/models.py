@@ -348,7 +348,7 @@ class MetricFact:
 
     def identity_tuple(
         self,
-    ) -> tuple[str, date | None, date | None, Unit, float | None, Scope, str | None, str | None]:
+    ) -> tuple[str, date | None, date | None, Unit, float | None, Scope, str | None, str | None, SourceType]:
         """
         Identity tuple for deduplication.
 
@@ -365,6 +365,7 @@ class MetricFact:
             self.scope,
             self.cohort_def,
             self.customer_type,
+            self.source_type,
         )
 
     def is_duplicate_of(self, other: MetricFact, value_tolerance: float = 0.02) -> bool:

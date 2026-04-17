@@ -10,7 +10,8 @@ Ground-up redesign: 10x faster parsing (lxml), stable XPath locators, full table
 
 ## Pipeline Stages (`src/extraction_v2/stages/`)
 
-ingestion → candidate_generation → section_classification → value_binding → period_inference → deduplication → false_positive_filter → fact_construction → validation (+ ocr_extraction / image_triage for image-enabled runs)
+ingestion → candidate_generation → section_classification → value_binding → period_inference → deduplication → false_positive_filter → fact_construction → validation (+ ocr_extraction / image_triage for image-enabled runs) → chart_fact_bridge (after ocr_extraction, when enable_chart_fact_bridge=True)
+# Note: stage ordering above differs from extraction-pipeline.md; reconcile in a future docs pass.
 
 ## Usage
 
@@ -33,8 +34,8 @@ When improving keywords, FP rules, or value binding, prioritize **Tier 1** metri
 
 **Current Tier 1 recall gaps (focus areas):**
 - `cm_revenue_by_cohort` — F1=31%, recall=23%. Wider-proximity was evaluated and rejected for this metric (FNs are table/chart-based; widening would add FPs without recovering TPs). Remaining gap is chart-pipeline.
-- `cm_balance_by_cohort` — F1=0%. GS exists (10 Robinhood rows); all FNs are chart-embedded. Blocked on chart pipeline improvements.
-- `cm_gross_margin_by_cohort` — F1=0%. GS exists (9 Farfetch rows); all FNs are chart images. Blocked on chart pipeline improvements.
+- `cm_balance_by_cohort` — F1=0%. GS exists (10 Robinhood rows); all FNs are chart-embedded. Phase 1 chart bridge delivered (2026-04-16); recall gap expected to close.
+- `cm_gross_margin_by_cohort` — F1=0%. GS exists (9 Farfetch rows); all FNs are chart images. Phase 1 chart bridge delivered (2026-04-16); recall gap expected to close.
 - `cm_ltv_to_cac_ratio` — F1=50% (updated 2026-04-16). `specific_patterns` confidence boost + `_WIDER_PROXIMITY_METRICS` membership landed in commits `dd5c90a`/`09a8f64`.
 - `cm_customer_retention_rate` — F1=50%. GS thinness (1 row Chewy); retention family dedup and FP rules are conservative; no text fix available per pipeline investigation.
 

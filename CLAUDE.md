@@ -23,7 +23,7 @@ mypy src/review/ --strict          # Type checking
 
 ## Database
 
-PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_tables`. Shared: `companies`, `filings`. Legacy V1 tables still present (not yet migrated): `review_candidates`, `source_segments`, `image_review_candidates`, `suppressed_candidates`, `review_decisions` — see `docs/architecture/v1-table-deprecation-plan.md`. Schema files in `sql/` (00-21). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_tables`. Shared: `companies`, `filings`. Legacy V1 tables still present (not yet migrated): `review_candidates`, `source_segments`, `image_review_candidates`, `suppressed_candidates`, `review_decisions` — see `docs/architecture/v1-table-deprecation-plan.md`. Schema files in `sql/` (00-23). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 ## Testing Standards
 

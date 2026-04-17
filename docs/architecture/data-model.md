@@ -734,7 +734,19 @@ Schema for the V2 unified extraction pipeline. Tables are populated by the V2 pi
 
 ---
 
-## Schema 15 and 16: Constraint Updates
+## Schema 10: V2 Fact Identity Index
+
+### Migration 10 (`sql/10_v2_fact_identity_dedup.sql`)
+
+Created `idx_v2_metric_facts_identity_unique`, a partial unique index on `v2_metric_facts` that enforces deduplication across the 8 identity columns: `filing_id`, `metric_id`, `period_start`, `period_end`, `cohort_type`, `cohort_bucket_normalized`, `value_numeric`, and `segment_id`. This index is the persistence-layer enforcement of the idempotent upsert guarantee — re-running extraction on the same filing cannot produce duplicate rows. All V2 persistence writes use `ON CONFLICT DO UPDATE` against this index.
+
+---
+
+## Schema 15, 16, and 23: Constraint Updates
+
+### Migration 23 (`sql/23_chart_source_dedup.sql`)
+
+Extends `idx_v2_metric_facts_identity_unique` (introduced in Migration 10) from 8 identity columns to 9 by adding `source_type` as the final column. This change allows a chart-sourced fact (`source_type = 'chart'`) and a text-sourced fact (`source_type = 'text'`) for the same metric+period+cohort slot to coexist as distinct rows, which is required by the `ChartFactBridgeStage`. The `MetricFact.identity_tuple()` method in `src/extraction_v2/models.py` was updated in parallel to return a 9-tuple.
 
 ### Migration 15 (`sql/15_rename_cohort_heatmap_to_parfait.sql`)
 

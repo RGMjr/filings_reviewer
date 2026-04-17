@@ -24,7 +24,7 @@ This document specifies the architecture and implementation of the metric extrac
 
 ## V2 Pipeline Overview
 
-The V2 pipeline (`src/extraction_v2/`) implements a 13-stage extraction workflow. It is the production pipeline for all SEC filing, transcript, and presentation extraction.
+The V2 pipeline (`src/extraction_v2/`) implements a 14-stage extraction workflow. It is the production pipeline for all SEC filing, transcript, and presentation extraction.
 
 **Module:** `src/extraction_v2/pipeline.py`
 **Class:** `V2Pipeline`
@@ -186,7 +186,7 @@ The V2 pipeline (`src/extraction_v2/`) implements a 13-stage extraction workflow
 ## Key Files
 
 - **`src/extraction_v2/models.py`** — Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
-- **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 13-stage workflow and configuration
+- **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 14-stage workflow and configuration
 - **`src/extraction_v2/persistence.py`** — Database write layer (V2PersistenceAdapter)
 - **`src/extraction_v2/quality_scoring.py`** — V2 quality scoring (V2QualityScorer)
 - **`src/extraction_v2/table_reconstructor.py`** — Table reconstruction with colspan/rowspan resolution
