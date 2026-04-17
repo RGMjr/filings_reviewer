@@ -123,7 +123,7 @@ MOCK_FILTERS = type('Filters', (), {
 
 REJECTION_CATEGORIES = [
     'wrong_metric', 'not_a_metric', 'wrong_value',
-    'wrong_period', 'duplicate', 'other'
+    'wrong_period', 'part_of_date', 'duplicate', 'other'
 ]
 
 

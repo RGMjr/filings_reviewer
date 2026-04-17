@@ -287,7 +287,7 @@ CREATE TABLE IF NOT EXISTS v2_review_decisions (
 
     -- Rejection details
     rejection_reason    TEXT,
-    rejection_category  TEXT CHECK (rejection_category IN ('wrong_metric', 'not_a_metric', 'wrong_value', 'wrong_period', 'duplicate', 'other')),
+    rejection_category  TEXT CHECK (rejection_category IN ('wrong_metric', 'not_a_metric', 'wrong_value', 'wrong_period', 'part_of_date', 'duplicate', 'other')),
 
     -- Reviewer metadata
     reviewer_id         TEXT NOT NULL,

@@ -9,10 +9,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-import pytest
-
 from src.extraction_v2.models import (
-    ChartAnnotation,
     ChartData,
     ChartSeries,
     ChartType,
@@ -22,7 +19,6 @@ from src.extraction_v2.models import (
 )
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
 from src.extraction_v2.stages.chart_fact_bridge import ChartFactBridgeStage
-
 
 # ---------------------------------------------------------------------------
 # Helpers
