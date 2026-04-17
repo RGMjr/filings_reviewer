@@ -1,0 +1,13 @@
+{
+  "chart_type": "area",
+  "title": "Marketplace GMV by Consumer Cohort Year",
+  "x_axis_label": "Year",
+  "y_axis_label": "GMV (USDm)",
+  "series": [],
+  "annotations": [
+    {"text": "44.4% New Consumers in 2017", "value": 44.4, "unit": "percent", "category": "New Consumers", "period": "2017"},
+    {"text": "55.6% Existing Consumers in 2017", "value": 55.6, "unit": "percent", "category": "Existing Consumers", "period": "2017"},
+    {"text": "31.2% New Consumers in 2016", "value": 31.2, "unit": "percent", "category": "New Consumers", "period": "2016"},
+    {"text": "68.8% Existing Consumers in 2016", "value": 68.8, "unit": "percent", "category": "Existing Consumers", "period": "2016"}
+  ]
+}

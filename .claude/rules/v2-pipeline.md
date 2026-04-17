@@ -33,13 +33,15 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
 
 **Current Tier 1 recall gaps (focus areas):**
-- `cm_revenue_by_cohort` — F1=31%, recall=23%. Wider-proximity was evaluated and rejected for this metric (FNs are table/chart-based; widening would add FPs without recovering TPs). Remaining gap is chart-pipeline.
+- `cm_revenue_by_cohort` — F1=31%, recall=23%. Wider-proximity was evaluated and rejected for this metric (FNs are table/chart-based; widening would add FPs without recovering TPs). Remaining gap is chart-pipeline. Phase 2 chart bridge in progress (2026-04-16).
 - `cm_balance_by_cohort` — F1=0%. GS exists (10 Robinhood rows); all FNs are chart-embedded. Phase 1 chart bridge delivered (2026-04-16); recall gap expected to close.
 - `cm_gross_margin_by_cohort` — F1=0%. GS exists (9 Farfetch rows); all FNs are chart images. Phase 1 chart bridge delivered (2026-04-16); recall gap expected to close.
-- `cm_ltv_to_cac_ratio` — F1=50% (updated 2026-04-16). `specific_patterns` confidence boost + `_WIDER_PROXIMITY_METRICS` membership landed in commits `dd5c90a`/`09a8f64`.
+- `cm_ltv_to_cac_ratio` — F1=50% (updated 2026-04-16). `specific_patterns` confidence boost + `_WIDER_PROXIMITY_METRICS` membership landed in commits `dd5c90a`/`09a8f64`. Phase 2 chart bridge in progress (2026-04-16).
 - `cm_customer_retention_rate` — F1=50%. GS thinness (1 row Chewy); retention family dedup and FP rules are conservative; no text fix available per pipeline investigation.
 
 Text-pipeline Tier 1 recall work concluded 2026-04-16 (commits dd5c90a, 09a8f64); remaining gaps are chart-pipeline.
+
+**Chart bridge extension point:** `_COHORT_GATE_EXEMPT` is a set of metric IDs in `ChartFactBridgeStage` that skip the cohort-structure check on series names. Add a metric to this set when its chart data does not follow vintage-year or elapsed-period conventions but should still be bridged (e.g., tenure bucket labels for `cm_ltv_to_cac_ratio`).
 
 **Tier 2 guidance:** Accept current performance. Simplify or relax FP rules for Tier 2 metrics if they create maintenance burden or interfere with Tier 1.
 

@@ -1,0 +1,19 @@
+{
+  "chart_type": "bar",
+  "title": "LTV to CAC Ratio by Customer Tenure",
+  "x_axis_label": "Customer Tenure",
+  "y_axis_label": "LTV to CAC Ratio (x)",
+  "series": [
+    {
+      "name": "All Customers",
+      "points": [
+        {"x": "< 1 Year", "y": 1.8, "label": "1.8x"},
+        {"x": "1-2 Years", "y": 2.9, "label": "2.9x"},
+        {"x": "2-3 Years", "y": 4.1, "label": "4.1x"},
+        {"x": "3-4 Years", "y": 5.6, "label": "5.6x"},
+        {"x": "4+ Years", "y": 7.4, "label": "7.4x"}
+      ]
+    }
+  ],
+  "annotations": []
+}

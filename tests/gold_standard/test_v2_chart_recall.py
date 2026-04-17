@@ -97,3 +97,57 @@ class TestChartFactBridgeRecall:
                 if cp is not None:
                     facts_count += 1
         assert facts_count >= 3, f"Expected >=3 parseable points, got {facts_count}"
+
+    # Phase 2 fixtures
+
+    def test_cart_classified_as_revenue_by_cohort(self) -> None:
+        chart = load_chart_data("CART_q1_fy2022_cohort_retention.chart_data.json")
+        classifier = ChartMetricClassifier()
+        metric_id, score = classifier.classify(chart, "")
+        assert metric_id == "cm_revenue_by_cohort", f"Expected cm_revenue_by_cohort, got {metric_id}"
+        assert score >= 0.6
+
+    def test_cart_cohort_parser_produces_facts(self) -> None:
+        chart = load_chart_data("CART_q1_fy2022_cohort_retention.chart_data.json")
+        parser = CohortParser()
+        filing_date = date(2023, 11, 13)
+        facts_count = 0
+        for series in chart.series:
+            for point in series.points:
+                cp = parser.parse(chart, series, point, filing_date)
+                if cp is not None:
+                    facts_count += 1
+        assert facts_count >= 7, f"Expected >=7 parseable points (elapsed-period regime), got {facts_count}"
+
+    def test_hood_revenue_classified_as_revenue_by_cohort(self) -> None:
+        chart = load_chart_data("HOOD_annual_revenue_by_cohort.chart_data.json")
+        classifier = ChartMetricClassifier()
+        metric_id, score = classifier.classify(chart, "")
+        assert metric_id == "cm_revenue_by_cohort", f"Expected cm_revenue_by_cohort, got {metric_id}"
+        assert score >= 0.6
+
+    def test_hood_revenue_cohort_parser_produces_facts(self) -> None:
+        chart = load_chart_data("HOOD_annual_revenue_by_cohort.chart_data.json")
+        parser = CohortParser()
+        filing_date = date(2021, 7, 28)
+        facts_count = 0
+        for series in chart.series:
+            for point in series.points:
+                cp = parser.parse(chart, series, point, filing_date)
+                if cp is not None:
+                    facts_count += 1
+        assert facts_count >= 5, f"Expected >=5 parseable points, got {facts_count}"
+
+    def test_curv_classified_as_ltv_to_cac_ratio(self) -> None:
+        chart = load_chart_data("CURV_ltv_cac_tenure.chart_data.json")
+        classifier = ChartMetricClassifier()
+        metric_id, score = classifier.classify(chart, "")
+        assert metric_id == "cm_ltv_to_cac_ratio", f"Expected cm_ltv_to_cac_ratio, got {metric_id}"
+        assert score >= 0.6
+
+    def test_ftch_revenue_split_classified_as_revenue_by_cohort(self) -> None:
+        chart = load_chart_data("FTCH_new_vs_existing_consumers.chart_data.json")
+        classifier = ChartMetricClassifier()
+        metric_id, score = classifier.classify(chart, "")
+        assert metric_id == "cm_revenue_by_cohort", f"Expected cm_revenue_by_cohort, got {metric_id}"
+        assert score >= 0.5

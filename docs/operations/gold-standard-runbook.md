@@ -140,3 +140,9 @@ python3 -m src.gold_standard.v2_validator --update-baseline \
 ```
 
 Then commit `data/gold_standard/v2_baseline.json` separately with message `chore(gold-standard): update v2 baseline for Phase N chart bridge delivery`.
+
+---
+
+## 8. Phase 2 Chart Fixture Recording Procedure
+
+Phase 2 fixtures are hand-authored JSON files in `tests/fixtures/charts/`. To add a new fixture: create `<NAME>.chart_data.json` matching the `ChartData` schema (`chart_type`, `title`, `x_axis_label`, `y_axis_label`, `series[]`, `annotations[]`). Series point values should represent what Vision OCR would return. No API calls required.
