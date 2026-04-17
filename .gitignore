@@ -24,6 +24,7 @@ env/
 *.json
 *.xlsx
 !package.json
+!tests/fixtures/**/*.json
 
 # Downloaded SEC filings (use scripts/download_fixtures.py to fetch)
 data/filings/

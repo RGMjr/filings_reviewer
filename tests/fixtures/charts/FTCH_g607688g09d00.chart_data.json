@@ -1,0 +1,39 @@
+{
+  "chart_type": "bar",
+  "title": "Contribution Margin by Cohort Year",
+  "x_axis_label": "Year of First Purchase",
+  "y_axis_label": "Contribution Margin as % of GMV",
+  "series": [
+    {
+      "name": "2013",
+      "points": [
+        {"x": "2013", "y": 12.5, "label": "12.5%"}
+      ]
+    },
+    {
+      "name": "2014",
+      "points": [
+        {"x": "2014", "y": 18.3, "label": "18.3%"}
+      ]
+    },
+    {
+      "name": "2015",
+      "points": [
+        {"x": "2015", "y": 22.7, "label": "22.7%"}
+      ]
+    },
+    {
+      "name": "2016",
+      "points": [
+        {"x": "2016", "y": 26.4, "label": "26.4%"}
+      ]
+    },
+    {
+      "name": "2017",
+      "points": [
+        {"x": "2017", "y": 19.8, "label": "19.8%"}
+      ]
+    }
+  ],
+  "annotations": []
+}

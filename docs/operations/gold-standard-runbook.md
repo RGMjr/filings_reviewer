@@ -127,3 +127,16 @@ Run before committing any extraction or keyword config change:
 ```bash
 python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline && python3 -m src.gold_standard.v2_validator && python3 scripts/validate_transcript_extraction.py --split tuning --baseline --verbose
 ```
+
+---
+
+## 7. Updating the Chart-Pipeline Baseline
+
+After Phase 1 or later chart-bridge work delivers new recall for chart-embedded metrics:
+
+```bash
+python3 -m src.gold_standard.v2_validator --update-baseline \
+  --description "Phase N: chart fact bridge for <metric_list>"
+```
+
+Then commit `data/gold_standard/v2_baseline.json` separately with message `chore(gold-standard): update v2 baseline for Phase N chart bridge delivery`.

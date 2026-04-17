@@ -182,12 +182,16 @@ class TestMetricFact:
             scope=Scope.COMPANY,
         )
         identity = fact.identity_tuple()
+        assert len(identity) == 9
         assert identity[0] == "net_revenue_retention"
         assert identity[1] == date(2023, 1, 1)
         assert identity[2] == date(2023, 12, 31)
         assert identity[3] == Unit.PERCENT
         assert identity[4] == 112.5  # Rounded to 2 decimal places
         assert identity[5] == Scope.COMPANY
+        assert identity[6] is None  # cohort_def
+        assert identity[7] is None  # customer_type
+        assert identity[8] == SourceType.TEXT  # source_type default
 
     def test_is_duplicate_of_exact_match(self) -> None:
         """Test duplicate detection for exact matches."""

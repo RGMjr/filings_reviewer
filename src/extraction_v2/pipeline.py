@@ -47,6 +47,7 @@ from src.extraction_v2.models import (
     Table,
 )
 from src.extraction_v2.stages.candidate_generation import CandidateGenerationStage
+from src.extraction_v2.stages.chart_fact_bridge import ChartFactBridgeStage
 from src.extraction_v2.stages.deduplication import DeduplicationStage
 from src.extraction_v2.stages.definition_extraction import DefinitionExtractionStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
@@ -76,6 +77,7 @@ class PipelineStage(str, Enum):
     TABLE_RECONSTRUCTION = "table_reconstruction"
     IMAGE_TRIAGE = "image_triage"
     OCR_CHART_EXTRACTION = "ocr_chart_extraction"
+    CHART_FACT_BRIDGE = "chart_fact_bridge"
     CANDIDATE_GENERATION = "candidate_generation"
     VALUE_BINDING = "value_binding"
     FALSE_POSITIVE_FILTER = "false_positive_filter"
@@ -131,6 +133,10 @@ class PipelineConfig:
     # Fiscal year configuration (for non-calendar fiscal years)
     fiscal_year_end_month: int | None = None  # e.g., 1 for January FYE
     fiscal_year_end_day: int | None = None  # e.g., 31 for Jan 31 FYE
+
+    # Chart fact bridge
+    enable_chart_fact_bridge: bool = True
+    chart_metric_classification_min_score: float = 0.6
 
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
@@ -365,6 +371,12 @@ class V2Pipeline:
                     PipelineStage.OCR_CHART_EXTRACTION,
                     OCRExtractionStage(sec_client=self._sec_client),
                 )
+            )
+
+        # Stage 5.5: Chart Fact Bridge
+        if self.config.enable_chart_fact_bridge:
+            self._stages.append(
+                (PipelineStage.CHART_FACT_BRIDGE, ChartFactBridgeStage())
             )
 
         # Stage 6: Metric Candidate Generation
