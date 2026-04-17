@@ -981,6 +981,7 @@ class IngestionStage:
                 html_path=str(context.html_path),
                 fiscal_year_end_month=context.config.fiscal_year_end_month,
                 fiscal_year_end_day=context.config.fiscal_year_end_day,
+                filing_date=context.document_date,
             )
             context.document = doc
 

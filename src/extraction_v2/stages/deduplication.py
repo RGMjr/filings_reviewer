@@ -150,7 +150,7 @@ class DeduplicationStage:
 
         # Pre-group by identity fields (excluding value) for O(n) bucketing
         identity_buckets: dict[
-            tuple[str, date | None, date | None, str, str, str, str],
+            tuple[str, date | None, date | None, str, str, str, str, str],
             list[MetricFact],
         ] = {}
         for fact in facts:
@@ -162,6 +162,7 @@ class DeduplicationStage:
                 fact.scope.value,
                 fact.cohort_def or "",
                 fact.customer_type or "",
+                fact.source_type.value,  # matches MetricFact.identity_tuple() and migration 23 unique index
             )
             identity_buckets.setdefault(bucket_key, []).append(fact)
 
@@ -251,13 +252,19 @@ class DeduplicationStage:
         # mention to get a customer_type label and another not. Excluding customer_type
         # lets these same-value duplicates merge; the most-specific label is then
         # promoted to the primary (see below).
-        buckets: dict[tuple[str, str, str, str], list[MetricFact]] = {}
+        # source_category (not full source_type) is used so that HTML_TABLE and TEXT
+        # facts for the same slot still merge here, while CHART facts remain separate.
+        # The primary _group_duplicates pass already keeps each source_type distinct on
+        # exact-period matches; fuzzy dedup only needs to distinguish chart from text sources.
+        buckets: dict[tuple[str, str, str, str, str], list[MetricFact]] = {}
         for fact in facts:
+            source_cat = "chart" if fact.source_type == SourceType.CHART else "text"
             bucket_key = (
                 fact.canonical_metric_id,
                 fact.unit.value,
                 fact.scope.value,
                 fact.cohort_def or "",
+                source_cat,
             )
             buckets.setdefault(bucket_key, []).append(fact)
 

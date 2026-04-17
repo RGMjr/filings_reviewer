@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import logging
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.extraction_v2.chart.cohort_parser import CohortParser
@@ -19,6 +20,21 @@ from src.extraction_v2.models import (
 
 if TYPE_CHECKING:
     from src.extraction_v2.pipeline import PipelineContext, StageResult
+
+logger = logging.getLogger(__name__)
+
+_CURRENCY_OR_COUNT_METRICS = frozenset({
+    "cm_revenue_by_cohort",
+    "cm_transactions_by_cohort",
+    "cm_balance_by_cohort",
+    # Add new currency/count cohort metrics here if the classifier targets them
+})
+
+
+def _annotation_compatible_with_metric(metric_id: str, ann: object) -> bool:
+    if getattr(ann, "unit", None) == "percent" and metric_id in _CURRENCY_OR_COUNT_METRICS:
+        return False
+    return True
 
 
 class ChartFactBridgeStage:
@@ -39,7 +55,20 @@ class ChartFactBridgeStage:
 
         classifier = ChartMetricClassifier()
         parser = CohortParser()
-        filing_date = context.document_date or date.today()
+        filing_date = context.document_date
+        if filing_date is None:
+            logger.warning(
+                "ChartFactBridgeStage: no document_date on context for filing_id=%s; skipping chart fact emission",
+                context.filing_id,
+            )
+            duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+            return StageResult(
+                stage=PipelineStage.CHART_FACT_BRIDGE,
+                success=True,
+                duration_ms=duration_ms,
+                items_processed=0,
+                items_output=0,
+            )
         doc_id = str(context.filing_id)
 
         items_processed = 0
@@ -67,7 +96,11 @@ class ChartFactBridgeStage:
                 if cohort_period is None:
                     continue
                 for ann in chart.annotations:
-                    value_raw = str(ann.value) if ann.value is not None else ""
+                    if ann.value is None:
+                        continue
+                    if not _annotation_compatible_with_metric(metric_id, ann):
+                        continue
+                    value_raw = str(ann.value)
                     fact = MetricFact(
                         fact_id=str(uuid.uuid4()),
                         doc_id=doc_id,
