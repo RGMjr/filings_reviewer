@@ -22,9 +22,6 @@ Usage:
     # Dry run (no database writes)
     python3 scripts/batch_v2_extraction.py --dry-run --limit 5
 
-    # Skip quality scoring
-    python3 scripts/batch_v2_extraction.py --skip-quality
-
     # Custom workers and batch size
     python3 scripts/batch_v2_extraction.py --workers 8 --batch-size 20
 """
@@ -160,7 +157,6 @@ def _process_filing_worker(
 
         from src.extraction_v2.persistence import V2PersistenceAdapter
         from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
-        from src.extraction_v2.quality_scoring import V2QualityScorer
         from src.infra.db import DatabaseAdapter
 
         # Resolve HTML path
@@ -279,21 +275,6 @@ def _process_filing_worker(
             " WHERE filing_id = %(filing_id)s",
             {"filing_id": filing_id},
         )
-
-        # Quality scoring
-        if not config_dict.get("skip_quality_scoring"):
-            try:
-                scorer = V2QualityScorer()
-                scores = scorer.score_filing(
-                    filing_id=filing_id,
-                    company_id=company_id,
-                    facts=result.facts,
-                    definitions=result.definitions,
-                    segments=result.segments,
-                )
-                adapter.persist_quality_scores(scores, filing_id)
-            except Exception as e:
-                _logger.warning(f"Quality scoring failed for filing {filing_id}: {e}")
 
         # Bridge v2_image_assets → image_review_candidates so new filings
         # automatically appear in the Images tab of the review UI.
@@ -476,7 +457,6 @@ class BatchV2Runner:
             "dry_run": self.config.dry_run,
             "no_images": self.config.no_images,
             "min_confidence": self.config.min_confidence,
-            "skip_quality_scoring": self.config.skip_quality_scoring,
         }
 
         last_filing_id = 0
@@ -632,7 +612,6 @@ def main() -> None:
         "--batch-size", type=int, default=10, help="Checkpoint interval in filings (default: 10)"
     )
     parser.add_argument("--dry-run", action="store_true", help="Run without persisting to database")
-    parser.add_argument("--skip-quality", action="store_true", help="Skip quality scoring")
     parser.add_argument("--no-images", action="store_true", help="Disable image extraction")
     parser.add_argument(
         "--min-confidence", type=float, default=0.90, help="Min confidence for auto-accept"
@@ -674,7 +653,6 @@ def main() -> None:
         dry_run=args.dry_run,
         resume_from=args.resume_from,
         limit=args.limit,
-        skip_quality_scoring=args.skip_quality,
         no_images=args.no_images,
         min_confidence=args.min_confidence,
         worker_timeout=args.worker_timeout,

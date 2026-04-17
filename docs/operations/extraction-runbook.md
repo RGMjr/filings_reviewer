@@ -85,6 +85,8 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 
 Use when: You need to re-segment without running LLM extraction (saves cost).
 
+> **Note (V1 workflow):** This procedure uses the V1 `source_segments` table. For V2 pipeline, re-run extraction via `batch_v2_extraction.py --filing-ids <FILING_ID>`.
+
 ```bash
 # 1. Delete old segments
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
@@ -92,7 +94,7 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
 
 # 2. Re-segment using Python
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" python3 << 'EOF'
-from src.extraction.html_segmenter import HTMLSegmenter
+from src.shared.html_segmenter import HTMLSegmenter
 from src.infra.db import DatabaseAdapter
 import os
 

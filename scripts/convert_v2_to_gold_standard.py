@@ -148,11 +148,7 @@ def _extract_source_quote(evidence_pack: Any) -> str:
             return ""
     if not isinstance(evidence_pack, dict):
         return ""
-    return (
-        evidence_pack.get("snippet_html")
-        or evidence_pack.get("context_before", "")
-        or ""
-    )
+    return evidence_pack.get("snippet_html") or evidence_pack.get("context_before", "") or ""
 
 
 def convert_decision_to_gold_row(
@@ -179,7 +175,11 @@ def convert_decision_to_gold_row(
 
     # Value: use corrected_value for corrections, else raw value from V2
     corrected_value = decision.get("corrected_value")
-    scaled_value = str(corrected_value) if corrected_value is not None else str(decision.get("value", "") or "")
+    scaled_value = (
+        str(corrected_value)
+        if corrected_value is not None
+        else str(decision.get("value", "") or "")
+    )
     raw_value = str(decision.get("value_raw", "") or "")
 
     unit = _map_unit(decision.get("unit"), decision.get("currency"))
@@ -191,7 +191,9 @@ def convert_decision_to_gold_row(
     source_type = str(decision.get("source_type", "") or "")
     segment_type = SOURCE_TYPE_MAP.get(source_type, source_type)
 
-    source_quote = _extract_source_quote(decision.get("evidence_pack") or decision.get("source_quote"))
+    source_quote = _extract_source_quote(
+        decision.get("evidence_pack") or decision.get("source_quote")
+    )
 
     definition = metric_defs.get(metric_id, "")
 
@@ -230,13 +232,8 @@ def load_gold_standard(path: Path) -> list[dict[str, str]]:
 def load_metric_definitions(db: Any) -> dict[str, str]:
     """Load metric_id → description mapping from the metrics table."""
     try:
-        rows = db.query("SELECT metric_id, description FROM metric_definitions")
+        rows = db.query("SELECT metric_id, description FROM metrics")
         return {r["metric_id"]: r.get("description", "") for r in rows}
-    except Exception:
-        pass
-    try:
-        rows = db.query("SELECT metric_id, name FROM metrics")
-        return {r["metric_id"]: r.get("name", "") for r in rows}
     except Exception:
         logger.debug("Could not load metric definitions from DB — definitions will be empty")
         return {}
@@ -313,15 +310,24 @@ def reconcile(
         if company not in v2_companies:
             # Not reviewed — keep as-is
             merged.extend(old_rows)
-            stats[company] = {"old": len(old_rows), "new": len(old_rows), "fn_kept": 0, "fn_lost": 0}
+            stats[company] = {
+                "old": len(old_rows),
+                "new": len(old_rows),
+                "fn_kept": 0,
+                "fn_lost": 0,
+            }
             continue
 
         if mode == "replace":
             if preserve_fn:
                 # Find existing entries for metrics V2 never touched (FNs)
                 # "V2 touched" = V2 had any decision (accept OR reject) for this metric
-                v2_metric_ids = {r["Standard Metric Name"] for r in v2_rows if r["Company"] == company}
-                fn_rows = [r for r in old_rows if r.get("Standard Metric Name", "") not in v2_metric_ids]
+                v2_metric_ids = {
+                    r["Standard Metric Name"] for r in v2_rows if r["Company"] == company
+                }
+                fn_rows = [
+                    r for r in old_rows if r.get("Standard Metric Name", "") not in v2_metric_ids
+                ]
                 out_rows = new_rows + fn_rows
                 stats[company] = {
                     "old": len(old_rows),
@@ -332,7 +338,8 @@ def reconcile(
             else:
                 out_rows = new_rows
                 fn_lost = sum(
-                    1 for r in old_rows
+                    1
+                    for r in old_rows
                     if r.get("Standard Metric Name", "")
                     not in {x["Standard Metric Name"] for x in new_rows}
                 )
@@ -351,7 +358,8 @@ def reconcile(
                 for r in old_rows
             }
             added = [
-                r for r in new_rows
+                r
+                for r in new_rows
                 if (r["Company"], r.get("Standard Metric Name", ""), r.get("period_end", ""))
                 not in existing_keys
             ]
@@ -370,7 +378,9 @@ def reconcile(
 def print_report(stats: dict[str, dict], v2_raw_counts: dict[str, dict]) -> None:
     """Print per-company reconciliation report."""
     print("\n=== Reconciliation Report ===\n")
-    print(f"{'Company':<35} {'Old':>5} {'Accept':>7} {'Reject':>7} {'Correct':>8} {'New':>5} {'FN kept':>8} {'FN lost':>8}")
+    print(
+        f"{'Company':<35} {'Old':>5} {'Accept':>7} {'Reject':>7} {'Correct':>8} {'New':>5} {'FN kept':>8} {'FN lost':>8}"
+    )
     print("-" * 95)
 
     total_old = total_new = total_fn_kept = total_fn_lost = 0
@@ -378,8 +388,8 @@ def print_report(stats: dict[str, dict], v2_raw_counts: dict[str, dict]) -> None
         s = stats[company]
         v2 = v2_raw_counts.get(company, {})
         print(
-            f"{company:<35} {s['old']:>5} {v2.get('accept',0):>7} {v2.get('reject',0):>7}"
-            f" {v2.get('correct',0):>8} {s['new']:>5} {s['fn_kept']:>8} {s['fn_lost']:>8}"
+            f"{company:<35} {s['old']:>5} {v2.get('accept', 0):>7} {v2.get('reject', 0):>7}"
+            f" {v2.get('correct', 0):>8} {s['new']:>5} {s['fn_kept']:>8} {s['fn_lost']:>8}"
         )
         total_old += s["old"]
         total_new += s["new"]
@@ -387,10 +397,14 @@ def print_report(stats: dict[str, dict], v2_raw_counts: dict[str, dict]) -> None
         total_fn_lost += s["fn_lost"]
 
     print("-" * 95)
-    print(f"{'TOTAL':<35} {total_old:>5} {'':<7} {'':<7} {'':<8} {total_new:>5} {total_fn_kept:>8} {total_fn_lost:>8}")
+    print(
+        f"{'TOTAL':<35} {total_old:>5} {'':<7} {'':<7} {'':<8} {total_new:>5} {total_fn_kept:>8} {total_fn_lost:>8}"
+    )
 
     if total_fn_lost:
-        print(f"\nWARNING: {total_fn_lost} existing FN entries will be removed (use --preserve-fn to keep them)")
+        print(
+            f"\nWARNING: {total_fn_lost} existing FN entries will be removed (use --preserve-fn to keep them)"
+        )
 
 
 def write_gold_standard(rows: list[dict[str, str]], output_path: Path) -> None:

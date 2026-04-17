@@ -468,6 +468,7 @@ class MetricClassifier:
 **Interface:**
 
 ```python
+# V1 only — src/extraction/ deleted in V2 migration
 from src.extraction.enricher_config import FormulaWeights
 
 class SegmentEnricher:

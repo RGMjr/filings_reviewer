@@ -4,7 +4,11 @@ As of 2026-04-08, V2 is the production extraction pipeline. This document tracks
 
 ## Already Removed
 
-**`filing_metric_incidence` (cross-write)** — V2 persistence layer formerly wrote to this V1 table "for analytics compatibility." Zero codebase readers were found (no `db.py` queries, no web routes, no scripts). The write was removed 2026-04-16; `V2PersistenceAdapter.persist_quality_scores()` is now a no-op stub.
+**`filing_metric_incidence` (cross-write)** — V2 persistence layer formerly wrote to this V1 table "for analytics compatibility." Zero codebase readers were found (no `db.py` queries, no web routes, no scripts). `V2PersistenceAdapter.persist_quality_scores()` converted to no-op stub 2026-04-17; table dropped by `sql/26_drop_filing_metric_incidence.sql`.
+
+**`metric_values`** — V1 extraction result storage. All consumers migrated to `v2_metric_facts`. Dropped by `sql/27_drop_v1_metric_tables.sql` (2026-04-17).
+
+**`metric_definitions` (V1)** — V1 per-filing extracted definitions. All consumers migrated to `v2_metric_definitions` or `metrics`. Dropped by `sql/27_drop_v1_metric_tables.sql` (2026-04-17).
 
 ## Remaining V1 Tables
 
@@ -47,10 +51,12 @@ As of 2026-04-08, V2 is the production extraction pipeline. This document tracks
 ### `suppressed_candidates` — LOW-MEDIUM difficulty
 
 **Consumers:**
-- `src/infra/db.py` — INSERT-only (suppression logging)
-- `src/review/helpers.py` — suppression writes
+- `src/infra/db.py` — INSERT-only (suppression logging via `_bulk_log_suppressed`)
+- `src/review/helpers.py` — suppression writes (invokes `bulk_insert_review_candidates(log_suppressed=True)`)
 
-**Migration path:** Straightforward — create `v2_suppressed_facts` table, update the 2–3 db.py methods, update helpers.
+**Note:** All writes are triggered by V1 candidate generation. Deferred to the `review_candidates` migration — migrating this table in isolation would create an empty replacement with no meaningful writer.
+
+**Migration path (deferred):** Create `v2_suppressed_facts` table keyed on V2 fact IDs; update `db.py:_bulk_log_suppressed` and `helpers.py`. Do alongside `review_candidates` migration.
 
 ---
 
