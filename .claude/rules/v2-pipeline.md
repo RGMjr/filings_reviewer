@@ -32,13 +32,17 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
 
 **Current Tier 1 recall gaps (focus areas):**
-- `cm_revenue_by_cohort` — F1=31%, recall=23%. Wider-proximity was evaluated and rejected for this metric (FNs are table/chart-based; widening would add FPs without recovering TPs). Remaining gap is chart-pipeline. Phase 2 chart bridge in progress (2026-04-16).
-- `cm_balance_by_cohort` — F1=0%. GS exists (10 Robinhood rows); all FNs are chart-embedded. Phase 1 chart bridge delivered (2026-04-16); recall gap expected to close.
-- `cm_gross_margin_by_cohort` — F1=0%. GS exists (9 Farfetch rows); all FNs are chart images. Phase 1 chart bridge delivered (2026-04-16); recall gap expected to close.
-- `cm_ltv_to_cac_ratio` — F1=50% (updated 2026-04-16). `specific_patterns` confidence boost + `_WIDER_PROXIMITY_METRICS` membership landed in commits `dd5c90a`/`09a8f64`. Phase 2 chart bridge in progress (2026-04-16).
-- `cm_customer_retention_rate` — F1=50%. GS thinness (1 row Chewy); retention family dedup and FP rules are conservative; no text fix available per pipeline investigation.
+- `cm_revenue_by_cohort` — F1=17% text-only (measured 2026-04-17 post-Phase-A+B, no chart extraction). Wider-proximity rejected (would add FPs without recovering TPs). FNs are chart-embedded; chart bridge ships correct facts in production but GS measurement requires adding `filing_date` to `metadata.json` for chart companies.
+- `cm_balance_by_cohort` — F1=0% text-only. GS: 10 HOOD rows, all chart-embedded. Chart bridge (Phase 1) correctly produces facts in production; GS validation blocked by `document_date=None` (see GS Limitation note below).
+- `cm_gross_margin_by_cohort` — F1=0% text-only. GS: 9 FTCH rows, all chart images. Same blocker as above.
+- `cm_ltv_to_cac_ratio` — F1=20% text-only (measured 2026-04-17). Chart bridge (Phase 2) adds tenure-bucket facts in production; GS doesn't capture chart bridge benefit. Text gap is `_WIDER_PROXIMITY_METRICS` + `specific_patterns` work (dd5c90a/09a8f64) captured 1/9 GS rows.
+
+**Resolved (no longer gaps):**
+- `cm_customer_retention_rate` — F1=100% (measured 2026-04-17); 1-row Chewy GS fully matched.
 
 Text-pipeline Tier 1 recall work concluded 2026-04-16 (commits dd5c90a, 09a8f64); remaining gaps are chart-pipeline.
+
+**GS Limitation — chart bridge inactive in GS runs:** `V2GoldStandardValidator.validate_all()` calls `pipeline.process(filing_id=0)` without `document_date`. Phase A2 correctly skips chart fact emission when no date is available (to preserve idempotency). Fix: add `"filing_date": "YYYY-MM-DD"` to each company's `data/gold_standard/{Company}/metadata.json` and update `v2_validator.py:458` to pass it as `document_date`.
 
 **Chart bridge extension point:** `_COHORT_GATE_EXEMPT` is a set of metric IDs in `src/extraction_v2/chart/metric_classifier.py` that skip the cohort-structure check on series names. Add a metric to this set when its chart data does not follow vintage-year or elapsed-period conventions but should still be bridged (e.g., tenure bucket labels for `cm_ltv_to_cac_ratio`).
 

@@ -1,7 +1,8 @@
 """
 V2 Extraction Pipeline Orchestrator.
 
-This module orchestrates the 12-stage extraction pipeline:
+This module orchestrates the 12-stage extraction pipeline, plus an optional
+Chart Fact Bridge that runs after validation when enable_chart_fact_bridge=True:
 
 1. Ingestion & Parsing         → Segments with XPath locators
 2. Section Classification      → MD&A, Risk Factors, etc.
@@ -15,6 +16,7 @@ This module orchestrates the 12-stage extraction pipeline:
 9. MetricFact Construction     → with evidence_pack
 10. Deduplication              → by identity tuple
 11. Validation & Review Routing → confidence-based
+12. Chart Fact Bridge (optional) → cohort facts from chart images
 
 Design principles:
 - Structure-first, LLM-second
@@ -148,6 +150,7 @@ class PipelineConfig:
             "document_type": DOC_TYPE_TRANSCRIPT,
             "enable_image_extraction": False,
             "enable_chart_extraction": False,
+            "enable_chart_fact_bridge": False,  # no chart data to bridge without chart extraction
             "text_proximity_chars": 400,
             "relaxed_fp_filter": True,
             "min_paragraph_chars": 30,
