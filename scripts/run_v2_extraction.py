@@ -243,6 +243,7 @@ def main():
             filing_id=filing["filing_id"],
             cik=str(filing.get("cik", "")),
             accession_number=filing.get("accession_number", ""),
+            document_date=filing.get("filing_date"),
         )
     except PipelineTimeoutError:
         print(

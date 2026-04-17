@@ -348,6 +348,51 @@ class TestMetricFact:
         assert not fact1.is_duplicate_of(fact2)
         assert not fact2.is_duplicate_of(fact1)
 
+    def test_is_duplicate_of_distinguishes_source_type(self) -> None:
+        """is_duplicate_of returns False when source_types differ (fix A1).
+
+        CHART and HTML_TABLE facts for the same metric slot are distinct records
+        in the migration-23 unique index and must not be treated as duplicates.
+        """
+        fact_chart = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=112.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+            source_type=SourceType.CHART,
+        )
+        fact_table = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=112.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+            source_type=SourceType.HTML_TABLE,
+        )
+        assert fact_chart.is_duplicate_of(fact_table) is False
+        assert fact_table.is_duplicate_of(fact_chart) is False
+
+    def test_is_duplicate_of_same_source_type_still_works(self) -> None:
+        """Regression guard: is_duplicate_of still returns True when source_type matches."""
+        fact1 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=112.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+            source_type=SourceType.HTML_TABLE,
+        )
+        fact2 = MetricFact(
+            canonical_metric_id="net_revenue_retention",
+            value=112.0,
+            unit=Unit.PERCENT,
+            period_start=date(2023, 1, 1),
+            period_end=date(2023, 12, 31),
+            source_type=SourceType.HTML_TABLE,
+        )
+        assert fact1.is_duplicate_of(fact2) is True
+
 
 class TestCell:
     """Tests for Cell dataclass."""

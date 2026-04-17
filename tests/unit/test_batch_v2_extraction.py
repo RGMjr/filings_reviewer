@@ -531,6 +531,7 @@ class TestProcessFilingWorkerHtmlFallback:
                     company_id=1,
                     cik="0001234",
                     accession_number="0001234-24-000001",
+                    filing_date=None,
                     db_url="postgresql://test/db",
                     config_dict={"dry_run": True},
                 )
@@ -555,6 +556,7 @@ class TestProcessFilingWorkerHtmlFallback:
                 company_id=1,
                 cik="0001234",
                 accession_number="0001234-24-000001",
+                filing_date=None,
                 db_url="postgresql://test/db",
                 config_dict={},
             )
@@ -579,6 +581,7 @@ class TestProcessFilingWorkerHtmlFallback:
                 company_id=1,
                 cik="0001234",
                 accession_number="0001234-24-000001",
+                filing_date=None,
                 db_url="postgresql://test/db",
                 config_dict={},
             )

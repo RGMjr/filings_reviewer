@@ -130,6 +130,7 @@ def _process_filing_worker(
     company_id: int,
     cik: str,
     accession_number: str,
+    filing_date: object,
     db_url: str,
     config_dict: dict,
 ) -> dict:
@@ -232,6 +233,7 @@ def _process_filing_worker(
             filing_id=filing_id,
             cik=cik,
             accession_number=accession_number,
+            document_date=filing_date,
         )
 
         duration_ms = int(time.time() * 1000) - start_ms
@@ -374,7 +376,7 @@ class BatchV2Runner:
 
         sql = f"""
             SELECT f.filing_id, f.accession_number, f.html_storage_path,
-                   c.company_name, c.company_id, c.cik
+                   f.filing_date, c.company_name, c.company_id, c.cik
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             {where_clause}
@@ -436,6 +438,7 @@ class BatchV2Runner:
             filing["company_id"],
             str(filing.get("cik", "")),
             str(filing.get("accession_number", "")),
+            filing.get("filing_date"),
             self.db_url,
             config_dict,
         )
@@ -688,7 +691,7 @@ def main() -> None:
         rows = db.query(
             """
             SELECT f.filing_id, f.accession_number, f.html_storage_path,
-                   c.company_name, c.company_id, c.cik
+                   f.filing_date, c.company_name, c.company_id, c.cik
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             WHERE f.filing_id = %(filing_id)s

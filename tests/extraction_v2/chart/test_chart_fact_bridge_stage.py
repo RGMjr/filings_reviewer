@@ -99,7 +99,7 @@ def test_marks_requires_review_for_annotations_only_facts() -> None:
     ann = ChartAnnotation(
         text="2019 cohort data",
         value=44.4,
-        unit="percent",
+        unit="billions",
         category="2019 Cohort",
         period="2019",
     )

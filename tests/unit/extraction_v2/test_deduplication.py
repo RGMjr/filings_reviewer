@@ -324,10 +324,12 @@ class TestAlternateEvidenceLinking:
     def test_primary_has_alternate_fact_ids(self) -> None:
         """Primary fact should have alternate fact_ids populated."""
         stage = DeduplicationStage()
+        # Both facts have the same source_type so they land in the same identity bucket
+        # and the higher-quality (higher confidence) one is chosen as primary.
         context = MockPipelineContext(
             facts=[
-                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE),
-                make_fact(fact_id="fact-2", source_type=SourceType.TEXT),
+                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE, confidence=0.9),
+                make_fact(fact_id="fact-2", source_type=SourceType.HTML_TABLE, confidence=0.7),
             ]
         )
 
@@ -341,11 +343,13 @@ class TestAlternateEvidenceLinking:
     def test_alternates_not_in_output(self) -> None:
         """Alternate facts should not be in output list."""
         stage = DeduplicationStage()
+        # All three facts share the same source_type so they collapse to one primary.
+        # source_type is now part of the identity key; cross-source-type facts are distinct.
         context = MockPipelineContext(
             facts=[
-                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE),
-                make_fact(fact_id="fact-2", source_type=SourceType.TEXT),
-                make_fact(fact_id="fact-3", source_type=SourceType.CHART),
+                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE, confidence=0.9),
+                make_fact(fact_id="fact-2", source_type=SourceType.HTML_TABLE, confidence=0.8),
+                make_fact(fact_id="fact-3", source_type=SourceType.HTML_TABLE, confidence=0.7),
             ]
         )
 
@@ -405,13 +409,15 @@ class TestEdgeCases:
         assert result.metadata["duplicates_removed"] == 0
 
     def test_three_way_duplicate(self) -> None:
-        """Three duplicates should produce one primary with two alternates."""
+        """Three duplicates (same source_type) produce one primary with two alternates."""
         stage = DeduplicationStage()
+        # source_type is now part of the identity key; all three must share the same
+        # source_type to be treated as duplicates within a single bucket.
         context = MockPipelineContext(
             facts=[
-                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE),
-                make_fact(fact_id="fact-2", source_type=SourceType.TEXT),
-                make_fact(fact_id="fact-3", source_type=SourceType.CHART),
+                make_fact(fact_id="fact-1", source_type=SourceType.HTML_TABLE, confidence=0.9),
+                make_fact(fact_id="fact-2", source_type=SourceType.HTML_TABLE, confidence=0.7),
+                make_fact(fact_id="fact-3", source_type=SourceType.HTML_TABLE, confidence=0.5),
             ]
         )
 
@@ -584,23 +590,31 @@ class TestFuzzyPeriodDedup:
     """Tests for _fuzzy_period_dedup second-pass deduplication."""
 
     def test_same_metric_value_overlapping_periods_merged(self) -> None:
-        """Same metric+value with overlapping periods should be merged into one."""
+        """Same metric+value+source_type with overlapping periods merged into one.
+
+        Note: fix A2 added source_type to the _fuzzy_period_dedup bucket key so that
+        CHART and text/table facts for the same slot are kept separate (they map to
+        distinct rows in the migration-23 unique index).  Within a single source_type,
+        fuzzy dedup still collapses overlapping-period duplicates.
+        """
         stage = DeduplicationStage()
-        # period_start/end slightly different but overlapping
+        # period_start/end slightly different but overlapping; same source_type
         facts = [
             make_fact(
-                fact_id="fact-table",
+                fact_id="fact-table-a",
                 metric_id="cm_average_order_value",
                 value=100.0,
                 source_type=SourceType.HTML_TABLE,
+                confidence=0.9,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
             ),
             make_fact(
-                fact_id="fact-text",
+                fact_id="fact-table-b",
                 metric_id="cm_average_order_value",
                 value=100.0,
-                source_type=SourceType.TEXT,
+                source_type=SourceType.HTML_TABLE,
+                confidence=0.7,
                 period_start=date(2024, 6, 1),
                 period_end=date(2024, 12, 31),
             ),
@@ -609,8 +623,8 @@ class TestFuzzyPeriodDedup:
         result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
 
         assert len(result) == 1
-        assert result[0].fact_id == "fact-table"  # HTML_TABLE preferred
-        assert "fact-text" in result[0].alternate_evidence
+        assert result[0].fact_id == "fact-table-a"  # higher confidence wins
+        assert "fact-table-b" in result[0].alternate_evidence
 
     def test_same_metric_value_non_overlapping_periods_kept_separate(self) -> None:
         """Same metric+value with non-overlapping periods should be kept separate."""
@@ -673,41 +687,52 @@ class TestFuzzyPeriodDedup:
         assert "fact-200" in result_ids
 
     def test_mix_of_exact_and_fuzzy_duplicates(self) -> None:
-        """Mix of exact and fuzzy period duplicates handled correctly in one pass."""
+        """Mix of within-source-type fuzzy dups and genuinely-distinct cross-year facts.
+
+        After identity dedup, we'd have primaries like these:
+        - aov-table-a: AOV 100 HTML_TABLE FY2024 (full year)
+        - aov-table-b: AOV 100 HTML_TABLE FY2024 (half-year overlap) — fuzzy dup, same source_type
+        - ltv-2024: LTV 50 HTML_TABLE 2024
+        - ltv-2023: LTV 50 HTML_TABLE 2023 — different year, keep separate
+
+        Note: fix A2 added source_type to the fuzzy-dedup bucket key. Cross-source-type
+        facts (HTML_TABLE vs TEXT) are NOT merged by this pass — they represent distinct
+        DB rows per migration-23's unique index. Within-source-type overlapping-period
+        duplicates are still merged.
+        """
         stage = DeduplicationStage()
-        # After identity dedup, we'd have primaries like these:
-        # fact-arr-table: ARR 100 from table (FY2024)
-        # fact-arr-text: ARR 100 from text (6-month overlap with FY2024) — fuzzy dup
-        # fact-mrr-a: MRR 50 (2024)
-        # fact-mrr-b: MRR 50 (2023) — different year, keep separate
         facts = [
             make_fact(
-                fact_id="fact-arr-table",
+                fact_id="fact-aov-a",
                 metric_id="cm_average_order_value",
                 value=100.0,
+                source_type=SourceType.HTML_TABLE,
+                confidence=0.9,
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-aov-b",
+                metric_id="cm_average_order_value",
+                value=100.0,
+                source_type=SourceType.HTML_TABLE,
+                confidence=0.7,
+                period_start=date(2024, 6, 1),
+                period_end=date(2024, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-ltv-2024",
+                metric_id="cm_lifetime_value_per_customer",
+                value=50.0,
                 source_type=SourceType.HTML_TABLE,
                 period_start=date(2024, 1, 1),
                 period_end=date(2024, 12, 31),
             ),
             make_fact(
-                fact_id="fact-arr-text",
-                metric_id="cm_average_order_value",
-                value=100.0,
-                source_type=SourceType.TEXT,
-                period_start=date(2024, 6, 1),
-                period_end=date(2024, 12, 31),
-            ),
-            make_fact(
-                fact_id="fact-mrr-2024",
+                fact_id="fact-ltv-2023",
                 metric_id="cm_lifetime_value_per_customer",
                 value=50.0,
-                period_start=date(2024, 1, 1),
-                period_end=date(2024, 12, 31),
-            ),
-            make_fact(
-                fact_id="fact-mrr-2023",
-                metric_id="cm_lifetime_value_per_customer",
-                value=50.0,
+                source_type=SourceType.HTML_TABLE,
                 period_start=date(2023, 1, 1),
                 period_end=date(2023, 12, 31),
             ),
@@ -715,34 +740,40 @@ class TestFuzzyPeriodDedup:
 
         result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
 
-        # ARR: 2 → 1 (fuzzy merged); MRR: 2 → 2 (different years, not merged)
+        # AOV: 2 → 1 (same source_type, fuzzy merged); LTV: 2 → 2 (different years)
         assert len(result) == 3
         result_ids = {f.fact_id for f in result}
-        assert "fact-arr-table" in result_ids  # primary
-        assert "fact-arr-text" not in result_ids  # absorbed as alternate
-        assert "fact-mrr-2024" in result_ids
-        assert "fact-mrr-2023" in result_ids
+        assert "fact-aov-a" in result_ids  # primary (higher confidence)
+        assert "fact-aov-b" not in result_ids  # absorbed as alternate
+        assert "fact-ltv-2024" in result_ids
+        assert "fact-ltv-2023" in result_ids
 
     def test_fuzzy_dedup_called_via_process(self) -> None:
-        """process() should call fuzzy period dedup as second pass."""
+        """process() should call fuzzy period dedup as second pass.
+
+        Two HTML_TABLE facts with same value but overlapping (not identical) periods
+        survive identity-based dedup (different periods → different identity tuples)
+        but are collapsed by the fuzzy pass.  Using same source_type ensures they land
+        in the same fuzzy bucket.
+        """
         stage = DeduplicationStage()
-        # Two ARR facts with same value but overlapping (not identical) periods
-        # Identity-based dedup won't catch this; fuzzy dedup should
         context = MockPipelineContext(
             facts=[
                 make_fact(
-                    fact_id="fact-table",
+                    fact_id="fact-table-a",
                     metric_id="cm_average_order_value",
                     value=100.0,
                     source_type=SourceType.HTML_TABLE,
+                    confidence=0.9,
                     period_start=date(2024, 1, 1),
                     period_end=date(2024, 12, 31),
                 ),
                 make_fact(
-                    fact_id="fact-text",
+                    fact_id="fact-table-b",
                     metric_id="cm_average_order_value",
                     value=100.0,
-                    source_type=SourceType.TEXT,
+                    source_type=SourceType.HTML_TABLE,
+                    confidence=0.7,
                     period_start=date(2024, 6, 1),
                     period_end=date(2024, 12, 31),
                 ),
@@ -771,7 +802,7 @@ class TestFuzzyPeriodDedup:
                 fact_id="fact-no-period",
                 metric_id="cm_average_order_value",
                 value=100.0,
-                source_type=SourceType.TEXT,
+                source_type=SourceType.HTML_TABLE,  # same source_type — testing fuzzy period dedup, not cross-source-type merging
                 period_start=None,
                 period_end=None,
             ),
@@ -1026,19 +1057,19 @@ class TestDeduplicationKeyNormalization:
             period_end=None,
             cohort_def=None,
         )
-        # B: TEXT, period=2024, cohort=None — same bucket as A after Fix 1b
+        # B: HTML_TABLE, period=2024, cohort=None — same bucket as A after Fix 1b (same source_type — testing fuzzy period dedup)
         fact_b = make_fact(
             fact_id="fact-b",
-            source_type=SourceType.TEXT,
+            source_type=SourceType.HTML_TABLE,
             confidence=0.6,
             period_start=date(2024, 1, 1),
             period_end=date(2024, 12, 31),
             cohort_def=None,
         )
-        # C: OCR_TABLE, period=2024, cohort="" — same bucket as A/B after Fix 1b
+        # C: HTML_TABLE, period=2024, cohort="" — same bucket as A/B after Fix 1b (same source_type — testing fuzzy period dedup)
         fact_c = make_fact(
             fact_id="fact-c",
-            source_type=SourceType.OCR_TABLE,
+            source_type=SourceType.HTML_TABLE,
             confidence=0.7,
             period_start=date(2024, 1, 1),
             period_end=date(2024, 12, 31),
@@ -1047,7 +1078,7 @@ class TestDeduplicationKeyNormalization:
 
         result = stage._fuzzy_period_dedup([fact_a, fact_b, fact_c], tolerance=0.02)
 
-        # All three collapse to one fact: A wins (HTML_TABLE), gets period from B/C,
+        # All three collapse to one fact: A wins (highest confidence), gets period from B/C,
         # and B and C appear in alternate_evidence.
         assert len(result) == 1
         winner = result[0]
@@ -1078,3 +1109,170 @@ class TestDeduplicationKeyNormalization:
         assert len(groups) == 2
         group_sizes = sorted(len(g) for g in groups)
         assert group_sizes == [1, 1]
+
+
+# ============================================================================
+# Source Type Identity Tests (Fix A1)
+# ============================================================================
+
+
+class TestSourceTypeInIdentityKey:
+    """Tests that source_type is part of the dedup identity key in BOTH passes.
+
+    Chart facts and text/table facts for the same metric slot must survive
+    deduplication as separate facts — source_type is now part of the bucket key
+    in both _group_duplicates (fix A1) and _fuzzy_period_dedup (fix A2), and is
+    included in migration 23's unique index.
+    """
+
+    def test_chart_and_text_facts_for_same_slot_both_survive_dedup(self) -> None:
+        """CHART and HTML_TABLE facts for the same metric slot both survive dedup.
+
+        Before fix A1 the _group_duplicates bucket key omitted source_type, so
+        the CHART fact would be dropped when an HTML_TABLE fact occupied the same slot.
+        """
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(
+                    fact_id="fact-chart",
+                    source_type=SourceType.CHART,
+                    value=100.0,
+                ),
+                make_fact(
+                    fact_id="fact-table",
+                    source_type=SourceType.HTML_TABLE,
+                    value=100.0,
+                ),
+            ]
+        )
+
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 2
+        surviving_source_types = {f.source_type for f in context.deduplicated_facts}
+        assert SourceType.CHART in surviving_source_types
+        assert SourceType.HTML_TABLE in surviving_source_types
+
+    def test_fuzzy_period_dedup_preserves_chart_and_table_facts_separately(self) -> None:
+        """_fuzzy_period_dedup must NOT collapse chart and table facts for the same slot.
+
+        Before fix A2 the _fuzzy_period_dedup bucket key omitted source_type, so a
+        CHART fact and an HTML_TABLE fact with the same metric+unit+scope+value would
+        land in the same bucket and be collapsed — the CHART fact would be lost.
+
+        With source_type in the key each source produces its own bucket, so both
+        facts survive.
+        """
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="fact-chart",
+                metric_id="cm_customers_period_end",
+                value=50000.0,
+                unit=Unit.COUNT,
+                source_type=SourceType.CHART,
+                confidence=0.85,
+                period_start=date(2023, 1, 1),
+                period_end=date(2023, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-table",
+                metric_id="cm_customers_period_end",
+                value=50000.0,
+                unit=Unit.COUNT,
+                source_type=SourceType.HTML_TABLE,
+                confidence=0.95,
+                period_start=date(2023, 1, 1),
+                period_end=date(2023, 12, 31),
+            ),
+        ]
+
+        result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
+
+        assert len(result) == 2
+        surviving_source_types = {f.source_type for f in result}
+        assert SourceType.CHART in surviving_source_types
+        assert SourceType.HTML_TABLE in surviving_source_types
+        # Neither fact should have absorbed the other as alternate_evidence
+        for fact in result:
+            assert fact.alternate_evidence == []
+
+    def test_fuzzy_period_dedup_same_source_type_still_collapses(self) -> None:
+        """_fuzzy_period_dedup still collapses two HTML_TABLE facts for the same slot.
+
+        Regression guard: the source_type-in-key fix must not prevent legitimate
+        within-source-type fuzzy deduplication.  Two HTML_TABLE facts with the same
+        metric+value and overlapping periods should still be merged into one.
+        """
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="fact-table-a",
+                metric_id="cm_customers_period_end",
+                value=50000.0,
+                unit=Unit.COUNT,
+                source_type=SourceType.HTML_TABLE,
+                confidence=0.95,
+                period_start=date(2023, 1, 1),
+                period_end=date(2023, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-table-b",
+                metric_id="cm_customers_period_end",
+                value=50000.0,
+                unit=Unit.COUNT,
+                source_type=SourceType.HTML_TABLE,
+                confidence=0.75,
+                period_start=date(2023, 6, 1),
+                period_end=date(2023, 12, 31),
+            ),
+        ]
+
+        result = stage._fuzzy_period_dedup(facts, tolerance=0.02)
+
+        assert len(result) == 1
+        assert result[0].fact_id == "fact-table-a"  # higher confidence wins
+        assert "fact-table-b" in result[0].alternate_evidence
+
+    def test_chart_and_table_both_survive_full_process(self) -> None:
+        """End-to-end: process() preserves CHART and HTML_TABLE for the same slot.
+
+        Exercises the complete dedup pipeline (identity pass + fuzzy pass) to confirm
+        a CHART and an HTML_TABLE fact for the same metric/period/value survive as two
+        separate output facts.
+        """
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(
+                    fact_id="fact-chart",
+                    metric_id="cm_customers_period_end",
+                    value=75000.0,
+                    unit=Unit.COUNT,
+                    source_type=SourceType.CHART,
+                    confidence=0.80,
+                    period_start=date(2022, 1, 1),
+                    period_end=date(2022, 12, 31),
+                ),
+                make_fact(
+                    fact_id="fact-table",
+                    metric_id="cm_customers_period_end",
+                    value=75000.0,
+                    unit=Unit.COUNT,
+                    source_type=SourceType.HTML_TABLE,
+                    confidence=0.95,
+                    period_start=date(2022, 1, 1),
+                    period_end=date(2022, 12, 31),
+                ),
+            ]
+        )
+
+        result = stage.process(context)
+
+        assert result.success
+        assert len(context.deduplicated_facts) == 2
+        assert result.metadata["duplicates_removed"] == 0
+        surviving_source_types = {f.source_type for f in context.deduplicated_facts}
+        assert SourceType.CHART in surviving_source_types
+        assert SourceType.HTML_TABLE in surviving_source_types

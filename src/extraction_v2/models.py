@@ -395,6 +395,8 @@ class MetricFact:
             return False
         if self.customer_type != other.customer_type:
             return False
+        if self.source_type != other.source_type:
+            return False
 
         # Value comparison with tolerance
         if self.value is None and other.value is None:
