@@ -293,6 +293,7 @@ def _shared_template_vars(active_tab='text', current_fact=_UNSET, existing_decis
         image_decisions=IMAGE_DECISIONS,
         review_statuses_images=IMAGE_REVIEW_STATUSES,
         sec_url='https://www.sec.gov/Archives/edgar/data/1234567/000123456725000001/',
+        next_filing_url='#',
     )
 
 
