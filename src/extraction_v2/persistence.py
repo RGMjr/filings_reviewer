@@ -649,6 +649,8 @@ class V2PersistenceAdapter:
             "alternate_evidence": fact.alternate_evidence or [],
             "primary_fact_id": None,  # Populated for alternate facts
             "pipeline_version": fact.pipeline_version,
+            "cross_source_confirmed": fact.cross_source_confirmed,
+            "confirming_source_types": fact.confirming_source_types or [],
         }
 
     def _persist_facts_in_tx(
@@ -676,7 +678,8 @@ class V2PersistenceAdapter:
                 scope, scope_detail, cohort_def, cohort_type, customer_type,
                 source_type, source_locator, evidence_pack,
                 confidence, extraction_method, requires_review, review_reason, review_status,
-                alternate_evidence, primary_fact_id, pipeline_version, created_at
+                alternate_evidence, primary_fact_id, pipeline_version, created_at,
+                cross_source_confirmed, confirming_source_types
             )
             VALUES (
                 %(fact_id)s, %(doc_id)s, %(canonical_metric_id)s,
@@ -685,7 +688,8 @@ class V2PersistenceAdapter:
                 %(scope)s, %(scope_detail)s, %(cohort_def)s, %(cohort_type)s, %(customer_type)s,
                 %(source_type)s, %(source_locator)s, %(evidence_pack)s,
                 %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_reason)s, %(review_status)s,
-                %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW()
+                %(alternate_evidence)s, %(primary_fact_id)s, %(pipeline_version)s, NOW(),
+                %(cross_source_confirmed)s, %(confirming_source_types)s
             )
         """
 

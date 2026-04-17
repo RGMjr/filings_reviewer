@@ -164,6 +164,19 @@ class TestMetricFact:
         assert fact.unit == Unit.PERCENT
         assert fact.confidence == 0.95
 
+    def test_cross_source_confirmation_defaults(self) -> None:
+        """cross_source_confirmed and confirming_source_types default to safe values."""
+        fact = MetricFact()
+        assert fact.cross_source_confirmed is False
+        assert fact.confirming_source_types == []
+
+    def test_cross_source_confirmation_fields_independent(self) -> None:
+        """confirming_source_types list is not shared between instances."""
+        fact1 = MetricFact()
+        fact2 = MetricFact()
+        fact1.confirming_source_types.append("chart")
+        assert fact2.confirming_source_types == []
+
     def test_fact_id_auto_generated(self) -> None:
         """Test that fact_id is auto-generated."""
         fact1 = MetricFact()

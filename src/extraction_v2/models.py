@@ -342,6 +342,10 @@ class MetricFact:
     # Deduplication
     alternate_evidence: list[str] = field(default_factory=list)  # Other fact_ids
 
+    # Cross-source confirmation
+    cross_source_confirmed: bool = False
+    confirming_source_types: list[str] = field(default_factory=list)
+
     # Metadata
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     pipeline_version: str = "2.0.0"
