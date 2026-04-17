@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Backfill the PostgreSQL image_cache table from image_review_candidates.
+Backfill the PostgreSQL image_cache table from v2_image_assets.
 
 Fetches all known images from SEC EDGAR and stores them in the image_cache table
 so they persist across Render redeploys. Skips images already cached. Idempotent —
@@ -38,15 +38,18 @@ logger = logging.getLogger(__name__)
 
 def get_image_candidates(db: DatabaseAdapter, limit: int | None = None) -> list[dict]:
     """
-    Get all distinct images from image_review_candidates, joined to filings for cik/accession_number.
+    Get all distinct images from v2_image_assets, joined to filings for cik/accession_number.
 
-    Returns list of dicts with: image_src, cik, accession_number
+    Returns list of dicts with keys: image_src, cik, accession_number.
+    Excludes decorative/logo/signature classes — those aren't served to the UI.
     """
     sql = """
-        SELECT DISTINCT irc.image_src, f.cik, f.accession_number
-        FROM image_review_candidates irc
-        JOIN filings f ON irc.filing_id = f.filing_id
-        ORDER BY f.cik, f.accession_number, irc.image_src
+        SELECT DISTINCT v.filename AS image_src, f.cik, f.accession_number
+        FROM v2_image_assets v
+        JOIN filings f ON v.doc_id = f.filing_id
+        WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
+          AND v.filename IS NOT NULL AND v.filename != ''
+        ORDER BY f.cik, f.accession_number, v.filename
     """
     if limit is not None:
         sql += f" LIMIT {limit}"
@@ -55,7 +58,7 @@ def get_image_candidates(db: DatabaseAdapter, limit: int | None = None) -> list[
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Backfill image_cache table from image_review_candidates",
+        description="Backfill image_cache table from v2_image_assets",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )

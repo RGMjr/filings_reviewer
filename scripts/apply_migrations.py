@@ -6,8 +6,8 @@ Tracks applied migrations in a schema_migrations ledger table. Skips already-app
 migrations. Raises on checksum mismatch to prevent silent schema drift.
 
 Usage:
-    python3 scripts/apply_migrations.py          # Uses DATABASE_URL
-    python3 scripts/apply_migrations.py --test    # Uses TEST_DATABASE_URL
+    python3 scripts/apply_migrations.py          # Uses DATABASE_URL (required)
+    python3 scripts/apply_migrations.py --test    # Uses TEST_DATABASE_URL (required)
     python3 scripts/apply_migrations.py --dry-run # Print what would be applied
 """
 
@@ -17,6 +17,10 @@ import logging
 import os
 import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -60,6 +64,9 @@ MIGRATIONS = [
     "23_chart_source_dedup.sql",
     "24_add_part_of_date_rejection_category.sql",
     "25_cross_source_confirmation.sql",
+    "28_extend_v2_image_assets_review.sql",
+    "29_create_v2_image_review_decisions.sql",
+    "30_drop_v1_image_review.sql",
 ]
 
 BOOTSTRAP_DDL = """
@@ -156,9 +163,10 @@ def main():
             sys.exit(1)
         logger.info("Using TEST_DATABASE_URL")
     else:
-        db_url = os.getenv(
-            "DATABASE_URL", "postgresql://localhost/filings_analysis"
-        )
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            logger.error("DATABASE_URL environment variable not set")
+            sys.exit(1)
 
     db = DatabaseAdapter(db_url)
     sql_dir = Path(__file__).parent.parent / "sql"

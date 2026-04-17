@@ -79,10 +79,10 @@ class TestAPIAuthentication:
         assert response.status_code == 400
 
     def test_image_api_requires_auth(self, client_with_auth):
-        """Image API routes should also require authentication."""
+        """V2 image API routes should also require authentication."""
         response = client_with_auth.post(
-            "/api/image-decisions",
-            json={"image_candidate_id": 1, "decision": "relevant"},
+            "/api/v2/image-decisions",
+            json={"img_id": "00000000-0000-0000-0000-000000000000", "decision": "relevant"},
         )
         assert response.status_code == 401
 

@@ -37,7 +37,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 
 OUTPUT_COLUMNS = [
-    "image_candidate_id",
+    "img_id",
     "filing_id",
     "company",
     "accession_number",
@@ -58,17 +58,14 @@ OUTPUT_COLUMNS = [
 
 def format_decision_row(decision: dict, company_name: str) -> dict:
     """
-    Format a decision record into the output schema.
+    Format a V2 decision record into the output schema.
 
-    Args:
-        decision: Decision row from database query
-        company_name: Company name
-
-    Returns:
-        Dict with output columns
+    The V2 DB projection (v2_image_assets join v2_image_review_decisions) already
+    provides V1-shape aliases (`image_src`, `image_width`, `cohort_confidence`,
+    derived `detection_tier`, etc.), so this mapper is mostly pass-through.
     """
     return {
-        "image_candidate_id": decision.get("image_candidate_id"),
+        "img_id": str(decision.get("img_id") or ""),
         "filing_id": decision.get("filing_id"),
         "company": company_name,
         "accession_number": decision.get("accession_number", ""),
@@ -83,8 +80,22 @@ def format_decision_row(decision: dict, company_name: str) -> dict:
         "rejection_reason": decision.get("rejection_reason", ""),
         "reviewer_notes": decision.get("reviewer_notes", ""),
         "review_time_seconds": decision.get("review_time_seconds", ""),
-        "decision_date": str(decision.get("created_at", ""))[:10],
+        "decision_date": str(decision.get("decision_created_at", ""))[:10],
     }
+
+
+# Tier-derivation CASE mirrors derive_detection_tier in src/shared/image_features.py
+_DETECTION_TIER_SQL = """
+    CASE
+        WHEN v.classification = 'chart' AND v.relevance_score >= 0.6
+            THEN 'tier_1_cohort'
+        WHEN v.classification IN ('chart', 'table_image')
+             AND COALESCE(v.width, 0) >= 300
+             AND COALESCE(v.height, 0) >= 300
+            THEN 'tier_2_large'
+        ELSE 'tier_3_all'
+    END
+"""
 
 
 def export_decisions(
@@ -94,62 +105,60 @@ def export_decisions(
     detection_tier: str | None = None,
 ) -> list[dict]:
     """
-    Export image review decisions from database.
+    Export V2 image review decisions from database.
 
-    Args:
-        db: Database adapter
-        status: Filter by decision status ('relevant', 'not_relevant', None/'all' for all)
-        filing_id: Filter to specific filing
-        detection_tier: Filter by detection tier
-
-    Returns:
-        List of formatted decision dicts
+    Status filter matches decision (relevant/not_relevant). Detection tier filter
+    rederives the tier from v2_image_assets.classification + relevance_score +
+    dimensions (the same rule the UI uses).
     """
     conditions = []
     params: dict[str, Any] = {}
 
     if status and status != "all":
         if status == "relevant":
-            conditions.append("ird.decision = 'relevant'")
+            conditions.append("d.decision = 'relevant'")
         elif status == "not_relevant":
-            conditions.append("ird.decision = 'not_relevant'")
+            conditions.append("d.decision = 'not_relevant'")
 
     if filing_id:
-        conditions.append("irc.filing_id = %(filing_id)s")
+        conditions.append("v.doc_id = %(filing_id)s")
         params["filing_id"] = filing_id
 
     if detection_tier:
-        conditions.append("irc.detection_tier = %(detection_tier)s")
+        conditions.append(f"{_DETECTION_TIER_SQL} = %(detection_tier)s")
         params["detection_tier"] = detection_tier
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     query = f"""
         SELECT
-            ird.image_decision_id,
-            ird.image_candidate_id,
-            ird.decision,
-            ird.chart_type,
-            ird.rejection_reason,
-            ird.reviewer_notes,
-            ird.reviewer_id,
-            ird.review_time_seconds,
-            ird.created_at,
-            irc.filing_id,
-            irc.image_src,
-            irc.image_url,
-            irc.image_width,
-            irc.image_height,
-            irc.detection_tier,
-            irc.cohort_confidence,
+            d.image_decision_id,
+            v.img_id,
+            d.decision,
+            d.chart_type,
+            d.rejection_reason,
+            d.reviewer_notes,
+            d.reviewer_id,
+            d.review_time_seconds,
+            d.created_at AS decision_created_at,
+            v.doc_id AS filing_id,
+            v.filename AS image_src,
+            'https://www.sec.gov/Archives/edgar/data/'
+                || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
+                || '/' || REPLACE(f.accession_number, '-', '')
+                || '/' || v.filename AS image_url,
+            v.width AS image_width,
+            v.height AS image_height,
+            {_DETECTION_TIER_SQL} AS detection_tier,
+            v.relevance_score AS cohort_confidence,
             f.accession_number,
             c.company_name
-        FROM image_review_decisions ird
-        JOIN image_review_candidates irc ON ird.image_candidate_id = irc.image_candidate_id
-        JOIN filings f ON irc.filing_id = f.filing_id
-        JOIN companies c ON irc.company_id = c.company_id
+        FROM v2_image_review_decisions d
+        JOIN v2_image_assets v ON v.img_id = d.img_id
+        JOIN filings f ON v.doc_id = f.filing_id
+        JOIN companies c ON f.company_id = c.company_id
         {where_clause}
-        ORDER BY c.company_name, ird.created_at
+        ORDER BY c.company_name, d.created_at
     """
 
     rows = db.query(query, params)

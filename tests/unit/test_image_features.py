@@ -7,8 +7,95 @@ from src.shared.image_features import (
     FEATURE_NAMES,
     SEMANTIC_CATEGORIES,
     count_semantic_terms,
+    derive_detection_tier,
     engineer_features,
+    v2_row_to_features_input,
 )
+
+# ---------------------------------------------------------------------------
+# derive_detection_tier
+# ---------------------------------------------------------------------------
+# Tier mapping logic previously lived inside bridge_v2_images_to_review_candidates.
+# After B4 (bridge retired) the helper is the authoritative source of truth used
+# by both the V2 DB projection and the ML scorer feature adapter.
+
+
+def test_derive_tier_chart_high_relevance_is_tier_1():
+    assert derive_detection_tier("chart", 0.7, 100, 100) == "tier_1_cohort"
+
+
+def test_derive_tier_chart_at_boundary_is_tier_1():
+    assert derive_detection_tier("chart", 0.6, 100, 100) == "tier_1_cohort"
+
+
+def test_derive_tier_chart_below_boundary_large_dims_is_tier_2():
+    assert derive_detection_tier("chart", 0.4, 400, 400) == "tier_2_large"
+
+
+def test_derive_tier_table_image_large_dims_is_tier_2():
+    assert derive_detection_tier("table_image", 0.3, 500, 300) == "tier_2_large"
+
+
+def test_derive_tier_small_chart_is_tier_3():
+    assert derive_detection_tier("chart", 0.3, 200, 200) == "tier_3_all"
+
+
+def test_derive_tier_unknown_classification_is_tier_3():
+    assert derive_detection_tier("unknown", 0.2, 100, 100) == "tier_3_all"
+
+
+def test_derive_tier_table_image_small_dims_is_tier_3():
+    assert derive_detection_tier("table_image", 0.4, 100, 100) == "tier_3_all"
+
+
+def test_derive_tier_handles_nulls():
+    assert derive_detection_tier(None, None, None, None) == "tier_3_all"
+
+
+# ---------------------------------------------------------------------------
+# v2_row_to_features_input
+# ---------------------------------------------------------------------------
+
+
+def test_v2_adapter_synthesizes_v1_shape():
+    row = {
+        "filename": "chart.jpg",
+        "nearby_text": "Our cohort retention",
+        "classification": "chart",
+        "relevance_score": 0.8,
+        "width": 600,
+        "height": 400,
+    }
+    features = v2_row_to_features_input(row)
+    assert features["cohort_confidence"] == 0.8
+    assert features["cohort_keyword_nearby"] == 1  # rel >= 0.6
+    assert features["keyword_count"] == 0  # V2 drops detected_keywords
+    assert features["text_length"] == len("Our cohort retention")
+    assert features["has_dimensions"] == 1
+    assert features["image_area"] == 600 * 400
+    assert features["classification"] == "chart"
+    assert features["detection_tier"] == "tier_1_cohort"
+    assert features["filename"] == "chart.jpg"
+    assert features["source"] == "sec"
+
+
+def test_v2_adapter_low_relevance_cohort_keyword_nearby_is_zero():
+    row = {
+        "filename": "chart.jpg", "classification": "chart",
+        "relevance_score": 0.3, "width": 100, "height": 100,
+    }
+    assert v2_row_to_features_input(row)["cohort_keyword_nearby"] == 0
+
+
+def test_v2_adapter_handles_missing_fields():
+    features = v2_row_to_features_input({})
+    assert features["cohort_confidence"] == 0.0
+    assert features["has_dimensions"] == 0
+    assert features["image_area"] == 0.0
+    assert features["filename"] == ""
+
+
+
 
 # ---------------------------------------------------------------------------
 # count_semantic_terms

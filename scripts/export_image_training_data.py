@@ -74,69 +74,77 @@ OUTPUT_COLUMNS = [
 
 SEC_QUERY = """
     SELECT
-        ird.image_candidate_id,
-        ird.decision,
-        ird.chart_type,
-        ird.rejection_reason,
-        irc.image_src,
-        irc.image_url,
-        irc.image_width,
-        irc.image_height,
-        irc.image_alt,
-        irc.preceding_text,
-        irc.detected_keywords,
-        irc.cohort_keyword_nearby,
-        irc.image_index,
-        irc.cohort_confidence,
-        irc.detection_tier,
+        d.image_decision_id,
+        v.img_id,
+        d.decision,
+        d.chart_type,
+        d.rejection_reason,
+        v.filename,
+        v.width,
+        v.height,
+        v.nearby_text,
+        v.classification,
+        v.section_type,
+        v.relevance_score,
         f.accession_number,
-        c.company_name
-    FROM image_review_decisions ird
-    JOIN image_review_candidates irc ON ird.image_candidate_id = irc.image_candidate_id
-    JOIN filings f ON irc.filing_id = f.filing_id
-    JOIN companies c ON irc.company_id = c.company_id
-    ORDER BY c.company_name, irc.image_candidate_id
+        c.company_name,
+        'https://www.sec.gov/Archives/edgar/data/'
+            || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
+            || '/' || REPLACE(f.accession_number, '-', '')
+            || '/' || v.filename AS image_url
+    FROM v2_image_review_decisions d
+    JOIN v2_image_assets v ON v.img_id = d.img_id
+    JOIN filings f ON v.doc_id = f.filing_id
+    JOIN companies c ON f.company_id = c.company_id
+    ORDER BY c.company_name, v.img_id
 """
 
 
 def export_sec_rows(db) -> list[dict]:
+    """
+    Export V2 SEC image decisions for training.
+
+    V2 does not persist V1's `detected_keywords[]` or `cohort_keyword_nearby`.
+    Synthesize both from V2 fields using the same heuristic the runtime scorer uses:
+      - cohort_keyword_nearby = 1 if relevance_score >= 0.6 (matches bridge logic)
+      - detected_keywords is an empty list (model compensates via semantic text features)
+    """
+    from src.shared.image_features import derive_detection_tier
+
     rows = db.query(SEC_QUERY)
     out = []
     for r in rows:
-        w = r.get("image_width")
-        h = r.get("image_height")
+        w = r.get("width")
+        h = r.get("height")
         has_dim = w is not None and h is not None
         area = (w * h) if has_dim else 0
         aspect = (w / h) if (has_dim and h > 0) else 0.0
 
-        keywords = r.get("detected_keywords") or []
-        # psycopg returns TEXT[] as a Python list
-        if isinstance(keywords, str):
-            keywords = [k.strip() for k in keywords.strip("{}").split(",") if k.strip()]
+        nearby = r.get("nearby_text") or ""
+        relevance = float(r.get("relevance_score") or 0.0)
 
-        preceding = r.get("preceding_text") or ""
         out.append({
-            "image_id": f"sec:{r['image_candidate_id']}",
+            "image_id": f"sec:{r['img_id']}",
             "source": "sec",
             "company": r.get("company_name", ""),
             "filing_key": r.get("accession_number", ""),
-            "filename": r.get("image_src", ""),
+            "filename": r.get("filename", ""),
             "image_url": r.get("image_url", ""),
             "width": w if w is not None else "",
             "height": h if h is not None else "",
             "has_dimensions": int(has_dim),
             "image_area": area,
             "aspect_ratio": round(aspect, 4),
-            "cohort_keyword_nearby": int(bool(r.get("cohort_keyword_nearby"))),
-            "keyword_count": len(keywords),
-            "detected_keywords": ",".join(keywords),
-            "preceding_text": preceding,
-            "text_length": len(preceding),
-            "cohort_confidence": r.get("cohort_confidence") or 0.0,
-            "detection_tier": r.get("detection_tier", ""),
-            "classification": "",   # not stored in DB for SEC images
-            "section_type": "",
-            "image_index": r.get("image_index") or "",
+            "cohort_keyword_nearby": int(relevance >= 0.6),
+            "keyword_count": 0,
+            "detected_keywords": "",
+            "preceding_text": nearby,
+            "text_length": len(nearby),
+            "cohort_confidence": relevance,
+            "detection_tier": derive_detection_tier(r.get("classification"), relevance, w, h),
+            "classification": (r.get("classification") or "").lower(),
+            "section_type": r.get("section_type", "") or "",
+            "image_index": "",  # V2 does not store image_index
             "decision": r.get("decision", ""),
             "chart_type": r.get("chart_type") or "",
             "rejection_reason": r.get("rejection_reason") or "",
