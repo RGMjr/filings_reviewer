@@ -365,14 +365,14 @@ def review_filing(filing_id: int):
         # Image tab data (always loaded — needed for progress counts)
         # ---------------------------------------------------------------
 
-        all_image_candidates = db.get_image_review_candidates_for_filing(
+        all_image_candidates = db.get_image_review_candidates_for_filing_v2(
             filing_id=filing_id, limit=1000
         )
 
         image_status = request.args.get("image_status", "all")
         db_image_status = image_status if image_status in IMAGE_REVIEW_STATUSES else None
 
-        image_candidates = db.get_image_review_candidates_for_filing(
+        image_candidates = db.get_image_review_candidates_for_filing_v2(
             filing_id=filing_id,
             status=db_image_status,
             sort_by="relevance",
@@ -380,7 +380,7 @@ def review_filing(filing_id: int):
         )
 
         current_image = _select_current_image(
-            image_candidates, request.args.get("image_candidate_id", type=int)
+            image_candidates, request.args.get("img_id")
         )
 
         # Image progress counts
@@ -505,10 +505,12 @@ def next_filing():
 @review_unified_bp.route("/image_crop/<img_id>")
 def image_crop(img_id: str) -> Response:
     """
-    Serve a cropped region of a chart image stored on disk.
+    Serve a chart image (full or cropped) stored on disk.
 
-    Query params: x, y, w, h (integers, pixel coordinates).
-    Returns PNG bytes for the cropped region.
+    Query params: x, y, w, h (integers, pixel coordinates). When w or h is
+    missing/0, returns the full image instead of cropping — Vision GPT-4o
+    does not populate per-DataPoint bbox, so most chart-sourced facts can
+    only link back to the whole chart image.
 
     Security: file_path is validated against the project data/ directory
     before opening to prevent path traversal.
@@ -550,13 +552,16 @@ def image_crop(img_id: str) -> Response:
 
     try:
         img = Image.open(resolved)
-        cropped = img.crop((x, y, x + w, y + h))
+        if w > 0 and h > 0:
+            output = img.crop((x, y, x + w, y + h))
+        else:
+            output = img
         buf = io.BytesIO()
-        cropped.save(buf, format="PNG")
+        output.save(buf, format="PNG")
         buf.seek(0)
         return Response(buf.read(), mimetype="image/png")
     except Exception as exc:
-        logger.error("image_crop: failed to crop img_id=%s: %s", img_id, exc)
+        logger.error("image_crop: failed to serve img_id=%s: %s", img_id, exc)
         abort(500)
 
 
@@ -629,15 +634,17 @@ def _build_sec_directory_url(cik: str, accession_number: str) -> str:
     return f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{acc_no_dashes}/"
 
 
-def _select_current_image(candidates: list[dict], requested_id: int | None) -> dict | None:
-    """Select current image candidate. Same logic as _select_current_candidate in review_images.py."""
+def _select_current_image(candidates: list[dict], requested_img_id: str | None) -> dict | None:
+    """Select current image from V2 candidate list by img_id (UUID string)."""
     if not candidates:
         return None
-    if requested_id:
-        current = next((c for c in candidates if c["image_candidate_id"] == requested_id), None)
+    if requested_img_id:
+        current = next(
+            (c for c in candidates if str(c["img_id"]) == str(requested_img_id)), None
+        )
         if current:
             return current
-        flash("Candidate not found, showing first pending", "warning")
+        flash("Image not found, showing first pending", "warning")
     return next(
         (c for c in candidates if c["review_status"] == "pending"),
         candidates[0] if candidates else None,
