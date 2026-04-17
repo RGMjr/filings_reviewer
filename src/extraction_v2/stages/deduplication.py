@@ -53,6 +53,7 @@ class DeduplicationStage:
             value_tolerance: Tolerance for value comparison (default 2%)
         """
         self.value_tolerance = value_tolerance
+        self._last_post_transfer_collisions: int = 0
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -119,6 +120,7 @@ class DeduplicationStage:
                     "groups_with_alternates": groups_with_alternates,
                     "total_groups": len(groups),
                     "fuzzy_period_removed": fuzzy_removed,
+                    "post_transfer_collisions": self._last_post_transfer_collisions,
                 },
             )
         except V2FatalError:
@@ -310,9 +312,11 @@ class DeduplicationStage:
                     result.append(group[0])
                 else:
                     primary = self._select_primary(group)
-                    # Transfer period from a period-having fact when primary lacks period.
-                    # This preserves period data when a higher-quality source (e.g. HTML_TABLE)
-                    # is merged with a lower-quality source that has period context (e.g. TEXT).
+                    # Transfer period/customer_type from group members onto the primary when
+                    # the primary lacks those fields.  These mutations can cause two surviving
+                    # primaries (from different value_groups) to end up with identical identity
+                    # tuples — those post-transfer collisions are resolved by
+                    # _collapse_post_transfer_collisions, called after this loop.
                     if not (primary.period_start and primary.period_end):
                         period_donors = [
                             f for f in group
@@ -340,6 +344,14 @@ class DeduplicationStage:
                     result.append(primary)
                     removed += len(group) - 1
 
+        result, post_transfer_collisions = self._collapse_post_transfer_collisions(result)
+        self._last_post_transfer_collisions = post_transfer_collisions
+        if post_transfer_collisions > 0:
+            logger.info(
+                "Post-transfer collision collapse: merged %d colliding primaries",
+                post_transfer_collisions,
+            )
+
         if removed > 0:
             logger.info(
                 "Fuzzy period dedup: removed %d duplicate-value facts (%d → %d)",
@@ -349,6 +361,54 @@ class DeduplicationStage:
             )
 
         return result
+
+    def _collapse_post_transfer_collisions(
+        self, primaries: list[MetricFact]
+    ) -> tuple[list[MetricFact], int]:
+        """
+        Resolve identity-tuple collisions introduced by the period-transfer and
+        customer_type-promotion mutations in _fuzzy_period_dedup. Winners are
+        selected via _select_primary; losers are linked as alternate_evidence.
+
+        The DB unique index (sql/23_chart_source_dedup.sql) enforces uniqueness on
+        (doc_id, metric, period_start, period_end, unit, scope, cohort_def,
+        customer_type, source_type). Two facts sharing all of these — even with
+        different values — cannot coexist and must be collapsed here before INSERT.
+        """
+        buckets: dict[tuple, list[MetricFact]] = {}
+        for fact in primaries:
+            key = (
+                fact.canonical_metric_id,
+                fact.period_start,
+                fact.period_end,
+                fact.unit.value,
+                fact.scope.value,
+                fact.cohort_def or "",
+                fact.customer_type or "",
+                fact.source_type.value,
+            )
+            buckets.setdefault(key, []).append(fact)
+
+        result: list[MetricFact] = []
+        collisions = 0
+        for bucket in buckets.values():
+            if len(bucket) == 1:
+                result.append(bucket[0])
+                continue
+            winner = self._select_primary(bucket)
+            new_ids: list[str] = []
+            for loser in bucket:
+                if loser.fact_id == winner.fact_id:
+                    continue
+                new_ids.append(loser.fact_id)
+                new_ids.extend(loser.alternate_evidence)
+            existing = set(winner.alternate_evidence)
+            winner.alternate_evidence.extend(
+                fid for fid in dict.fromkeys(new_ids) if fid not in existing
+            )
+            collisions += len(bucket) - 1
+            result.append(winner)
+        return result, collisions
 
     @staticmethod
     def _periods_compatible(a: MetricFact, b: MetricFact) -> bool:

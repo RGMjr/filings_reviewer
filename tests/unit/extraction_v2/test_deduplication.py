@@ -782,15 +782,14 @@ class TestFuzzyPeriodDedup:
         assert len(result) == 1
         assert result[0].fact_id == "fact-with-period"
 
-    def test_period_transfer_and_different_value_both_survive(self) -> None:
-        """Period-transfer does not force-collapse facts with different values.
+    def test_period_transfer_different_value_different_source_type_both_survive(self) -> None:
+        """Period-transfer facts with different values AND different source_types both survive.
 
         fact_a (HTML_TABLE, no period) merges with fact_donor (HTML_TABLE, period=2020)
-        in the fuzzy pass, gaining period via transfer.
-        fact_b (HTML_TABLE, period=2020, value=150k) is beyond 2% tolerance so it stays
-        as a separate primary. Both fact_a (with transferred period) and fact_b survive
-        as distinct facts; the DB unique index (migration 23 includes source_type) treats
-        them as separate rows since their values differ.
+        gaining period via transfer. fact_b (TEXT, period=2020, value=150k) is beyond 2%
+        tolerance so it stays as a separate primary. Because fact_a and fact_b have
+        different source_types, the migration-23 unique index treats them as separate rows
+        → both survive after _collapse_post_transfer_collisions.
         """
         stage = DeduplicationStage()
 
@@ -819,7 +818,7 @@ class TestFuzzyPeriodDedup:
             metric_id="cm_customers_period_end",
             value=150000.0,
             unit=Unit.COUNT,
-            source_type=SourceType.HTML_TABLE,
+            source_type=SourceType.TEXT,  # different source_type → distinct DB row
             confidence=0.70,
             period_start=date(2020, 1, 1),
             period_end=date(2020, 12, 31),
@@ -829,11 +828,63 @@ class TestFuzzyPeriodDedup:
 
         # fact_a merges with fact_donor (same value ≈100k, compatible periods) → gains period.
         # fact_b stays separate (150k is > 2% away from 100k).
-        # Both fact_a (with transferred period) and fact_b survive.
+        # Different source_types → distinct identity tuples → no post-transfer collapse.
         assert len(result) == 2
         result_ids = {f.fact_id for f in result}
         assert "fact-a" in result_ids
         assert "fact-b" in result_ids
+
+    def test_post_transfer_collision_collapse_fires(self) -> None:
+        """Period-transfer onto a no-period primary can make two surviving primaries collide.
+
+        fact_a (HTML_TABLE, no period) merges with fact_donor (HTML_TABLE, period=2020)
+        gaining period=2020 via transfer.  fact_b (HTML_TABLE, period=2020, value=150k)
+        is beyond 2% tolerance so it stays as a separate primary.  After transfer,
+        fact_a has the same 8-tuple identity as fact_b (same source_type, period, metric,
+        unit, scope, cohort, customer_type) → _collapse_post_transfer_collisions must
+        resolve the collision, keeping only the higher-confidence HTML_TABLE winner.
+        """
+        stage = DeduplicationStage()
+
+        fact_a = make_fact(
+            fact_id="fact-a",
+            metric_id="cm_customers_period_end",
+            value=100000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.HTML_TABLE,
+            confidence=0.95,
+            period_start=None,
+            period_end=None,
+        )
+        fact_donor = make_fact(
+            fact_id="fact-donor",
+            metric_id="cm_customers_period_end",
+            value=100000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.HTML_TABLE,
+            confidence=0.80,
+            period_start=date(2020, 1, 1),
+            period_end=date(2020, 12, 31),
+        )
+        fact_b = make_fact(
+            fact_id="fact-b",
+            metric_id="cm_customers_period_end",
+            value=150000.0,
+            unit=Unit.COUNT,
+            source_type=SourceType.HTML_TABLE,  # same source_type → identity collision after transfer
+            confidence=0.70,
+            period_start=date(2020, 1, 1),
+            period_end=date(2020, 12, 31),
+        )
+
+        result = stage._fuzzy_period_dedup([fact_a, fact_donor, fact_b], tolerance=0.02)
+
+        # fact_a gains period=2020. Now fact_a and fact_b share the same 8-tuple identity.
+        # Collapse keeps the higher-confidence winner (fact_a, confidence=0.95).
+        assert len(result) == 1
+        assert result[0].fact_id == "fact-a"
+        assert "fact-b" in result[0].alternate_evidence
+        assert stage._last_post_transfer_collisions == 1
 
     def test_distinct_customer_type_facts_kept_separate(self) -> None:
         """Facts with distinct customer_type values are kept as separate facts."""
