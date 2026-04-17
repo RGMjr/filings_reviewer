@@ -137,6 +137,9 @@ class PipelineConfig:
     # Chart fact bridge
     enable_chart_fact_bridge: bool = True
     chart_metric_classification_min_score: float = 0.6
+    chart_image_min_confidence: float = 0.6
+    chart_fact_review_threshold: float = 0.80
+    chart_axis_range_multiplier: float = 10.0
 
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
