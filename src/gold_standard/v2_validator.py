@@ -33,7 +33,7 @@ from decimal import InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from src.extraction_v2.models import MetricFact
+from src.extraction_v2.models import MetricFact, SourceType
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, V2Pipeline
 from src.gold_standard.baseline import (
     BaselineMetrics,
@@ -190,6 +190,10 @@ class ValidationResult:
     false_positives: int = 0
     false_negatives: int = 0
 
+    # Cross-source confirmation counts (populated from above-threshold v2_facts)
+    chart_facts_total: int = 0
+    chart_facts_cross_confirmed: int = 0
+
     @property
     def precision(self) -> float:
         """Precision = TP / (TP + FP)."""
@@ -227,6 +231,8 @@ class AggregateMetrics:
     by_company: dict[str, MetricScores] = field(default_factory=dict)
     by_metric: dict[str, MetricScores] = field(default_factory=dict)
     by_tier: dict[int, MetricScores] = field(default_factory=dict)
+    chart_facts_total: int = 0
+    chart_facts_cross_confirmed: int = 0
 
     def to_baseline_metrics(
         self,
@@ -464,6 +470,14 @@ class V2GoldStandardValidator:
             v2_facts = [f for f in v2_result.facts if f.confidence >= self.min_confidence]
             all_v2_facts = v2_result.facts  # Includes low-confidence facts for FN tracing
             v2_context = v2_result.context  # type: ignore[assignment]
+
+            # Count chart facts and cross-source confirmation for Phase 3 gate
+            for f in v2_facts:
+                if f.source_type == SourceType.CHART:
+                    result.chart_facts_total += 1
+                    if f.cross_source_confirmed:
+                        result.chart_facts_cross_confirmed += 1
+
             logger.debug(
                 f"{company_name}: {len(v2_result.facts)} total facts, "
                 f"{len(v2_facts)} above confidence threshold {self.min_confidence}"
@@ -1382,6 +1396,9 @@ class V2GoldStandardValidator:
             t_f1 = 2 * (t_prec * t_rec) / (t_prec + t_rec) if (t_prec + t_rec) > 0 else 0.0
             by_tier[t] = MetricScores(precision=t_prec, recall=t_rec, f1=t_f1)
 
+        chart_facts_total = sum(r.chart_facts_total for r in results)
+        chart_facts_cross_confirmed = sum(r.chart_facts_cross_confirmed for r in results)
+
         return AggregateMetrics(
             precision=precision,
             recall=recall,
@@ -1392,6 +1409,8 @@ class V2GoldStandardValidator:
             by_company=by_company,
             by_metric=by_metric,
             by_tier=by_tier,
+            chart_facts_total=chart_facts_total,
+            chart_facts_cross_confirmed=chart_facts_cross_confirmed,
         )
 
     def compare_to_baseline(
@@ -1577,6 +1596,21 @@ def run_validation(
 
     # Print tier breakdown
     V2GoldStandardValidator.print_tier_report(metrics)
+
+    # Print CHART cross-source confirmation gate (Phase 3 go/no-go)
+    if metrics.chart_facts_total > 0:
+        pct = round(100 * metrics.chart_facts_cross_confirmed / metrics.chart_facts_total)
+        print(
+            f"\nCHART cross-source confirmation: "
+            f"{metrics.chart_facts_cross_confirmed}/{metrics.chart_facts_total} ({pct}%)"
+        )
+        if pct < 30:
+            print(
+                "WARNING: CHART cross-source confirmation below 30% gate"
+                " — discuss before updating baseline"
+            )
+    else:
+        print("\nCHART cross-source confirmation: 0/0 (no chart facts in this run)")
 
     # Print FP diagnostics
     V2GoldStandardValidator.print_fp_diagnostics(results)
