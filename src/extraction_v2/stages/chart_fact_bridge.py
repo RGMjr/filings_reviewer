@@ -74,8 +74,24 @@ class ChartFactBridgeStage:
         items_processed = 0
         items_output = 0
 
+        # Guard counters — initialised before the image loop
+        result_metadata: dict = {
+            "guard_skipped_low_image_confidence": 0,
+            "guard_skipped_missing_label": 0,
+            "guard_skipped_out_of_range": 0,
+            "guard_skipped_future_cohort": 0,
+        }
+
         for image in context.images:
             if image.chart_data is None:
+                continue
+
+            # Guard 1 — image confidence gate
+            if (
+                image.confidence is not None
+                and image.confidence < context.config.chart_image_min_confidence
+            ):
+                result_metadata["guard_skipped_low_image_confidence"] += 1
                 continue
 
             items_processed += 1
@@ -124,12 +140,34 @@ class ChartFactBridgeStage:
                         confidence=0.55,
                         requires_review=True,
                     )
+                    # Guard 5 — fact review threshold (annotations branch already sets True;
+                    # keep consistent by applying the threshold check uniformly)
+                    if fact.confidence < context.config.chart_fact_review_threshold:
+                        fact.requires_review = True
                     context.facts.append(fact)
                     items_output += 1
             elif metric_id == "cm_ltv_to_cac_ratio":
                 for series in chart.series:
+                    # Guard 3 — axis-range sanity: compute reference max from labeled points
+                    labeled_points = [p for p in series.points if p.label is not None]
+                    if labeled_points:
+                        labeled_max = max(abs(p.y) for p in labeled_points)
+                    else:
+                        labeled_max = 0.0
+
                     for point in series.points:
-                        value_raw = point.label if point.label is not None else str(point.y)
+                        # Guard 3 — axis-range sanity (runs before label guard so it can
+                        # reject unlabeled noise points that exceed the labeled reference range)
+                        if labeled_max > 0 and abs(point.y) > labeled_max * context.config.chart_axis_range_multiplier:
+                            result_metadata["guard_skipped_out_of_range"] += 1
+                            continue
+
+                        # Guard 2 — label-required gate
+                        if point.label is None:
+                            result_metadata["guard_skipped_missing_label"] += 1
+                            continue
+
+                        value_raw = point.label
                         fact = MetricFact(
                             fact_id=str(uuid.uuid4()),
                             doc_id=doc_id,
@@ -153,15 +191,42 @@ class ChartFactBridgeStage:
                             confidence=0.80,
                             requires_review=False,
                         )
+                        # Guard 5 — fact review threshold
+                        if fact.confidence < context.config.chart_fact_review_threshold:
+                            fact.requires_review = True
                         context.facts.append(fact)
                         items_output += 1
             else:
                 for series in chart.series:
+                    # Guard 3 — axis-range sanity: compute reference max from labeled points
+                    labeled_points = [p for p in series.points if p.label is not None]
+                    if labeled_points:
+                        labeled_max = max(abs(p.y) for p in labeled_points)
+                    else:
+                        labeled_max = 0.0
+
                     for point in series.points:
+                        # Guard 3 — axis-range sanity (runs before label guard so it can
+                        # reject unlabeled noise points that exceed the labeled reference range)
+                        if labeled_max > 0 and abs(point.y) > labeled_max * context.config.chart_axis_range_multiplier:
+                            result_metadata["guard_skipped_out_of_range"] += 1
+                            continue
+
+                        # Guard 2 — label-required gate
+                        if point.label is None:
+                            result_metadata["guard_skipped_missing_label"] += 1
+                            continue
+
                         cohort_period = parser.parse(chart, series, point, filing_date)
                         if cohort_period is None:
                             continue
-                        value_raw = point.label if point.label is not None else str(point.y)
+
+                        # Guard 4 — cohort-year sanity (default cohort branch only)
+                        if cohort_period.period_end.year > filing_date.year + 1:
+                            result_metadata["guard_skipped_future_cohort"] += 1
+                            continue
+
+                        value_raw = point.label
                         fact = MetricFact(
                             fact_id=str(uuid.uuid4()),
                             doc_id=doc_id,
@@ -185,6 +250,9 @@ class ChartFactBridgeStage:
                             confidence=cohort_period.confidence,
                             requires_review=cohort_period.requires_review,
                         )
+                        # Guard 5 — fact review threshold
+                        if fact.confidence < context.config.chart_fact_review_threshold:
+                            fact.requires_review = True
                         context.facts.append(fact)
                         items_output += 1
 
@@ -195,4 +263,5 @@ class ChartFactBridgeStage:
             duration_ms=duration_ms,
             items_processed=items_processed,
             items_output=items_output,
+            metadata=result_metadata,
         )
