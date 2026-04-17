@@ -72,6 +72,9 @@
         <span class="badge bg-warning text-dark">{{ image_auto_rejected }} auto-rejected</span>
         {% endif %}
         {% endif %}
+        <a href="{{ next_filing_url }}" class="btn btn-sm btn-outline-secondary ms-2">
+          Next filing <span class="kbd ms-1">F</span>
+        </a>
       </div>
     </div>
   </div>
@@ -365,6 +368,7 @@
                 <option value="not_a_metric">Not a metric</option>
                 <option value="wrong_value">Wrong value</option>
                 <option value="wrong_period">Wrong period</option>
+                <option value="part_of_date">Part of a date</option>
                 <option value="duplicate">Duplicate</option>
                 <option value="other">Other</option>
               </select>
@@ -891,6 +895,8 @@
           <span class="mx-1">|</span>
           <kbd>&larr;&rarr;</kbd> Navigate
           <span class="mx-1">|</span>
+          <kbd>F</kbd> Next filing
+          <span class="mx-1">|</span>
           <kbd>1-7</kbd> Quick Select
           <span class="mx-1">|</span>
           <kbd>?</kbd> Help
@@ -926,6 +932,8 @@ const FACTS = [
   {% endfor %}
 ];
 const CURRENT_FACT_ID = {% if current_fact %}"{{ current_fact.fact_id }}"{% else %}null{% endif %};
+const IMAGE_PENDING = {{ image_pending|tojson }};
+const NEXT_FILING_URL = {{ next_filing_url|tojson }};
 let reviewStartTime = Date.now();
 
 function filterParams() {
@@ -937,6 +945,11 @@ function filterParams() {
   if (metric !== "all") params.set("metric", metric);
   if (sort !== "confidence_desc") params.set("sort", sort);
   params.set("tab", "text");
+  // Preserve list-page sort context so Next Filing button works from fact-nav URLs too
+  const current = new URLSearchParams(window.location.search);
+  ["list_sort_by", "list_sort_dir", "list_document_type", "list_hide_completed"].forEach(k => {
+    if (current.has(k)) params.set(k, current.get(k));
+  });
   return params;
 }
 
@@ -995,9 +1008,20 @@ function submitDecision(decision) {
   .then(r => r.json())
   .then(data => {
     if (data.status === 'success' && data.next_fact) {
-      window.location.href = data.next_fact.url;
+      // Merge current filter/list params into the server-provided next URL
+      const nextUrl = new URL(data.next_fact.url, window.location.origin);
+      const current = new URLSearchParams(window.location.search);
+      ["status", "metric", "sort", "tab", "list_sort_by", "list_sort_dir", "list_document_type", "list_hide_completed"].forEach(k => {
+        if (current.has(k) && !nextUrl.searchParams.has(k)) nextUrl.searchParams.set(k, current.get(k));
+      });
+      window.location.href = nextUrl.toString();
     } else if (data.status === 'success') {
-      window.location.href = `/v2/review/${FILING_ID}?fact_id=${CURRENT_FACT_ID}&tab=text`;
+      // No more pending facts in this filing
+      if (IMAGE_PENDING > 0) {
+        window.location.href = `/v2/review/${FILING_ID}?tab=images`;
+      } else {
+        window.location.href = `/v2/review/${FILING_ID}?fact_id=${CURRENT_FACT_ID}&tab=text`;
+      }
     } else {
       alert('Error: ' + (data.message || JSON.stringify(data.errors)));
     }
@@ -1021,6 +1045,7 @@ function undoDecision(decisionId) {
 function showRejectForm() {
   document.getElementById('reject-form').style.display = 'block';
   document.getElementById('correct-form').style.display = 'none';
+  document.getElementById('rejection-category').focus();
 }
 function hideRejectForm() {
   document.getElementById('reject-form').style.display = 'none';
@@ -1028,6 +1053,7 @@ function hideRejectForm() {
 function showCorrectForm() {
   document.getElementById('correct-form').style.display = 'block';
   document.getElementById('reject-form').style.display = 'none';
+  document.getElementById('correct-metric').focus();
 }
 function hideCorrectForm() {
   document.getElementById('correct-form').style.display = 'none';
@@ -1095,9 +1121,52 @@ document.addEventListener('keydown', function(e) {
       e.preventDefault();
       navigateFact('prev');
       break;
+    case 'f':
+      e.preventDefault();
+      if (NEXT_FILING_URL) window.location.href = NEXT_FILING_URL;
+      break;
   }
   {% endif %}
 });
+
+// Keyboard flow within reject/correct panels
+(function () {
+  function onFormKey(e) {
+    if (e.key !== 'Enter' && e.key !== 'Escape') return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (document.getElementById('reject-form').style.display !== 'none') {
+        hideRejectForm();
+      } else {
+        hideCorrectForm();
+      }
+      document.body.focus();
+      return;
+    }
+
+    // Enter key: advance focus or submit
+    var id = e.target.id;
+    e.preventDefault();
+    if (id === 'rejection-category') {
+      document.getElementById('rejection-reason').focus();
+    } else if (id === 'rejection-reason') {
+      submitDecision('reject');
+    } else if (id === 'correct-metric') {
+      document.getElementById('correct-value').focus();
+    } else if (id === 'correct-value') {
+      document.getElementById('correct-notes').focus();
+    } else if (id === 'correct-notes') {
+      submitDecision('correct');
+    }
+  }
+
+  var ids = ['rejection-category', 'rejection-reason', 'correct-metric', 'correct-value', 'correct-notes'];
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', onFormKey);
+  });
+})();
 </script>
 <script src="{{ url_for('static', filename='js/review_images.js') }}"></script>
 
