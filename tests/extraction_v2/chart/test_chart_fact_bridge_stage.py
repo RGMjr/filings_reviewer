@@ -60,6 +60,7 @@ def _cohort_stacked_bar_image() -> ImageAsset:
     )
     img = ImageAsset(img_id="img-001", nearby_text="")
     img.chart_data = chart
+    img.confidence = 0.8  # above chart_image_min_confidence threshold (0.6)
     return img
 
 
@@ -113,6 +114,7 @@ def test_marks_requires_review_for_annotations_only_facts() -> None:
     )
     img = ImageAsset(img_id="img-ann", nearby_text="")
     img.chart_data = chart
+    img.confidence = 0.8
     ctx = _make_context([img])
     ChartFactBridgeStage().process(ctx)
     assert len(ctx.facts) >= 1
