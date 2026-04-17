@@ -31,18 +31,23 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
 
-**Current Tier 1 recall gaps (focus areas):**
-- `cm_revenue_by_cohort` — F1=17% text-only (measured 2026-04-17 post-Phase-A+B, no chart extraction). Wider-proximity rejected (would add FPs without recovering TPs). FNs are chart-embedded; chart bridge ships correct facts in production but GS measurement requires adding `filing_date` to `metadata.json` for chart companies.
-- `cm_balance_by_cohort` — F1=0% text-only. GS: 10 HOOD rows, all chart-embedded. Chart bridge (Phase 1) correctly produces facts in production; GS validation blocked by `document_date=None` (see GS Limitation note below).
-- `cm_gross_margin_by_cohort` — F1=0% text-only. GS: 9 FTCH rows, all chart images. Same blocker as above.
-- `cm_ltv_to_cac_ratio` — F1=20% text-only (measured 2026-04-17). Chart bridge (Phase 2) adds tenure-bucket facts in production; GS doesn't capture chart bridge benefit. Text gap is `_WIDER_PROXIMITY_METRICS` + `specific_patterns` work (dd5c90a/09a8f64) captured 1/9 GS rows.
+**Current Tier 1 recall gaps (focus areas, measured 2026-04-17 post-chart-bridge-activation):**
+- `cm_revenue_by_cohort` — F1=26.3% (up from 17% text-only). Chart bridge contributing; wider-proximity rejected (would add FPs without recovering TPs). Remaining FNs: chart OCR occasionally returns malformed JSON, dropping chart facts.
+- `cm_balance_by_cohort` — F1=57.1% (up from 0% text-only). GS: 10 HOOD rows, all chart-embedded; chart bridge now bridging them correctly.
+- `cm_gross_margin_by_cohort` — F1=0% (still). GS: 9 FTCH rows, all chart images. **Blocker: vision LLM returns malformed JSON for FTCH gross-margin charts** (see "Chart OCR JSON failures" below). Chart bridge emits 0 facts for this metric because OCR fails upstream.
+- `cm_ltv_to_cac_ratio` — F1=20% (unchanged). Chart bridge's LTV tenure-bucket branch didn't lift this metric in GS — investigate classifier score threshold / `_COHORT_GATE_EXEMPT` coverage separately.
 
 **Resolved (no longer gaps):**
 - `cm_customer_retention_rate` — F1=100% (measured 2026-04-17); 1-row Chewy GS fully matched.
 
 Text-pipeline Tier 1 recall work concluded 2026-04-16 (commits dd5c90a, 09a8f64); remaining gaps are chart-pipeline.
 
-**GS Limitation — chart bridge inactive in GS runs:** `V2GoldStandardValidator.validate_all()` calls `pipeline.process(filing_id=0)` without `document_date`. Phase A2 correctly skips chart fact emission when no date is available (to preserve idempotency). Fix: add `"filing_date": "YYYY-MM-DD"` to each company's `data/gold_standard/{Company}/metadata.json` and update `v2_validator.py:458` to pass it as `document_date`.
+**Chart bridge activated in GS (2026-04-17):** Previously `pipeline.process(filing_id=0)` was called without `document_date`, so Phase A2 skipped chart-fact emission (correct, preserves idempotency). Fixed by adding `"filing_date": "YYYY-MM-DD"` to each `data/gold_standard/{Company}/metadata.json` and threading it through `v2_validator.py` at the `pipeline.process(..., document_date=...)` call site. `_load_filing_metadata` also gained a fuzzy-match fallback (mirroring `_find_filing_path`) because the CSV-name→directory-name sanitization otherwise returned `{}` for most companies.
+
+**Known chart-pipeline issues surfaced by GS activation (file separately, not regressions):**
+- **Chart OCR JSON failures:** `Failed to parse OCR response as JSON` appears repeatedly in logs (FTCH especially). Blocks `cm_gross_margin_by_cohort` from ever emitting in GS.
+- **Chart classifier mis-tag:** FTCH "Marketplace Order Contribution Margin" chart mis-classified as `cm_new_customers_acquired` (1 FP at 54% conf). Pre-existing classifier issue, now visible.
+- **30% cross-source confirmation gate miscalibrated:** `CHART cross-source confirmation` at 0/20 in GS because chart-native cohort disclosures (e.g., HOOD `cm_balance_by_cohort`) have no text counterpart by design. The Phase 3 gate assumed text/chart redundancy; it needs to be metric-aware (text-derivable metrics enforce 30%; chart-native metrics bypass).
 
 **Chart bridge extension point:** `_COHORT_GATE_EXEMPT` is a set of metric IDs in `src/extraction_v2/chart/metric_classifier.py` that skip the cohort-structure check on series names. Add a metric to this set when its chart data does not follow vintage-year or elapsed-period conventions but should still be bridged (e.g., tenure bucket labels for `cm_ltv_to_cac_ratio`).
 
