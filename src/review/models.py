@@ -131,6 +131,7 @@ REJECTION_CATEGORIES = (
     "not_a_metric",  # Display: "Not a Customer Metric" - value is outside CMASB scope
     "wrong_value",  # Display: "Wrong Value Extracted" - right metric but wrong value
     "wrong_period",  # Display: "Wrong Time Period" - right metric but wrong period
+    "part_of_date",  # Display: "Part of a date" - number extracted was a date component
     "duplicate",  # Display: "Duplicate" - already captured elsewhere
     "other",  # Display: "Other" - see rejection_reason for details
 )

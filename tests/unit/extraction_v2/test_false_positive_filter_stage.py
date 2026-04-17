@@ -41,6 +41,7 @@ from src.extraction_v2.stages.false_positive_filter import (
     _is_v2_false_positive,
     _make_number_matches,
     _rule_stub_financial_line_item,
+    _rule_truncated_year,
 )
 
 # ============================================================================
@@ -4056,3 +4057,66 @@ class TestStubFinancialLineItemRule:
         assert result is None, (
             f"Empty source_text must not trigger this rule, got: {result!r}"
         )
+
+
+# ============================================================================
+# Test: _rule_truncated_year
+# ============================================================================
+
+
+class TestRuleTruncatedYear:
+    """Tests for the truncated-year FP rule."""
+
+    def test_sub_span_of_year_filtered(self):
+        """'20' found inside '2023' has an adjacent digit → v2_truncated_year."""
+        # source_text.find("20") returns position inside "2023"; char at pos+2 is "2" (digit)
+        source = "revenue grew in 2023"
+        bv = _make_bound_value("c1", 20.0, "20", Unit.COUNT)
+        assert _rule_truncated_year(bv, source, "cm_customers_period_end") == "v2_truncated_year"
+
+    def test_standalone_count_not_filtered(self):
+        """'23' surrounded by spaces is a valid count; no adjacent digit → None."""
+        source = "we had 23 customers this year"
+        bv = _make_bound_value("c1", 23.0, "23", Unit.COUNT)
+        assert _rule_truncated_year(bv, source, "cm_customers_period_end") is None
+
+    def test_non_count_unit_bypassed(self):
+        """Rule gates on unit=COUNT; CURRENCY values are untouched."""
+        source = "growth of $20 million in 2023"
+        bv = _make_bound_value("c1", 20.0, "20", Unit.CURRENCY)
+        assert _rule_truncated_year(bv, source, "cm_revenue_per_customer") is None
+
+    def test_two_digit_year_header_with_neighbor(self):
+        """'20' in a linearized table row with sequential neighbor '21' → v2_two_digit_year_header."""
+        # [CELL] markers satisfy the table check; "21" is N+1
+        source = "[CELL]20[CELL]21[CELL]22[CELL]23"
+        bv = _make_bound_value("c1", 20.0, "20", Unit.COUNT)
+        # sub-rule 1: source[5]=']' and source[8]='[' are not digits → does not fire
+        # sub-rule 2: 15 ≤ 20 ≤ 35, table markers present, "21" in source → fires
+        assert _rule_truncated_year(bv, source, "cm_customers_period_end") == "v2_two_digit_year_header"
+
+    def test_two_digit_no_sequential_neighbor_not_filtered(self):
+        """'16' in a table without a neighboring year value → None."""
+        source = "[CELL]16[CELL]50[CELL]100"
+        bv = _make_bound_value("c1", 16.0, "16", Unit.COUNT)
+        assert _rule_truncated_year(bv, source, "cm_customers_period_end") is None
+
+    def test_legitimate_count_near_year_not_filtered(self):
+        """'20' that stands alone (not inside a digit run) must not be suppressed.
+
+        Bug regression: prior implementation used source_text.find("20") which
+        returned the position inside "2023", triggering the adjacent-digit check
+        and falsely returning v2_truncated_year. The all-occurrences fix ensures
+        the standalone "20" occurrence is detected and blocks the suppression.
+        """
+        source = "In fiscal year 2023, we had 20 customers"
+        bv = _make_bound_value("c1", 20.0, "20", Unit.COUNT)
+        assert _rule_truncated_year(bv, source, "cm_customers_period_end") is None
+
+    def test_all_occurrences_embedded_still_filtered(self):
+        """When every occurrence of the value is inside a longer digit run → v2_truncated_year."""
+        source = "2023 and 2024 results exceeded targets"
+        bv = _make_bound_value("c1", 20.0, "20", Unit.COUNT)
+        # "20" appears at position 0 (in "2023", next char "2") and position 9 (in "2024", next char "2")
+        # both adjacent to a digit → all_embedded → fires
+        assert _rule_truncated_year(bv, source, "cm_customers_period_end") == "v2_truncated_year"

@@ -2452,3 +2452,86 @@ class TestTableCellFootnoteFilter:
         number = NumberMatch(start=idx, end=idx + 3, raw_text="173", value=Decimal("173"), unit="count")
         is_fp, reason = filter.is_false_positive(text, number)
         assert is_fp is False
+
+
+class TestDFP2DayYearPattern:
+    """Tests for DFP-2: DD, YYYY — day before year when month is on a wrapped line."""
+
+    @pytest.fixture
+    def filter(self):
+        return FalsePositiveFilter()
+
+    def test_30_comma_2024_filtered(self, filter):
+        """'30, 2024' should filter '30' as part_of_date (DFP-2)."""
+        text = "customers as of 30, 2024 period end"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_31_comma_2023_filtered(self, filter):
+        """'31, 2023' should filter '31' as part_of_date (DFP-2)."""
+        text = "period ended 31, 2023 results"
+        number = NumberMatch(
+            start=text.find("31"),
+            end=text.find("31") + 2,
+            raw_text="31",
+            value=Decimal("31"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert is_fp is True
+        assert reason == "part_of_date"
+
+    def test_standalone_count_not_filtered(self, filter):
+        """'30 customers' with no following year → not filtered by DFP-2."""
+        text = "we acquired 30 customers last quarter"
+        number = NumberMatch(
+            start=text.find("30"),
+            end=text.find("30") + 2,
+            raw_text="30",
+            value=Decimal("30"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        assert reason != "part_of_date"
+
+    def test_three_digit_not_matched(self, filter):
+        """'300, 2024' — DFP-2 only matches 1–2 digit days; '300' is out of range."""
+        text = "with 300, 2024 records processed"
+        number = NumberMatch(
+            start=text.find("300"),
+            end=text.find("300") + 3,
+            raw_text="300",
+            value=Decimal("300"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # DFP-2 does not match 3-digit numbers
+        assert reason != "part_of_date"
+
+    def test_incidental_comma_year_in_prose(self, filter):
+        """'5, 2024' in prose — DFP-2 does not cause the over-match for small values.
+
+        DFP-2 (\b\\d{1,2}\\s*,\\s*20\\d{2}\b) technically matches "5, 2024", but a
+        lower-priority check (below_min_value) fires first for value=5, so DFP-2
+        does not produce a spurious part_of_date label. DFP-2 over-match risk is
+        therefore low in practice for single-digit values.
+        """
+        text = "top 5, 2024 submissions this quarter"
+        number = NumberMatch(
+            start=text.find("5"),
+            end=text.find("5") + 1,
+            raw_text="5",
+            value=Decimal("5"),
+            unit="count",
+        )
+        is_fp, reason = filter.is_false_positive(text, number)
+        # Rejected, but not because of DFP-2 — below_min_value fires first.
+        assert reason != "part_of_date"
