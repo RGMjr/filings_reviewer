@@ -78,6 +78,7 @@ MIGRATION_ORDER = [
     "22_seed_missing_metrics.sql",
     "23_chart_source_dedup.sql",
     "24_add_part_of_date_rejection_category.sql",
+    "25_cross_source_confirmation.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.

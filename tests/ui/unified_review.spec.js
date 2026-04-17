@@ -393,7 +393,7 @@ test.describe('Reject Form', () => {
     await page.goto('/');
     await page.locator('#btn-reject').click();
     const options = page.locator('#rejection-category option');
-    await expect(options).toHaveCount(7); // "" + 6 categories
+    await expect(options).toHaveCount(8); // "" + 7 categories
   });
 
   test('rejection reason input is present', async ({ page }) => {
@@ -407,6 +407,44 @@ test.describe('Reject Form', () => {
     await page.locator('#btn-reject').click();
     await expect(page.locator('#reject-form button.btn-danger')).toBeVisible();
     await expect(page.locator('#reject-form button.btn-danger')).toContainText('Confirm Reject');
+  });
+
+  test('pressing R focuses the rejection category select', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('r');
+    await expect(page.locator('#rejection-category')).toBeFocused();
+  });
+
+  test('Enter in rejection category advances focus to reason input', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('r');
+    await page.locator('#rejection-category').selectOption('wrong_metric');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#rejection-reason')).toBeFocused();
+  });
+
+  test('Enter in rejection reason submits the decision', async ({ page }) => {
+    let submitted = false;
+    await page.route('/api/v2/decisions', async route => {
+      submitted = true;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'success' }) });
+    });
+    await page.goto('/');
+    await page.keyboard.press('r');
+    await page.locator('#rejection-category').selectOption('wrong_metric');
+    await page.keyboard.press('Enter');
+    await page.locator('#rejection-reason').fill('test reason');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+    expect(submitted).toBe(true);
+  });
+
+  test('Escape from rejection form closes it and restores shortcuts', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('r');
+    await expect(page.locator('#reject-form')).toBeVisible();
+    await page.locator('#rejection-category').press('Escape');
+    await expect(page.locator('#reject-form')).toBeHidden();
   });
 
   test('Cancel button hides reject form', async ({ page }) => {
@@ -494,6 +532,42 @@ test.describe('Correct Form', () => {
     await page.locator('#btn-reject').click();
     await expect(page.locator('#correct-form')).toBeHidden();
     await expect(page.locator('#reject-form')).toBeVisible();
+  });
+
+  test('pressing C focuses the correct metric input', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('c');
+    await expect(page.locator('#correct-metric')).toBeFocused();
+  });
+
+  test('Enter in correct metric advances to correct value', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('c');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#correct-value')).toBeFocused();
+  });
+
+  test('Enter in correct value advances to correct notes', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.press('c');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#correct-notes')).toBeFocused();
+  });
+
+  test('Enter in correct notes submits the correction', async ({ page }) => {
+    let submitted = false;
+    await page.route('/api/v2/decisions', async route => {
+      submitted = true;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'success' }) });
+    });
+    await page.goto('/');
+    await page.keyboard.press('c');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.locator('#correct-notes').fill('test note');
+    await page.keyboard.press('Enter');
+    expect(submitted).toBe(true);
   });
 });
 

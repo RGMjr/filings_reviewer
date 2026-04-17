@@ -35,6 +35,7 @@ V2_REJECTION_CATEGORIES = (
     "not_a_metric",
     "wrong_value",
     "wrong_period",
+    "part_of_date",
     "duplicate",
     "other",
 )
