@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-17T04:33:40.778189+00:00",
-  "description": "Post-transfer collision collapse: align in-memory dedup with DB unique constraint (bc233be deferred fix)",
+  "baseline_date": "2026-04-17T19:21:18.774695+00:00",
+  "description": "Phase A+B: chart bridge correctness (dedup source_type, LTV filing_date fallback, annotation guards, annotation cap, LTV/CAC gate regex). Note: chart bridge inactive in GS runs (no filing_date in metadata.json); chart-bridge recall improvement visible in production only.",
   "overall": {
-    "precision": 0.6622222222222223,
+    "precision": 0.6651785714285714,
     "recall": 0.44744744744744747,
-    "f1": 0.5340501792114696
+    "f1": 0.5350089766606823
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -78,9 +78,9 @@
       "f1": 0.4
     },
     "Torrid Holdings Inc.": {
-      "precision": 0.75,
+      "precision": 0.8181818181818182,
       "recall": 0.2647058823529412,
-      "f1": 0.39130434782608703
+      "f1": 0.39999999999999997
     }
   }
 }
