@@ -194,6 +194,18 @@ class ValidationResult:
     chart_facts_total: int = 0
     chart_facts_cross_confirmed: int = 0
 
+    # All extracted facts (pre-threshold) — stored so metrics can be recomputed
+    # at a different confidence threshold without re-running the pipeline.
+    all_extracted_facts: list[MetricFact] = field(default_factory=list)
+    # Gold standard entries used during this filing's validation — stored so
+    # metrics can be recomputed at a different threshold.
+    expected_entries_for_recompute: list[GoldStandardEntry] = field(default_factory=list)
+
+    # Per-stage pipeline timings for this filing (stage name → duration_ms).
+    # Populated from v2_result.stage_results; empty if the pipeline failed.
+    stage_timings: dict[str, int] = field(default_factory=dict)
+    total_pipeline_ms: int = 0
+
     @property
     def precision(self) -> float:
         """Precision = TP / (TP + FP)."""
@@ -455,11 +467,14 @@ class V2GoldStandardValidator:
         v2_context: PipelineContext | None = None
         all_v2_facts: list[MetricFact] = []
         try:
+            raw_filing_date = filing_metadata.get("filing_date")
+            document_date = date.fromisoformat(raw_filing_date) if raw_filing_date else None
             v2_result = pipeline.process(
                 html_path=filing_path,
                 filing_id=0,  # Placeholder, not persisting
                 cik=filing_metadata.get("cik", ""),
                 accession_number=filing_metadata.get("accession_number", ""),
+                document_date=document_date,
             )
             if not v2_result.success:
                 logger.error(f"V2 pipeline failed for {company_name}: {v2_result.error_message}")
@@ -470,6 +485,12 @@ class V2GoldStandardValidator:
             v2_facts = [f for f in v2_result.facts if f.confidence >= self.min_confidence]
             all_v2_facts = v2_result.facts  # Includes low-confidence facts for FN tracing
             v2_context = v2_result.context  # type: ignore[assignment]
+
+            # Capture per-stage timings for Phase C observability.
+            result.stage_timings = {
+                sr.stage.value: sr.duration_ms for sr in v2_result.stage_results
+            }
+            result.total_pipeline_ms = v2_result.total_duration_ms
 
             # Count chart facts and cross-source confirmation for Phase 3 gate
             for f in v2_facts:
@@ -612,6 +633,12 @@ class V2GoldStandardValidator:
                         fact, gold_entries_for_metric.get(fact_metric, [])
                     )
                     result.fp_diagnostics.append(diag)
+
+        # Store all pre-threshold facts and gold entries so metrics can be
+        # recomputed at a different confidence threshold without re-running
+        # the full pipeline (see compute_metrics_at_threshold).
+        result.all_extracted_facts = all_v2_facts
+        result.expected_entries_for_recompute = list(expected_entries)
 
         return result
 
@@ -1072,6 +1099,45 @@ class V2GoldStandardValidator:
         print(f"{'=' * 70}")
 
     @staticmethod
+    def print_stage_timing_summary(results: list[ValidationResult]) -> None:
+        """Print per-stage timing aggregated across filings.
+
+        Sums ``duration_ms`` per stage across all successful filings and prints
+        a descending-by-time table with percent of total. Silently returns when
+        no timing data is available (e.g., all pipelines failed before reporting
+        stage results).
+        """
+        # Sum durations per stage across filings
+        stage_totals: dict[str, int] = {}
+        filings_with_timing = 0
+        for r in results:
+            if not r.stage_timings:
+                continue
+            filings_with_timing += 1
+            for stage_name, ms in r.stage_timings.items():
+                stage_totals[stage_name] = stage_totals.get(stage_name, 0) + ms
+
+        if not stage_totals:
+            return
+
+        total_ms = sum(stage_totals.values())
+        per_filing_total_ms = sum(r.total_pipeline_ms for r in results)
+
+        print(f"\n{'=' * 70}")
+        print(
+            f"PER-STAGE TIMING ({filings_with_timing} filing(s), "
+            f"{per_filing_total_ms:,} ms total pipeline)"
+        )
+        print(f"{'=' * 70}")
+        print(f"  {'Stage':<28} {'Total ms':>12} {'% of stages':>14}")
+        print(f"  {'-' * 28} {'-' * 12} {'-' * 14}")
+        for stage, ms in sorted(stage_totals.items(), key=lambda x: -x[1]):
+            pct = (ms / total_ms * 100) if total_ms > 0 else 0.0
+            print(f"  {stage:<28} {ms:>12,} {pct:>13.1f}%")
+        print(f"  {'-' * 28} {'-' * 12} {'-' * 14}")
+        print(f"  {'TOTAL':<28} {total_ms:>12,} {'100.0':>13}%")
+
+    @staticmethod
     def print_fp_diagnostics(results: list[ValidationResult]) -> None:
         """Print categorized FP diagnostic report."""
         all_diags: list[FalsePositiveDiagnostic] = []
@@ -1117,18 +1183,44 @@ class V2GoldStandardValidator:
             print(f"  {cat}: {len(diags)}")
         print(f"{'=' * 70}")
 
-    def validate_all(self, max_workers: int = 1) -> list[ValidationResult]:
+    def validate_all(
+        self,
+        max_workers: int = 1,
+        companies: list[str] | None = None,
+        limit: int | None = None,
+    ) -> list[ValidationResult]:
         """
         Validate all filings in gold standard dataset.
 
         Args:
             max_workers: Number of parallel workers. Default 1 runs sequentially.
                          Each worker creates its own V2Pipeline instance.
+            companies: Optional list of company names (CSV "Company" column) to
+                       validate. Raises ValueError if any name is unknown.
+            limit: Optional cap on number of companies to validate (applied after
+                   the companies filter).
 
         Returns:
             List of ValidationResult for each filing
         """
         entries_by_company = self.load_gold_standard()
+
+        if companies:
+            valid_names = set(entries_by_company.keys())
+            unknown = [c for c in companies if c not in valid_names]
+            if unknown:
+                raise ValueError(
+                    f"Unknown company name(s): {unknown}. "
+                    f"Valid names: {sorted(valid_names)}"
+                )
+            entries_by_company = {
+                k: v for k, v in entries_by_company.items() if k in set(companies)
+            }
+        if limit is not None:
+            entries_by_company = dict(list(entries_by_company.items())[:limit])
+        logger.info(
+            f"Running {len(entries_by_company)} filing(s) with max_workers={max_workers}"
+        )
 
         if max_workers > 1:
             return self._validate_all_parallel(entries_by_company, max_workers)
@@ -1248,6 +1340,34 @@ class V2GoldStandardValidator:
                     return json.loads(candidate.read_text())
                 except (json.JSONDecodeError, OSError):
                     pass
+
+        # Fuzzy-match fallback (mirrors _find_filing_path): strip punctuation and
+        # case, then check for substring match against each directory. Needed
+        # because CSV names like "Datadog, Inc." sanitize to "Datadog_Inc" while
+        # the directory is "Datadog,_Inc_".
+        normalized_company = (
+            company_name.lower().replace(" ", "_").replace(".", "_").replace(",", "")
+        )
+        while "__" in normalized_company:
+            normalized_company = normalized_company.replace("__", "_")
+        normalized_company = normalized_company.rstrip("_")
+
+        for subdir in GOLD_STANDARD_DIR.iterdir():
+            if not subdir.is_dir():
+                continue
+            normalized_dir = (
+                subdir.name.lower().replace(" ", "_").replace(".", "_").replace(",", "")
+            )
+            while "__" in normalized_dir:
+                normalized_dir = normalized_dir.replace("__", "_")
+            normalized_dir = normalized_dir.rstrip("_")
+            if normalized_company in normalized_dir or normalized_dir in normalized_company:
+                meta = subdir / "metadata.json"
+                if meta.exists():
+                    try:
+                        return json.loads(meta.read_text())
+                    except (json.JSONDecodeError, OSError):
+                        pass
         return {}
 
     def _find_filing_path(self, company_name: str) -> Path | None:
@@ -1413,6 +1533,112 @@ class V2GoldStandardValidator:
             chart_facts_cross_confirmed=chart_facts_cross_confirmed,
         )
 
+    def compute_metrics_at_threshold(
+        self,
+        results: list[ValidationResult],
+        threshold: float,
+    ) -> AggregateMetrics:
+        """
+        Recompute aggregate metrics from stored facts at a different confidence threshold.
+
+        Uses the ``all_extracted_facts`` and ``expected_entries_for_recompute`` stored
+        on each ValidationResult to re-derive TP/FP/FN without running the pipeline
+        again.  Only the summary TP/FP/FN counts are recomputed; the returned
+        AggregateMetrics has empty ``by_company``, ``by_metric``, and ``by_tier``
+        breakdowns (sufficient for the "review-worthy facts" print in run_validation).
+
+        Args:
+            results: List of ValidationResult from validate_all().
+            threshold: Confidence threshold to apply (e.g., 0.0 for all facts).
+
+        Returns:
+            AggregateMetrics with recomputed TP/FP/FN counts.
+        """
+        total_tp = 0
+        total_fp = 0
+        total_fn = 0
+
+        for result in results:
+            facts = [f for f in result.all_extracted_facts if f.confidence >= threshold]
+            expected = result.expected_entries_for_recompute
+
+            if not expected and not facts:
+                continue
+
+            matched_fact_ids: set[str] = set()
+            tp = 0
+            fn = 0
+
+            gold_metric_ids = {normalize_metric_id(e.metric_id) for e in expected}
+
+            for entry in expected:
+                if not entry.has_numeric_value:
+                    continue
+                if normalize_metric_id(entry.metric_id) == "cm_not_a_customer_metric":
+                    continue
+                if not normalize_metric_id(entry.metric_id):
+                    continue
+
+                matched_fact = self._find_matching_fact(entry, facts, matched_fact_ids)
+                if matched_fact:
+                    matched_fact_ids.add(matched_fact.fact_id)
+                    tp += 1
+                else:
+                    # Check if duplicate of already-matched entry
+                    dup = self._find_matching_fact(entry, facts, set())
+                    if dup and dup.fact_id in matched_fact_ids:
+                        pass  # Skip duplicate — already covered
+                    else:
+                        fn += 1
+
+            # Count FP: unmatched facts whose metric_id appears in gold
+            matched_metric_values: set[tuple[str, float | None]] = set()
+            # Rebuild matched_metric_values from what was matched above
+            # by re-running matching (we only need the set of matched (mid, value) pairs)
+            _matched_ids_copy: set[str] = set()
+            for entry in expected:
+                if not entry.has_numeric_value:
+                    continue
+                if normalize_metric_id(entry.metric_id) == "cm_not_a_customer_metric":
+                    continue
+                if not normalize_metric_id(entry.metric_id):
+                    continue
+                mf = self._find_matching_fact(entry, facts, _matched_ids_copy)
+                if mf:
+                    _matched_ids_copy.add(mf.fact_id)
+                    matched_metric_values.add(
+                        (normalize_metric_id(mf.canonical_metric_id), mf.value)
+                    )
+
+            fp = 0
+            for fact in facts:
+                if fact.fact_id not in matched_fact_ids:
+                    fact_metric = normalize_metric_id(fact.canonical_metric_id)
+                    if fact_metric in gold_metric_ids:
+                        if (fact_metric, fact.value) not in matched_metric_values:
+                            fp += 1
+
+            total_tp += tp
+            total_fp += fp
+            total_fn += fn
+
+        precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
+        recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+        f1 = (
+            2 * (precision * recall) / (precision + recall)
+            if (precision + recall) > 0
+            else 0.0
+        )
+
+        return AggregateMetrics(
+            precision=precision,
+            recall=recall,
+            f1=f1,
+            total_true_positives=total_tp,
+            total_false_positives=total_fp,
+            total_false_negatives=total_fn,
+        )
+
     def compare_to_baseline(
         self,
         current_metrics: AggregateMetrics,
@@ -1565,6 +1791,9 @@ def run_validation(
     min_confidence: float = 0.35,
     fn_diagnostics: bool = False,
     fail_on_regression: bool = False,
+    companies: list[str] | None = None,
+    limit: int | None = None,
+    max_workers: int = 4,
 ) -> AggregateMetrics:
     """
     Run full validation and optionally update baseline.
@@ -1575,15 +1804,28 @@ def run_validation(
         min_confidence: Minimum confidence threshold for counting facts
         fn_diagnostics: If True, run FN root cause analysis and print report
         fail_on_regression: If True, exit(1) when a regression vs baseline is detected
+        companies: Optional list of company names to validate (subset run)
+        limit: Optional cap on number of companies to validate
+        max_workers: Number of parallel workers (default: 4)
 
     Returns:
         AggregateMetrics with validation results
     """
     import sys
 
+    if update_baseline and (companies or limit is not None):
+        raise ValueError(
+            "update_baseline cannot be combined with companies or limit "
+            "(would overwrite v2_baseline.json with partial results)"
+        )
+
     # Run at the requested confidence threshold (default: high-confidence only)
     validator = V2GoldStandardValidator(min_confidence=min_confidence, fn_diagnostics=fn_diagnostics)
-    results = validator.validate_all()
+    results = validator.validate_all(
+        max_workers=max_workers,
+        companies=companies,
+        limit=limit,
+    )
     metrics = validator.compute_metrics(results)
 
     print(f"\nV2 Gold Standard Validation Results (confidence >= {min_confidence}):")
@@ -1619,12 +1861,14 @@ def run_validation(
     if fn_diagnostics:
         V2GoldStandardValidator.print_fn_diagnostics(results)
 
-    # Also report unfiltered facts for comparison
+    # Print per-stage timing summary (Phase C observability)
+    V2GoldStandardValidator.print_stage_timing_summary(results)
+
+    # Also report unfiltered facts for comparison — reuse already-computed results
+    # at threshold=0.0 to avoid running the full pipeline a second time.
     review_threshold = 0.0
     if min_confidence > review_threshold:
-        review_validator = V2GoldStandardValidator(min_confidence=review_threshold)
-        review_results = review_validator.validate_all()
-        review_metrics = review_validator.compute_metrics(review_results)
+        review_metrics = validator.compute_metrics_at_threshold(results, review_threshold)
         print(f"\n  Review-worthy facts (confidence >= {review_threshold}):")
         print(
             f"    TP: {review_metrics.total_true_positives}, FP: {review_metrics.total_false_positives}, FN: {review_metrics.total_false_negatives}"
@@ -1632,6 +1876,12 @@ def run_validation(
 
     if update_baseline:
         validator.save_baseline(metrics, description=baseline_description)
+
+    if fail_on_regression and (companies or limit is not None):
+        logger.warning(
+            "fail_on_regression with a subset: comparison is partial; "
+            "regressions outside the subset will not be caught"
+        )
 
     if fail_on_regression:
         try:
@@ -1654,6 +1904,12 @@ def run_validation(
 
 if __name__ == "__main__":
     import argparse
+
+    def _positive_int(v: str) -> int:
+        n = int(v)
+        if n <= 0:
+            raise argparse.ArgumentTypeError(f"--limit must be > 0, got {n}")
+        return n
 
     parser = argparse.ArgumentParser(
         description="V2 Gold Standard Validator — run validation and optionally update baseline."
@@ -1685,12 +1941,48 @@ if __name__ == "__main__":
         action="store_true",
         help="Exit with code 1 if current metrics regress vs saved baseline (for CI/pre-commit)",
     )
+    parser.add_argument(
+        "--companies",
+        action="append",
+        default=None,
+        metavar="COMPANY",
+        help=(
+            'Company name (CSV "Company" column) to validate. Repeat for multiple '
+            'companies, e.g. --companies "Chewy, Inc." --companies "Datadog, Inc." '
+            "(default: all)"
+        ),
+    )
+    parser.add_argument(
+        "--limit",
+        type=_positive_int,
+        default=None,
+        help="Validate only the first N companies (applied after --companies filter)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Parallel worker count (default: 4; use 1 for sequential debugging)",
+    )
 
     _args = parser.parse_args()
-    run_validation(
-        update_baseline=_args.update_baseline,
-        baseline_description=_args.description,
-        min_confidence=_args.min_confidence,
-        fn_diagnostics=_args.fn_diagnostics,
-        fail_on_regression=_args.fail_on_regression,
+    # With action="append", _args.companies is already a list[str] | None.
+    # Strip whitespace and drop empties for robustness against quoting quirks.
+    companies_list = (
+        [c.strip() for c in _args.companies if c.strip()]
+        if _args.companies
+        else None
     )
+    try:
+        run_validation(
+            update_baseline=_args.update_baseline,
+            baseline_description=_args.description,
+            min_confidence=_args.min_confidence,
+            fn_diagnostics=_args.fn_diagnostics,
+            fail_on_regression=_args.fail_on_regression,
+            companies=companies_list,
+            limit=_args.limit,
+            max_workers=_args.workers,
+        )
+    except ValueError as e:
+        parser.error(str(e))

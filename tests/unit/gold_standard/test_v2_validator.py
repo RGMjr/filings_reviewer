@@ -1381,8 +1381,9 @@ class TestRunValidation:
 
         result = run_validation()
 
-        # Called twice: once for confidence threshold (0.35), once for unfiltered (0.0)
-        assert mock_instance.validate_all.call_count == 2
+        # validate_all must be called exactly once; review-worthy metrics are
+        # recomputed from stored facts via compute_metrics_at_threshold.
+        assert mock_instance.validate_all.call_count == 1
         assert result.precision == 0.85
 
         captured = capsys.readouterr()
@@ -1991,3 +1992,250 @@ class TestValidatorFNDiagnosticsFlag:
         assert validator.v2_config.retain_context is True
         # Other config values preserved
         assert validator.v2_config.enable_image_extraction is False
+
+
+# =============================================================================
+# Phase B — CLI ergonomics (subset flags + workers)
+# =============================================================================
+
+
+def _make_validation_result(company_name: str = "TestCo") -> ValidationResult:
+    """Build a minimal ValidationResult for use in mocks."""
+    return ValidationResult(
+        company_name=company_name,
+        filing_path="/fake/path",
+        total_expected=1,
+        matched=1,
+        missed=0,
+        extra=0,
+        true_positives=1,
+        false_positives=0,
+        false_negatives=0,
+    )
+
+
+def _make_stub_entries(
+    companies: list[str],
+) -> dict[str, list[GoldStandardEntry]]:
+    """Return a dict keyed by company name with one dummy entry each."""
+    return {
+        name: [
+            GoldStandardEntry(
+                document_url="https://sec.gov/test",
+                company_name=name,
+                metric_id="cm_dau",
+                name_in_text="daily active users",
+                raw_value="1000",
+                scaled_value="1000",
+                scale_unit="",
+                period="",
+                definition="",
+                quote_context="",
+                segment_type="",
+                is_definition_only=False,
+                value_context="",
+                detection_difficulty="",
+                period_start=None,
+                period_end=None,
+            )
+        ]
+        for name in companies
+    }
+
+
+class TestValidateAllSubsetFlags:
+    """Tests for validate_all() companies/limit filtering (Phase B1)."""
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator._find_filing_path")
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.validate_filing")
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.load_gold_standard")
+    def test_validate_all_companies_filter(
+        self,
+        mock_load: MagicMock,
+        mock_validate_filing: MagicMock,
+        mock_find_path: MagicMock,
+    ) -> None:
+        """Only the requested company's validate_filing should be called."""
+        companies = ["CompanyA", "CompanyB", "CompanyC"]
+        mock_load.return_value = _make_stub_entries(companies)
+        mock_find_path.return_value = Path("/fake/filing.htm")
+        mock_validate_filing.return_value = _make_validation_result("CompanyA")
+
+        validator = V2GoldStandardValidator(gold_standard_path="/dev/null")
+        results = validator.validate_all(companies=["CompanyA"])
+
+        assert mock_validate_filing.call_count == 1
+        assert results[0].company_name == "CompanyA"
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator._find_filing_path")
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.validate_filing")
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.load_gold_standard")
+    def test_validate_all_limit(
+        self,
+        mock_load: MagicMock,
+        mock_validate_filing: MagicMock,
+        mock_find_path: MagicMock,
+    ) -> None:
+        """validate_all(limit=2) should invoke validate_filing exactly 2 times."""
+        companies = ["A", "B", "C", "D", "E"]
+        mock_load.return_value = _make_stub_entries(companies)
+        mock_find_path.return_value = Path("/fake/filing.htm")
+        mock_validate_filing.side_effect = [
+            _make_validation_result(name) for name in companies[:2]
+        ]
+
+        validator = V2GoldStandardValidator(gold_standard_path="/dev/null")
+        results = validator.validate_all(limit=2)
+
+        assert mock_validate_filing.call_count == 2
+        assert len(results) == 2
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator._find_filing_path")
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.validate_filing")
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.load_gold_standard")
+    def test_validate_all_companies_and_limit(
+        self,
+        mock_load: MagicMock,
+        mock_validate_filing: MagicMock,
+        mock_find_path: MagicMock,
+    ) -> None:
+        """companies filter is applied first, then limit caps the result."""
+        companies = ["A", "B", "C", "D", "E"]
+        mock_load.return_value = _make_stub_entries(companies)
+        mock_find_path.return_value = Path("/fake/filing.htm")
+        mock_validate_filing.side_effect = [
+            _make_validation_result(name) for name in ["A", "B"]
+        ]
+
+        validator = V2GoldStandardValidator(gold_standard_path="/dev/null")
+        validator.validate_all(companies=["A", "B", "C"], limit=2)
+
+        assert mock_validate_filing.call_count == 2
+        # Both calls must be from within {A, B, C}
+        called_names = {
+            call.args[0] for call in mock_validate_filing.call_args_list
+        }
+        assert called_names <= {"A", "B", "C"}
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.load_gold_standard")
+    def test_validate_all_unknown_company_raises(
+        self, mock_load: MagicMock
+    ) -> None:
+        """Requesting a company name not in the CSV raises ValueError with valid names."""
+        mock_load.return_value = _make_stub_entries(["RealCo", "AnotherCo"])
+
+        validator = V2GoldStandardValidator(gold_standard_path="/dev/null")
+        with pytest.raises(ValueError, match="Valid names:"):
+            validator.validate_all(companies=["Bogus Co"])
+
+
+class TestRunValidationGuardsAndWorkers:
+    """Tests for run_validation() baseline guard, subset warning, and max_workers (Phase B1+B2)."""
+
+    def test_run_validation_baseline_guard_companies(self) -> None:
+        """update_baseline + companies raises ValueError before any I/O."""
+        from src.gold_standard.v2_validator import run_validation
+
+        with pytest.raises(ValueError, match="update_baseline cannot be combined"):
+            run_validation(update_baseline=True, companies=["SomeCo"])
+
+    def test_run_validation_baseline_guard_limit(self) -> None:
+        """update_baseline + limit raises ValueError before any I/O."""
+        from src.gold_standard.v2_validator import run_validation
+
+        with pytest.raises(ValueError, match="update_baseline cannot be combined"):
+            run_validation(update_baseline=True, limit=3)
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_run_validation_threads_workers(
+        self, mock_validator_cls: MagicMock
+    ) -> None:
+        """run_validation(max_workers=4) passes max_workers=4 to validate_all."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = AggregateMetrics(
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
+        )
+
+        from src.gold_standard.v2_validator import run_validation
+
+        run_validation(max_workers=4)
+
+        mock_instance.validate_all.assert_called_once()
+        call_kwargs = mock_instance.validate_all.call_args
+        assert call_kwargs.kwargs.get("max_workers") == 4
+
+    @patch("src.gold_standard.v2_validator.logger")
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_run_validation_subset_warning_logged(
+        self, mock_validator_cls: MagicMock, mock_logger: MagicMock
+    ) -> None:
+        """fail_on_regression with a subset logs a 'comparison is partial' warning."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = AggregateMetrics(
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
+        )
+        # compare_to_baseline raises FileNotFoundError so fail_on_regression exits cleanly
+        mock_instance.compare_to_baseline.side_effect = FileNotFoundError
+
+        from src.gold_standard.v2_validator import run_validation
+
+        run_validation(companies=["SomeCo"], fail_on_regression=True)
+
+        warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
+        assert any("comparison is partial" in msg for msg in warning_calls)
+
+
+class TestStageTimingSummary:
+    """Tests for print_stage_timing_summary (Phase C observability)."""
+
+    def test_empty_results_no_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """No timing data → silent return (no print)."""
+        V2GoldStandardValidator.print_stage_timing_summary([])
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_all_results_missing_timings_silent(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Results with empty stage_timings → silent return."""
+        result = _make_validation_result("TestCo")
+        V2GoldStandardValidator.print_stage_timing_summary([result])
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_aggregates_across_filings_and_sorts_descending(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Per-stage durations are summed across filings and printed descending."""
+        r1 = _make_validation_result("CompanyA")
+        r1.stage_timings = {"ingestion": 100, "value_binding": 500, "validation": 50}
+        r1.total_pipeline_ms = 650
+
+        r2 = _make_validation_result("CompanyB")
+        r2.stage_timings = {"ingestion": 200, "value_binding": 300, "validation": 80}
+        r2.total_pipeline_ms = 580
+
+        V2GoldStandardValidator.print_stage_timing_summary([r1, r2])
+        out = capsys.readouterr().out
+
+        assert "PER-STAGE TIMING (2 filing(s)" in out
+        assert "1,230 ms total pipeline" in out  # 650 + 580
+        # value_binding (800) > ingestion (300) > validation (130) — check order
+        vb_idx = out.index("value_binding")
+        ing_idx = out.index("ingestion")
+        val_idx = out.index("validation")
+        assert vb_idx < ing_idx < val_idx
+        # Totals line
+        assert "1,230" in out  # sum of all stage durations

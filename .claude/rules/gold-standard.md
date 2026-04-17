@@ -63,6 +63,18 @@ python3 -m src.gold_standard.v2_validator --update-baseline --description "Ratio
 ```
 Commit the updated `data/gold_standard/v2_baseline.json`.
 
+### 6. Subsetting during iteration
+
+When tuning a single metric or debugging one filing, run only a subset:
+```bash
+python3 -m src.gold_standard.v2_validator --companies "Slack Technologies" --companies "Datadog, Inc."
+python3 -m src.gold_standard.v2_validator --limit 3 --workers 1
+```
+- `--companies`: repeat the flag for each company. Exact-match against the CSV "Company" column (unknown names error out with the valid-names list). Repeatable form handles names containing commas (e.g. "Chewy, Inc.") cleanly.
+- `--limit N`: cap at the first N companies (applied after `--companies` filter).
+- `--workers N`: parallel worker count (default 4; use `--workers 1` for sequential debugging).
+- `--update-baseline` is **incompatible** with `--companies` or `--limit` — the CLI errors out to prevent writing a partial baseline. Always run the full set before updating the baseline.
+
 ## Key Metrics
 
 - **Precision**: % of generated candidates that are correct
