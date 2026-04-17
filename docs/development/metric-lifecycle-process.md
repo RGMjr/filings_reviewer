@@ -168,6 +168,36 @@ pytest -v
 pytest tests/unit/web/test_review_routes.py -v
 ```
 
+### Step 9: Chart-Bridge Considerations (Tier 1 cohort-style metrics only)
+
+Most metrics are extracted exclusively from text and tables via Stages 6–10. A subset of Tier 1 cohort metrics is **also** extractable from chart images via the Chart Fact Bridge (`PipelineStage.CHART_FACT_BRIDGE`, runs after Stage 5). Current chart-bridge-supported metrics:
+
+- `cm_revenue_by_cohort`
+- `cm_balance_by_cohort`
+- `cm_gross_margin_by_cohort`
+- `cm_transactions_by_cohort`
+- `cm_ltv_to_cac_ratio`
+
+**No extra action required if your metric is text/table-only.** Skip this step.
+
+**If your new metric is cohort-style and likely chart-embedded**, evaluate:
+
+1. **Classifier scoring** — `src/extraction_v2/chart/metric_classifier.py` scores each `ChartData` against the same patterns defined in Step 1 (`config/metric_keywords.yaml`). No new config is required; the YAML patterns are shared. Score formula weighs title (3×specific, 2×patterns), y-axis (1.5×), x-axis + nearby_text (1×), annotations (0.8×), and subtracts exclusions (5×). A metric must score ≥ `PipelineConfig.chart_metric_classification_min_score` (default 0.6) to be emitted.
+
+2. **Metric-specific gates** — hard gates beyond score (see `metric_classifier.py`). Example: `cm_balance_by_cohort` requires a "deposits"/"balance" token plus stacked-bar chart type. New chart-bridge metrics may need a gate added here to avoid false positives.
+
+3. **Cohort signal requirement** — every cohort-style metric requires a cohort signal (year in series name OR "cohort"/"vintage" token in title/axis) as a hard gate, not a score contributor. `_COHORT_GATE_EXEMPT` in `metric_classifier.py` is the opt-out set for metrics (like `cm_ltv_to_cac_ratio`) that use tenure-bucket labels instead of vintage years.
+
+4. **Cohort period parsing** — `src/extraction_v2/chart/cohort_parser.py` extracts `cohort_def` + `period_end` from `DataPoint.x` / `DataPoint.label` / `ChartSeries.name`. If your metric's chart shape doesn't match the existing vintage-year or elapsed-period regimes, extend the parser.
+
+5. **Unit inference** — `src/extraction_v2/chart/unit_inference.py` maps `y_axis_label` to `Unit` + `currency`. Add mappings if your metric uses a unit not already handled (percent, ratio, currency+USD, count).
+
+6. **Phase 3 hallucination guards** — all chart-bridge metrics inherit the five guards in `chart_fact_bridge.py` (image confidence, label required, axis range, cohort year, fact review threshold). See `docs/architecture/extraction-pipeline.md` §Hallucination Guards.
+
+7. **Cross-source confirmation** — if your metric's chart value agrees with a text/table value for the same (metric, period, value) slot after deduplication, `DeduplicationStage._annotate_cross_source_confirmation` flags both facts as `cross_source_confirmed=True` and populates `confirming_source_types`. No action needed — this is automatic.
+
+8. **Fixtures** — when adding chart-bridge coverage for a new metric, record a golden `ChartData` JSON fixture in `tests/fixtures/charts/<TICKER>_<chart-name>.chart_data.json` paired with the image file. Unit tests in `tests/extraction_v2/chart/` mock `vision_client.analyze_image` to return the fixture, so the test suite does not hit the real Vision API.
+
 ---
 
 ## 3. Deprecating a Metric

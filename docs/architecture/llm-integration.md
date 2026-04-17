@@ -157,6 +157,21 @@ response = client.analyze_image(
 )
 ```
 
+### 2.1 Chart Fact Bridge (post-processing, no LLM)
+
+**Module:** `src/extraction_v2/stages/chart_fact_bridge.py` (stage `PipelineStage.CHART_FACT_BRIDGE`)
+
+**Purpose:** Converts the structured `ChartData` produced by Stage 5's Vision call into `MetricFact` rows. **This is not an LLM call** — it is deterministic post-processing of already-extracted chart output. No second Vision request is made.
+
+**Classifier + parsers** (all rule-based, no LLM):
+- `src/extraction_v2/chart/metric_classifier.py` — `ChartMetricClassifier.classify(chart, nearby_text)` scores each `ChartData` against patterns from `config/metric_keywords.yaml` and returns `(canonical_metric_id, score)`. Score threshold: `PipelineConfig.chart_metric_classification_min_score` (default 0.6).
+- `src/extraction_v2/chart/cohort_parser.py` — extracts `cohort_def` + `period_end` from `DataPoint.x` / `DataPoint.label` / `ChartSeries.name`.
+- `src/extraction_v2/chart/unit_inference.py` — maps `y_axis_label` to `Unit` + `currency`.
+
+**Phase 3 hallucination guards** (`chart_fact_bridge.py`): five rule-based guards reject low-quality Vision output before it reaches the fact list. They never call the model again — they only filter the ChartData already returned. See `docs/architecture/extraction-pipeline.md` for the full list (image confidence gate, label-required gate, axis-range sanity, cohort-year sanity, fact review threshold) and `PipelineConfig` knobs.
+
+**Cost:** zero incremental LLM cost. Bridge consumes `ImageAsset.chart_data` populated by Stage 5 and emits `MetricFact` rows with `source_type=CHART`.
+
 ### 3. Prompt Templates (`src/llm/prompts.py`)
 
 **Class:** `PromptTemplates`
@@ -468,6 +483,8 @@ except Exception as e:
 | `VisionClient` | `src/llm/vision_client.py` | gpt-4o | V2 Stage 5 — OCR & Chart Extraction |
 | `LLMCache` | `src/llm/cache.py` | n/a | Transparently via `OpenAIClient.complete()` |
 | `PromptTemplates` | `src/llm/prompts.py` | n/a | Prompt construction and response parsing |
+| `ChartFactBridgeStage` | `src/extraction_v2/stages/chart_fact_bridge.py` | **none (rule-based)** | Post-processes Stage 5 `ChartData` into `MetricFact` rows |
+| `ChartMetricClassifier` | `src/extraction_v2/chart/metric_classifier.py` | **none (rule-based)** | Classifies `ChartData` against YAML patterns |
 
 ---
 
