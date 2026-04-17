@@ -409,10 +409,14 @@
           <div id="correct-form" style="display: none;" class="border rounded p-3 mb-2">
             <div class="mb-2">
               <label class="form-label mb-1">Corrected Metric ID (optional)</label>
-              <input type="text" id="correct-metric" class="form-control form-control-sm"
-                     list="all-metrics-datalist"
-                     placeholder="Keep current: {{ current_fact.canonical_metric_id }}"
-                     autocomplete="off">
+              <select id="correct-metric" class="form-select form-select-sm">
+                <option value="">Keep current: {{ current_fact.canonical_metric_id }}</option>
+                {% for m in available_metrics %}
+                {% if m != current_fact.canonical_metric_id %}
+                <option value="{{ m }}">{{ m }}</option>
+                {% endif %}
+                {% endfor %}
+              </select>
             </div>
             <div class="mb-2">
               <label class="form-label mb-1">Corrected Value (optional)</label>
@@ -487,10 +491,12 @@
       <div class="modal-body">
         <div class="mb-3">
           <label for="missed-metric-id" class="form-label">Metric <span class="text-danger">*</span></label>
-          <input type="text" id="missed-metric-id" class="form-control"
-                 list="all-metrics-datalist"
-                 placeholder="Search metrics..."
-                 autocomplete="off">
+          <select id="missed-metric-id" class="form-select">
+            <option value=""></option>
+            {% for m in available_metrics %}
+            <option value="{{ m }}">{{ m }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="mb-3">
           <label for="missed-value-raw" class="form-label">Value (raw text) <span class="text-danger">*</span></label>
@@ -1012,11 +1018,6 @@ function submitDecision(decision) {
   if (decision === 'correct') {
     const metricId = document.getElementById('correct-metric')?.value?.trim();
     if (metricId) {
-      const validIds = Array.from(document.querySelectorAll('#all-metrics-datalist option')).map(o => o.value);
-      if (!validIds.includes(metricId)) {
-        alert('Please select a valid metric from the list (use the dropdown suggestions).');
-        return;
-      }
       body.assigned_metric_id = metricId;
     }
     const val = document.getElementById('correct-value')?.value;
@@ -1119,6 +1120,8 @@ function addMissedMetric() {
 // Keyboard shortcuts (text tab only — safe on images tab since elements won't exist)
 document.addEventListener('keydown', function(e) {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  // Don't intercept browser/OS shortcuts (Cmd+C, Ctrl+V, etc.) — lets users copy highlighted evidence text.
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
 
   // Only activate text shortcuts when on text tab
   {% if active_tab == 'text' %}

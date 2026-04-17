@@ -110,6 +110,9 @@
         // Ignore if typing in input/textarea
         if (event.target.matches('input, textarea, select')) return;
 
+        // Don't intercept browser/OS shortcuts (Cmd+C, Ctrl+V, etc.)
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+
         // Ignore if submitting
         if (state.submitting) return;
 
