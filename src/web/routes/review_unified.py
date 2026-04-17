@@ -5,14 +5,17 @@ Combines V2 text fact review and image review into a single tabbed interface.
 Takes over the /v2/review URL prefix from review_v2.py.
 """
 
+import io
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     flash,
@@ -497,6 +500,64 @@ def next_filing():
         logger.error(f"Error in next_filing: {e}")
         flash("Error finding next filing.", "danger")
         return redirect(url_for("review_unified.filing_list"))
+
+
+@review_unified_bp.route("/image_crop/<img_id>")
+def image_crop(img_id: str) -> Response:
+    """
+    Serve a cropped region of a chart image stored on disk.
+
+    Query params: x, y, w, h (integers, pixel coordinates).
+    Returns PNG bytes for the cropped region.
+
+    Security: file_path is validated against the project data/ directory
+    before opening to prevent path traversal.
+    """
+    try:
+        from PIL import Image  # type: ignore[import]
+    except ImportError:
+        abort(500)
+
+    x = request.args.get("x", 0, type=int)
+    y = request.args.get("y", 0, type=int)
+    w = request.args.get("w", 0, type=int)
+    h = request.args.get("h", 0, type=int)
+
+    db = get_db()
+    rows = db.query(
+        "SELECT file_path FROM v2_image_assets WHERE img_id = %(img_id)s",
+        {"img_id": img_id},
+    )
+    if not rows:
+        abort(404)
+
+    file_path = rows[0]["file_path"]
+    if not file_path:
+        abort(404)
+
+    # Security: resolve the path and confirm it lives under data/
+    resolved = Path(file_path).resolve()
+    project_root = Path(current_app.root_path).parent.parent.resolve()
+    data_dir = project_root / "data"
+    try:
+        resolved.relative_to(data_dir)
+    except ValueError:
+        logger.warning("image_crop: path traversal attempt for img_id=%s path=%s", img_id, file_path)
+        abort(404)
+
+    if not resolved.exists():
+        abort(404)
+
+    try:
+        img = Image.open(resolved)
+        cropped = img.crop((x, y, x + w, y + h))
+        buf = io.BytesIO()
+        cropped.save(buf, format="PNG")
+        buf.seek(0)
+        return Response(buf.read(), mimetype="image/png")
+    except Exception as exc:
+        logger.error("image_crop: failed to crop img_id=%s: %s", img_id, exc)
+        abort(500)
 
 
 # =============================================================================
