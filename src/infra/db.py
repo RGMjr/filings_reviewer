@@ -3362,986 +3362,6 @@ class DatabaseAdapter:
         result = self.query(sql, params)
         return result[0]["log_id"] if result else 0
 
-    # =========================================================================
-    # Image Review Methods
-    # =========================================================================
-
-    def get_filings_with_image_candidates(
-        self,
-        status: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[dict]:
-        """
-        Get filings that have image review candidates.
-
-        Args:
-            status: Filter by candidate review_status ('pending', 'reviewed', 'skipped')
-                   or None for all statuses
-            limit: Maximum number of filings to return
-            offset: Number of filings to skip (for pagination)
-
-        Returns:
-            List of filings with image candidate counts, ordered by pending_count DESC
-
-        Raises:
-            ValidationError: If status is provided but not valid
-        """
-        if status is not None:
-            validate_enum(status, IMAGE_REVIEW_STATUSES, "review_status")
-
-        status_filter = ""
-        params: dict[str, Any] = {"limit": limit, "offset": offset}
-
-        if status:
-            status_filter = "AND irc.review_status = %(status)s"
-            params["status"] = status
-
-        sql = f"""
-            SELECT
-                f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                c.company_name, c.cik, c.ticker,
-                COUNT(irc.image_candidate_id) as total_candidates,
-                COUNT(irc.image_candidate_id) FILTER (WHERE irc.review_status = 'pending') as pending_count,
-                COUNT(irc.image_candidate_id) FILTER (WHERE irc.review_status = 'reviewed') as reviewed_count,
-                COUNT(irc.image_candidate_id) FILTER (WHERE irc.review_status = 'skipped') as skipped_count,
-                MIN(irc.created_at) as first_candidate_date
-            FROM filings f
-            JOIN companies c ON f.company_id = c.company_id
-            JOIN image_review_candidates irc ON f.filing_id = irc.filing_id
-            WHERE 1=1 {status_filter}
-            GROUP BY f.filing_id, f.accession_number, f.form_type, f.filing_date,
-                     c.company_name, c.cik, c.ticker
-            ORDER BY pending_count DESC, f.filing_date DESC
-            LIMIT %(limit)s OFFSET %(offset)s
-        """
-
-        return self.query(sql, params)
-
-    def get_filings_with_image_candidates_count(
-        self,
-        status: str | None = None,
-    ) -> int:
-        """
-        Get count of filings that have image review candidates.
-
-        Args:
-            status: Filter by candidate review_status, or None for all
-
-        Returns:
-            Total count of filings matching filter
-
-        Raises:
-            ValidationError: If status is provided but not valid
-        """
-        if status is not None:
-            validate_enum(status, IMAGE_REVIEW_STATUSES, "review_status")
-
-        status_filter = ""
-        params: dict[str, Any] = {}
-
-        if status:
-            status_filter = "AND irc.review_status = %(status)s"
-            params["status"] = status
-
-        sql = f"""
-            SELECT COUNT(DISTINCT f.filing_id) as count
-            FROM filings f
-            JOIN image_review_candidates irc ON f.filing_id = irc.filing_id
-            WHERE 1=1 {status_filter}
-        """
-
-        result = self.query(sql, params)
-        return result[0]["count"] if result else 0
-
-    def get_image_review_candidates_for_filing(
-        self,
-        filing_id: int,
-        status: str | None = None,
-        sort_by: str = "tier",
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[dict]:
-        """
-        Get image review candidates for a specific filing.
-
-        Args:
-            filing_id: Filing to get candidates for
-            status: Filter by review_status, or None for all
-            sort_by: Sort order - 'tier' (detection tier priority), 'confidence',
-                    or 'position' (image_index)
-            limit: Maximum candidates to return
-            offset: Number to skip (for pagination)
-
-        Returns:
-            List of candidates with decision data if exists
-
-        Raises:
-            ValidationError: If status or sort_by is invalid
-        """
-        if status is not None:
-            validate_enum(status, IMAGE_REVIEW_STATUSES, "review_status")
-
-        valid_sort_options = ("tier", "confidence", "position", "relevance")
-        if sort_by not in valid_sort_options:
-            raise ValidationError(
-                f"Invalid sort_by '{sort_by}'. Must be one of: {valid_sort_options}"
-            )
-
-        status_filter = ""
-        params: dict[str, Any] = {
-            "filing_id": filing_id,
-            "limit": limit,
-            "offset": offset,
-        }
-
-        if status:
-            status_filter = "AND irc.review_status = %(status)s"
-            params["status"] = status
-
-        # Build ORDER BY based on sort_by
-        if sort_by == "relevance":
-            order_by = "irc.predicted_relevance DESC NULLS LAST, irc.image_candidate_id ASC"
-        elif sort_by == "tier":
-            order_by = """
-                CASE irc.detection_tier
-                    WHEN 'seed_list' THEN 0
-                    WHEN 'tier_1_cohort' THEN 1
-                    WHEN 'tier_2_large' THEN 2
-                    WHEN 'tier_3_all' THEN 3
-                    ELSE 4
-                END ASC,
-                irc.cohort_confidence DESC NULLS LAST,
-                irc.image_index ASC
-            """
-        elif sort_by == "confidence":
-            order_by = "irc.cohort_confidence DESC NULLS LAST, irc.image_index ASC"
-        else:  # position
-            order_by = "irc.image_index ASC"
-
-        sql = f"""
-            SELECT
-                irc.*,
-                ird.image_decision_id,
-                ird.decision,
-                ird.chart_type,
-                ird.rejection_reason,
-                ird.reviewer_notes as decision_notes,
-                ird.review_time_seconds,
-                ird.created_at as decision_created_at
-            FROM image_review_candidates irc
-            LEFT JOIN image_review_decisions ird
-                ON irc.image_candidate_id = ird.image_candidate_id
-            WHERE irc.filing_id = %(filing_id)s {status_filter}
-            ORDER BY {order_by}
-            LIMIT %(limit)s OFFSET %(offset)s
-        """
-
-        return self.query(sql, params)
-
-    def get_image_review_candidate(
-        self,
-        image_candidate_id: int,
-    ) -> dict | None:
-        """
-        Get a single image review candidate with full context.
-
-        Args:
-            image_candidate_id: Candidate to retrieve
-
-        Returns:
-            Candidate dict with filing info and decision if exists, or None
-        """
-        sql = """
-            SELECT
-                irc.*,
-                f.accession_number,
-                c.company_name, c.ticker,
-                ird.image_decision_id,
-                ird.decision,
-                ird.chart_type,
-                ird.rejection_reason,
-                ird.reviewer_id,
-                ird.reviewer_notes as decision_notes,
-                ird.review_time_seconds,
-                ird.created_at as decision_created_at
-            FROM image_review_candidates irc
-            JOIN filings f ON irc.filing_id = f.filing_id
-            JOIN companies c ON irc.company_id = c.company_id
-            LEFT JOIN image_review_decisions ird
-                ON irc.image_candidate_id = ird.image_candidate_id
-            WHERE irc.image_candidate_id = %(image_candidate_id)s
-        """
-
-        results = self.query(sql, {"image_candidate_id": image_candidate_id})
-        return results[0] if results else None
-
-    def get_next_pending_image_candidate(
-        self,
-        filing_id: int,
-        current_candidate_id: int | None = None,
-        include_skipped: bool = False,
-    ) -> dict | None:
-        """
-        Get the next pending image candidate for review navigation.
-
-        Uses simple ID-based ordering for "next" navigation. Since candidates
-        are inserted in discovery order (tier priority, then confidence, then
-        position), using image_candidate_id > current_id gives correct ordering.
-
-        Args:
-            filing_id: Filing to search within
-            current_candidate_id: Current candidate (to find next after this),
-                                 or None to get first pending
-            include_skipped: If True, also match skipped candidates
-
-        Returns:
-            Next pending (or skipped) candidate or None if all reviewed
-        """
-        params: dict[str, Any] = {"filing_id": filing_id}
-
-        status_condition = (
-            "AND irc.review_status IN ('pending', 'skipped')"
-            if include_skipped
-            else "AND irc.review_status = 'pending'"
-        )
-
-        if current_candidate_id is not None:
-            # Navigate in predicted_relevance DESC order. Find the next candidate
-            # whose (predicted_relevance DESC, image_candidate_id ASC) rank is lower
-            # than the current one. We do this by looking up the current score first,
-            # then finding the next candidate that is "after" it in the sort order.
-            current = self.query(
-                "SELECT predicted_relevance FROM image_review_candidates WHERE image_candidate_id = %(id)s",
-                {"id": current_candidate_id},
-            )
-            current_score = current[0]["predicted_relevance"] if current else None
-            params["current_candidate_id"] = current_candidate_id
-            params["current_score"] = current_score
-
-            if current_score is not None:
-                after_condition = """
-                    AND (
-                        irc.predicted_relevance < %(current_score)s
-                        OR (irc.predicted_relevance = %(current_score)s
-                            AND irc.image_candidate_id > %(current_candidate_id)s)
-                        OR irc.predicted_relevance IS NULL
-                    )
-                """
-            else:
-                # Current candidate is unscored — fall back to ID-based navigation
-                after_condition = "AND irc.image_candidate_id > %(current_candidate_id)s"
-        else:
-            after_condition = ""
-
-        sql = f"""
-            SELECT
-                irc.image_candidate_id,
-                irc.image_src,
-                irc.image_url,
-                irc.detection_tier,
-                irc.cohort_confidence,
-                irc.predicted_relevance,
-                irc.image_index
-            FROM image_review_candidates irc
-            WHERE irc.filing_id = %(filing_id)s
-              {status_condition}
-              {after_condition}
-            ORDER BY irc.predicted_relevance DESC NULLS LAST, irc.image_candidate_id ASC
-            LIMIT 1
-        """
-
-        results = self.query(sql, params)
-        return results[0] if results else None
-
-    def get_image_review_progress(self) -> dict[str, Any]:
-        """
-        Get overall image review progress statistics.
-
-        Returns:
-            Dict with progress metrics including by-tier breakdown
-        """
-        sql = """
-            SELECT
-                COUNT(*) as total_candidates,
-                COUNT(*) FILTER (WHERE review_status = 'pending') as pending_count,
-                COUNT(*) FILTER (WHERE review_status = 'reviewed') as reviewed_count,
-                COUNT(*) FILTER (WHERE review_status = 'skipped') as skipped_count,
-                COUNT(*) FILTER (WHERE review_status = 'auto_rejected') as auto_rejected_count,
-                COUNT(DISTINCT filing_id) as total_filings,
-                COUNT(DISTINCT filing_id) FILTER (WHERE review_status = 'pending') as filings_with_pending
-            FROM image_review_candidates
-        """
-
-        results = self.query(sql)
-        if not results or results[0]["total_candidates"] is None:
-            return {
-                "total_candidates": 0,
-                "pending_count": 0,
-                "reviewed_count": 0,
-                "skipped_count": 0,
-                "auto_rejected_count": 0,
-                "review_pct": 0.0,
-                "total_filings": 0,
-                "filings_with_pending": 0,
-                "by_tier": {},
-            }
-
-        row = results[0]
-        total = row["total_candidates"] or 0
-        reviewed = row["reviewed_count"] or 0
-
-        # Get breakdown by tier
-        tier_sql = """
-            SELECT
-                COALESCE(detection_tier, 'unknown') as tier,
-                COUNT(*) as total,
-                COUNT(*) FILTER (WHERE review_status = 'pending') as pending,
-                COUNT(*) FILTER (WHERE review_status = 'reviewed') as reviewed
-            FROM image_review_candidates
-            GROUP BY detection_tier
-            ORDER BY
-                CASE detection_tier
-                    WHEN 'seed_list' THEN 0
-                    WHEN 'tier_1_cohort' THEN 1
-                    WHEN 'tier_2_large' THEN 2
-                    WHEN 'tier_3_all' THEN 3
-                    ELSE 4
-                END
-        """
-        tier_results = self.query(tier_sql)
-        by_tier = {
-            r["tier"]: {
-                "total": r["total"],
-                "pending": r["pending"],
-                "reviewed": r["reviewed"],
-            }
-            for r in tier_results
-        }
-
-        return {
-            "total_candidates": total,
-            "pending_count": row["pending_count"] or 0,
-            "reviewed_count": reviewed,
-            "skipped_count": row["skipped_count"] or 0,
-            "auto_rejected_count": row["auto_rejected_count"] or 0,
-            "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
-            "total_filings": row["total_filings"] or 0,
-            "filings_with_pending": row["filings_with_pending"] or 0,
-            "by_tier": by_tier,
-        }
-
-    def get_image_decision_statistics(self) -> list[dict]:
-        """
-        Get image decision statistics by detection tier.
-
-        Returns:
-            List of dicts with tier, relevant_count, not_relevant_count, precision_pct
-        """
-        sql = """
-            SELECT
-                COALESCE(irc.detection_tier, 'unknown') as detection_tier,
-                COUNT(*) FILTER (WHERE ird.decision = 'relevant') as relevant_count,
-                COUNT(*) FILTER (WHERE ird.decision = 'not_relevant') as not_relevant_count,
-                COUNT(*) as total_decisions,
-                ROUND(
-                    100.0 * COUNT(*) FILTER (WHERE ird.decision = 'relevant')
-                    / NULLIF(COUNT(*), 0),
-                    1
-                ) as precision_pct
-            FROM image_review_decisions ird
-            JOIN image_review_candidates irc
-                ON ird.image_candidate_id = irc.image_candidate_id
-            GROUP BY COALESCE(irc.detection_tier, 'unknown')
-            ORDER BY
-                CASE COALESCE(irc.detection_tier, 'unknown')
-                    WHEN 'seed_list' THEN 0
-                    WHEN 'tier_1_cohort' THEN 1
-                    WHEN 'tier_2_large' THEN 2
-                    WHEN 'tier_3_all' THEN 3
-                    ELSE 4
-                END
-        """
-
-        return self.query(sql)
-
-    def get_image_overall_decision_statistics(self) -> dict[str, Any]:
-        """
-        Get overall image decision statistics (aggregate counts).
-
-        Returns:
-            Dict with total_decisions, relevant_count, not_relevant_count,
-            relevant_pct, not_relevant_pct, avg_review_time_seconds
-        """
-        sql = """
-            SELECT
-                COUNT(*) as total_decisions,
-                COUNT(*) FILTER (WHERE decision = 'relevant') as relevant_count,
-                COUNT(*) FILTER (WHERE decision = 'not_relevant') as not_relevant_count,
-                AVG(review_time_seconds) as avg_review_time_seconds
-            FROM image_review_decisions
-        """
-        results = self.query(sql)
-        if not results or results[0]["total_decisions"] == 0:
-            return {
-                "total_decisions": 0,
-                "relevant_count": 0,
-                "not_relevant_count": 0,
-                "relevant_pct": 0.0,
-                "not_relevant_pct": 0.0,
-                "avg_review_time_seconds": None,
-            }
-
-        row = results[0]
-        total = row["total_decisions"] or 0
-        relevant = row["relevant_count"] or 0
-        not_relevant = row["not_relevant_count"] or 0
-
-        return {
-            "total_decisions": total,
-            "relevant_count": relevant,
-            "not_relevant_count": not_relevant,
-            "relevant_pct": round(relevant / total * 100, 1) if total > 0 else 0.0,
-            "not_relevant_pct": round(not_relevant / total * 100, 1) if total > 0 else 0.0,
-            "avg_review_time_seconds": row["avg_review_time_seconds"],
-        }
-
-    def get_image_daily_decision_counts(self, days: int = 7) -> list[dict]:
-        """
-        Get image decision counts by day for the last N days.
-
-        Returns a time series of decision counts suitable for chart visualization.
-        Includes days with zero decisions to ensure continuous timeline.
-
-        Args:
-            days: Number of days to include (default: 7)
-
-        Returns:
-            List of dicts with:
-            - date: Date (datetime.date object)
-            - count: Number of decisions made on that date
-
-            Results are ordered by date ascending (oldest first).
-
-        Example:
-            >>> db.get_image_daily_decision_counts(days=7)
-            [
-                {"date": date(2025, 12, 10), "count": 5},
-                {"date": date(2025, 12, 11), "count": 0},
-                {"date": date(2025, 12, 12), "count": 12},
-                ...
-            ]
-        """
-        sql = """
-            WITH date_series AS (
-                -- Generate series of dates for last N days
-                SELECT generate_series(
-                    CURRENT_DATE - %(days)s + 1,
-                    CURRENT_DATE,
-                    '1 day'::interval
-                )::date AS date
-            ),
-            daily_counts AS (
-                -- Count decisions per day
-                -- Use DATE() to convert timestamps to dates for grouping
-                SELECT
-                    DATE(created_at) AS date,
-                    COUNT(*) AS count
-                FROM image_review_decisions
-                WHERE DATE(created_at) >= CURRENT_DATE - %(days)s + 1
-                GROUP BY DATE(created_at)
-            )
-            -- Left join to include days with zero decisions
-            SELECT
-                ds.date,
-                COALESCE(dc.count, 0) AS count
-            FROM date_series ds
-            LEFT JOIN daily_counts dc ON ds.date = dc.date
-            ORDER BY ds.date ASC
-        """
-
-        return self.query(sql, {"days": days})
-
-    def get_image_chart_type_distribution(self) -> list[dict]:
-        """
-        Get chart type distribution for relevant image decisions.
-
-        Returns:
-            List of dicts with chart_type, chart_count, pct_of_relevant
-        """
-        return self.query(
-            "SELECT chart_type, chart_count, pct_of_relevant "
-            "FROM v_image_chart_type_distribution "
-            "ORDER BY chart_count DESC"
-        )
-
-    def get_image_rejection_reason_stats(self) -> list[dict]:
-        """
-        Get rejection reason breakdown by detection tier.
-
-        Returns:
-            List of dicts with detection_tier, rejection_reason, rejection_count, pct_of_tier_rejections
-        """
-        return self.query(
-            "SELECT detection_tier, rejection_reason, rejection_count, pct_of_tier_rejections "
-            "FROM v_image_rejection_reasons "
-            "ORDER BY detection_tier, rejection_count DESC"
-        )
-
-    def insert_image_review_candidate(
-        self,
-        filing_id: int,
-        company_id: int,
-        image_src: str,
-        image_url: str,
-        source_segment_id: int | None = None,
-        image_width: int | None = None,
-        image_height: int | None = None,
-        image_alt: str | None = None,
-        preceding_text: str | None = None,
-        detected_keywords: list[str] | None = None,
-        cohort_keyword_nearby: bool | None = None,
-        image_index: int | None = None,
-        cohort_confidence: float | None = None,
-        is_decorative: bool | None = None,
-        detection_tier: str | None = None,
-    ) -> int:
-        """
-        Insert or get an image review candidate.
-
-        Uses upsert with DO NOTHING on conflict - if the candidate already exists
-        (same filing_id + image_src), returns the existing candidate_id.
-
-        Args:
-            filing_id: Filing containing the image
-            company_id: Company of the filing
-            image_src: Image filename (e.g., 'mdaa2.jpg')
-            image_url: Full SEC URL to image
-            source_segment_id: Optional link to source_segments table
-            image_width: Image width in pixels
-            image_height: Image height in pixels
-            image_alt: Alt text from HTML
-            preceding_text: Context text before image
-            detected_keywords: Keywords found near image
-            cohort_keyword_nearby: Whether 'cohort' keyword is within 1500 chars
-            image_index: Position of image in filing (1-indexed)
-            cohort_confidence: Confidence score 0.0-1.0
-            is_decorative: Whether image is likely decorative
-            detection_tier: Discovery method ('tier_1_cohort', 'tier_2_large', etc.)
-
-        Returns:
-            image_candidate_id (new or existing)
-
-        Raises:
-            ValidationError: If cohort_confidence out of range or invalid detection_tier
-        """
-        # Validate cohort_confidence if provided
-        if cohort_confidence is not None:
-            validate_score(cohort_confidence, "cohort_confidence")
-
-        # Validate detection_tier if provided
-        if detection_tier is not None:
-            from src.review.models import IMAGE_DETECTION_TIERS
-
-            validate_enum(detection_tier, IMAGE_DETECTION_TIERS, "detection_tier")
-
-        sql = """
-            INSERT INTO image_review_candidates (
-                filing_id, company_id, source_segment_id,
-                image_src, image_url,
-                image_width, image_height, image_alt,
-                preceding_text, detected_keywords,
-                cohort_keyword_nearby, image_index,
-                cohort_confidence, is_decorative, detection_tier
-            )
-            VALUES (
-                %(filing_id)s, %(company_id)s, %(source_segment_id)s,
-                %(image_src)s, %(image_url)s,
-                %(image_width)s, %(image_height)s, %(image_alt)s,
-                %(preceding_text)s, %(detected_keywords)s,
-                %(cohort_keyword_nearby)s, %(image_index)s,
-                %(cohort_confidence)s, %(is_decorative)s, %(detection_tier)s
-            )
-            ON CONFLICT (filing_id, image_src) DO NOTHING
-            RETURNING image_candidate_id
-        """
-
-        params = {
-            "filing_id": filing_id,
-            "company_id": company_id,
-            "source_segment_id": source_segment_id,
-            "image_src": image_src,
-            "image_url": image_url,
-            "image_width": image_width,
-            "image_height": image_height,
-            "image_alt": image_alt,
-            "preceding_text": preceding_text,
-            "detected_keywords": detected_keywords,
-            "cohort_keyword_nearby": cohort_keyword_nearby,
-            "image_index": image_index,
-            "cohort_confidence": cohort_confidence,
-            "is_decorative": is_decorative,
-            "detection_tier": detection_tier,
-        }
-
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                result = cur.fetchone()
-
-                if result:
-                    # Inserted successfully
-                    return int(result["image_candidate_id"])
-
-                # Conflict - row already exists, fetch existing ID
-                cur.execute(
-                    """
-                    SELECT image_candidate_id
-                    FROM image_review_candidates
-                    WHERE filing_id = %(filing_id)s AND image_src = %(image_src)s
-                    """,
-                    {"filing_id": filing_id, "image_src": image_src},
-                )
-                existing = cur.fetchone()
-                return int(existing["image_candidate_id"]) if existing else 0
-
-    def bridge_v2_images_to_review_candidates(
-        self,
-        filing_id: int,
-        company_id: int,
-        cik: str,
-        accession_number: str,
-    ) -> int:
-        """
-        Populate image_review_candidates from v2_image_assets for a filing.
-
-        After V2 extraction runs, image assets are stored in v2_image_assets but
-        the Images tab in the review UI reads from image_review_candidates.  This
-        method bridges the two tables so newly-extracted filings automatically
-        appear in the review UI without manual script runs.
-
-        Skips decorative/logo/signature images.  Maps V2 relevance scores and
-        classifications to detection tiers:
-            - chart  + relevance >= 0.6            → tier_1_cohort
-            - chart or table_image + 300×300px      → tier_2_large
-            - all other non-decorative              → tier_3_all
-
-        Uses insert_image_review_candidate() which is upsert-safe, so re-running
-        this method for the same filing is idempotent.
-
-        Args:
-            filing_id:        DB filing_id (also the doc_id in v2_image_assets).
-            company_id:       Company owning the filing.
-            cik:              SEC CIK (used to construct the image URL).
-            accession_number: SEC accession number with dashes (e.g. "0001193125-23-235646").
-
-        Returns:
-            Number of candidates inserted (0 if all already existed or no images).
-        """
-        # Fetch non-decorative images that have a filename
-        rows = self.query(
-            """
-            SELECT img_id, filename, width, height, nearby_text,
-                   classification, relevance_score
-            FROM v2_image_assets
-            WHERE doc_id = %(filing_id)s
-              AND classification NOT IN ('decorative', 'logo', 'signature')
-              AND filename IS NOT NULL
-              AND filename != ''
-            ORDER BY relevance_score DESC
-            """,
-            {"filing_id": filing_id},
-        )
-        if not rows:
-            return 0
-
-        # Construct base URL (mirrors sec_client.fetch_image URL logic)
-        cik_stripped = cik.lstrip("0") or "0"
-        accession_no_dashes = accession_number.replace("-", "")
-        base_url = f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{accession_no_dashes}/"
-
-        inserted = 0
-        for row in rows:
-            classification = row["classification"] or ""
-            relevance = float(row["relevance_score"] or 0.0)
-            width = int(row["width"] or 0)
-            height = int(row["height"] or 0)
-            filename = row["filename"]
-
-            # Tier mapping
-            if classification == "chart" and relevance >= 0.6:
-                tier = "tier_1_cohort"
-            elif classification in ("chart", "table_image") and width >= 300 and height >= 300:
-                tier = "tier_2_large"
-            else:
-                tier = "tier_3_all"
-
-            candidate_id = self.insert_image_review_candidate(
-                filing_id=filing_id,
-                company_id=company_id,
-                image_src=filename,
-                image_url=base_url + filename,
-                image_width=width or None,
-                image_height=height or None,
-                preceding_text=(row["nearby_text"] or None),
-                cohort_keyword_nearby=(relevance >= 0.6),
-                cohort_confidence=min(relevance, 1.0),
-                is_decorative=False,
-                detection_tier=tier,
-            )
-            if candidate_id:
-                inserted += 1
-
-        return inserted
-
-    def insert_image_review_decision(
-        self,
-        image_candidate_id: int,
-        decision: str,
-        chart_type: str | None = None,
-        rejection_reason: str | None = None,
-        reviewer_id: str | None = None,
-        reviewer_notes: str | None = None,
-        review_time_seconds: int | None = None,
-    ) -> int:
-        """
-        Record a human review decision for an image candidate.
-
-        Atomically inserts the decision AND updates the candidate's status
-        to 'reviewed' in a single transaction.
-
-        Args:
-            image_candidate_id: Candidate being reviewed
-            decision: 'relevant' or 'not_relevant'
-            chart_type: Chart type (required if decision='relevant')
-            rejection_reason: Reason (required if decision='not_relevant')
-            reviewer_id: Identifier for who made this decision
-            reviewer_notes: Optional notes
-            review_time_seconds: Time spent on this decision
-
-        Returns:
-            image_decision_id of the inserted record
-
-        Raises:
-            ValidationError: If decision invalid, or required fields missing
-        """
-        # Validate decision
-        validate_enum(decision, IMAGE_DECISIONS, "decision")
-
-        # Validate chart_type if provided
-        if chart_type is not None:
-            validate_enum(chart_type, IMAGE_CHART_TYPES, "chart_type")
-
-        # Validate rejection_reason if provided
-        if rejection_reason is not None:
-            validate_enum(rejection_reason, IMAGE_REJECTION_REASONS, "rejection_reason")
-
-        # Business rule: relevant requires chart_type
-        if decision == "relevant" and not chart_type:
-            raise ValidationError("Decision 'relevant' requires chart_type")
-
-        # Business rule: not_relevant requires rejection_reason
-        if decision == "not_relevant" and not rejection_reason:
-            raise ValidationError("Decision 'not_relevant' requires rejection_reason")
-
-        insert_sql = """
-            INSERT INTO image_review_decisions (
-                image_candidate_id, decision, chart_type,
-                rejection_reason, reviewer_id, reviewer_notes,
-                review_time_seconds
-            )
-            VALUES (
-                %(image_candidate_id)s, %(decision)s, %(chart_type)s,
-                %(rejection_reason)s, %(reviewer_id)s, %(reviewer_notes)s,
-                %(review_time_seconds)s
-            )
-            RETURNING image_decision_id
-        """
-
-        update_status_sql = """
-            UPDATE image_review_candidates
-            SET review_status = 'reviewed', updated_at = now()
-            WHERE image_candidate_id = %(image_candidate_id)s
-        """
-
-        # Both operations in same transaction for atomicity
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                # Insert the decision
-                cur.execute(
-                    insert_sql,
-                    {
-                        "image_candidate_id": image_candidate_id,
-                        "decision": decision,
-                        "chart_type": chart_type,
-                        "rejection_reason": rejection_reason,
-                        "reviewer_id": reviewer_id,
-                        "reviewer_notes": reviewer_notes,
-                        "review_time_seconds": review_time_seconds,
-                    },
-                )
-                result = cur.fetchone()
-                decision_id: int = int(result["image_decision_id"])
-
-                # Update candidate status - SAME TRANSACTION
-                cur.execute(update_status_sql, {"image_candidate_id": image_candidate_id})
-
-        logger.debug(
-            f"Inserted image review decision: decision_id={decision_id}, "
-            f"candidate_id={image_candidate_id}, decision={decision}"
-        )
-        return decision_id
-
-    def get_image_decision_by_id(
-        self,
-        image_decision_id: int,
-    ) -> dict | None:
-        """
-        Get an image review decision by its ID.
-
-        Args:
-            image_decision_id: Decision ID to retrieve
-
-        Returns:
-            Dict with decision details or None if not found
-        """
-        sql = """
-            SELECT
-                ird.image_decision_id,
-                ird.image_candidate_id,
-                ird.decision,
-                ird.chart_type,
-                ird.rejection_reason,
-                ird.reviewer_id,
-                ird.reviewer_notes,
-                ird.review_time_seconds,
-                ird.created_at,
-                irc.filing_id
-            FROM image_review_decisions ird
-            JOIN image_review_candidates irc
-                ON ird.image_candidate_id = irc.image_candidate_id
-            WHERE ird.image_decision_id = %(image_decision_id)s
-        """
-
-        results = self.query(sql, {"image_decision_id": image_decision_id})
-        return results[0] if results else None
-
-    def delete_image_review_decision(
-        self,
-        image_decision_id: int,
-    ) -> bool:
-        """
-        Delete an image review decision and reset candidate status.
-
-        Args:
-            image_decision_id: Decision to delete
-
-        Returns:
-            True if decision was deleted, False if not found
-        """
-        # First get the candidate_id so we can reset its status
-        get_candidate_sql = """
-            SELECT image_candidate_id
-            FROM image_review_decisions
-            WHERE image_decision_id = %(image_decision_id)s
-        """
-
-        delete_sql = """
-            DELETE FROM image_review_decisions
-            WHERE image_decision_id = %(image_decision_id)s
-        """
-
-        reset_status_sql = """
-            UPDATE image_review_candidates
-            SET review_status = 'pending', updated_at = now()
-            WHERE image_candidate_id = %(image_candidate_id)s
-        """
-
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                # Get the candidate_id first
-                cur.execute(get_candidate_sql, {"image_decision_id": image_decision_id})
-                result = cur.fetchone()
-
-                if not result:
-                    return False
-
-                image_candidate_id = result["image_candidate_id"]
-
-                # Delete the decision
-                cur.execute(delete_sql, {"image_decision_id": image_decision_id})
-
-                # Reset candidate status
-                cur.execute(reset_status_sql, {"image_candidate_id": image_candidate_id})
-
-        logger.debug(
-            f"Deleted image review decision: decision_id={image_decision_id}, "
-            f"reset candidate_id={image_candidate_id} to pending"
-        )
-        return True
-
-    def update_image_candidate_status(
-        self,
-        image_candidate_id: int,
-        status: str,
-    ) -> bool:
-        """
-        Update an image candidate's review status.
-
-        Args:
-            image_candidate_id: Candidate to update
-            status: New status ('pending', 'reviewed', 'skipped')
-
-        Returns:
-            True if updated, False if candidate not found
-
-        Raises:
-            ValidationError: If status is invalid
-        """
-        validate_enum(status, IMAGE_REVIEW_STATUSES, "review_status")
-
-        sql = """
-            UPDATE image_review_candidates
-            SET review_status = %(status)s, updated_at = now()
-            WHERE image_candidate_id = %(image_candidate_id)s
-            RETURNING image_candidate_id
-        """
-
-        result = self.query(
-            sql,
-            {"image_candidate_id": image_candidate_id, "status": status},
-        )
-        return len(result) > 0
-
-    def update_image_dimensions(
-        self,
-        image_candidate_id: int,
-        width: int,
-        height: int,
-    ) -> bool:
-        """
-        Set image_width and image_height on an image candidate and clear
-        predicted_relevance so the candidate is re-scored with the new dimensions.
-
-        Only updates rows that currently have at least one NULL dimension —
-        will not overwrite valid existing values.
-
-        Returns:
-            True if a row was updated, False if not found or dimensions already set.
-        """
-        sql = """
-            UPDATE image_review_candidates
-            SET image_width         = %(width)s,
-                image_height        = %(height)s,
-                predicted_relevance = NULL,
-                updated_at          = now()
-            WHERE image_candidate_id = %(id)s
-              AND (image_width IS NULL OR image_height IS NULL)
-            RETURNING image_candidate_id
-        """
-        result = self.query(sql, {"id": image_candidate_id, "width": width, "height": height})
-        return len(result) > 0
-
     # =============================================================================
     # Image Cache Methods
     # =============================================================================
@@ -4568,12 +3588,14 @@ class DatabaseAdapter:
             ),
             image_progress AS (
                 SELECT
-                    irc.filing_id,
-                    COUNT(irc.image_candidate_id)                                          AS image_count,
-                    COUNT(CASE WHEN irc.review_status = 'pending'   THEN 1 END)            AS images_pending,
-                    COUNT(CASE WHEN irc.review_status = 'reviewed'  THEN 1 END)            AS images_reviewed
-                FROM image_review_candidates irc
-                GROUP BY irc.filing_id
+                    v.doc_id                                                               AS filing_id,
+                    COUNT(v.img_id)                                                         AS image_count,
+                    COUNT(CASE WHEN v.review_status = 'pending'    THEN 1 END)              AS images_pending,
+                    COUNT(CASE WHEN v.review_status = 'reviewed'   THEN 1 END)              AS images_reviewed
+                FROM v2_image_assets v
+                WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
+                  AND v.filename IS NOT NULL AND v.filename != ''
+                GROUP BY v.doc_id
             )
             SELECT
                 f.filing_id,
@@ -4640,10 +3662,12 @@ class DatabaseAdapter:
             ),
             image_progress AS (
                 SELECT
-                    irc.filing_id,
-                    COUNT(CASE WHEN irc.review_status = 'pending' THEN 1 END) AS images_pending
-                FROM image_review_candidates irc
-                GROUP BY irc.filing_id
+                    v.doc_id AS filing_id,
+                    COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending
+                FROM v2_image_assets v
+                WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
+                  AND v.filename IS NOT NULL AND v.filename != ''
+                GROUP BY v.doc_id
             )
             SELECT COUNT(*) AS cnt
             FROM filings f
@@ -4714,12 +3738,14 @@ class DatabaseAdapter:
             ),
             image_progress AS (
                 SELECT
-                    irc.filing_id,
-                    COUNT(irc.image_candidate_id) AS image_count,
-                    COUNT(CASE WHEN irc.review_status = 'pending' THEN 1 END) AS images_pending,
-                    COUNT(CASE WHEN irc.review_status = 'reviewed' THEN 1 END) AS images_reviewed
-                FROM image_review_candidates irc
-                GROUP BY irc.filing_id
+                    v.doc_id AS filing_id,
+                    COUNT(v.img_id) AS image_count,
+                    COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending,
+                    COUNT(CASE WHEN v.review_status = 'reviewed' THEN 1 END) AS images_reviewed
+                FROM v2_image_assets v
+                WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
+                  AND v.filename IS NOT NULL AND v.filename != ''
+                GROUP BY v.doc_id
             ),
             candidates AS (
                 SELECT
@@ -5262,6 +4288,386 @@ class DatabaseAdapter:
             "per_company": [dict(r) for r in per_company],
             "totals": totals,
             "confidence_bands": confidence_bands,
+        }
+
+    # =============================================================================
+    # V2 Image Review Methods (read/write v2_image_assets + v2_image_review_decisions)
+    # =============================================================================
+
+    _V2_IMAGE_CANDIDATE_SELECT = """
+        v.img_id,
+        v.doc_id AS filing_id,
+        f.company_id,
+        v.filename,
+        v.filename AS image_src,
+        'https://www.sec.gov/Archives/edgar/data/'
+            || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
+            || '/' || REPLACE(f.accession_number, '-', '')
+            || '/' || v.filename AS image_url,
+        v.width AS image_width,
+        v.height AS image_height,
+        v.nearby_text AS preceding_text,
+        v.classification,
+        v.relevance_score AS cohort_confidence,
+        v.predicted_relevance,
+        v.review_status,
+        v.section_type,
+        (v.classification IN ('decorative', 'logo', 'signature')) AS is_decorative,
+        CASE
+            WHEN v.classification = 'chart' AND v.relevance_score >= 0.6
+                THEN 'tier_1_cohort'
+            WHEN v.classification IN ('chart', 'table_image')
+                 AND COALESCE(v.width, 0) >= 300
+                 AND COALESCE(v.height, 0) >= 300
+                THEN 'tier_2_large'
+            ELSE 'tier_3_all'
+        END AS detection_tier,
+        v.created_at,
+        d.image_decision_id,
+        d.decision,
+        d.chart_type,
+        d.rejection_reason,
+        d.reviewer_notes AS decision_notes,
+        d.review_time_seconds,
+        d.created_at AS decision_created_at
+    """
+
+    def get_image_review_candidates_for_filing_v2(
+        self,
+        filing_id: int,
+        status: str | None = None,
+        sort_by: str = "relevance",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """
+        V2-native image review candidate query.
+
+        Reads v2_image_assets LEFT JOIN v2_image_review_decisions and projects a row
+        shape compatible with the V1 template (`image_src`, `image_url`, `image_width`,
+        `image_height`, `preceding_text`, `cohort_confidence`, derived `detection_tier`,
+        derived `is_decorative`). Non-decorative images only.
+
+        Sort options: 'relevance' (predicted then cohort), 'tier', 'position' (img_id).
+        """
+        if status is not None:
+            validate_enum(status, IMAGE_REVIEW_STATUSES, "review_status")
+
+        valid_sort_options = ("tier", "relevance", "position")
+        if sort_by not in valid_sort_options:
+            raise ValidationError(
+                f"Invalid sort_by '{sort_by}'. Must be one of: {valid_sort_options}"
+            )
+
+        status_filter = ""
+        params: dict[str, Any] = {
+            "filing_id": filing_id,
+            "limit": limit,
+            "offset": offset,
+        }
+        if status:
+            status_filter = "AND v.review_status = %(status)s"
+            params["status"] = status
+
+        if sort_by == "relevance":
+            order_by = (
+                "v.predicted_relevance DESC NULLS LAST, "
+                "v.relevance_score DESC NULLS LAST, v.img_id ASC"
+            )
+        elif sort_by == "tier":
+            order_by = """
+                CASE
+                    WHEN v.classification = 'chart' AND v.relevance_score >= 0.6 THEN 1
+                    WHEN v.classification IN ('chart', 'table_image')
+                         AND COALESCE(v.width, 0) >= 300
+                         AND COALESCE(v.height, 0) >= 300 THEN 2
+                    ELSE 3
+                END ASC,
+                v.relevance_score DESC NULLS LAST, v.img_id ASC
+            """
+        else:  # position
+            order_by = "v.img_id ASC"
+
+        # Dedup by (doc_id, filename): repeated extraction runs produce fresh
+        # img_id UUIDs for the same file, so v2_image_assets can hold multiple
+        # rows per physical image. Keep the most recent row per filename —
+        # prefer rows that already have a review decision so reviewer work
+        # is not hidden behind a newer un-reviewed duplicate.
+        sql = f"""
+            WITH deduped_img AS (
+                SELECT DISTINCT ON (doc_id, filename) img_id
+                FROM v2_image_assets
+                WHERE doc_id = %(filing_id)s
+                ORDER BY
+                    doc_id,
+                    filename,
+                    EXISTS (
+                        SELECT 1 FROM v2_image_review_decisions rd
+                        WHERE rd.img_id = v2_image_assets.img_id
+                    ) DESC,
+                    created_at DESC NULLS LAST
+            )
+            SELECT {self._V2_IMAGE_CANDIDATE_SELECT}
+            FROM v2_image_assets v
+            JOIN filings f ON v.doc_id = f.filing_id
+            JOIN companies c ON f.company_id = c.company_id
+            LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            WHERE v.doc_id = %(filing_id)s
+              AND v.img_id IN (SELECT img_id FROM deduped_img)
+              AND v.classification NOT IN ('decorative', 'logo', 'signature')
+              AND v.filename IS NOT NULL
+              AND v.filename != ''
+              {status_filter}
+            ORDER BY {order_by}
+            LIMIT %(limit)s OFFSET %(offset)s
+        """
+        return self.query(sql, params)
+
+    def get_image_review_candidate_v2(self, img_id: str) -> dict | None:
+        """V2-native single-image fetch with decision (if any)."""
+        sql = f"""
+            SELECT {self._V2_IMAGE_CANDIDATE_SELECT},
+                f.accession_number, c.company_name, c.cik, c.ticker
+            FROM v2_image_assets v
+            JOIN filings f ON v.doc_id = f.filing_id
+            JOIN companies c ON f.company_id = c.company_id
+            LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            WHERE v.img_id = %(img_id)s
+        """
+        results = self.query(sql, {"img_id": img_id})
+        return results[0] if results else None
+
+    def get_next_pending_image_candidate_v2(
+        self,
+        filing_id: int,
+        current_img_id: str | None = None,
+        include_skipped: bool = False,
+    ) -> dict | None:
+        """
+        Return the next pending (or optionally skipped) V2 image for the filing.
+
+        Ordering matches `get_image_review_candidates_for_filing_v2(sort_by='relevance')`
+        so "next" tracks UI order.
+        """
+        status_list = ["pending", "skipped"] if include_skipped else ["pending"]
+        params: dict[str, Any] = {
+            "filing_id": filing_id,
+            "status_list": status_list,
+        }
+        cursor_filter = ""
+        if current_img_id is not None:
+            cursor_filter = """
+                AND (
+                    v.predicted_relevance < (
+                        SELECT predicted_relevance FROM v2_image_assets WHERE img_id = %(current_img_id)s
+                    )
+                    OR (
+                        v.predicted_relevance IS NOT DISTINCT FROM (
+                            SELECT predicted_relevance FROM v2_image_assets WHERE img_id = %(current_img_id)s
+                        )
+                        AND v.img_id > %(current_img_id)s::uuid
+                    )
+                )
+            """
+            params["current_img_id"] = current_img_id
+
+        # Dedup by (doc_id, filename) — see get_image_review_candidates_for_filing_v2.
+        sql = f"""
+            WITH deduped_img AS (
+                SELECT DISTINCT ON (doc_id, filename) img_id
+                FROM v2_image_assets
+                WHERE doc_id = %(filing_id)s
+                ORDER BY
+                    doc_id,
+                    filename,
+                    EXISTS (
+                        SELECT 1 FROM v2_image_review_decisions rd
+                        WHERE rd.img_id = v2_image_assets.img_id
+                    ) DESC,
+                    created_at DESC NULLS LAST
+            )
+            SELECT {self._V2_IMAGE_CANDIDATE_SELECT}
+            FROM v2_image_assets v
+            JOIN filings f ON v.doc_id = f.filing_id
+            JOIN companies c ON f.company_id = c.company_id
+            LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            WHERE v.doc_id = %(filing_id)s
+              AND v.img_id IN (SELECT img_id FROM deduped_img)
+              AND v.review_status = ANY(%(status_list)s)
+              AND v.classification NOT IN ('decorative', 'logo', 'signature')
+              AND v.filename IS NOT NULL
+              AND v.filename != ''
+              {cursor_filter}
+            ORDER BY v.predicted_relevance DESC NULLS LAST,
+                     v.relevance_score DESC NULLS LAST, v.img_id ASC
+            LIMIT 1
+        """
+        results = self.query(sql, params)
+        return results[0] if results else None
+
+    def insert_image_review_decision_v2(
+        self,
+        img_id: str,
+        decision: str,
+        chart_type: str | None = None,
+        rejection_reason: str | None = None,
+        reviewer_id: str | None = None,
+        reviewer_notes: str | None = None,
+        review_time_seconds: int | None = None,
+    ) -> int:
+        """
+        V2-native decision insert. Atomically inserts the decision row AND sets
+        v2_image_assets.review_status = 'reviewed' in one transaction.
+        """
+        validate_enum(decision, IMAGE_DECISIONS, "decision")
+        if chart_type is not None:
+            validate_enum(chart_type, IMAGE_CHART_TYPES, "chart_type")
+        if rejection_reason is not None:
+            validate_enum(rejection_reason, IMAGE_REJECTION_REASONS, "rejection_reason")
+        if decision == "relevant" and not chart_type:
+            raise ValidationError("Decision 'relevant' requires chart_type")
+        if decision == "not_relevant" and not rejection_reason:
+            raise ValidationError("Decision 'not_relevant' requires rejection_reason")
+
+        insert_sql = """
+            INSERT INTO v2_image_review_decisions (
+                img_id, decision, chart_type, rejection_reason,
+                reviewer_id, reviewer_notes, review_time_seconds
+            )
+            VALUES (
+                %(img_id)s, %(decision)s, %(chart_type)s, %(rejection_reason)s,
+                %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s
+            )
+            RETURNING image_decision_id
+        """
+        update_status_sql = """
+            UPDATE v2_image_assets
+            SET review_status = 'reviewed'
+            WHERE img_id = %(img_id)s
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    insert_sql,
+                    {
+                        "img_id": img_id,
+                        "decision": decision,
+                        "chart_type": chart_type,
+                        "rejection_reason": rejection_reason,
+                        "reviewer_id": reviewer_id,
+                        "reviewer_notes": reviewer_notes,
+                        "review_time_seconds": review_time_seconds,
+                    },
+                )
+                result = cur.fetchone()
+                decision_id = int(result["image_decision_id"])
+                cur.execute(update_status_sql, {"img_id": img_id})
+
+        logger.debug(
+            f"Inserted v2 image decision: decision_id={decision_id}, "
+            f"img_id={img_id}, decision={decision}"
+        )
+        return decision_id
+
+    def delete_image_review_decision_v2(self, image_decision_id: int) -> bool:
+        """V2-native decision undo. Deletes the decision row and reverts
+        v2_image_assets.review_status back to 'pending'."""
+        get_img_sql = """
+            SELECT img_id FROM v2_image_review_decisions
+            WHERE image_decision_id = %(id)s
+        """
+        delete_sql = """
+            DELETE FROM v2_image_review_decisions
+            WHERE image_decision_id = %(id)s
+        """
+        reset_sql = """
+            UPDATE v2_image_assets SET review_status = 'pending'
+            WHERE img_id = %(img_id)s
+        """
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(get_img_sql, {"id": image_decision_id})
+                row = cur.fetchone()
+                if not row:
+                    return False
+                img_id = row["img_id"]
+                cur.execute(delete_sql, {"id": image_decision_id})
+                cur.execute(reset_sql, {"img_id": img_id})
+
+        logger.debug(
+            f"Deleted v2 image decision: decision_id={image_decision_id}, "
+            f"reset img_id={img_id} to pending"
+        )
+        return True
+
+    def skip_image_candidate_v2(self, img_id: str) -> bool:
+        """Set v2_image_assets.review_status = 'skipped' for a single image."""
+        sql = """
+            UPDATE v2_image_assets
+            SET review_status = 'skipped'
+            WHERE img_id = %(img_id)s
+            RETURNING img_id
+        """
+        result = self.query(sql, {"img_id": img_id})
+        return len(result) > 0
+
+    def unskip_image_candidate_v2(self, img_id: str) -> bool:
+        """Revert a skipped v2_image_assets row back to 'pending'."""
+        sql = """
+            UPDATE v2_image_assets
+            SET review_status = 'pending'
+            WHERE img_id = %(img_id)s
+              AND review_status = 'skipped'
+            RETURNING img_id
+        """
+        result = self.query(sql, {"img_id": img_id})
+        return len(result) > 0
+
+    def get_image_review_progress_v2(self, filing_id: int | None = None) -> dict[str, Any]:
+        """
+        V2-native progress counts. If filing_id is given, counts are filing-scoped;
+        otherwise they are across all filings. Only non-decorative images are counted
+        (matches queue semantics used by the UI).
+        """
+        filter_clause = "AND v.doc_id = %(filing_id)s" if filing_id is not None else ""
+        params: dict[str, Any] = {}
+        if filing_id is not None:
+            params["filing_id"] = filing_id
+
+        sql = f"""
+            SELECT
+                COUNT(*) AS total_candidates,
+                COUNT(*) FILTER (WHERE v.review_status = 'pending')        AS pending_count,
+                COUNT(*) FILTER (WHERE v.review_status = 'reviewed')       AS reviewed_count,
+                COUNT(*) FILTER (WHERE v.review_status = 'skipped')        AS skipped_count,
+                COUNT(*) FILTER (WHERE v.review_status = 'auto_rejected')  AS auto_rejected_count
+            FROM v2_image_assets v
+            WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
+              AND v.filename IS NOT NULL AND v.filename != ''
+              {filter_clause}
+        """
+        rows = self.query(sql, params if params else None)
+        if not rows:
+            return {
+                "total_candidates": 0,
+                "pending_count": 0,
+                "reviewed_count": 0,
+                "skipped_count": 0,
+                "auto_rejected_count": 0,
+                "review_pct": 0.0,
+            }
+        row = rows[0]
+        total = row["total_candidates"] or 0
+        reviewed = row["reviewed_count"] or 0
+        return {
+            "total_candidates": total,
+            "pending_count": row["pending_count"] or 0,
+            "reviewed_count": reviewed,
+            "skipped_count": row["skipped_count"] or 0,
+            "auto_rejected_count": row["auto_rejected_count"] or 0,
+            "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
         }
 
 
