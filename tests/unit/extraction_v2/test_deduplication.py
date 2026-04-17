@@ -1276,3 +1276,153 @@ class TestSourceTypeInIdentityKey:
         surviving_source_types = {f.source_type for f in context.deduplicated_facts}
         assert SourceType.CHART in surviving_source_types
         assert SourceType.HTML_TABLE in surviving_source_types
+
+
+# ============================================================================
+# Cross-Source Confirmation Annotation Tests
+# ============================================================================
+
+
+class TestAnnotateCrossSourceConfirmation:
+    """Tests for _annotate_cross_source_confirmation."""
+
+    def test_annotate_sets_confirmed_when_text_and_chart_same_slot_survive(self) -> None:
+        """TEXT and CHART facts in the same slot both get cross_source_confirmed=True.
+
+        Each should list the other's source type in confirming_source_types.
+        """
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(
+                    fact_id="fact-text",
+                    source_type=SourceType.TEXT,
+                    value=100.0,
+                    period_start=date(2024, 1, 1),
+                    period_end=date(2024, 12, 31),
+                ),
+                make_fact(
+                    fact_id="fact-chart",
+                    source_type=SourceType.CHART,
+                    value=100.0,
+                    period_start=date(2024, 1, 1),
+                    period_end=date(2024, 12, 31),
+                ),
+            ]
+        )
+
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 2
+        by_id = {f.fact_id: f for f in context.deduplicated_facts}
+        text_fact = by_id["fact-text"]
+        chart_fact = by_id["fact-chart"]
+        assert text_fact.cross_source_confirmed is True
+        assert chart_fact.cross_source_confirmed is True
+        assert "chart" in text_fact.confirming_source_types
+        assert "text" in chart_fact.confirming_source_types
+
+    def test_annotate_false_for_single_source_bucket(self) -> None:
+        """A lone fact in its slot should not be flagged as cross-source confirmed."""
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(
+                    fact_id="fact-only",
+                    source_type=SourceType.HTML_TABLE,
+                    value=50.0,
+                ),
+            ]
+        )
+
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 1
+        assert context.deduplicated_facts[0].cross_source_confirmed is False
+        assert context.deduplicated_facts[0].confirming_source_types == []
+
+    def test_annotate_ignores_homogeneous_source_type_duplicates(self) -> None:
+        """Two CHART facts for the same slot (same source type) must not be flagged.
+
+        After dedup they collapse to one fact, so no cross-source confirmation
+        is possible — the surviving fact should have cross_source_confirmed=False.
+        """
+        stage = DeduplicationStage()
+        context = MockPipelineContext(
+            facts=[
+                make_fact(
+                    fact_id="fact-chart-a",
+                    source_type=SourceType.CHART,
+                    value=200.0,
+                    confidence=0.9,
+                    period_start=date(2023, 1, 1),
+                    period_end=date(2023, 12, 31),
+                ),
+                make_fact(
+                    fact_id="fact-chart-b",
+                    source_type=SourceType.CHART,
+                    value=200.0,
+                    confidence=0.7,
+                    period_start=date(2023, 1, 1),
+                    period_end=date(2023, 12, 31),
+                ),
+            ]
+        )
+
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 1
+        surviving = context.deduplicated_facts[0]
+        assert surviving.cross_source_confirmed is False
+        assert surviving.confirming_source_types == []
+
+    def test_annotate_handles_three_way_source_agreement(self) -> None:
+        """HTML_TABLE + TEXT + CHART facts in the same slot → all three flagged.
+
+        This exercises _annotate_cross_source_confirmation directly with three
+        pre-built facts (bypassing process()) so that fuzzy-period-dedup does not
+        collapse the HTML_TABLE and TEXT facts (which share a 'text' source_cat
+        in the fuzzy pass). The annotation method itself is the unit under test.
+
+        Each fact should list the other two source types in confirming_source_types.
+        """
+        stage = DeduplicationStage()
+        facts = [
+            make_fact(
+                fact_id="fact-table",
+                source_type=SourceType.HTML_TABLE,
+                value=300.0,
+                period_start=date(2022, 1, 1),
+                period_end=date(2022, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-text",
+                source_type=SourceType.TEXT,
+                value=300.0,
+                period_start=date(2022, 1, 1),
+                period_end=date(2022, 12, 31),
+            ),
+            make_fact(
+                fact_id="fact-chart",
+                source_type=SourceType.CHART,
+                value=300.0,
+                period_start=date(2022, 1, 1),
+                period_end=date(2022, 12, 31),
+            ),
+        ]
+
+        stage._annotate_cross_source_confirmation(facts)
+
+        by_id = {f.fact_id: f for f in facts}
+        table_fact = by_id["fact-table"]
+        text_fact = by_id["fact-text"]
+        chart_fact = by_id["fact-chart"]
+
+        assert table_fact.cross_source_confirmed is True
+        assert text_fact.cross_source_confirmed is True
+        assert chart_fact.cross_source_confirmed is True
+
+        # Each has the other two sources listed
+        assert sorted(table_fact.confirming_source_types) == ["chart", "text"]
+        assert sorted(text_fact.confirming_source_types) == ["chart", "html_table"]
+        assert sorted(chart_fact.confirming_source_types) == ["html_table", "text"]

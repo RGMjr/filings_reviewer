@@ -105,6 +105,9 @@ class DeduplicationStage:
             # Store deduplicated facts
             context.deduplicated_facts = primaries
 
+            # Annotate cross-source confirmation
+            self._annotate_cross_source_confirmation(primaries)
+
             # Build result
             duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
             duplicates_removed = initial_count - len(primaries)
@@ -447,3 +450,36 @@ class DeduplicationStage:
         if v1 == 0 or v2 == 0:
             return abs(v1 - v2) <= tolerance
         return abs(v1 - v2) / abs(v2) <= tolerance
+
+    @staticmethod
+    def _annotate_cross_source_confirmation(facts: list[MetricFact]) -> None:
+        """
+        Annotate facts that are confirmed by multiple source types.
+
+        Groups surviving facts by identity slot (metric, period, unit, scope,
+        cohort, customer_type, value). When two or more facts in the same slot
+        come from different source types, all are flagged as cross-source
+        confirmed and each receives the other sources' type values.
+
+        Mutates facts in place. No facts are removed.
+        """
+        buckets: dict[tuple, list[MetricFact]] = {}
+        for f in facts:
+            key = (
+                f.canonical_metric_id,
+                f.period_start, f.period_end,
+                f.unit.value, f.scope.value,
+                f.cohort_def or "", f.customer_type or "",
+                round(f.value, 2) if f.value is not None else None,
+            )
+            buckets.setdefault(key, []).append(f)
+        for bucket in buckets.values():
+            if len(bucket) < 2:
+                continue
+            sources = {f.source_type for f in bucket}
+            if len(sources) < 2:
+                continue
+            for f in bucket:
+                others = sorted({s.value for s in sources if s != f.source_type})
+                f.cross_source_confirmed = True
+                f.confirming_source_types = others
