@@ -1,7 +1,7 @@
 import pytest
 
-from src.extraction_v2.chart.metric_classifier import ChartMetricClassifier
-from src.extraction_v2.models import ChartAnnotation, ChartData, ChartSeries, ChartType
+from src.extraction_v2.chart.metric_classifier import _COHORT_GATE_EXEMPT, ChartMetricClassifier
+from src.extraction_v2.models import ChartAnnotation, ChartData, ChartSeries, ChartType, DataPoint
 
 
 @pytest.fixture
@@ -96,3 +96,86 @@ def test_exclusions_zero_out_score(classifier: ChartMetricClassifier) -> None:
     # Must not raise; result must be a valid (str|None, float) tuple.
     assert isinstance(score, float)
     assert score >= 0.0
+
+
+def test_classifies_revenue_by_cohort_with_dollar_y_axis(
+    classifier: ChartMetricClassifier,
+) -> None:
+    chart = ChartData(
+        chart_type=ChartType.STACKED_BAR,
+        title="Revenue by Cohort",
+        y_axis_label="$ Millions",
+        x_axis_label="Year",
+        series=[
+            ChartSeries(name="2019"),
+            ChartSeries(name="2020"),
+        ],
+    )
+    metric_id, _score = classifier.classify(chart)
+    assert metric_id == "cm_revenue_by_cohort"
+
+
+def test_classifies_revenue_by_cohort_with_gmv_title(
+    classifier: ChartMetricClassifier,
+) -> None:
+    chart = ChartData(
+        chart_type=ChartType.BAR,
+        title="Gross Merchandise Value by Cohort",
+        y_axis_label="GMV (USD)",
+        x_axis_label="Year",
+        series=[ChartSeries(name="2020")],
+    )
+    metric_id, _score = classifier.classify(chart)
+    assert metric_id == "cm_revenue_by_cohort"
+
+
+def test_classifies_ltv_to_cac_bypasses_cohort_gate(
+    classifier: ChartMetricClassifier,
+) -> None:
+    chart = ChartData(
+        chart_type=ChartType.BAR,
+        title="LTV to CAC Ratio by Tenure",
+        y_axis_label="Ratio (x)",
+        x_axis_label="Tenure",
+        series=[
+            ChartSeries(
+                name="All Customers",
+                points=[DataPoint(x="1 Year Tenure", y=1.8)],
+            )
+        ],
+    )
+    metric_id, _score = classifier.classify(chart)
+    assert metric_id == "cm_ltv_to_cac_ratio"
+
+
+def test_transactions_chart_rejected_when_dollar_y_axis(
+    classifier: ChartMetricClassifier,
+) -> None:
+    chart = ChartData(
+        chart_type=ChartType.STACKED_BAR,
+        title="Orders by Cohort",
+        y_axis_label="$ Revenue",
+        x_axis_label="Year",
+        series=[ChartSeries(name="2020")],
+    )
+    result = classifier.classify(chart)
+    assert result[0] != "cm_transactions_by_cohort"
+
+
+def test_revenue_chart_rejected_when_orders_dominates_title(
+    classifier: ChartMetricClassifier,
+) -> None:
+    chart = ChartData(
+        chart_type=ChartType.STACKED_BAR,
+        title="Number of Orders by Cohort",
+        y_axis_label="Order Count",
+        x_axis_label="Year",
+        series=[ChartSeries(name="2020")],
+    )
+    result = classifier.classify(chart)
+    assert result[0] != "cm_revenue_by_cohort"
+
+
+def test_cohort_gate_exempt_set_applies_only_to_ltv_to_cac() -> None:
+    assert "cm_ltv_to_cac_ratio" in _COHORT_GATE_EXEMPT
+    assert "cm_revenue_by_cohort" not in _COHORT_GATE_EXEMPT

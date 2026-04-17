@@ -1,0 +1,39 @@
+{
+  "chart_type": "stacked_bar",
+  "title": "Revenue by Cohort",
+  "x_axis_label": "Years Since First Order",
+  "y_axis_label": "Revenue ($ Millions)",
+  "series": [
+    {
+      "name": "2018",
+      "points": [
+        {"x": "Year 1", "y": 12.5, "label": "12.5"},
+        {"x": "Year 2", "y": 18.3, "label": "18.3"},
+        {"x": "Year 3", "y": 22.1, "label": "22.1"},
+        {"x": "Year 4", "y": 25.4, "label": "25.4"}
+      ]
+    },
+    {
+      "name": "2019",
+      "points": [
+        {"x": "Year 1", "y": 15.2, "label": "15.2"},
+        {"x": "Year 2", "y": 21.7, "label": "21.7"},
+        {"x": "Year 3", "y": 28.3, "label": "28.3"}
+      ]
+    },
+    {
+      "name": "2020",
+      "points": [
+        {"x": "Year 1", "y": 19.8, "label": "19.8"},
+        {"x": "Year 2", "y": 31.2, "label": "31.2"}
+      ]
+    },
+    {
+      "name": "2021",
+      "points": [
+        {"x": "Year 1", "y": 24.6, "label": "24.6"}
+      ]
+    }
+  ],
+  "annotations": []
+}

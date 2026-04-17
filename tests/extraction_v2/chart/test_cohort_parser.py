@@ -80,3 +80,42 @@ def test_simple_bar_uses_filing_date_when_no_time_axis() -> None:
     chart = _chart(series=[series])
     result = _parser().parse(chart, series, series.points[0], date(2021, 3, 15))
     assert result is None
+
+
+def test_elapsed_period_regime_year_n() -> None:
+    series = ChartSeries(name="2019", points=[DataPoint(x="Year 2", y=75.0)])
+    chart = _chart(series=[series])
+    result = _parser().parse(chart, series, series.points[0], date(2022, 1, 1))
+    assert result is not None
+    assert "2019" in result.cohort_def
+    assert "Year 2" in result.cohort_def
+    assert result.period_end == date(2021, 1, 1)
+    assert result.confidence == 0.80
+    assert result.requires_review is False
+
+
+def test_elapsed_period_regime_month_n() -> None:
+    series = ChartSeries(name="2020 Cohort", points=[DataPoint(x="Month 6", y=60.0)])
+    chart = _chart(series=[series])
+    result = _parser().parse(chart, series, series.points[0], date(2022, 1, 1))
+    assert result is not None
+    assert result.period_end == date(2020, 7, 1)
+    assert result.confidence == 0.80
+    assert result.requires_review is False
+
+
+def test_elapsed_period_rejects_when_series_name_has_no_year() -> None:
+    series = ChartSeries(name="New Customers", points=[DataPoint(x="Year 1", y=50.0)])
+    chart = _chart(series=[series])
+    parser = _parser()
+    result = parser._parse_elapsed_period_regime(chart, series, series.points[0], date(2022, 1, 1))
+    assert result is None
+
+
+def test_regime_dispatch_order_prefers_series_year_over_elapsed() -> None:
+    series = ChartSeries(name="2019", points=[DataPoint(x="2021", y=80.0)])
+    chart = _chart(series=[series])
+    result = _parser().parse(chart, series, series.points[0], date(2022, 1, 1))
+    assert result is not None
+    assert result.period_end == date(2021, 12, 31)
+    assert result.confidence == 0.85

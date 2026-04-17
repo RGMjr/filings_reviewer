@@ -373,6 +373,7 @@ Return a JSON object with:
     - x: Category or date label (string)
     - y: Numeric value (number)
     - label: The explicit label text shown on chart (string or null)
+When the chart shows cohorts over elapsed time (e.g., a "cohort parfait" or retention-by-vintage chart), put the COHORT VINTAGE in `series.name` (e.g., "Q1 FY2022", "2019 Cohort") and put the ELAPSED MEASUREMENT PERIOD in `point.x` (e.g., "Year 1", "Year 2", "Month 12"). Do not merge them into a single field.
 - annotations: Array of text annotations/callouts visible on the chart, each with:
   - text: Full annotation text as shown (string, e.g. "44.4% New Consumers in 2017")
   - value: Parsed numeric value if present (number or null, e.g. 44.4)
@@ -395,6 +396,9 @@ Example JSON:
     {"text": "55.6% Existing Consumers in 2017", "value": 55.6, "unit": "percent", "category": "Existing Consumers", "period": "2017"}
   ]
 }
+
+Example for elapsed-period cohort chart:
+{"series": [{"name": "Q1 FY2022", "points": [{"x": "Year 1", "y": 1.00, "label": "1.00x"}, {"x": "Year 2", "y": 1.40, "label": "1.40x"}]}]}
 """
         # Append bounded surrounding context if available
         if nearby_text:

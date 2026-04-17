@@ -108,6 +108,8 @@ client = OpenAIClient(
 
 **Design principle:** "Charts only when labeled" — the client extracts only data values explicitly labeled on a chart. It never interpolates values from axis positions.
 
+**Phase 2 prompt additions (2026-04-16):** The chart extraction prompt passed to `VisionClient` was extended with two additive hint blocks. Block A provides cohort-vintage vs. elapsed-period guidance (helping the model distinguish "Year 1/2/3" elapsed-period charts from "2019/2020/2021" vintage-cohort charts). Block B provides a worked example. The prompt is still one Vision call per chart with no schema changes.
+
 **Features:**
 - MIME type detection from magic bytes (JPEG, PNG, GIF, WebP)
 - Configurable image detail level (`high` for accuracy, `low` for speed/cost)

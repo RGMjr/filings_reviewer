@@ -93,6 +93,35 @@ class ChartFactBridgeStage:
                     )
                     context.facts.append(fact)
                     items_output += 1
+            elif metric_id == "cm_ltv_to_cac_ratio":
+                for series in chart.series:
+                    for point in series.points:
+                        value_raw = point.label if point.label is not None else str(point.y)
+                        fact = MetricFact(
+                            fact_id=str(uuid.uuid4()),
+                            doc_id=doc_id,
+                            canonical_metric_id=metric_id,
+                            value=point.y,
+                            value_raw=value_raw,
+                            unit=unit,
+                            currency=currency,
+                            period_type=PeriodType.POINT_IN_TIME,
+                            period_start=filing_date,
+                            period_end=filing_date,
+                            scope=Scope.CUSTOMER_TYPE,
+                            cohort_def=str(point.x),
+                            source_type=SourceType.CHART,
+                            source_locator=SourceLocator(img_id=image.img_id, bbox=point.bbox),
+                            evidence_pack=EvidencePack(
+                                snippet_html="",
+                                raw_value_text=value_raw,
+                                context_before=f"Chart: {chart.title}",
+                            ),
+                            confidence=0.80,
+                            requires_review=False,
+                        )
+                        context.facts.append(fact)
+                        items_output += 1
             else:
                 for series in chart.series:
                     for point in series.points:

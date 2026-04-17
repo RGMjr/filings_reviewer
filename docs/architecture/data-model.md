@@ -407,6 +407,10 @@ CREATE INDEX idx_values_source ON metric_values(source_segment_id);
 - `tenure` - Grouped by customer age/tenure
 - `other` - Other cohort dimension
 
+**Scope field (`v2_metric_facts`):**
+
+The `scope` column on `v2_metric_facts` distinguishes the analysis population. `scope=CUSTOMER_TYPE` is used for LTV/CAC tenure bucket facts produced by the chart fact bridge, where `cohort_def` holds a tenure bucket label (e.g., "1-2 Years") rather than a cohort vintage year. These facts bypass `CohortParser` and are not classified as acquisition cohorts.
+
 **QA Status:**
 - `unreviewed` - Not yet QA checked
 - `pass` - Passed QA checks

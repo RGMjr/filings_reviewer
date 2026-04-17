@@ -256,6 +256,10 @@ cm_customers_period_end_by_tenure:
 
 cm_revenue_by_cohort:
   tier: 1
+  specific_patterns:
+    - '\brevenue\s+by\s+(?:customer\s+|consumer\s+)?cohort\b'
+    - '\bgtv\s+by\s+(?:customer\s+|consumer\s+)?cohort\b'
+    - '\bgmv\s+by\s+(?:customer\s+|consumer\s+)?cohort\b'
   patterns:
     - '\brevenue\s+by\s+cohort\b'
     - '\bcohort\s+revenue\b'
@@ -267,6 +271,10 @@ cm_revenue_by_cohort:
     # Existing/new customer revenue split (e.g., "94% of revenue derived from existing customers")
     - '\brevenue[^.;]{0,80}(?:from|derived\s+from)\s+(?:existing|new)\s+customers?\b'
     - '\b(?:existing|new)\s+customers?[^.;]{0,80}\brevenue\b'
+  exclusions:
+    - 'number\s+of\s+orders?'
+    - 'transaction\s+count'
+    - 'order\s+count'
 
 cm_transactions_by_cohort:
   tier: 1
@@ -278,6 +286,11 @@ cm_transactions_by_cohort:
     - '\borders?\s+by\s+cohort\b'
     - '\bcohort\s+orders?\b'
     - '\bnumber\s+of\s+orders?[^.;]{0,50}\bcohort\b'
+  exclusions:
+    - '\brevenue\b'
+    - '\bgmv\b'
+    - 'gross\s+merchandise\s+value'
+    - 'net\s+revenue'
   # NOTE: Plain 'number of orders' (without cohort) in cm_purchase_transactions_overall
 
 cm_purchase_transactions_overall:

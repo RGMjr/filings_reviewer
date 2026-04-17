@@ -152,6 +152,34 @@ The V2 pipeline (`src/extraction_v2/`) implements a 14-stage extraction workflow
 
 ---
 
+## Chart Fact Bridge
+
+The `ChartFactBridgeStage` runs after Stage 13 (Validation) when `enable_chart_fact_bridge=True` in `PipelineConfig`. It converts raw `ChartData` outputs from Stage 5 (OCR & Chart Extraction) into `MetricFact` objects using the `CohortParser` and metric-specific regime logic, then merges them into the main fact list before persistence.
+
+### Supported Metrics (5 total)
+
+| Metric | Coverage phase |
+|--------|---------------|
+| `cm_balance_by_cohort` | Phase 1 (2026-04-16) |
+| `cm_gross_margin_by_cohort` | Phase 1 (2026-04-16) |
+| `cm_revenue_by_cohort` | Phase 2 (2026-04-16) |
+| `cm_transactions_by_cohort` | Phase 2 (2026-04-16) |
+| `cm_ltv_to_cac_ratio` | Phase 2 (2026-04-16) |
+
+### Extraction Regimes
+
+| Regime | Confidence | Trigger |
+|--------|-----------|---------|
+| series-year | 0.85 | Series names contain 4-digit year (cohort vintage) |
+| elapsed-period | 0.80 | X-axis labels match "Year N" / "Month N" format |
+| annotations-only | 0.55 | Value source is chart annotations only; `requires_review=True` |
+
+### LTV/CAC Bucket Bypass
+
+`cm_ltv_to_cac_ratio` bypasses `CohortParser` entirely. Series names are treated as tenure bucket labels (e.g., "1-2 Years") and facts are written with `scope=CUSTOMER_TYPE`. See the data-model doc for the `CUSTOMER_TYPE` scope semantics.
+
+---
+
 ## Core Data Models
 
 **MetricFact:** Primary extraction output with full provenance
