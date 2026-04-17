@@ -143,6 +143,23 @@ Then commit `data/gold_standard/v2_baseline.json` separately with message `chore
 
 ---
 
-## 8. Phase 2 Chart Fixture Recording Procedure
+## 8. Reading V2 Validator Output
+
+After each validator run (`v2_validator.py`), output includes a Tier breakdown followed by a chart confirmation line:
+
+```
+Tier 1 recall: ...
+Tier 2 recall: ...
+
+CHART cross-source confirmation: m/n (pct%)
+```
+
+The `m/n` counts chart facts that were independently confirmed by a second source type (e.g., a TEXT or TABLE fact agreeing on the same metric+period+value slot). `pct%` is `m/n * 100`.
+
+A soft `WARNING` is printed if `pct < 30%`. This warning is not a hard failure and will not block a baseline update, but it indicates that the chart bridge is producing few cross-confirmed facts — which may signal chart OCR quality issues or a gap in the text/table extraction path for those metrics. Discuss with the team before updating the baseline when this warning appears.
+
+---
+
+## 9. Phase 2 Chart Fixture Recording Procedure
 
 Phase 2 fixtures are hand-authored JSON files in `tests/fixtures/charts/`. To add a new fixture: create `<NAME>.chart_data.json` matching the `ChartData` schema (`chart_type`, `title`, `x_axis_label`, `y_axis_label`, `series[]`, `annotations[]`). Series point values should represent what Vision OCR would return. No API calls required.

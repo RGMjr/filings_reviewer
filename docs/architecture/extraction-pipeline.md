@@ -174,6 +174,28 @@ The `ChartFactBridgeStage` runs after Stage 13 (Validation) when `enable_chart_f
 | elapsed-period | 0.80 | X-axis labels match "Year N" / "Month N" format |
 | annotations-only | 0.55 | Value source is chart annotations only; `requires_review=True` |
 
+### Hallucination Guards (Phase 3)
+
+Five guards run inside `ChartFactBridgeStage` to prevent low-quality chart extractions from reaching the fact list:
+
+| Guard | Description |
+|-------|-------------|
+| **Guard 1 — Image confidence gate** | Skips any image whose `image.confidence < chart_image_min_confidence` (default 0.6). Images with weak vision-model confidence are discarded before any bridging attempt. |
+| **Guard 2 — Label-required gate** | In the LTV/CAC and cohort branches, skips any `DataPoint` whose `label is None`. Only points with explicit data labels are extracted; unlabeled points are not interpolated from axes. |
+| **Guard 3 — Axis-range sanity** | Rejects points where `abs(y) > labeled_max * chart_axis_range_multiplier` (default 10×). Eliminates outlier extractions caused by scale misreads or OCR artifacts. |
+| **Guard 4 — Cohort-year sanity** | Rejects cohort periods whose `period_end.year > filing_date.year + 1`. Prevents future-dated cohorts produced by label misparse. |
+| **Guard 5 — Fact review threshold** | Sets `requires_review=True` on any fact whose `fact.confidence < chart_fact_review_threshold` (default 0.80). These facts enter the review queue rather than auto-accepting. |
+
+### Config Knobs (Phase 3)
+
+Three new `PipelineConfig` fields control the Phase 3 guards:
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `chart_image_min_confidence` | `0.6` | Skip images below this vision confidence score (Guard 1) |
+| `chart_fact_review_threshold` | `0.80` | Flag facts for human review below this confidence (Guard 5) |
+| `chart_axis_range_multiplier` | `10.0` | Reject outlier data points whose absolute value exceeds N× the labeled max (Guard 3) |
+
 ### LTV/CAC Bucket Bypass
 
 `cm_ltv_to_cac_ratio` bypasses `CohortParser` entirely. Series names are treated as tenure bucket labels (e.g., "1-2 Years") and facts are written with `scope=CUSTOMER_TYPE`. See the data-model doc for the `CUSTOMER_TYPE` scope semantics.

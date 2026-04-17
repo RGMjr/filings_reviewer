@@ -56,6 +56,16 @@ PipelineConfig.for_transcript()   # Wider proximity, relaxed FP filter
 PipelineConfig.for_presentation() # Images enabled, min_paragraph_chars=20
 ```
 
+## Chart Fact Bridge Config
+
+Three `PipelineConfig` fields control hallucination guards in `ChartFactBridgeStage` (Phase 3):
+
+```python
+chart_image_min_confidence: float = 0.6   # Skip images below this vision confidence
+chart_fact_review_threshold: float = 0.80  # Flag facts for review below this confidence
+chart_axis_range_multiplier: float = 10.0  # Reject outlier points >N× labeled max
+```
+
 ## Key Files
 
 - `pipeline.py` — orchestrator
