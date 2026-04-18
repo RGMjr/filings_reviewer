@@ -33,6 +33,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
+from src.extraction_v2.exceptions import ReviewedFilingError  # noqa: E402
 from src.extraction_v2.persistence import V2PersistenceAdapter  # noqa: E402
 from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline  # noqa: E402
 from src.infra.db import DatabaseAdapter  # noqa: E402
@@ -190,6 +191,15 @@ def main():
         default=300,
         help="Seconds before aborting the pipeline run (default: 300, Unix/macOS only)",
     )
+    parser.add_argument(
+        "--force-reextract",
+        action="store_true",
+        help=(
+            "Purge existing human review decisions for this filing and re-extract. "
+            "Without this flag, extraction aborts with ReviewedFilingError when "
+            "the filing has any rows in v2_review_decisions."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -258,7 +268,17 @@ def main():
     if not args.dry_run and result.success:
         logger.info("Persisting results to database...")
         adapter = V2PersistenceAdapter(db)
-        persist_result = adapter.persist_pipeline_result(result, filing["filing_id"])
+        try:
+            persist_result = adapter.persist_pipeline_result(
+                result, filing["filing_id"], force=args.force_reextract
+            )
+        except ReviewedFilingError as e:
+            print(f"\nERROR: {e}", file=sys.stderr)
+            print(
+                "Re-run with --force-reextract to purge these decisions and continue.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
         if persist_result.success:
             print(f"\nPersisted to database: {persist_result.total_upserted} records")

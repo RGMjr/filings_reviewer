@@ -27,6 +27,32 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 # result.fact_count, result.facts, result.total_duration_ms
 ```
 
+## Reviewed-Filing Guard
+
+`V2PersistenceAdapter._persist_facts_in_tx` (`src/extraction_v2/persistence.py`)
+raises `ReviewedFilingError` (`src/extraction_v2/exceptions.py`) when a
+filing has rows in `v2_review_decisions` and the caller did not pass
+`force=True`. The guard exists because `v2_review_decisions.fact_id` has
+`ON DELETE CASCADE` against `v2_metric_facts`; without the guard, re-running
+extraction silently destroys reviewer work.
+
+Public entry points that forward the flag:
+
+- `persist_facts(facts, filing_id, *, force=False)`
+- `persist_pipeline_result(result, filing_id, ..., *, force=False)`
+
+CLI overrides:
+
+- `scripts/run_v2_extraction.py --force-reextract`
+- `scripts/batch_v2_extraction.py --force-reextract` (batch runner
+  otherwise skips reviewed filings and reports them under `skipped` in the
+  summary rather than failing)
+
+When the override fires, the adapter emits a structured warning log:
+`force-reextract purging reviewed filing: filing_id=X purged_decision_count=N distinct_reviewer_count=M`.
+Purged decisions are **not archived** — recovery requires restoring from
+a backup.
+
 ## Metric Priority Tiers
 
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
