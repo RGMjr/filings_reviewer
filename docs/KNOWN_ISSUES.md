@@ -185,7 +185,35 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (Issue #10) |
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
 | CMS-1 suppression: Active Consumers (Issue #10) | Open | Low | Low | cm_active_customers_total suppressed by cm_customers_period_end |
+| `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
 | V2 metric facts identity index drift (Issue #13) | Open | Low | Low | DB index 8 cols; code / sql/23 expect 9 |
+
+---
+
+## 12. `test_image_crop.py` Pollutes Working Tree with Test PNGs
+
+**Status**: ✅ Resolved (2026-04-18)
+**Severity**: Low (test hygiene; no runtime impact)
+**Discovered**: 2026-04-17
+
+### Problem
+
+`tests/unit/web/test_image_crop.py` wrote `data/test_chart.png`, `data/test_chart2.png`, and
+`data/test_chart3.png` into the real project `data/` directory on every run, leaving them
+untracked in the working tree after the suite finished.
+
+### Root Cause
+
+The `/v2/review/image_crop/` endpoint has a security guard that resolves image paths relative to
+`<project_root>/data/`. To satisfy that guard the tests wrote their fixture PNGs to the real
+`data/` dir (not `tmp_path`), and there was no teardown.
+
+### Resolution
+
+Added a `make_png_in_data_dir` fixture in `tests/unit/web/test_image_crop.py` that writes the
+PNG, tracks the path, and deletes it on teardown. The three `TestImageCropSuccess` tests now use
+the fixture instead of calling `_make_test_png(data_dir, ...)` directly. Verified: after
+`pytest tests/unit/web/test_image_crop.py` the working tree is clean.
 
 ---
 
@@ -311,4 +339,6 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-03-26**: Added Issue #10 — CMS-1 suppression assigns Active Consumers to cm_customers_period_end instead of cm_active_customers_total
 - **2026-03-27**: Removed duplicate main-body sections for Issues #3, #7, #8 — already archived; stale "Open"/"Needs Discussion" statuses were conflicting with archive entries
 - **2026-04-07**: Removed orphaned summary table rows for Issues #7 and #8 (already in archive, no main body section); added Issue #10 cross-reference to Issue #2 remaining gaps
+- **2026-04-18**: Added Issue #12 — `test_image_crop.py` writes PNGs into real `data/` dir with no teardown
+- **2026-04-18**: Issue #12 resolved — `make_png_in_data_dir` fixture added; cleans up PNGs on teardown
 - **2026-04-18**: Added Issue #13 — V2 metric facts identity index drift (live DB 8 columns, code + `sql/23` expect 9); documented during `docs/architecture/data-model.md` rewrite
