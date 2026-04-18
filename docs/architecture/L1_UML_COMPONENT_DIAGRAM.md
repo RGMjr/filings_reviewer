@@ -36,9 +36,7 @@ package "CMASB Disclosures Review System" {
     }
 
     package "Review & Analysis" {
-        component [Candidate Generator] as candidate_gen <<business>>
-        component [Pattern Analyzer] as pattern_analyzer <<business>>
-        component [Review Manager] as review_mgr <<business>>
+        component [V2 Review UI] as review_ui <<presentation>>
     }
 
     package "LLM Integration" {
@@ -70,11 +68,11 @@ database "PostgreSQL Database" as postgres <<external>> {
     Tables:
     - companies
     - filings
-    - source_segments
-    - metric_values
-    - metric_definitions
-    - review_candidates
-    - review_decisions
+    - metrics
+    - v2_documents / v2_segments / v2_tables / v2_table_cells
+    - v2_metric_facts / v2_metric_definitions
+    - v2_image_assets / v2_image_review_decisions
+    - v2_review_decisions / v2_audit_log
     - ...
     end note
 }
@@ -98,10 +96,7 @@ v2_stages --> extraction_v2 : sub-components
 v2_stages --> openai_client : analyzes with LLM
 v2_stages --> vision_client : processes images
 
-candidate_gen --> extraction_v2 : uses results
-candidate_gen --> db_adapter : persists
-pattern_analyzer --> db_adapter : analyzes patterns
-review_mgr --> candidate_gen : manages
+review_ui --> db_adapter : reads V2 facts, writes decisions
 
 flask_app --> api_routes : routes to
 flask_app --> review_routes : routes to
@@ -141,9 +136,7 @@ config --> v2_stages : keyword patterns
   - **V2 Stages**: 15 sequential processing stages including candidate generation, OCR, deduplication, validation
 
 ### Review & Analysis
-- **Candidate Generator**: Generates review candidates from extraction
-- **Pattern Analyzer**: Analyzes metric disclosure patterns
-- **Review Manager**: Orchestrates human review workflows
+- **V2 Review UI**: Flask blueprint (`src/web/routes/review_unified.py`) that renders extracted V2 facts and records accept/reject/correct decisions into `v2_review_decisions` and `v2_image_review_decisions`.
 
 ### LLM Integration
 - **Vision Client**: Claude vision API for image analysis

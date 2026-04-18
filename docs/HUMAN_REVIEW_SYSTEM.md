@@ -1,6 +1,19 @@
-# Human-in-the-Loop Metric Extraction Review System
+# Human-in-the-Loop Metric Extraction Review System — DEPRECATED
 
-**Status:** Production Ready (2026-03-30)
+> **DEPRECATED 2026-04-18.** The V1 human-review system described below (candidate
+> generator, pattern analyzer, rule applicator, `review_candidates` /
+> `review_decisions` tables, `/api/decisions` endpoints, `review.js`) has been
+> retired. The V2 unified review interface (`src/web/routes/review_unified.py`
+> at `/v2/review`, writing to `v2_review_decisions` and
+> `v2_image_review_decisions`) is the active system.
+>
+> This document is preserved for historical context and design-intent reference.
+> Do not rely on the commands, module layout, or database schema below — they
+> describe a retired system. See `docs/architecture/v1-table-deprecation-plan.md`
+> for the retirement record and `docs/architecture/system-overview.md` for the
+> current V2 review data flow.
+
+**Status (historical):** Production Ready (2026-03-30)
 **Core System:** Complete (Streams A-E)
 **Interface Improvements:** 11/12 Complete (HRI-12 blocked)
 

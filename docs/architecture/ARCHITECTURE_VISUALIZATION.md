@@ -170,24 +170,20 @@
    ├─ Vision: Claude Vision for image/table extraction
    └─ Processing: OCR, deduplication, validation
    ↓
-5. Database Storage
-   ├─ metric_values (extracted values)
-   ├─ source_segments (provenance)
-   └─ metric_definitions (metadata)
+5. Database Storage (V2)
+   ├─ v2_metric_facts (extracted values with full provenance)
+   ├─ v2_segments / v2_tables / v2_table_cells (content blocks)
+   ├─ v2_image_assets (images, OCR, chart data)
+   └─ v2_metric_definitions (issuer-specific definition text)
    ↓
-6. Candidate Generation
-   ├─ Candidate Generator (from extraction)
-   └─ Pattern Analyzer (disclosure patterns)
-   ↓
-7. Review Interface (Flask Web App)
+6. Review Interface (Flask Web App, /v2/review)
    ├─ Analyst reviews candidates
    ├─ Auditor validates quality
    └─ Decisions stored to database
    ↓
-8. Validation Framework
+7. Validation Framework
    ├─ Gold Standard checks
-   ├─ V2 Validator compares results
-   └─ Fresh Extractor for regression testing
+   └─ V2 Validator compares results against baseline
 ```
 
 ---
