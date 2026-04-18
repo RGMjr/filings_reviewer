@@ -415,14 +415,10 @@
           <div id="correct-form" style="display: none;" class="border rounded p-3 mb-2">
             <div class="mb-2">
               <label class="form-label mb-1">Corrected Metric ID (optional)</label>
-              <select id="correct-metric" class="form-select form-select-sm">
-                <option value="">Keep current: {{ current_fact.canonical_metric_id }}</option>
-                {% for m in available_metrics %}
-                {% if m != current_fact.canonical_metric_id %}
-                <option value="{{ m }}">{{ m }}</option>
-                {% endif %}
-                {% endfor %}
-              </select>
+              <input type="text" id="correct-metric" class="form-control form-control-sm"
+                     list="all-metrics-datalist"
+                     placeholder="Keep current: {{ current_fact.canonical_metric_id }}"
+                     autocomplete="off">
             </div>
             <div class="mb-2">
               <label class="form-label mb-1">Corrected Value (optional)</label>
@@ -627,7 +623,7 @@
                   <img src="{{ candidate.image_url }}"
                        alt="Image {{ loop.index }}"
                        loading="lazy"
-                       onerror="if(!this.dataset.retried){this.dataset.retried='1';var m=this.src.match(/\/Archives\/edgar\/data\/(\d+)\/(\d+)\/([^?]+)/);if(m){this.src='/images/cache/'+m[1]+'/'+m[2]+'/'+m[3];return;}}this.style.display='none';this.nextElementSibling.style.display='flex';">
+                       onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
                   <div class="thumbnail-placeholder" style="display: none;">
                     <span>?</span>
                   </div>
@@ -697,11 +693,11 @@
               <img src="{{ current_image.image_url }}"
                    alt="Image candidate"
                    class="main-image"
-                   onerror="if(!this.dataset.retried){this.dataset.retried='1';var m=this.src.match(/\/Archives\/edgar\/data\/(\d+)\/(\d+)\/([^?]+)/);if(m){this.src='/images/cache/'+m[1]+'/'+m[2]+'/'+m[3];return;}}this.style.display='none';document.getElementById('image-error').style.display='block';">
+                   onerror="this.style.display='none';document.getElementById('image-error').style.display='block';">
             </a>
             <div id="image-error" class="alert alert-warning" style="display: none;">
               <p class="mb-1">Unable to load image</p>
-              <a href="{{ current_image.image_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+              <a href="{{ current_image.image_src_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
                 Open in SEC EDGAR
               </a>
             </div>
@@ -1000,6 +996,11 @@ function submitDecision(decision) {
   if (decision === 'correct') {
     const metricId = document.getElementById('correct-metric')?.value?.trim();
     if (metricId) {
+      const validIds = Array.from(document.querySelectorAll('#all-metrics-datalist option')).map(o => o.value);
+      if (!validIds.includes(metricId)) {
+        alert('Please select a valid metric from the list (use the dropdown suggestions).');
+        return;
+      }
       body.assigned_metric_id = metricId;
     }
     const val = document.getElementById('correct-value')?.value;
