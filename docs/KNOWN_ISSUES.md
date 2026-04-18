@@ -200,7 +200,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
 | `test_candidate_generation_finds_active_consumers` (Issue #10) | Re-scoped | Low | Low | Original CMS-1 hypothesis disproven; real root cause TBD |
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
-| V2 metric facts identity index drift (Issue #13) | Open | Low | Low | DB index 8 cols; code / sql/23 expect 9 |
+| V2 metric facts identity index drift (Issue #13) | Migration prepared (sql/33) | Low | Low | DB index 8 cols; sql/33 recreates 9-col index; pending prod apply |
 | Farfetch LTV/CAC dedup collision (Issue #14) | Open | Medium | High | 4 T1 FNs from layout-table misclassification → shared cohort_def → identity collision |
 | Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Open | Medium | Medium | 10 Farfetch T1 FNs; 2026-04-17 chart fix didn't lift metric; needs chart_fact_bridge investigation |
@@ -240,7 +240,7 @@ the fixture instead of calling `_make_test_png(data_dir, ...)` directly. Verifie
 
 ## 13. V2 Metric Facts Identity Index Drift
 
-**Status**: Open (documented 2026-04-18 during data-model.md rewrite; not yet fixed)
+**Status**: Migration prepared; pending prod apply (`sql/33_fix_identity_index.sql`)
 **Severity**: Low (application-layer dedup in `MetricFact.identity_tuple()` still distinguishes `source_type`; no observed duplicate-row incidents)
 **Discovered**: 2026-04-18
 
@@ -271,18 +271,23 @@ source .env && psql "$DATABASE_URL" -c \
 - **Application layer:** `MetricFact.identity_tuple()` includes `source_type`, so in-memory deduplication preserves CHART + TEXT/TABLE as separate facts. Persistence upserts via `ON CONFLICT DO UPDATE` against the 8-column index — a CHART fact may therefore overwrite a prior TEXT fact (or vice versa) on the same slot.
 - **Observed incidents:** none to date.
 
-### Next Steps
+### Root Cause (2026-04-18)
 
-- Re-apply `sql/23_chart_source_dedup.sql` against the live DB and investigate why the previous application did not extend the index to 9 columns (possibly the migration was reverted by a subsequent schema snapshot restore).
-- Alternatively: remove `source_type` from `MetricFact.identity_tuple()` and the `sql/23` file if 8-column dedup is intended.
-- Coordinate with whoever owns the cross-source-confirmation work (migration 25) before changing behavior — chart-bridge facts rely on the assumption that chart and text slots are independently unique.
+Migration 23 ran at least once (recorded in `schema_migrations`), but the live DB index reverted to 8 columns. Best hypothesis: the DB was recreated from a pg_dump schema snapshot that predated sql/23, so the `schema_migrations` ledger recorded the migration as applied while the actual DDL was replaced with the older snapshot shape. Because `schema_migrations` tracks applied/checksum per file rather than inspecting live DDL, the drift went undetected.
+
+Secondary finding: `_persist_facts_in_tx` in `src/extraction_v2/persistence.py` (lines 706–722) uses a delete-then-insert pattern (not `ON CONFLICT`), so no live silent-overwrite occurs per pipeline run. However, the Python-side in-memory dedup key (lines 710–719) also omits `source_type`, meaning two facts differing only by `source_type` could silently collapse within a single run. This is a separate issue not addressed here.
+
+### Resolution
+
+`sql/33_fix_identity_index.sql` idempotently drops `idx_v2_metric_facts_identity_unique` and recreates it with all 9 columns including `source_type`. Pure DDL; no code deploy required. See `docs/operations/cloud-deployment-runbook.md` Pending Production Rollouts for apply instructions.
 
 ### References
 
+- `sql/33_fix_identity_index.sql` — fix migration (pending prod apply)
 - `docs/architecture/data-model.md` — "Known Discrepancies" section
-- `sql/23_chart_source_dedup.sql` — proposed 9-column DDL
+- `sql/23_chart_source_dedup.sql` — original 9-column DDL intent
 - `src/extraction_v2/models.py::MetricFact.identity_tuple` — 9-element tuple
-- `src/extraction_v2/persistence.py` — UPSERT target
+- `src/extraction_v2/persistence.py` — delete-then-insert persistence (lines 663–726)
 
 ---
 
@@ -581,3 +586,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Issue #15 resolved — added `load_dotenv()` to `v2_validator.py` `__main__`; chart stages now run automatically when `.env` contains `OPENAI_API_KEY`
 - **2026-04-18**: V2 baseline refreshed with chart pipeline active (P=64.1% R=45.6% F1=53.3%; Tier 1 F1 +1.4pp vs prior)
 - **2026-04-18**: Added Issue #20 — `cm_gross_margin_by_cohort` still 0% on Farfetch despite chart extraction running end-to-end; 2026-04-17 JSON-mode fix did not lift this metric
+- **2026-04-18**: Issue #13 — `sql/33_fix_identity_index.sql` prepared; root cause diagnosed as pg_dump snapshot restore overwriting the sql/23 DDL after migration was recorded; secondary finding: `_persist_facts_in_tx` in-memory dedup key (persistence.py:710–719) also omits `source_type` (tracked, not fixed here)

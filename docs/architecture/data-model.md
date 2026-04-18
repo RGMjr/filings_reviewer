@@ -733,7 +733,7 @@ Note: historical duplicate migration numbers (04/08/09/10/11/12) reflect prior s
 
 ## Known Discrepancies
 
-- **Identity index column count.** `sql/23_chart_source_dedup.sql` defines `idx_v2_metric_facts_identity_unique` with 9 columns including `source_type`. The live DB index currently has 8 columns (no `source_type`). `MetricFact.identity_tuple()` in `src/extraction_v2/models.py` returns 9 elements. Persistence therefore relies on Python-side tolerance plus DB-side 8-column enforcement. Flagged for investigation; documented here rather than silently patched.
+- **Identity index column count — fix prepared, pending prod apply.** `sql/23_chart_source_dedup.sql` defines `idx_v2_metric_facts_identity_unique` with 9 columns including `source_type`. The live DB index has 8 columns (no `source_type`), likely because a pg_dump schema snapshot taken before sql/23 was applied was used to recreate the DB at some point after the migration was recorded. `sql/33_fix_identity_index.sql` idempotently drops and recreates the index with all 9 columns. See KNOWN_ISSUES.md Issue #13. Once sql/33 is applied to prod this discrepancy is resolved.
 
 ---
 
