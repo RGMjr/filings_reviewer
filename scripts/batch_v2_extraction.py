@@ -79,7 +79,6 @@ class BatchConfig:
     dry_run: bool = False
     resume_from: int | None = None  # Skip filing_ids < this value
     limit: int | None = None
-    skip_quality_scoring: bool = False
     no_images: bool = False
     min_confidence: float = 0.90
     worker_timeout: int = 300  # Seconds before killing a hung worker

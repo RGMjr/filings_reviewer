@@ -8,7 +8,7 @@ Owner: Rob Markey
 
 ## 1. Purpose
 
-This document defines the **quality model** for the Customer Metrics Filings Analysis system.
+This document defines the **quality model** for the CMASB Disclosures Review system.
 
 It answers four questions:
 
@@ -348,37 +348,17 @@ Rule-based checks may include:
 - Unit consistency with metric type
 - Internal checks (e.g., sum of cohort counts within 5% of total if both are available)
 
-### 10.2 Filing–metric quality scores
+### 10.2 Filing–metric quality scores (not currently persisted)
 
-In `filing_metric_incidence` we store 0–3 integer scores for:
-
-- `quality_overall_score`
-- `quality_definition_score`
-- `quality_methodology_score`
-- `quality_completeness_score`
-- `quality_comparability_score`
-
-Interpretation:
-
-- 3 – Strong disclosure
-- 2 – Adequate but not ideal
-- 1 – Weak or incomplete
-- 0 – Not present or unusable
-
-`quality_overall_score` is an aggregate score computed by `V2QualityScorer`. Rubric: 0 = metric not disclosed (no facts and no definitions); 1 = minimal (value present but no definition or methodology); 2 = moderate (value plus at least a definition or methodology); 3 = excellent (value plus both definition and methodology plus cohort breakdown).
-
-The four dimension scores (`quality_definition_score`, `quality_methodology_score`, `quality_completeness_score`, `quality_comparability_score`) are derived from rule-based signals on the extracted `MetricDefinition` and `MetricFact` objects.
+A 0–3 integer rubric was previously persisted to the `filing_metric_incidence` table alongside dimension scores (`quality_overall_score`, `quality_definition_score`, `quality_methodology_score`, `quality_completeness_score`, `quality_comparability_score`). The table was dropped on 2026-04-18 (see `docs/architecture/v1-table-deprecation-plan.md`); the scoring module was removed in the same wave. If/when quality scoring is reintroduced, it will target a V2-native table rather than porting the V1 rubric.
 
 ### 10.3 Use in analysis
 
 - For incidence analyses:
-  - We include all filing–metric pairs with `metric_disclosed_flag = true`, but we can segment by quality scores.
-
-- For exemplar/best-practice examples:
-  - We only surface filings where relevant scores are mostly 2–3.
+  - We include all filing–metric pairs that have at least one extracted `MetricFact` or `MetricDefinition`.
 
 - For cohort-based quantitative analyses:
-  - We prioritize `metric_values` with `qa_status = 'pass'` and table-derived metrics.
+  - We prioritize facts with `cohort_def` set and table-derived provenance.
 
 ---
 

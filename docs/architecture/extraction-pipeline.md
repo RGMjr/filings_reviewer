@@ -238,7 +238,6 @@ Three new `PipelineConfig` fields control the Phase 3 guards:
 - **`src/extraction_v2/models.py`** — Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
 - **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 14-stage workflow and configuration
 - **`src/extraction_v2/persistence.py`** — Database write layer (V2PersistenceAdapter)
-- **`src/extraction_v2/quality_scoring.py`** — V2 quality scoring (V2QualityScorer)
 - **`src/extraction_v2/table_reconstructor.py`** — Table reconstruction with colspan/rowspan resolution
 - **`src/extraction_v2/stages/ingestion.py`** — HTML parsing with XPath locators and segment extraction
 - **`src/extraction_v2/stages/`** — One module per pipeline stage

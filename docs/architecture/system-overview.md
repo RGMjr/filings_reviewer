@@ -87,10 +87,9 @@ The system is organized into six logical layers:
    - Construct `MetricFact` objects with full evidence packs
    - Extract metric definitions from methodology segments
 
-5. **Quality Assessment & Deduplication**
+5. **Deduplication & Routing**
    - Deduplicate facts by identity tuple (metric + period + unit + scope)
    - Route facts to auto-accept or human review based on confidence thresholds
-   - Compute V1-compatible quality scores via `V2QualityScorer`
 
 6. **Orchestration, Monitoring, and Cost Control**
    - Coordinate pipeline runs across filings
@@ -140,12 +139,6 @@ The system is organized into six logical layers:
    │  (v2_metric_facts, v2_segments, │
    │   v2_tables, v2_image_assets,   │
    │   v2_documents)                 │
-   └──────────┬──────────────────────┘
-              │
-   ┌──────────▼──────────────────────┐
-   │  V2QualityScorer                │
-   │  (filing_metric_incidence,      │
-   │   V1-compatible quality scores) │
    └──────────┬──────────────────────┘
               │
    ┌──────────▼──────────────────────┐
@@ -216,14 +209,7 @@ The system is organized into six logical layers:
 **Input:** `PipelineResult`, `filing_id`, `DatabaseAdapter`
 **Output:** Upserted rows in `v2_metric_facts`, `v2_segments`, `v2_tables`, `v2_table_cells`, `v2_image_assets`, `v2_documents`
 
-### 6. V2QualityScorer
-**Module:** `src/extraction_v2/quality_scoring.py`
-**Purpose:** Compute V1-compatible quality scores from V2 pipeline outputs
-**Input:** `filing_id`, `company_id`, `MetricFact` list, `MetricDefinition` list, `Segment` list
-**Output:** `FilingMetricIncidence` rows written to `filing_metric_incidence` (5 scoring dimensions, 0-3 scale)
-**Note:** Script-layer only; not a pipeline stage. Runs after persistence.
-
-### 7. OpenAI Client
+### 6. OpenAI Client
 **Module:** `src/llm/`
 **Purpose:** LLM integration for image/chart extraction and definition summarization
 **Technology:** OpenAI GPT-4o-mini with PostgreSQL-backed response caching
@@ -234,7 +220,7 @@ The system is organized into six logical layers:
 ## Pipeline Flow
 
 ```
-UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → V2QualityScorer → Database
+UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 ```
 
 **Stage 1: Universe Building**
@@ -257,10 +243,6 @@ UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → V2
 **Stage 4: Persistence**
 - Writes all V2 artifacts to database (idempotent upserts)
 - Tracks processing status per filing in `v2_documents`
-
-**Stage 5: Quality Scoring**
-- Computes V1-compatible scores for analytics compatibility
-- Populates `filing_metric_incidence` with 5-dimension quality assessment
 
 ---
 
@@ -299,13 +281,6 @@ Filing Metadata (CIK, accession number, form type)
 │ Upserts: v2_metric_facts,         │
 │   v2_segments, v2_tables,         │
 │   v2_table_cells, v2_image_assets │
-└───────────┬───────────────────────┘
-            │
-            ▼
-┌───────────────────────────────────┐
-│ V2QualityScorer                   │
-│ Writes: filing_metric_incidence   │
-│ (5 quality dimensions, 0-3 scale) │
 └───────────────────────────────────┘
 ```
 
@@ -399,9 +374,6 @@ Filing Metadata (CIK, accession number, form type)
 | `companies` | One row per issuer; CIK, name, ticker, industry |
 | `filings` | One row per SEC filing; classification flags, processing status |
 | `source_segments` | V1/legacy segment storage; still referenced by review tools |
-| `metric_values` | V1/legacy extracted values |
-| `metric_definitions` | V1/legacy extracted definitions |
-| `filing_metric_incidence` | Quality scores (0-3 per dimension); written by `V2QualityScorer` |
 | `review_candidates` | Human review queue |
 | `review_decisions` | Completed human review decisions |
 | `metrics` | Canonical metric registry (metric_id, display_name, etc.) |
@@ -451,7 +423,6 @@ Filing Metadata (CIK, accession number, form type)
 | DeduplicationStage | Complete | Identity-tuple deduplication |
 | ValidationStage | Complete | Confidence-based review routing |
 | V2PersistenceAdapter | Complete | Idempotent upserts to all V2 tables |
-| V2QualityScorer | Complete | 5-dimension quality scores; writes filing_metric_incidence |
 | OpenAI Client (llm/) | Complete | PostgreSQL-backed LLM response cache |
 | Web UI (Flask) | Complete | Human review interface |
 | **Overall** | **Production Ready** | V2 is sole production pipeline |

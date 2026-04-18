@@ -147,7 +147,6 @@ Key flags for `run_v2_extraction.py`:
 | `--dry-run` | false | Run pipeline without persisting to database |
 | `--min-confidence FLOAT` | 0.90 | Minimum confidence for auto-accept |
 | `--no-images` | false | Disable image and chart extraction |
-| `--skip-quality` | false | Skip quality scoring step |
 | `--verbose` / `-v` | false | Enable debug logging |
 
 ### Full Batch Extraction
@@ -168,7 +167,6 @@ Key flags for `batch_v2_extraction.py`:
 | `--resume-from ID` | — | Skip filing_ids below this value (resume from checkpoint) |
 | `--filing-id ID` | — | Process a single filing by ID |
 | `--dry-run` | false | Run without persisting to database |
-| `--skip-quality` | false | Skip quality scoring |
 | `--no-images` | false | Disable image extraction |
 | `--min-confidence FLOAT` | 0.90 | Minimum confidence for auto-accept |
 | `--max-consecutive-failures N` | 10 | Circuit breaker: abort if N consecutive failures occur |
@@ -344,7 +342,6 @@ grep "persist" logs/batch_v2_cutover.log | grep -i "fail\|error"
 | Failure Pattern | Likely Cause | Resolution |
 |----------------|-------------|------------|
 | `HTML not found: ...` | `html_storage_path` missing or file not downloaded | Download HTML first; check `filings.html_storage_path` |
-| `Quality scoring failed for filing N` | Non-fatal; quality score skipped | Rerun with `--skip-quality` suppressed; check `v2_quality_scores` schema |
 | `Circuit breaker triggered` | 10+ consecutive failures | Check DB connectivity, lxml parse failures; narrow with `--filing-id` |
 | `PipelineError: stage N failed` | Stage-specific failure (see stage_results) | Run `--filing-id N --verbose` for detailed stage trace |
 | `psycopg...connection refused` | Database not running | `docker compose ps`, `docker compose restart` |

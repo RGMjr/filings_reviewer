@@ -3,7 +3,7 @@
 Purpose: Give AI coding agents the minimum, project-specific context to be productive here. Follow these conventions and examples; prefer concrete patterns over generic advice.
 
 ## Big Picture
-- Pipeline: UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → V2QualityScorer → Database.
+- Pipeline: UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database.
 - Architecture: infra (Postgres, SEC, validation), universe (discovery), filing_fetcher (retrieval), extraction (segmentation/classification/extraction), review (human-in-the-loop), web (Flask UI), llm (OpenAI integration). See [src](../src) and [docs/README.md](../docs/README.md).
 - Design tenets: Rule-based first (reduce LLM cost), strict provenance (every value links to its source segment), idempotent upserts, conservative classification (require BOTH signals), table-aware matching.
 
