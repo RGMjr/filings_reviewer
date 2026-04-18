@@ -1,8 +1,8 @@
 # CMASB Disclosures Review
 
-**Version:** 2.2
+**Version:** 2.3
 **Status:** In process
-**Last Updated:** 2026-03-15
+**Last Updated:** 2026-04-18
 
 A system for systematically analyzing SEC filings to assess how companies disclose customer-related metrics.
 
@@ -17,18 +17,19 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 
 ## Current Status
 
-| Component | Status | Test Coverage |
-|-----------|--------|---------------|
-| Universe Builder | ✅ Complete | 93% |
-| Filing Fetcher | ✅ Complete | 94% |
-| HTML Segmenter | ✅ Complete | 85% |
-| Extraction Pipeline | ✅ Complete | 91% |
-| LLM Integration | ✅ Complete | 88% |
-| Human Review System | ✅ Complete | 95-100% |
+| Component | Status |
+|-----------|--------|
+| Universe Builder | Complete |
+| Filing Fetcher | Complete |
+| V2 Extraction Pipeline | Complete |
+| LLM & Vision Integration | Complete |
+| Gold Standard Validation | Complete |
+| Human Review System | Complete |
+| Transcripts & Presentations | Complete (beyond SEC) |
 
-**Overall:** 87% overall test coverage (3,150+ tests)
+**Coverage target:** 75% minimum (enforced per CLAUDE.md).
 
-**Corpus:** 7,304 in-scope S-1/F-1 filings identified (2015-2025)
+**Corpus:** ~7,300 in-scope S-1/F-1 filings (2015-2025), plus earnings call transcripts and investor presentations.
 
 ## Quick Start
 
@@ -83,20 +84,17 @@ src/
 ├── infra/          # Database, SEC API client, validation
 ├── universe/       # Filing discovery and classification
 ├── filing_fetcher/ # Document retrieval and caching
-├── extraction/     # HTML segmentation (HTMLSegmenter)
-├── extraction_v2/  # V2 metric extraction pipeline
+├── extraction_v2/  # V2 metric extraction pipeline (segmentation, candidates, binding, FP filter)
 ├── review/         # Human-in-the-loop review system
 ├── web/            # Flask web application
-└── llm/            # OpenAI GPT-4o-mini integration
+├── llm/            # OpenAI + vision client integration
+├── gold_standard/  # Gold standard validation framework
+└── shared/         # Shared utilities across pipeline stages
 ```
 
-**Pipeline Flow:**
+**Pipeline Flow (V2):**
 ```
-UniverseBuilder → FilingFetcher → HTMLSegmenter → CandidateGenerationStage
-                                                          ↓
-                                              ValueBindingStage + DefinitionExtractionStage
-                                                          ↓
-                                                       Database
+UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 ```
 
 ## Documentation
@@ -124,22 +122,24 @@ filings_reviewer/
 │   ├── infra/             # Infrastructure (db.py, sec_client.py)
 │   ├── universe/          # Filing discovery
 │   ├── filing_fetcher/    # Document retrieval
-│   ├── extraction/        # HTML segmentation
 │   ├── extraction_v2/     # V2 extraction pipeline
 │   ├── review/            # Human review system
 │   ├── web/               # Flask application
-│   └── llm/               # LLM integration
+│   ├── llm/               # LLM + vision integration
+│   ├── gold_standard/     # Gold standard validation
+│   └── shared/            # Shared utilities
 ├── tests/                  # Test suite
 │   ├── unit/              # Fast unit tests
 │   ├── integration/       # Database integration tests
 │   └── performance/       # Performance benchmarks
 ├── docs/                   # Documentation
+│   ├── analysis/          # Task outputs, audits, evaluations
 │   ├── architecture/      # Technical design
 │   ├── development/       # Development guides
 │   ├── operations/        # Operations guides
 │   ├── requirements/      # Business requirements
 │   └── archive/           # Historical documents
-├── sql/                    # Database schema (01-07)
+├── sql/                    # Database schema (00-30)
 ├── scripts/               # Utility scripts
 ├── CLAUDE.md              # Claude Code instructions
 └── docker-compose.yml     # Docker configuration
