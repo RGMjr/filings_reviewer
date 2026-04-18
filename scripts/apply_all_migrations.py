@@ -79,6 +79,11 @@ MIGRATION_ORDER = [
     "23_chart_source_dedup.sql",
     "24_add_part_of_date_rejection_category.sql",
     "25_cross_source_confirmation.sql",
+    "26_drop_filing_metric_incidence.sql",
+    "27_drop_v1_metric_tables.sql",
+    "28_extend_v2_image_assets_review.sql",
+    "29_create_v2_image_review_decisions.sql",
+    "30_drop_v1_image_review.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
