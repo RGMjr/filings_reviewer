@@ -1905,6 +1905,10 @@ def run_validation(
 if __name__ == "__main__":
     import argparse
 
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
     def _positive_int(v: str) -> int:
         n = int(v)
         if n <= 0:

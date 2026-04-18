@@ -202,7 +202,8 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
 | V2 metric facts identity index drift (Issue #13) | Open | Low | Low | DB index 8 cols; code / sql/23 expect 9 |
 | Farfetch LTV/CAC dedup collision (Issue #14) | Open | Medium | High | 4 T1 FNs from layout-table misclassification → shared cohort_def → identity collision |
-| Chart pipeline blocked without OPENAI_API_KEY (Issue #15) | Env limitation | Medium | Low | 12 Farfetch T1 FNs hidden when API key absent |
+| Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
+| `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Open | Medium | Medium | 10 Farfetch T1 FNs; 2026-04-17 chart fix didn't lift metric; needs chart_fact_bridge investigation |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
 | CAC payback "six months" not bound (Issue #17) | Open | Low | Low | Bare word-number + time unit isn't parsed (1 FN on Farfetch + likely others) |
 | Migration checksum mismatch — `sql/01_create_schema.sql` (Issue #18) | Open | Low | Low | Blocks pytest gold standard; v2_validator module path works |
@@ -350,28 +351,26 @@ Not fixing this session. Tracked for future layout-table-detection work.
 
 ---
 
-## 15. Chart Pipeline Blocked Locally by Missing OPENAI_API_KEY
+## 15. Chart Pipeline Env Bootstrap
 
-**Status**: Environment limitation (not a code bug)
-**Severity**: Medium (blocks local re-measurement of Tier 1 chart metrics)
+**Status**: ✅ Resolved (2026-04-18) — validator now auto-loads `.env`
+**Severity**: Medium (was blocking local re-measurement)
 **Discovered**: 2026-04-18
+**Resolved**: 2026-04-18
 
 ### Problem
 
-Running `python3 -m src.gold_standard.v2_validator` locally without `OPENAI_API_KEY` set prints:
+Running `python3 -m src.gold_standard.v2_validator` without exported `OPENAI_API_KEY` caused Stages 4 and 5 to be disabled silently (warning printed but easy to miss). `source .env` alone wasn't sufficient because shell variables aren't exported to Python by default. Affected metrics (when key was absent): `cm_gross_margin_by_cohort`, `cm_revenue_by_cohort` (chart gold rows), and other chart-sourced Tier 1 metrics.
 
-```
-OPENAI_API_KEY is not set. Disabling image and chart extraction (Stages 4 and 5).
-```
+### Resolution
 
-All chart-sourced gold rows thus appear as FNs regardless of actual chart pipeline health. Affected Farfetch metrics:
-- `cm_gross_margin_by_cohort`: 10 Tier 1 FNs (all chart)
-- `cm_revenue_by_cohort`: 2 Tier 1 FNs (gold `segment_type=chart` for 44.4% / 55.6% consumer cohort values)
+Added `load_dotenv()` to `src/gold_standard/v2_validator.py` `__main__` block (line 1908). Mirrors existing pattern in `tests/integration/conftest.py:327` and `tests/performance/conftest.py:17`. `load_dotenv()` defaults to NOT overriding existing env, so shell-set values still take precedence — safe addition.
 
-### Next Steps
+Chart stages now run automatically when `.env` contains `OPENAI_API_KEY`. Verified via fresh baseline refresh: 23 chart facts produced, 0 "API key not set" warnings in output.
 
-- Document `OPENAI_API_KEY` as a prerequisite for gold standard validation in `.claude/rules/gold-standard.md` (currently silent on this).
-- Optionally: add a startup check in `v2_validator` that prints a clearer warning when chart-sourced gold rows exist but the API key is missing.
+### Follow-Up
+
+See Issue #20 for remaining chart-pipeline gaps uncovered by the now-functioning chart stages (specifically `cm_gross_margin_by_cohort` still at 0% on Farfetch despite chart extraction running).
 
 ---
 
@@ -432,7 +431,7 @@ Not fixing this session.
 
 ## 18. Migration Checksum Mismatch on `sql/01_create_schema.sql`
 
-**Status**: Open (test infra)
+**Status**: ✅ Resolved (2026-04-18) — self-healed via V1 retirement merge
 **Severity**: Low (blocks pytest-based gold standard; v2_validator module path works)
 **Discovered**: 2026-04-18
 
@@ -456,6 +455,38 @@ Use `python3 -m src.gold_standard.v2_validator` directly. This bypasses pytest f
 - Reconcile the local test DB's `schema_migrations` row for `01_create_schema.sql` (either re-apply or update the recorded checksum).
 - Verify no actual schema drift between the checksum-recorded version and the current file.
 - Consider adding a helper script (e.g., `scripts/sync_test_db_checksums.py --dry-run`) for this recurring scenario.
+
+---
+
+## 20. `cm_gross_margin_by_cohort` Still 0% on Farfetch Despite Chart Pipeline Active
+
+**Status**: Open
+**Severity**: Medium (10 Tier 1 FNs on Farfetch; likely blocks other chart-heavy companies)
+**Discovered**: 2026-04-18
+
+### Problem
+
+With `OPENAI_API_KEY` properly loaded (Issue #15 resolved) and chart/vision stages running, `cm_gross_margin_by_cohort` shows **P=0%, R=0%, F1=0%** on Farfetch's 9 chart-sourced gold rows — unchanged from the pre-chart-pipeline state.
+
+### Context
+
+`.claude/rules/v2-pipeline.md` states:
+> `cm_gross_margin_by_cohort` — F1=0% pre-fix. GS: 9 FTCH rows, all chart images. Previously blocked by malformed vision JSON; fix applied 2026-04-17 (JSON mode + truncation-repair fallback). Re-measure GS to confirm lift.
+
+The 2026-04-18 baseline refresh (23 chart facts produced end-to-end) **is** that re-measurement. The fix did not lift `cm_gross_margin_by_cohort` for Farfetch.
+
+### Working Hypotheses (not yet diagnosed)
+
+1. The Farfetch Order Contribution Margin charts are tagged by the chart classifier to a different metric (e.g., none, or `cm_revenue_by_cohort` which did gain F1 26.3%).
+2. The vision OCR returns data but the chart_fact_bridge rejects or reassigns it (see `chart_fact_bridge.py`).
+3. Axis range multiplier rejection (`chart_axis_range_multiplier: 10.0`) or review threshold drops facts.
+4. Farfetch charts fail `chart_image_min_confidence` (0.6).
+
+### Next Steps
+
+- Run `python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited" --fn-diagnostics --workers 1` with vision enabled and inspect the FN categories for `cm_gross_margin_by_cohort`.
+- Add temporary debug logging to `chart_fact_bridge.py` to trace which stage drops/reassigns the facts.
+- Cross-check against HOOD (`cm_balance_by_cohort` F1=57% with chart pipeline) to understand why HOOD charts bridge successfully but Farfetch's don't.
 
 ---
 
@@ -546,3 +577,7 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Added Issue #17 — CAC payback bare word-number + time unit not bound
 - **2026-04-18**: Added Issue #18 — migration checksum mismatch on `sql/01_create_schema.sql` (blocks pytest gold standard; v2_validator module workaround)
 - **2026-04-18**: Added Issue #19 — FN diagnostic misclassified 3 of 3 categories investigated during 2026-04-18 Farfetch diagnosis
+- **2026-04-18**: Issue #18 resolved — self-healed via V1 retirement merge (pytest gold_standard tests deleted in commit `03a8a20`); no reconciliation action needed
+- **2026-04-18**: Issue #15 resolved — added `load_dotenv()` to `v2_validator.py` `__main__`; chart stages now run automatically when `.env` contains `OPENAI_API_KEY`
+- **2026-04-18**: V2 baseline refreshed with chart pipeline active (P=64.1% R=45.6% F1=53.3%; Tier 1 F1 +1.4pp vs prior)
+- **2026-04-18**: Added Issue #20 — `cm_gross_margin_by_cohort` still 0% on Farfetch despite chart extraction running end-to-end; 2026-04-17 JSON-mode fix did not lift this metric
