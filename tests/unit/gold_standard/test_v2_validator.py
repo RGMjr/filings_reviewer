@@ -1760,20 +1760,129 @@ class TestDiagnosefalseNegative:
         assert diag.bound_value_count == 0
 
     def test_fp_filtered(self) -> None:
-        """Pre-filter had binding, post-filter removed it → fp_filtered."""
+        """Pre-filter had value-matching binding, post-filter removed it → fp_filtered."""
         validator = self._validator()
         entry = make_entry(metric_id="cm_dau", raw_value="1000")
         cand = make_candidate("cm_dau", "cand-1")
         bv = make_bound_value("cand-1", "bv-1")
+        bv.value = 1000.0  # Matches expected; removal by FP filter is the FN cause
         ctx = make_context(
             candidates=[cand],
-            pre_filter_bound_values=[bv],  # Had binding
+            pre_filter_bound_values=[bv],  # Had value-matching binding
             bound_values=[],  # But filtered out
         )
         diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [])
         assert diag.root_cause.category == "fp_filtered"
         assert diag.candidate_count == 1
         assert diag.bound_value_count == 1
+
+    def test_no_matching_binding(self) -> None:
+        """Pre-filter had bindings but none matched expected value → no_matching_binding.
+
+        Distinguishes from fp_filtered: a keyword-matching candidate can attract
+        stray numbers (date fragments, etc.) that get FP-filtered correctly; the
+        real issue is that the expected value was never bound to any candidate.
+        Previously this misclassified as fp_filtered (Issue #19).
+        """
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1000")
+        cand = make_candidate("cm_dau", "cand-1")
+        bv_date_day = make_bound_value("cand-1", "bv-date-day")
+        bv_date_day.value = 31.0
+        bv_date_year = make_bound_value("cand-1", "bv-date-year")
+        bv_date_year.value = 2017.0
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv_date_day, bv_date_year],
+            bound_values=[],
+        )
+        diag = validator._diagnose_false_negative(entry, "TestCo", ctx, [])
+        assert diag.root_cause.category == "no_matching_binding"
+        assert "none had value matching" in diag.root_cause.detail
+        assert diag.bound_value_count == 2
+
+    def test_dedup_collision(self) -> None:
+        """Value-matching fact existed pre-dedup but was collapsed into a sibling.
+
+        Regression test for Issue #19: previously classified as wrong_period
+        because the wrong_period check looked at pre-dedup facts. Real failure
+        is identity-tuple collision in deduplication (Farfetch LTV/CAC: three
+        per-cohort values share cohort_def prose → collapsed to one).
+        """
+        validator = self._validator()
+        entry = make_entry(metric_id="cm_dau", raw_value="1.42")
+        cand = make_candidate("cm_dau", "cand-1")
+        bv = make_bound_value("cand-1", "bv-1")
+        bv.value = 1.42
+        matching_fact = MetricFact(
+            fact_id="fact-match",
+            canonical_metric_id="cm_dau",
+            value=1.42,
+            confidence=0.82,
+        )
+        surviving_sibling = MetricFact(
+            fact_id="fact-surv",
+            canonical_metric_id="cm_dau",
+            value=1.77,
+            confidence=0.82,
+        )
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv],
+            bound_values=[bv],
+            facts=[matching_fact, surviving_sibling],
+            deduplicated_facts=[surviving_sibling],
+        )
+        diag = validator._diagnose_false_negative(
+            entry, "TestCo", ctx, [matching_fact, surviving_sibling]
+        )
+        assert diag.root_cause.category == "dedup_collision"
+        assert "collapsed into a sibling" in diag.root_cause.detail
+
+    def test_wrong_period_uses_dedup_facts_only(self) -> None:
+        """wrong_period should NOT fire when value match is only in pre-dedup facts.
+
+        Regression test for Issue #19: previously wrong_period checked the union of
+        pre-dedup and post-dedup facts, so collapsed value-matches were misclassified
+        as wrong_period instead of dedup_collision.
+        """
+        from datetime import date as date_cls
+
+        validator = self._validator()
+        entry = make_entry(
+            metric_id="cm_dau",
+            raw_value="1000",
+            period_start=date_cls(2022, 1, 1),
+            period_end=date_cls(2022, 12, 31),
+        )
+        cand = make_candidate("cm_dau", "cand-1")
+        bv = make_bound_value("cand-1", "bv-1")
+        bv.value = 1000.0
+        pre_dedup_match = MetricFact(
+            fact_id="fact-pre",
+            canonical_metric_id="cm_dau",
+            value=1000.0,
+            confidence=0.82,
+            period_start=date_cls(2020, 1, 1),
+            period_end=date_cls(2020, 12, 31),
+        )
+        surviving_sibling = MetricFact(
+            fact_id="fact-surv",
+            canonical_metric_id="cm_dau",
+            value=2000.0,
+            confidence=0.82,
+        )
+        ctx = make_context(
+            candidates=[cand],
+            pre_filter_bound_values=[bv],
+            bound_values=[bv],
+            facts=[pre_dedup_match, surviving_sibling],
+            deduplicated_facts=[surviving_sibling],
+        )
+        diag = validator._diagnose_false_negative(
+            entry, "TestCo", ctx, [pre_dedup_match, surviving_sibling]
+        )
+        assert diag.root_cause.category == "dedup_collision"
 
     def test_low_confidence(self) -> None:
         """Fact exists but below confidence threshold → low_confidence."""

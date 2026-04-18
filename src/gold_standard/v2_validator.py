@@ -153,7 +153,7 @@ class FalsePositiveDiagnostic:
 class FNRootCause:
     """Root cause classification for a false negative."""
 
-    category: str  # no_candidate | no_value_binding | fp_filtered | wrong_value | wrong_period | low_confidence | dedup_removed | unknown
+    category: str  # no_candidate | no_value_binding | fp_filtered | no_matching_binding | wrong_value | wrong_period | low_confidence | dedup_removed | dedup_collision | unknown
     detail: str
     stage: str  # pipeline stage where the metric was lost
 
@@ -830,12 +830,20 @@ class V2GoldStandardValidator:
         Tracing order through pipeline stages:
         1. No candidate with matching metric_id → no_candidate
         2. Candidate exists but no pre-filter binding → no_value_binding
-        3. Binding existed pre-filter but was removed → fp_filtered
+        3. Pre-filter binding(s) with matching value removed → fp_filtered
+           (if pre-filter bindings existed but none matched expected value,
+            emit `no_matching_binding` instead — distinguishes a keyword that
+            caught unrelated numbers from a genuine FP-filter issue)
         4. Post-filter binding exists but no matching fact value → wrong_value
-        5. Fact exists but not in deduplicated_facts → dedup_removed
-        6. Fact exists but below confidence threshold → low_confidence
-        7. Fact value matches but period doesn't → wrong_period
-        8. Otherwise → unknown
+        5. Value-matching fact existed pre-dedup but was collapsed → dedup_collision
+           (distinguishes from `dedup_removed`, which means the whole metric
+            was wiped by dedup, not just the specific value-matching sibling)
+        6. All facts for metric dropped by dedup → dedup_removed
+        7. Fact exists but below confidence threshold → low_confidence
+        8. Value-matching fact survived dedup but period doesn't match → wrong_period
+           (checks only `deduplicated_facts`; pre-dedup value matches that
+            were collapsed are classified as `dedup_collision`, not `wrong_period`)
+        9. Otherwise → unknown
         """
         entry_metric_id = normalize_metric_id(entry.metric_id)
         expected_value = entry.normalized_value
@@ -887,13 +895,46 @@ class V2GoldStandardValidator:
         ]
 
         if not post_filter_bindings and pre_filter_bindings:
+            # Value-aware: only classify as fp_filtered if at least one of the
+            # removed bindings actually had the expected value. Otherwise the
+            # candidate caught unrelated numbers (e.g., date fragments like
+            # "31, 2017" from "December 31, 2017") and the real issue is that
+            # the expected value was never bound.
+            value_matching_removed: list = []
+            if expected_value is not None:
+                value_matching_removed = [
+                    bv for bv in pre_filter_bindings
+                    if bv.value is not None
+                    and self._values_match(expected_value, bv.value)
+                ]
+            if expected_value is None or value_matching_removed:
+                return FNDiagnostic(
+                    entry=entry,
+                    company_name=company_name,
+                    root_cause=FNRootCause(
+                        category="fp_filtered",
+                        detail=(
+                            f"{len(value_matching_removed)} of {len(pre_filter_bindings)} "
+                            f"binding(s) with matching value removed by FP filter"
+                            if expected_value is not None
+                            else f"{len(pre_filter_bindings)} binding(s) removed by FP filter"
+                        ),
+                        stage="false_positive_filter",
+                    ),
+                    candidate_count=candidate_count,
+                    bound_value_count=bound_value_count,
+                )
             return FNDiagnostic(
                 entry=entry,
                 company_name=company_name,
                 root_cause=FNRootCause(
-                    category="fp_filtered",
-                    detail=f"{len(pre_filter_bindings)} binding(s) removed by FP filter",
-                    stage="false_positive_filter",
+                    category="no_matching_binding",
+                    detail=(
+                        f"{len(pre_filter_bindings)} binding(s) existed for this candidate "
+                        f"but none had value matching expected={expected_value}; "
+                        f"FP filter removed all (date fragments, scale components, etc.)"
+                    ),
+                    stage="value_binding",
                 ),
                 candidate_count=candidate_count,
                 bound_value_count=bound_value_count,
@@ -963,6 +1004,43 @@ class V2GoldStandardValidator:
                 closest_fact_confidence=closest_conf,
             )
 
+        # Step 5b: dedup_collision — a VALUE-matching sibling was collapsed into another
+        # fact of the same metric (distinct from dedup_removed, which wipes all facts for
+        # the metric). This is the LTV/CAC case: three per-cohort values extracted pre-dedup
+        # share identity tuple and get collapsed; only the highest-value sibling survives.
+        post_dedup_metric_facts = [
+            f for f in (context.deduplicated_facts or [])
+            if normalize_metric_id(f.canonical_metric_id) == entry_metric_id
+        ]
+        if expected_value is not None:
+            pre_dedup_value_matches = [
+                f for f in context_facts
+                if f.value is not None and self._values_match(expected_value, f.value)
+            ]
+            post_dedup_value_matches = [
+                f for f in post_dedup_metric_facts
+                if f.value is not None and self._values_match(expected_value, f.value)
+            ]
+            if pre_dedup_value_matches and not post_dedup_value_matches:
+                return FNDiagnostic(
+                    entry=entry,
+                    company_name=company_name,
+                    root_cause=FNRootCause(
+                        category="dedup_collision",
+                        detail=(
+                            f"Value-matching fact ({expected_value}) existed pre-dedup but "
+                            f"was collapsed into a sibling with different value; "
+                            f"{len(pre_dedup_value_matches)} match(es) pre-dedup, "
+                            f"{len(post_dedup_metric_facts)} total post-dedup"
+                        ),
+                        stage="deduplication",
+                    ),
+                    candidate_count=candidate_count,
+                    bound_value_count=bound_value_count,
+                    closest_fact_value=closest_value,
+                    closest_fact_confidence=closest_conf,
+                )
+
         # Step 6: Check confidence threshold
         low_conf_facts = [
             f for f in all_metric_facts
@@ -987,10 +1065,12 @@ class V2GoldStandardValidator:
                 closest_fact_confidence=closest_conf,
             )
 
-        # Step 7: Check period mismatch — value matches but period doesn't
+        # Step 7: Check period mismatch — value matches but period doesn't.
+        # Uses ONLY deduplicated_facts so pre-dedup value matches that were later
+        # collapsed are classified as dedup_collision (Step 5b), not wrong_period.
         if expected_value is not None:
             value_matched_facts = [
-                f for f in all_metric_facts
+                f for f in post_dedup_metric_facts
                 if f.value is not None and self._values_match(expected_value, f.value)
             ]
             if value_matched_facts:
