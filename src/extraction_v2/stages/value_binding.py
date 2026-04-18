@@ -745,6 +745,15 @@ class ValueBindingStage:
             return []
         kw_end = kw_start + len(keyword)
 
+        # When a high-confidence "respectively" pattern is present, prefer the parser's
+        # per-value/per-period associations over raw proximity numbers — the parser
+        # correctly pairs each value with its year, preventing downstream dedup collisions
+        # when the values share a prose cell with a cohort/period list.
+        if "respectively" in text_lower:
+            resp_match = detect_respectively_pattern(text, min_confidence=0.8)
+            if resp_match is not None:
+                return self._bind_respectively_pattern(candidate, cell)
+
         numbers = self._find_numbers_in_proximity(
             text, kw_start, kw_end, self.proximity_window, metric_id=candidate.metric_id
         )
@@ -809,6 +818,12 @@ class ValueBindingStage:
         if match is None:
             return []
 
+        # When the sentence mentions "cohort(s)", the year strings returned by the
+        # parser are cohort labels, not report periods. Surface them as cohort_hint
+        # so fact_construction can assign distinct cohort_def values per fact
+        # (preventing the 8-col dedup key collision seen on Farfetch LTV/CAC).
+        is_cohort_sentence = bool(re.search(r"\bcohorts?\b", text, re.IGNORECASE))
+
         context_text = " ".join(cell.header_path + cell.stub_path)
         bound_values: list[BoundValue] = []
         for value_str, period_str in match.associations:
@@ -833,7 +848,8 @@ class ValueBindingStage:
                     unit=unit,
                     binding_type="respectively_pattern",
                     binding_confidence=confidence,
-                    period_hint=period_str,
+                    period_hint="" if is_cohort_sentence else period_str,
+                    cohort_hint=f"{period_str} cohort" if is_cohort_sentence else "",
                     source_locator=SourceLocator(
                         table_id=candidate.source_locator.table_id,
                         cell_row=cell.row,
