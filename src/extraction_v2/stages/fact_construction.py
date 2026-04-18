@@ -219,8 +219,10 @@ class FactConstructionStage:
             bv, segment_lookup, table_lookup, image_lookup, context.config
         )
 
-        # Extract cohort definition from table stub/header paths (or prose context)
-        cohort_def = self._extract_cohort_def(evidence)
+        # Extract cohort definition: prefer BoundValue.cohort_hint when set
+        # (e.g., respectively-pattern binding on a cohort-intent sentence);
+        # otherwise scan stub/header paths.
+        cohort_def = bv.cohort_hint or self._extract_cohort_def(evidence)
         customer_type = self._extract_customer_type(evidence)
 
         # Build the fact
@@ -444,13 +446,22 @@ class FactConstructionStage:
         Scans stub_path (row labels) first, then header_path (column headers),
         returning the first label that parses as an acquisition or tenure cohort.
         Returns None for text/chart sources (stub_path/header_path are empty).
+
+        Labels longer than 80 chars are skipped: structured cohort labels
+        ("2015 Cohort", "0-12 months") are always short; long entries are
+        prose sentences that can spuriously match cohort substrings via
+        parse_cohort_label's .search() (see Issue #14 root cause).
         """
         for label in reversed(evidence.stub_path):
+            if len(label) > 80:
+                continue
             cohort_type, _ = parse_cohort_label(label)
             if cohort_type in ("acquisition", "tenure"):
                 return label
 
         for label in reversed(evidence.header_path):
+            if len(label) > 80:
+                continue
             cohort_type, _ = parse_cohort_label(label)
             if cohort_type in ("acquisition", "tenure"):
                 return label

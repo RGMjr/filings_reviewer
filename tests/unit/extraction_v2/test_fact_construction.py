@@ -1056,6 +1056,79 @@ def test_no_cohort_for_text_source(
     assert fact.cohort_type is None
 
 
+def test_cohort_hint_on_bv_overrides_extract_cohort_def(
+    stage: FactConstructionStage, mock_context: PipelineContext
+) -> None:
+    """BoundValue.cohort_hint takes precedence over _extract_cohort_def evidence scan.
+
+    Regression test for Issue #14: the respectively-parser sets cohort_hint on each
+    BoundValue so that three values from one prose cell get distinct cohort_def
+    values (preventing the 8-col dedup collision).
+    """
+    table = make_table(
+        table_id="tbl_hint",
+        header_texts=["Q1"],
+        stub_texts=["2099 Cohort"],  # would normally supply cohort_def
+    )
+    candidate = make_candidate(candidate_id="cand_1", metric_id="cm_ltv_to_cac_ratio_by_cohort")
+    bv = make_bound_value(
+        candidate_id="cand_1",
+        table_id="tbl_hint",
+        cell_row=1,
+        cell_col=1,
+    )
+    bv.cohort_hint = "2015 cohort"
+
+    mock_context.candidates = [candidate]
+    mock_context.bound_values = [bv]
+    mock_context.tables = [table]
+    stage.process(mock_context)
+    fact = mock_context.facts[0]
+
+    assert fact.cohort_def == "2015 cohort"
+    assert fact.cohort_type == "acquisition"
+
+
+def test_prose_length_guard_skips_long_header_label(
+    stage: FactConstructionStage,
+) -> None:
+    """_extract_cohort_def skips header labels > 80 chars (prose sentences).
+
+    Defensive guard tied to Issue #14 root cause: parse_cohort_label uses .search(),
+    so a long prose sentence containing '2017 cohorts' would otherwise be returned
+    verbatim as cohort_def, causing dedup collisions.
+    """
+    from src.extraction_v2.models import EvidencePack
+
+    long_prose = (
+        "Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 "
+        "and 2017 cohorts was 1.42, 1.53 and 1.77, respectively"
+    )
+    assert len(long_prose) > 80
+
+    evidence = EvidencePack(
+        snippet_html="",
+        header_path=[long_prose],
+        stub_path=[],
+        context_before="",
+        context_after="",
+        raw_value_text="1.77",
+    )
+
+    assert stage._extract_cohort_def(evidence) is None
+
+    # Sanity check: a short, structured cohort label is still returned.
+    evidence_short = EvidencePack(
+        snippet_html="",
+        header_path=["2015 Cohort"],
+        stub_path=[],
+        context_before="",
+        context_after="",
+        raw_value_text="1.42",
+    )
+    assert stage._extract_cohort_def(evidence_short) == "2015 Cohort"
+
+
 def test_customer_type_paid_from_prose_context(
     stage: FactConstructionStage, mock_context: PipelineContext
 ) -> None:

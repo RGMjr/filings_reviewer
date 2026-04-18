@@ -861,6 +861,7 @@ class BoundValue:
     period_source: str = ""  # "header_path", "text_context", "filing_fallback"
     period_ambiguous: bool = False  # True if multiple conflicting periods detected
     period_hint: str = ""  # Pre-parsed period from respectively pattern (e.g., "2017")
+    cohort_hint: str = ""  # Pre-parsed cohort label from respectively pattern (e.g., "2015 cohort")
 
     # Metadata
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))

@@ -3344,7 +3344,7 @@ class TestRespectivelyPatternBinding:
     )
 
     def test_bind_respectively_pattern_ltv_cac(self, stage: ValueBindingStage) -> None:
-        """Exact Farfetch text yields 3 BoundValues with correct period_hints."""
+        """Exact Farfetch text yields 3 BoundValues; cohort-intent sets cohort_hint."""
         cell = Cell(row=0, col=0, text=self.FARFETCH_TEXT, header_path=[], stub_path=[])
         candidate = MetricCandidate(
             candidate_id="cand-ff-1",
@@ -3358,8 +3358,12 @@ class TestRespectivelyPatternBinding:
 
         assert len(results) == 3
 
-        period_hints = {bv.period_hint for bv in results}
-        assert period_hints == {"2015", "2016", "2017"}
+        # Sentence contains "cohorts" → years surface as cohort_hint, not period_hint
+        # (Issue #14 — prevents 8-col dedup key collision on the three facts)
+        cohort_hints = {bv.cohort_hint for bv in results}
+        assert cohort_hints == {"2015 cohort", "2016 cohort", "2017 cohort"}
+        for bv in results:
+            assert bv.period_hint == ""
 
         values = sorted(bv.value for bv in results)
         assert values == pytest.approx([1.42, 1.53, 1.77], rel=1e-3)
@@ -3441,6 +3445,124 @@ class TestRespectivelyPatternBinding:
 
         # Currency values must be filtered for a count-only metric
         assert len(results) == 0
+
+
+class TestProseRespectivelyPriority:
+    """Tests for Issue #14 fix: respectively-parser priority + cohort_hint plumbing.
+
+    When a prose cell contains "respectively" with a high-confidence parser match,
+    _bind_prose_cell should route bindings through _bind_respectively_pattern rather
+    than letting proximity numbers win. When the sentence also mentions "cohort(s)",
+    each BoundValue gets a distinct cohort_hint so fact_construction can assign
+    distinct cohort_def values, preventing the 8-col dedup-key collision.
+    """
+
+    FARFETCH_TEXT = (
+        "Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 "
+        "and 2017 cohorts was 1.42, 1.53 and 1.77, respectively"
+    )
+    PERIOD_TEXT = (
+        "Platform Order Contribution Margin for the years ended December 31, "
+        "2015, 2016 and 2017 was 33.0%, 35.0% and 43.0%, respectively"
+    )
+
+    def test_cohort_sentence_uses_respectively_parser_not_proximity(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Farfetch cohort sentence routes through respectively parser, not proximity."""
+        cell = Cell(row=0, col=0, text=self.FARFETCH_TEXT, header_path=[], stub_path=[])
+        candidate = MetricCandidate(
+            candidate_id="cand-issue14-1",
+            metric_id="cm_ltv_to_cac_ratio_by_cohort",
+            match_text="LTV/CAC",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(table_id="issue14-1"),
+        )
+
+        results = stage._bind_prose_cell(candidate, cell)
+
+        assert len(results) == 3
+        for bv in results:
+            assert bv.binding_type == "respectively_pattern"
+        values = sorted(bv.value for bv in results)
+        assert values == pytest.approx([1.42, 1.53, 1.77], rel=1e-3)
+
+    def test_cohort_sentence_populates_cohort_hint(
+        self, stage: ValueBindingStage
+    ) -> None:
+        """Cohort-intent sentence sets cohort_hint and leaves period_hint empty."""
+        cell = Cell(row=0, col=0, text=self.FARFETCH_TEXT, header_path=[], stub_path=[])
+        candidate = MetricCandidate(
+            candidate_id="cand-issue14-2",
+            metric_id="cm_ltv_to_cac_ratio_by_cohort",
+            match_text="LTV/CAC",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(table_id="issue14-2"),
+        )
+
+        results = stage._bind_prose_cell(candidate, cell)
+
+        cohort_hints = {bv.cohort_hint for bv in results}
+        assert cohort_hints == {"2015 cohort", "2016 cohort", "2017 cohort"}
+        for bv in results:
+            assert bv.period_hint == ""
+
+    def test_period_sentence_no_cohort_hint(self, stage: ValueBindingStage) -> None:
+        """Sentence without 'cohort' word leaves cohort_hint empty, keeps period_hint."""
+        cell = Cell(row=0, col=0, text=self.PERIOD_TEXT, header_path=[], stub_path=[])
+        candidate = MetricCandidate(
+            candidate_id="cand-issue14-3",
+            metric_id="cm_gross_margin_by_cohort",
+            match_text="Platform Order Contribution Margin",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(table_id="issue14-3"),
+        )
+
+        results = stage._bind_prose_cell(candidate, cell)
+
+        assert len(results) == 3
+        for bv in results:
+            assert bv.cohort_hint == ""
+        period_hints = {bv.period_hint for bv in results}
+        assert period_hints == {"2015", "2016", "2017"}
+
+    def test_respectively_below_confidence_falls_through_to_proximity(
+        self,
+        stage: ValueBindingStage,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When parser confidence < 0.8, Strategy 6 uses proximity numbers."""
+        from src.extraction_v2.stages import value_binding as vb
+
+        def _fake_detect(text: str, min_confidence: float = 0.6):  # type: ignore[no-untyped-def]
+            # Simulate a parser that never meets the 0.8 gate and returns None for
+            # high thresholds but matches at the default 0.6 fallback threshold.
+            if min_confidence >= 0.8:
+                return None
+            # Return a harmless match with low confidence for the fallback path.
+            return None  # Both gate-check and fallback return None here.
+
+        monkeypatch.setattr(vb, "detect_respectively_pattern", _fake_detect)
+
+        cell_text = (
+            "LTV/CAC ratio in 2022 was 1.55 overall and the cohort was consistent, respectively"
+        )
+        cell = Cell(row=0, col=0, text=cell_text, header_path=[], stub_path=[])
+        candidate = MetricCandidate(
+            candidate_id="cand-issue14-4",
+            metric_id="cm_ltv_to_cac_ratio",
+            match_text="LTV/CAC",
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(table_id="issue14-4"),
+        )
+
+        results = stage._bind_prose_cell(candidate, cell)
+
+        # Parser returned None at the 0.8 gate → proximity numbers used.
+        # The numeric value 1.55 in the prose is found by proximity binding.
+        assert any(bv.value_raw == "1.55" for bv in results)
+        for bv in results:
+            assert bv.binding_type != "respectively_pattern"
 
 
 class TestStubContradictionUpstream:

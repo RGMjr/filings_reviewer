@@ -112,8 +112,8 @@ Original "12.5%" figure (1 of 8 non-chart) is stale. The gold standard grew from
 | Metric | Tier | P | R | F1 | Notes |
 |---|---|---|---|---|---|
 | `cm_gross_margin_by_cohort` | T1 | 0% | 0% | 0% | 10 FNs — chart (see #15) |
-| `cm_ltv_to_cac_ratio` | T1 | 100% | 33% | 50% | 2 FNs — dedup collision (see #14) |
-| `cm_ltv_to_cac_ratio_by_cohort` | T1 | 100% | 17% | 29% | 2 FNs — dedup collision (see #14) |
+| `cm_ltv_to_cac_ratio` | T1 | 100% | 100% | 100% | ✓ (Issue #14 resolved 2026-04-18) |
+| `cm_ltv_to_cac_ratio_by_cohort` | T1 | 100% | 50% | 67% | Text FNs cleared (#14); 3 chart FNs remain (#20) |
 | `cm_revenue_by_cohort` | T1 | 0% | 0% | 0% | 2 FNs — chart (see #15) |
 | `cm_active_customers_total` | T2 | 29% | **100%** | 44% | Recall fine; 5 FPs (see #16) |
 | `cm_average_order_value` | T2 | 100% | 100% | 100% | ✓ |
@@ -126,7 +126,7 @@ Original "12.5%" figure (1 of 8 non-chart) is stale. The gold standard grew from
 2. ~~**URL issue** (Issue #6)~~ — resolved
 3. ~~**CAC Payback "six"**~~ — KNOWN_ISSUES.md previously claimed this was fixed; **claim was inaccurate**. Spelled-out number support was added only for scaled forms ("six million"), not for time-unit forms ("six months"). See #17.
 4. ~~**Take Rate patterns**~~ — void: `cm_take_rate` was removed from taxonomy 2026-01-02 (not a customer metric).
-5. **Layout-table dedup collision** — new root cause: see #14.
+5. ~~**Layout-table dedup collision**~~ — resolved 2026-04-18 via #14 (respectively-parser priority + cohort_hint).
 6. **Chart extraction blocked locally** — no `OPENAI_API_KEY` means chart-sourced gold rows can't be tested/recovered locally. See #15.
 7. **Table-scale + period precision drag** — see #16.
 
@@ -201,7 +201,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `test_candidate_generation_finds_active_consumers` (Issue #10) | Re-scoped | Low | Low | Original CMS-1 hypothesis disproven; real root cause TBD |
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
 | V2 metric facts identity index drift (Issue #13) | Migration prepared (sql/33) | Low | Low | DB index 8 cols; sql/33 recreates 9-col index; pending prod apply |
-| Farfetch LTV/CAC dedup collision (Issue #14) | Open | Medium | Medium | 4 T1 FNs; respectively_parser exists + parses correctly but only runs as fallback, layout-table path bypasses it |
+| Farfetch LTV/CAC dedup collision (Issue #14) | Resolved (2026-04-18) | — | — | cm_ltv_to_cac_ratio 33%→100%; cm_ltv_to_cac_ratio_by_cohort 17%→50%; Farfetch F1 +10.3pp |
 | Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Open | Medium | Medium | 10 Farfetch T1 FNs; 2026-04-17 chart fix didn't lift metric; needs chart_fact_bridge investigation |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
@@ -328,14 +328,14 @@ Why does `test_candidate_generation_finds_active_consumers` still fail if pipeli
 
 ## 14. Farfetch LTV/CAC Dedup Collision on Layout Tables
 
-**Status**: Open (partial infrastructure exists; not wired for this case)
-**Severity**: Medium (4 Tier 1 FNs on Farfetch)
+**Status**: ✅ Resolved (2026-04-18) — respectively-parser priority + `cohort_hint` plumbing
+**Severity**: Medium (was 4 Tier 1 FNs on Farfetch)
 **Discovered**: 2026-04-18
-**Re-verified**: 2026-04-18 (after #17/#19 commit)
+**Resolved**: 2026-04-18
 
-### Problem
+### Problem (historical)
 
-Farfetch's LTV/CAC cohort values (1.42, 1.53, 1.77) are all correctly extracted pre-dedup but collapse to a single surviving fact (1.77) per metric, producing 4 Tier 1 FNs on `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort`. Current GS numbers on Farfetch:
+Farfetch's LTV/CAC cohort values (1.42, 1.53, 1.77) were all correctly extracted pre-dedup but collapsed to a single surviving fact (1.77) per metric, producing 4 Tier 1 FNs on `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort`. Pre-fix GS numbers on Farfetch:
 - `cm_ltv_to_cac_ratio`: P=100%, R=33.3%, F1=50.0% (2 FNs: 1.42, 1.53)
 - `cm_ltv_to_cac_ratio_by_cohort`: P=100%, R=16.7%, F1=28.6% (2 text FNs + 4 chart FNs)
 
@@ -355,14 +355,35 @@ A `respectively_parser` module (`src/review/respectively_parser.py`) exists and 
 
 However, the parser is **only invoked as a fallback** (`value_binding.py:787` and `:1119`) when no other bindings exist for the candidate. For Farfetch LTV/CAC, the layout-table-as-data-table extraction already produces 3 bindings, so the respectively-parser fallback never fires — the parser's per-cohort associations are never applied.
 
-### Fix Options
+### Resolution (2026-04-18)
 
-- **(a) Layout-table detection** in `table_reconstruction`: skip reconstruction when the table has a single row, no header row, and a cell containing `&#149;` or long prose. This would route the values through the text path (where the respectively fallback could fire). Architectural; affects many filings.
-- **(b) Prefer respectively-parser results over table bindings when the cell is prose-like**: invert the fallback in `_bind_table_prose_cell` (line 787) so the respectively parser runs first when the cell text contains "respectively" and matches the pattern. Targeted; some FP risk if the parser mis-associates.
-- **(c) Apply respectively-parser output to `cohort_def` during fact construction**: even if the bindings come from table extraction, if the cell's `header_path` contains a respectively-parseable sentence, assign each extracted value the cohort year from the parser's association list. Medium complexity; needs position-aware mapping.
-- **(d) Add `value` to DB unique index** + relax dedup collision logic. Highest blast radius; needs migration.
+Combined options (b) + (c) from the original fix menu:
 
-Not fixing this session. Tracked as unresolved.
+1. **Respectively-parser priority in `_bind_prose_cell`** (`src/extraction_v2/stages/value_binding.py`). When the prose cell contains "respectively" AND `detect_respectively_pattern(text, min_confidence=0.8)` returns a match, Strategy 6 now routes bindings through `_bind_respectively_pattern` directly instead of letting `_find_numbers_in_proximity` win.
+2. **Cohort-intent detection in `_bind_respectively_pattern`**. If the cell text contains `\bcohorts?\b`, the year strings returned by the parser are surfaced as `BoundValue.cohort_hint` (e.g. `"2015 cohort"`) and `period_hint` is left empty. Otherwise the existing `period_hint` behaviour is retained.
+3. **`cohort_hint` field on `BoundValue`** (`src/extraction_v2/models.py`). New dataclass field mirroring `period_hint`; default `""`.
+4. **Fact construction prefers `bv.cohort_hint`** over `_extract_cohort_def(evidence)` in `_construct_fact` (`src/extraction_v2/stages/fact_construction.py:223`).
+5. **Defensive prose-length guard in `_extract_cohort_def`**. Skips header/stub labels longer than 80 chars to prevent prose sentences (which `.search()` can partially match) from becoming cohort_def.
+
+### Post-fix GS Results
+
+Farfetch (2026-04-18 baseline refresh):
+- `cm_ltv_to_cac_ratio`: R 33.3% → **100%** (all 3 text rows TP).
+- `cm_ltv_to_cac_ratio_by_cohort`: R 16.7% → **50.0%** (text FNs cleared; 3 chart FNs remain under Issue #20).
+- Farfetch overall: F1 47.3% → **57.6%** (+10.3pp).
+- Full gold standard: F1 +1.0pp; Tier 1 F1 55.6% → 57.3%. `--fail-on-regression` gate passes.
+
+### Tests
+
+6 new tests covering the fix:
+- `tests/unit/extraction_v2/test_value_binding.py::TestProseRespectivelyPriority` (4 cases: cohort sentence routes through parser; cohort_hint populated; period sentence keeps period_hint; confidence-gate fallthrough to proximity).
+- `tests/unit/extraction_v2/test_fact_construction.py::test_cohort_hint_on_bv_overrides_extract_cohort_def` + `::test_prose_length_guard_skips_long_header_label`.
+- Updated `test_bind_respectively_pattern_ltv_cac` to assert the new cohort_hint semantics on the Farfetch sentence.
+
+### Follow-ups (not in this fix)
+
+- Apply the same cohort-intent detection to `_bind_text_candidate` respectively fallback (`value_binding.py:1117-1144`) — no observed GS bug in the text path today.
+- Option (d) (add `value` to DB unique index + relax dedup logic) remains available if similar collisions arise from other root causes.
 
 ---
 
@@ -605,3 +626,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Issue #17 resolved — added `WORD_NUMBER_TIME_PATTERN` in `value_binding.py` gated to `TIME_UNIT_VALUED_METRICS={"cm_cac_payback_period"}`; added `_V1_SPELLED_OUT_OVERRIDE_METRICS` override in `false_positive_filter.py`; `cm_cac_payback_period` 0% → 100% F1 on Farfetch. No Tier 1 regression (F1 +0.4pp)
 - **2026-04-18**: Issue #19 resolved — added `dedup_collision` + `no_matching_binding` FN diagnostic categories; `wrong_period` restricted to post-dedup facts; 4 new unit tests
 - **2026-04-18**: V2 baseline refreshed post-#17/#19 (P=64.6% R=45.9% F1=53.7%; Tier 1 F1 unchanged at 55.6%)
+- **2026-04-18**: Issue #14 resolved — added `cohort_hint` field to `BoundValue`; `_bind_prose_cell` prefers `detect_respectively_pattern` at min_confidence≥0.8 when "respectively" is present; `_bind_respectively_pattern` sets `cohort_hint` (and empties `period_hint`) when cell text mentions "cohort(s)"; `_construct_fact` prefers `bv.cohort_hint` over evidence scan; defensive 80-char prose guard in `_extract_cohort_def`. Farfetch: `cm_ltv_to_cac_ratio` R 33%→100%; `cm_ltv_to_cac_ratio_by_cohort` R 17%→50% (text); Farfetch F1 +10.3pp. Overall F1 +1.0pp; Tier 1 F1 55.6%→57.3%; no regressions

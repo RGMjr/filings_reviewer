@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-18T19:31:42.732557+00:00",
-  "description": "Resolve #17 (CAC payback bare word-number + time unit) + #19 (FN diagnostic classification fixes). cm_cac_payback_period: 0% → 100% F1. No Tier 1 regression.",
+  "baseline_date": "2026-04-18T20:27:25.862364+00:00",
+  "description": "Issue #14: LTV/CAC dedup collision fix (respectively-parser priority + cohort_hint). Farfetch cm_ltv_to_cac_ratio: R 33%→100%. cm_ltv_to_cac_ratio_by_cohort text FNs cleared (R 17%→50%). Overall F1 +1.0pp; no Tier 1 regression.",
   "overall": {
-    "precision": 0.6455696202531646,
-    "recall": 0.4594594594594595,
-    "f1": 0.5368421052631579
+    "precision": 0.6514522821576764,
+    "recall": 0.47147147147147145,
+    "f1": 0.5470383275261324
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -18,9 +18,9 @@
       "f1": 0.45454545454545453
     },
     "Farfetch Limited": {
-      "precision": 0.52,
-      "recall": 0.43333333333333335,
-      "f1": 0.4727272727272728
+      "precision": 0.5862068965517241,
+      "recall": 0.5666666666666667,
+      "f1": 0.576271186440678
     },
     "Flywire Corp": {
       "precision": 1.0,
