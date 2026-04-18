@@ -57,15 +57,15 @@ a backup.
 
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
 
-**Current Tier 1 recall gaps (focus areas, measured 2026-04-17 post-chart-bridge-activation):**
+**Current Tier 1 recall gaps (focus areas, measured 2026-04-18 post-Issue #20):**
 - `cm_revenue_by_cohort` — F1=26.3% (up from 17% text-only). Chart bridge contributing; wider-proximity rejected (would add FPs without recovering TPs). Remaining FNs: chart OCR occasionally returns malformed JSON, dropping chart facts.
 - `cm_balance_by_cohort` — F1=57.1% (up from 0% text-only). GS: 10 HOOD rows, all chart-embedded; chart bridge now bridging them correctly.
-- `cm_gross_margin_by_cohort` — F1=0% pre-fix. GS: 9 FTCH rows, all chart images. Previously blocked by malformed vision JSON; fix applied 2026-04-17 (JSON mode + truncation-repair fallback, see "Chart OCR JSON failures" below). Re-measure GS to confirm lift.
-- `cm_ltv_to_cac_ratio_by_cohort` — F1=66.7% on Farfetch (2026-04-18 post-Issue #14). Text FNs cleared; 3 chart FNs (2.71x, 1.81x, 2.04x) remain under Issue #20. Tenure-bucket chart bridge investigation still pending for non-Farfetch filings.
+- `cm_ltv_to_cac_ratio_by_cohort` — F1=66.7% on Farfetch (2026-04-18 post-Issue #14). Text FNs cleared; 3 chart FNs (2.71x, 1.81x, 2.04x) remain from the LTV/CAC tenure chart. Tenure-bucket chart bridge investigation still pending for non-Farfetch filings.
 
 **Resolved (no longer gaps):**
 - `cm_customer_retention_rate` — F1=100% (measured 2026-04-17); 1-row Chewy GS fully matched.
 - `cm_ltv_to_cac_ratio` — F1=100% on Farfetch (2026-04-18 post-Issue #14 fix: respectively-parser priority + `cohort_hint` plumbing in `_bind_prose_cell` / `_bind_respectively_pattern` / `_construct_fact`).
+- `cm_gross_margin_by_cohort` — F1=100% on Farfetch (2026-04-18 post-Issue #20 fix: `metric_classifier._cohort_gate` accepts year-in-point.x + customer-type series; `_metric_gate` fallback for empty y_axis; `_score_metric` structural bonus when all three signals present; `CohortParser._parse_customer_type_regime` for year-in-point.x + customer-type-in-series.name shape).
 
 Text-pipeline Tier 1 recall work concluded 2026-04-16 (commits dd5c90a, 09a8f64); remaining gaps are chart-pipeline.
 

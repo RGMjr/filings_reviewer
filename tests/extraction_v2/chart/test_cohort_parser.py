@@ -130,3 +130,72 @@ def test_annotation_fallback_returns_none_when_series_populated() -> None:
     parser = _parser()
     result = parser._parse_annotations_regime(chart, series, series.points[0], date(2021, 1, 1))
     assert result is None
+
+
+def test_customer_type_regime_year_in_point_x() -> None:
+    # FTCH Order Contribution Margin shape: customer-type in series.name,
+    # fiscal year in point.x.
+    series = ChartSeries(
+        name="New Consumers",
+        points=[DataPoint(x="2016", y=26.0, label="26%")],
+    )
+    chart = _chart(series=[series])
+    result = _parser().parse(chart, series, series.points[0], date(2018, 9, 24))
+    assert result is not None
+    assert result.cohort_def == "New Consumers"
+    assert result.period_start == date(2016, 1, 1)
+    assert result.period_end == date(2016, 12, 31)
+    assert result.confidence == 0.65
+    assert result.requires_review is True
+
+
+def test_customer_type_regime_handles_blended_series() -> None:
+    series = ChartSeries(
+        name="All Consumers - Blended",
+        points=[DataPoint(x="2017", y=44.0, label="44%")],
+    )
+    chart = _chart(series=[series])
+    result = _parser().parse(chart, series, series.points[0], date(2018, 9, 24))
+    assert result is not None
+    assert result.cohort_def == "All Consumers - Blended"
+
+
+def test_customer_type_regime_rejects_non_customer_series() -> None:
+    # Regional segmentation should not fire the customer-type regime.
+    series = ChartSeries(
+        name="North America",
+        points=[DataPoint(x="2020", y=1200.0, label="$1.2B")],
+    )
+    chart = _chart(series=[series])
+    parser = _parser()
+    result = parser._parse_customer_type_regime(
+        chart, series, series.points[0], date(2021, 1, 1)
+    )
+    assert result is None
+
+
+def test_customer_type_regime_rejects_year_in_series_name() -> None:
+    # Series with year should use the series-year regime, not the new fallback.
+    series = ChartSeries(
+        name="2019 New Customers",
+        points=[DataPoint(x="2020", y=50.0)],
+    )
+    chart = _chart(series=[series])
+    parser = _parser()
+    result = parser._parse_customer_type_regime(
+        chart, series, series.points[0], date(2021, 1, 1)
+    )
+    assert result is None
+
+
+def test_customer_type_regime_rejects_out_of_range_year() -> None:
+    series = ChartSeries(
+        name="New Consumers",
+        points=[DataPoint(x="2050", y=30.0, label="30%")],
+    )
+    chart = _chart(series=[series])
+    parser = _parser()
+    result = parser._parse_customer_type_regime(
+        chart, series, series.points[0], date(2020, 1, 1)
+    )
+    assert result is None

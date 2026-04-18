@@ -12,6 +12,12 @@ _YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 _COHORT_SUFFIX_RE = re.compile(r"\s*(?:cohort|vintage|class)\s*", re.IGNORECASE)
 _ELAPSED_YEAR_RE = re.compile(r"^(?:Year|Yr|Y)\s*(\d+)$", re.IGNORECASE)
 _ELAPSED_MONTH_RE = re.compile(r"^(?:Month|Mo|M)\s*(\d+)$", re.IGNORECASE)
+_CUSTOMER_TYPE_SERIES_RE = re.compile(
+    r"\b(?:new|existing|returning|blended|all|acquired|prior|repeat)\b[^,.;]{0,40}"
+    r"\b(?:consumer|customer|member|subscriber|user|buyer|account|client)s?\b"
+    r"|\b(?:consumer|customer|member|subscriber|user|buyer|account|client)s?\s+(?:cohort|segment)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -35,6 +41,9 @@ class CohortParser:
         if result is not None:
             return result
         result = self._parse_elapsed_period_regime(chart, series, point, filing_date)
+        if result is not None:
+            return result
+        result = self._parse_customer_type_regime(chart, series, point, filing_date)
         if result is not None:
             return result
         return self._parse_annotations_regime(chart, series, point, filing_date)
@@ -104,6 +113,37 @@ class CohortParser:
             period_end=period_end,
             confidence=0.80,
             requires_review=False,
+        )
+
+    def _parse_customer_type_regime(
+        self,
+        chart: ChartData,
+        series: ChartSeries | None,
+        point: DataPoint | None,
+        filing_date: date,
+    ) -> CohortPeriod | None:
+        # Charts where cohort is defined by customer-type segmentation (e.g.
+        # "New Consumers" / "Existing Consumers") and the fiscal year lives
+        # in point.x rather than series.name. Example: FTCH Order Contribution
+        # Margin by Cohort Year.
+        if series is None or point is None:
+            return None
+        if _YEAR_RE.search(series.name):
+            return None
+        if not _CUSTOMER_TYPE_SERIES_RE.search(series.name):
+            return None
+        x_match = _YEAR_RE.search(str(point.x))
+        if not x_match:
+            return None
+        year = int(x_match.group())
+        if year < filing_date.year - 20 or year > filing_date.year + 2:
+            return None
+        return CohortPeriod(
+            cohort_def=series.name.strip(),
+            period_start=date(year, 1, 1),
+            period_end=date(year, 12, 31),
+            confidence=0.65,
+            requires_review=True,
         )
 
     def _parse_annotations_regime(
