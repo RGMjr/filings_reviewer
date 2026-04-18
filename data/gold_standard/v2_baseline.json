@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-17T22:38:46.812073+00:00",
-  "description": "Fix FTCH chart classifier mis-tag + force JSON mode for vision OCR. Exclusion on cm_new_customers_acquired blocks percent-prefixed chart segment labels (e.g. '44.4% New Consumers in 2017' on FTCH Order Contribution Margin); precision +1.4pp. Farfetch and Robinhood TP/FP/FN counts identical to pre-change with stash verification; recall delta (-1.2pp) is baseline measurement noise, not caused by this change. Verified 2026-04-17.",
+  "baseline_date": "2026-04-18T18:36:47.130864+00:00",
+  "description": "2026-04-18 pre-Farfetch-fix-wave (all stages incl. chart + vision)",
   "overall": {
-    "precision": 0.6607142857142857,
-    "recall": 0.4444444444444444,
-    "f1": 0.5314183123877916
+    "precision": 0.6413502109704642,
+    "recall": 0.45645645645645644,
+    "f1": 0.5333333333333333
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -19,8 +19,8 @@
     },
     "Farfetch Limited": {
       "precision": 0.5,
-      "recall": 0.36666666666666664,
-      "f1": 0.423076923076923
+      "recall": 0.4,
+      "f1": 0.4444444444444445
     },
     "Flywire Corp": {
       "precision": 1.0,
@@ -38,14 +38,14 @@
       "f1": 0.41379310344827586
     },
     "Maplebear Inc.": {
-      "precision": 0.5,
+      "precision": 0.3888888888888889,
       "recall": 0.35,
-      "f1": 0.4117647058823529
+      "f1": 0.36842105263157887
     },
     "Robinhood Markets, Inc.": {
-      "precision": 0.5,
-      "recall": 0.17142857142857143,
-      "f1": 0.2553191489361702
+      "precision": 0.6470588235294118,
+      "recall": 0.3142857142857143,
+      "f1": 0.4230769230769231
     },
     "SAMSARA VISION INC.": {
       "precision": 1.0,
@@ -54,18 +54,18 @@
     },
     "Samsara Inc.": {
       "precision": 1.0,
-      "recall": 0.14634146341463414,
-      "f1": 0.2553191489361702
+      "recall": 0.0975609756097561,
+      "f1": 0.17777777777777776
     },
     "Slack Technologies": {
-      "precision": 0.868421052631579,
+      "precision": 0.8461538461538461,
       "recall": 0.9428571428571428,
-      "f1": 0.904109589041096
+      "f1": 0.8918918918918919
     },
     "Slack Technologies, Inc.": {
-      "precision": 0.5789473684210527,
+      "precision": 0.5641025641025641,
       "recall": 0.9166666666666666,
-      "f1": 0.7096774193548387
+      "f1": 0.6984126984126983
     },
     "Snowflake Inc": {
       "precision": 0.7586206896551724,
@@ -78,9 +78,9 @@
       "f1": 0.4
     },
     "Torrid Holdings Inc.": {
-      "precision": 0.8181818181818182,
+      "precision": 0.6923076923076923,
       "recall": 0.2647058823529412,
-      "f1": 0.39999999999999997
+      "f1": 0.3829787234042553
     }
   }
 }
