@@ -205,6 +205,32 @@ Migrations and follow-ups that have landed on `main` but **not yet applied to Ne
 
 See `sql/31_drop_v1_review_tables.sql` header for detailed prereqs. Drops V1 review tables + `source_segments`, creates `v2_audit_log`. Independent of sql/32 below — either order is fine, no schema conflicts.
 
+### `sql/33_fix_identity_index.sql` — identity index 9-column repair (Issue #13)
+
+Drops and recreates `idx_v2_metric_facts_identity_unique` with all 9 columns including `source_type`, matching the original intent of `sql/23_chart_source_dedup.sql` and the `MetricFact.identity_tuple()` 9-element contract.
+
+**Safe additive rebuild — no code deploy order dependency:**
+
+- Pure DDL (DROP INDEX + CREATE UNIQUE INDEX). No data is modified.
+- The persistence layer uses delete-then-insert (not `ON CONFLICT`), so the index shape does not affect any live INSERT path. Safe to apply before or after any code deploy.
+- Idempotent: running twice drops and rebuilds the same index.
+- No prerequisite data migrations or service restarts required.
+
+```bash
+python3 scripts/apply_migrations.py
+```
+
+After applying, verify the index has 9 columns:
+
+```sql
+SELECT indexdef
+FROM pg_indexes
+WHERE indexname = 'idx_v2_metric_facts_identity_unique';
+-- Expected: includes source_type as the 9th expression
+```
+
+**Note:** The persistence layer's in-memory dedup key (`src/extraction_v2/persistence.py` lines 710–719) also omits `source_type`. This is a separate gap (KNOWN_ISSUES.md Issue #13 secondary finding) and is not addressed by this migration.
+
 ### `sql/32_add_detected_keywords_to_v2_image_assets.sql` — keyword audit trail
 
 Adds `detected_keywords TEXT[]` to `v2_image_assets` for review-UI "Detected Keywords" badges and model-training feature input. **Strict deploy order:**
