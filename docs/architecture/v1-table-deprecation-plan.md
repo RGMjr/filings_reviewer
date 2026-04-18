@@ -4,11 +4,11 @@ As of 2026-04-08, V2 is the production extraction pipeline. This document tracks
 
 ## Already Removed
 
-**`filing_metric_incidence` (cross-write)** — V2 persistence layer formerly wrote to this V1 table "for analytics compatibility." Zero codebase readers were found (no `db.py` queries, no web routes, no scripts). `V2PersistenceAdapter.persist_quality_scores()` converted to no-op stub 2026-04-17; table dropped by `sql/26_drop_filing_metric_incidence.sql`.
+**`filing_metric_incidence` (cross-write)** — V2 persistence layer formerly wrote to this V1 table "for analytics compatibility." Zero codebase readers were found (no `db.py` queries, no web routes, no scripts). `V2PersistenceAdapter.persist_quality_scores()` converted to no-op stub 2026-04-17; table dropped by `sql/26_drop_filing_metric_incidence.sql` (applied to live DB 2026-04-18).
 
-**`metric_values`** — V1 extraction result storage. All consumers migrated to `v2_metric_facts`. Dropped by `sql/27_drop_v1_metric_tables.sql` (2026-04-17).
+**`metric_values`** — V1 extraction result storage. All consumers migrated to `v2_metric_facts`. Dropped by `sql/27_drop_v1_metric_tables.sql` (applied 2026-04-18).
 
-**`metric_definitions` (V1)** — V1 per-filing extracted definitions. All consumers migrated to `v2_metric_definitions` or `metrics`. Dropped by `sql/27_drop_v1_metric_tables.sql` (2026-04-17).
+**`metric_definitions` (V1)** — V1 per-filing extracted definitions. All consumers migrated to `v2_metric_definitions` or `metrics`. Dropped by `sql/27_drop_v1_metric_tables.sql` (applied 2026-04-18).
 
 **`image_review_candidates` / `image_review_decisions`** — V1 image review tables. Replaced by `v2_image_assets` (review columns added in `sql/28`) and new `v2_image_review_decisions` (`sql/29`). Unified review UI (`src/web/routes/review_unified.py`) reads V2 directly; the `bridge_v2_images_to_review_candidates` db method and V1 routes/templates were retired. Dropped by `sql/30_drop_v1_image_review.sql` (2026-04-17). Backfill tool: `scripts/migrate_image_decisions_to_v2.py` (idempotent, run before applying sql/30 in production).
 
@@ -52,35 +52,8 @@ As of 2026-04-08, V2 is the production extraction pipeline. This document tracks
 
 ---
 
-### `metric_values` — LOW-MEDIUM difficulty
-
-**Consumers:**
-- `scripts/export_for_evaluation.py` — lines 66, 87, 336 (queries `metric_values` directly)
-- `scripts/convert_v2_to_gold_standard.py` — line 233 (reads `metric_definitions` for metric descriptions; indirectly depends on this table remaining present)
-
-**Note:** `src/extraction/` has been deleted from disk; any prior docstring reference there no longer exists.
-
-**Action:** Before dropping, update `scripts/export_for_evaluation.py` to remove or replace V1 table queries. See Recommended Sequence note below.
-
----
-
-### `metric_definitions` (V1) — LOW-MEDIUM difficulty
-
-**Consumers:**
-- `scripts/export_for_evaluation.py` — lines 66, 87, 336 (queries `metric_definitions`)
-- `scripts/convert_v2_to_gold_standard.py` — line 233 (reads `metric_definitions` for metric descriptions)
-
-**Note:** The V2 pipeline writes to `v2_metric_definitions` (a separate table). `src/extraction/` has been deleted from disk; any prior docstring reference there no longer exists.
-
-**Action:** Before dropping, update `scripts/export_for_evaluation.py` and `scripts/convert_v2_to_gold_standard.py` to remove or replace V1 table queries.
-
----
-
 ## Recommended Sequence
 
-1. **Prerequisite for `metric_values` / `metric_definitions`**: Update `scripts/export_for_evaluation.py` (lines 66, 87, 336) and `scripts/convert_v2_to_gold_standard.py` (line 233) to remove or replace all queries against these V1 tables (Option A from the remediation plan). Only after those scripts are updated can the tables be safely dropped.
-2. Drop `metric_values` and `metric_definitions` (after step 1 is complete)
-3. Migrate `suppressed_candidates` → `v2_suppressed_facts`
-4. Migrate `image_review_candidates` → V2-native image review table (unblocks V2 UI cleanup)
-5. Migrate `source_segments` (coordinate with review_candidates migration)
-6. Migrate `review_candidates` — largest effort, own design document required
+1. Migrate `suppressed_candidates` → `v2_suppressed_facts`
+2. Migrate `source_segments` (coordinate with review_candidates migration)
+3. Migrate `review_candidates` — largest effort, own design document required
