@@ -18,7 +18,7 @@
       "Bash(mypy*)",
       "Bash(black*)",
       "Bash(ruff*)",
-      "Bash(python3 scripts/validate_against_gold_standard.py*)",
+      "Bash(python3 -m src.gold_standard.v2_validator*)",
       "Bash(python3 scripts/sync_github_issues.py*)"
     ],
     "deny": [
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '\\n⚠️  REMINDER: metric_keywords.yaml changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
+            "command": "echo '\\n⚠️  REMINDER: metric_keywords.yaml changed.\\n   Before committing, run: python3 -m src.gold_standard.v2_validator\\n'"
           }
         ]
       },
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '\\n⚠️  REMINDER: extraction code changed.\\n   Before committing, run: pytest -m gold_standard --gold-standard-mode=fresh -v\\n'"
+            "command": "echo '\\n⚠️  REMINDER: extraction code changed.\\n   Before committing, run: python3 -m src.gold_standard.v2_validator\\n'"
           }
         ]
       },

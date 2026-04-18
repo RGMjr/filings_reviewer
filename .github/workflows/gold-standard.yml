@@ -54,17 +54,17 @@ jobs:
             fi
           done
 
-      - name: Check for gold standard baseline
+      - name: Check for V2 gold standard baseline
         id: baseline-check
         run: |
-          if [ -f "data/gold_standard/baseline.json" ]; then
+          if [ -f "data/gold_standard/v2_baseline.json" ]; then
             echo "baseline_exists=true" >> $GITHUB_OUTPUT
           else
             echo "baseline_exists=false" >> $GITHUB_OUTPUT
-            echo "::warning::Gold standard baseline not found. Skipping validation."
+            echo "::warning::V2 gold standard baseline not found. Skipping validation."
           fi
 
-      - name: Run gold standard validation
+      - name: Run V2 gold standard validation
         if: steps.baseline-check.outputs.baseline_exists == 'true'
         id: gold-standard
         env:
@@ -72,10 +72,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         continue-on-error: true
         run: |
-          # Run gold standard tests in fresh mode
-          pytest -m gold_standard --gold-standard-mode=fresh -v 2>&1 | tee gold_standard_output.txt
+          python3 -m src.gold_standard.v2_validator 2>&1 | tee gold_standard_output.txt
 
-          # Capture exit code
           EXIT_CODE=${PIPESTATUS[0]}
           echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
@@ -92,7 +90,7 @@ jobs:
             echo "This is a non-blocking check. Please review the gold standard output to ensure extraction quality is maintained." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Actions to Consider" >> $GITHUB_STEP_SUMMARY
-            echo "- If intentional: Update baseline with \`pytest -m gold_standard --gold-standard-mode=fresh --update-baseline\`" >> $GITHUB_STEP_SUMMARY
+            echo "- If intentional: Update baseline with \`python3 -m src.gold_standard.v2_validator --update-baseline --description \"Reason\"\`" >> $GITHUB_STEP_SUMMARY
             echo "- If unintentional: Review changes to extraction logic" >> $GITHUB_STEP_SUMMARY
           else
             echo "## Gold Standard Results" >> $GITHUB_STEP_SUMMARY

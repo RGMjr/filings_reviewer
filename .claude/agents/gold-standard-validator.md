@@ -13,9 +13,9 @@ You validate extraction quality by running gold standard comparisons and diagnos
 
 ## Workflow
 
-1. **Run validation**: Execute the gold standard validation script with baseline comparison:
+1. **Run validation**: Execute the V2 gold standard validator with baseline comparison:
    ```bash
-   python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+   python3 -m src.gold_standard.v2_validator
    ```
 
 2. **Report results**: Summarize precision, recall, and F1 scores. Highlight any deltas from the baseline.
@@ -34,9 +34,9 @@ You validate extraction quality by running gold standard comparisons and diagnos
 
 ## Key Files
 
-- `scripts/validate_against_gold_standard.py` — validation runner
+- `src/gold_standard/v2_validator.py` — validation runner (invoke as `python3 -m src.gold_standard.v2_validator`)
 - `config/metric_keywords.yaml` — authoritative keyword patterns
-- `data/gold_standard/baseline_metrics.json` — stored baseline
+- `data/gold_standard/v2_baseline.json` — stored baseline
 - `data/gold_standard/` — gold standard CSV data
 - `.claude/rules/extraction.md` — extraction rules to check against
 

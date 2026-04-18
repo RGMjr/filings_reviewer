@@ -52,7 +52,7 @@ class TestApiAuth:
         if not is_live:
             pytest.skip("Auth enforcement tests only run against live deployment")
         r = requests.post(
-            f"{base_url}/api/decisions",
+            f"{base_url}/api/v2/decisions",
             json={},
             timeout=10,
         )
@@ -64,7 +64,7 @@ class TestApiAuth:
         if not is_live:
             pytest.skip("Auth enforcement tests only run against live deployment")
         r = requests.post(
-            f"{base_url}/api/decisions",
+            f"{base_url}/api/v2/decisions",
             json={},
             headers={"X-API-Key": "definitely-wrong-key-value"},
             timeout=10,
@@ -76,10 +76,10 @@ class TestApiAuth:
     def test_api_accepts_valid_key(self, base_url: str, api_key: str, is_live: bool) -> None:
         if not is_live:
             pytest.skip("Auth enforcement tests only run against live deployment")
-        # POST /api/decisions with a valid key should get past auth (400/422 for bad
+        # POST /api/v2/decisions with a valid key should get past auth (400/422 for bad
         # payload is acceptable — what we're testing is that auth passes, not business logic)
         r = requests.post(
-            f"{base_url}/api/decisions",
+            f"{base_url}/api/v2/decisions",
             json={},
             headers={"X-API-Key": api_key},
             timeout=10,

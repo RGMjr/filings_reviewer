@@ -221,7 +221,7 @@ jobs:
         run: uv run python3 scripts/apply_migrations.py --test
 
       - name: Run gold standard validation
-        run: uv run pytest -m gold_standard --gold-standard-mode=fresh -v --tb=short --no-cov
+        run: uv run python3 -m src.gold_standard.v2_validator
 
       - name: Upload gold standard results
         if: always()

@@ -57,17 +57,14 @@ pytest -k "TestCandidateGeneration" -v
 ### Gold standard regression (requires cached HTML and baseline)
 
 ```bash
-# Fresh mode — re-extracts from local HTML, no database required (recommended)
-pytest -m gold_standard --gold-standard-mode=fresh -v
+# Run V2 validator against data/gold_standard/v2_baseline.json
+python3 -m src.gold_standard.v2_validator
 
-# DB mode — uses existing database rows
-pytest -m gold_standard --gold-standard-mode=db -v
+# Subset of companies
+python3 -m src.gold_standard.v2_validator --companies "Slack Technologies" --limit 3
 
-# With relaxed tolerance (default 1%)
-pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-tolerance=0.02 -v
-
-# Update baseline instead of comparing
-pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-update-baseline -v
+# Update baseline (full sweep only — incompatible with --companies / --limit)
+python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"
 ```
 
 ### Transcript gold standard
@@ -121,17 +118,13 @@ tests/
 │   │   ├── test_image_triage.py        # Image triage and classification
 │   │   └── ...                         # Additional stage and utility tests
 │   ├── review/                         # Review module unit tests (mypy --strict applies)
-│   │   ├── test_candidate_generator.py # CandidateGenerator, NUMBER_REGEX, keyword matching
 │   │   ├── test_keyword_matching.py    # METRIC_KEYWORDS, SPECIFIC_KEYWORD_PATTERNS
 │   │   ├── test_false_positive_filter.py # FP filter rules
-│   │   ├── test_confidence_scoring.py  # ConfidenceScorer
-│   │   ├── test_pattern_analyzer.py    # PatternAnalyzer
 │   │   ├── test_number_parsing.py      # NumberMatch parsing
 │   │   └── ...                         # Additional review subsystem tests
 │   ├── gold_standard/                  # Gold standard module unit tests (no DB)
 │   │   ├── test_baseline.py            # BaselineMetrics, compare_to_baseline, load_baseline
 │   │   ├── test_v2_validator.py        # V2GoldStandardValidator logic
-│   │   ├── test_fresh_extractor.py     # FreshExtractor (file-based extraction)
 │   │   └── test_unified_comparison.py  # UnifiedComparisonRunner
 │   ├── infra/                          # Infrastructure unit tests
 │   │   ├── test_db_validation.py       # DatabaseAdapter validation
@@ -175,15 +168,12 @@ tests/
 │   │   └── test_universe_builder_integration.py
 │   ├── filing_fetcher/
 │   │   └── test_filing_fetcher_db.py
-│   ├── test_gold_standard_regression.py  # Gold standard regression tests (pytest -m gold_standard)
-│   ├── test_gold_standard_coverage.py
 │   ├── test_db_upsert.py               # DB upsert idempotency
 │   ├── test_migration_safety.py        # Migration ordering and safety
 │   └── ...
 │
 ├── performance/                        # Benchmark tests (pytest-benchmark)
-│   ├── conftest.py                     # benchmark_db, realistic_segments_100/500 fixtures
-│   └── test_candidate_generation_benchmark.py  # CandidateGenerator throughput benchmarks
+│   └── conftest.py                     # benchmark_db, realistic_segments_100/500 fixtures
 │
 ├── e2e/                                # Browser-level end-to-end tests
 │   └── test_metric_dropdown_search.py
@@ -205,7 +195,6 @@ Defined in `pyproject.toml` under `[tool.pytest.ini_options]`:
 | `integration` | Requires database connection | Included |
 | `slow` | Slow-running tests | **Excluded** |
 | `benchmark` | Performance benchmark tests | Included |
-| `gold_standard` | GS regression tests — require baseline file and cached HTML | **Excluded** |
 | `transcript_gold_standard` | Transcript GS regression tests | **Excluded** |
 | `performance` | Performance tests | Included |
 | `v2_parity` | Full V2 vs V1 extraction across all GS companies | **Excluded** |
@@ -214,9 +203,14 @@ The default `addopts` excludes: `not slow and not v2_parity and not gold_standar
 
 Run excluded markers explicitly:
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
 pytest -m slow -v
 pytest -m v2_parity -v
+pytest -m transcript_gold_standard -v
+```
+
+Gold standard regression is not a pytest marker — run the validator directly:
+```bash
+python3 -m src.gold_standard.v2_validator
 ```
 
 ---
@@ -298,10 +292,7 @@ def _create_valid_fact(confidence: float) -> MetricFact:
 ```
 
 ```python
-# tests/unit/review/test_candidate_generator.py
-from src.review.candidate_generator import CandidateGenerator
-from src.review.keyword_matching import METRIC_KEYWORDS, KeywordMatch
-from src.review.models import ReviewCandidate
+# tests/unit/review/test_number_parsing.py
 from src.review.number_parsing import NUMBER_REGEX, NumberMatch
 
 class TestNumberRegex:
@@ -374,26 +365,22 @@ The gold standard is a hand-labeled CSV (`data/gold_standard/golden_set_260408.c
 ### Baseline file location
 
 ```
-data/gold_standard/baseline_metrics.json
+data/gold_standard/v2_baseline.json
 ```
 
-### Modes
+### Running regression checks
 
-**Fresh mode** (recommended, no database required): Re-extracts from cached HTML files in `data/gold_standard/{Company_Name}/filing.html` on each run.
-
-**DB mode**: Reads extraction results already stored in the test database.
-
-### Running regression tests
+The V2 validator (`src/gold_standard/v2_validator.py`) runs the V2 pipeline on each cached gold-standard filing and compares against the baseline.
 
 ```bash
 # Standard regression check
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator
 
-# With 2% tolerance instead of 1% default
-pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-tolerance=0.02 -v
+# Fail non-zero on regression (pre-commit / CI)
+python3 -m src.gold_standard.v2_validator --fail-on-regression
 
-# Parallel workers (default 4)
-pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-workers=8 -v
+# Single worker for debugging
+python3 -m src.gold_standard.v2_validator --workers 1 --limit 3
 ```
 
 ### Updating the baseline
@@ -401,25 +388,16 @@ pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-workers=8 -v
 Run when extraction improvements intentionally raise the bar:
 
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh --gold-standard-update-baseline -v
+python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason for change"
 ```
 
-Or via script:
+Note: `--update-baseline` is incompatible with `--companies` or `--limit` (the CLI errors out to avoid a partial baseline).
 
-```bash
-python3 scripts/validate_against_gold_standard.py \
-    --all --mode fresh \
-    --update-baseline
-```
+### What it checks
 
-### What the tests check
-
-Defined in `tests/integration/test_gold_standard_regression.py`:
-
-- `test_overall_precision_above_baseline` — overall precision must not drop below baseline
-- `test_overall_recall_above_baseline` — overall recall must not drop below baseline
-- `test_overall_f1_above_baseline` — overall F1 must not drop below baseline
-- `test_no_company_recall_regressions` — per-company recall must not drop on any single company
+- Per-metric precision/recall/F1 against baseline (±tolerance, default 1%)
+- Tier-aware policy: Tier 1 regression is a blocker; Tier 2 is an acceptable trade-off (see `.claude/rules/gold-standard.md`)
+- Cross-source chart confirmation rate (soft warning below 30%)
 
 Tests skip gracefully if `data/gold_standard/baseline_metrics.json` does not exist.
 

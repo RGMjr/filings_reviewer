@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
@@ -377,7 +378,59 @@ def reload_config() -> None:
     Useful for testing or when the config file has been updated.
     """
     _load_config.cache_clear()
+    _compiled_match_patterns.cache_clear()
     logger.info("Keyword config cache cleared")
+
+
+@lru_cache(maxsize=1)
+def _compiled_match_patterns(
+    config_path: str | None = None,
+) -> tuple[re.Pattern[str], ...]:
+    """Compile all active metric patterns once for keyword-match scanning."""
+    patterns_by_metric = get_metric_keywords(config_path)
+    compiled: list[re.Pattern[str]] = []
+    for patterns in patterns_by_metric.values():
+        for pattern in patterns:
+            try:
+                compiled.append(re.compile(pattern, re.IGNORECASE))
+            except re.error as exc:
+                logger.warning("Skipping invalid pattern %r: %s", pattern, exc)
+    return tuple(compiled)
+
+
+def match_nearby_text(text: str, config_path: str | None = None) -> list[str]:
+    """
+    Return the sorted, unique set of keyword strings matched in ``text``.
+
+    Scans the provided text against every active metric's ``patterns`` in
+    ``config/metric_keywords.yaml`` and returns the literal matched substrings
+    (lower-cased) for use as a persisted audit trail (``v2_image_assets.detected_keywords``).
+
+    Exclusions are intentionally NOT applied here — they exist for FP filtering
+    of extracted values, not for keyword-detection semantics. If a pattern matches,
+    we record it; downstream consumers (reviewers, model trainers) can decide how
+    to treat it.
+
+    Args:
+        text: Raw text to scan (e.g., ``image.nearby_text + ' ' + image.ocr_text``).
+        config_path: Optional override for the YAML config path (mostly for tests).
+
+    Returns:
+        Sorted list of unique matched substrings, lower-cased. Empty list if
+        ``text`` is empty/None or no patterns match.
+    """
+    if not text:
+        return []
+    matches: set[str] = set()
+    for pattern in _compiled_match_patterns(config_path):
+        for hit in pattern.findall(text):
+            if isinstance(hit, tuple):
+                for part in hit:
+                    if part:
+                        matches.add(part.strip().lower())
+            elif hit:
+                matches.add(hit.strip().lower())
+    return sorted(matches)
 
 
 def get_metric_config(metric_id: str, config_path: str | None = None) -> dict[str, Any] | None:

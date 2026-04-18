@@ -384,15 +384,10 @@ def _register_blueprints(app: Flask) -> None:
 
     Blueprints are added in tasks D1 (review.py) and D2 (api.py).
     """
-    # Register review blueprint (D1)
+    # Legacy V1 URL redirect shim
     from src.web.routes.review import review_bp
 
     app.register_blueprint(review_bp)
-
-    # API blueprint (D2)
-    from src.web.routes.api import api_bp
-
-    app.register_blueprint(api_bp, url_prefix="/api")
 
     # Unified review (V2-native; replaces V1 review_images / api_images)
     from src.web.routes.review_unified import review_unified_bp
@@ -447,14 +442,14 @@ def _register_context_processors(app: Flask) -> None:
     def utility_processor():
         """Add utility functions to template context."""
         return {
-            "app_name": "Filings Review",
-            "app_version": "0.1.0",
+            "app_name": "CMASB Disclosures Review",
+            "app_version": "0.5.0",
         }
 
 
 def _register_template_filters(app: Flask) -> None:
-    """Register custom Jinja2 template filters."""
-    # highlight_context and highlight_html filters removed 2026-07 (V1 review.html no longer rendered)
+    """Register custom Jinja2 template filters (no filters currently registered)."""
+    return
 
 
 # Convenience function for running directly

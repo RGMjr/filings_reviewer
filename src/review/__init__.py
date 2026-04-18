@@ -1,32 +1,23 @@
 """
-Shared extraction library and V1 candidate generator.
+Shared extraction library consumed by the V2 pipeline and web layer.
 
-This package has two roles:
+Key modules:
+  - ``false_positive_filter`` — FalsePositiveFilter, used by
+    ``src/extraction_v2/stages/false_positive_filter.py``.
+  - ``number_parsing`` — NumberMatch / NumberParser, used by
+    ``src/extraction_v2/stages/value_binding.py`` and V2 false-positive filter.
+  - ``respectively_parser`` — detect_respectively_pattern, used by
+    ``src/extraction_v2/stages/value_binding.py``.
+  - ``boundary_detection`` — BoundaryDetector, used by
+    ``src/shared/html_segmenter.py`` and keyword matching.
+  - ``models`` — shared dataclasses and enum tuples imported by
+    ``src/infra/db.py``, ``src/web/routes/api_unified.py``, and
+    ``src/web/routes/review_unified.py``.
 
-1. **Shared extraction library (used by V2 pipeline):**
-   - ``false_positive_filter`` — FalsePositiveFilter, used by
-     ``src/extraction_v2/stages/false_positive_filter.py``
-   - ``number_parsing`` — NumberMatch, used by
-     ``src/extraction_v2/stages/value_binding.py``
-   - ``respectively_parser`` — detect_respectively_pattern, used by
-     ``src/extraction_v2/stages/value_binding.py``
-   - ``boundary_detection`` — BoundaryDetector, used by
-     ``src/shared/html_segmenter.py``
-
-2. **V1 candidate generator (legacy):**
-   - ``candidate_generator``, ``helpers``, ``pattern_analyzer``,
-     ``confidence_scoring``, ``feature_extraction`` — write to the
-     legacy ``review_candidates`` table; used by gold-standard fresh
-     extractor and legacy scripts. Scheduled for removal with the
-     ``review_candidates`` table migration.
-
-Do NOT rename or move the shared modules (role 1) without coordinating
-changes in ``src/extraction_v2/`` and ``src/shared/``.
-See ``src/review/README.md`` for full details.
+Do NOT rename or move these modules without coordinating changes in
+``src/extraction_v2/``, ``src/shared/``, ``src/infra/``, and ``src/web/``.
 """
 
-from src.review.candidate_generator import CandidateGenerator
-from src.review.confidence_scoring import METRIC_EXPECTED_FORMATS, ConfidenceScorer
 from src.review.config import (
     DEFAULT_CONFIG,
     DEFAULT_CONTEXT_WORDS,
@@ -41,14 +32,6 @@ from src.review.exceptions import (
     CandidateGenerationError,
     NumberProcessingError,
     SegmentProcessingError,
-)
-from src.review.feature_extractor import (
-    DEFINITION_PATTERNS,
-    PERIOD_PATTERNS,
-    RISK_FACTORS_PATTERNS,
-    FeatureExtractor,
-    compute_features,
-    determine_number_format,
 )
 from src.review.models import (
     CandidateFeatures,
@@ -79,18 +62,6 @@ __all__ = [
     "MIN_METRIC_VALUE",
     "YEAR_MIN",
     "YEAR_MAX",
-    # Confidence scoring
-    "ConfidenceScorer",
-    "METRIC_EXPECTED_FORMATS",
-    # Feature extraction
-    "FeatureExtractor",
-    "compute_features",
-    "determine_number_format",
-    "DEFINITION_PATTERNS",
-    "PERIOD_PATTERNS",
-    "RISK_FACTORS_PATTERNS",
-    # Candidate generation
-    "CandidateGenerator",
     # Deduplication
     "deduplicate_candidates",
 ]

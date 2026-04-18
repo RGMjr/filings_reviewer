@@ -79,51 +79,6 @@ class TestMigrationSafety:
         for table in expected:
             assert table in v2_tables, f"Missing V2 table: {table}"
 
-    def test_v1_queries_work_after_v2_migration(self, db):
-        """V1 review candidate queries still work after V2 migrations."""
-        # Insert a V1 company and filing
-        company_id = db.upsert_company(
-            cik="9998877001",
-            company_name="Migration Safety Test Corp",
-        )
-        filing_id = db.upsert_filing(
-            company_id=company_id,
-            cik="9998877001",
-            accession_number="9998877001-99-000001",
-            form_type="S-1",
-            filing_date="2023-06-01",
-            sec_html_url="https://www.sec.gov/test/migration",
-            is_post_combination=False,
-            is_investment_vehicle=False,
-            is_resource_extraction=False,
-        )
-
-        # Insert a V1 review candidate
-        candidate_id = db.insert_review_candidate(
-            filing_id=filing_id,
-            company_id=company_id,
-            char_position=100,
-            context_text="We have 5,000 active customers.",
-            raw_number_text="5,000",
-            triggering_keyword="customers",
-            keyword_distance=10,
-            keyword_position="after",
-        )
-
-        # Verify V1 candidate is retrievable
-        candidate = db.get_review_candidate(candidate_id)
-        assert candidate is not None
-        assert candidate["filing_id"] == filing_id
-        assert candidate["raw_number_text"] == "5,000"
-
-        # Cleanup
-        db.execute(
-            "DELETE FROM review_candidates WHERE candidate_id = %(id)s",
-            {"id": candidate_id},
-        )
-        db.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
-        db.execute("DELETE FROM companies WHERE company_id = %(id)s", {"id": company_id})
-
     def test_v2_tables_functional_after_migration(self, db):
         """Can INSERT and SELECT V2 facts and decisions after migration."""
         # Create prerequisite data

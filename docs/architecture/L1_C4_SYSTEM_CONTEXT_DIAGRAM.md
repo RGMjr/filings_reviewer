@@ -1,10 +1,10 @@
-# L1 C4 System Context Diagram - Filings Reviewer
+# L1 C4 System Context Diagram - CMASB Disclosures Review
 
 ## PlantUML C4 Syntax (copy into PlantUML Editor)
 
 ```plantuml
 @startuml L1_C4_Context_Diagram
-!define TITLE Filings Reviewer - System Context Diagram (L1)
+!define TITLE CMASB Disclosures Review - System Context Diagram (L1)
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4/C4_Context.puml
 
 LAYOUT_WITH_LEGEND()
@@ -14,7 +14,7 @@ title TITLE
 Person(analyst, "Financial Analyst", "Reviews metric disclosures\nand validates extractions")
 Person(auditor, "Auditor/Reviewer", "Evaluates metric extraction\naccuracy and quality")
 
-System(filings, "Filings Reviewer System", "Analyzes SEC S-1/F-1 filings\nto extract and validate\ncustomer metric disclosures\n(CMASB initiative)")
+System(filings, "CMASB Disclosures Review System", "Analyzes SEC S-1/F-1 filings\nto extract and validate\ncustomer metric disclosures\n(CMASB initiative)")
 
 System_Ext(sec_edgar, "SEC Edgar API", "Public SEC filing database\n(e.g., 10-K, S-1, F-1)")
 System_Ext(openai, "OpenAI API", "GPT-based text and\nimage analysis")
@@ -32,12 +32,12 @@ Rel(filings, huggingface, "Uses pre-trained\nmodels")
 ## C4 Model Levels in This System
 
 ### L1: System Context (Current)
-Shows the Filings Reviewer system as a black box with external systems and users.
+Shows the CMASB Disclosures Review system as a black box with external systems and users.
 - **Users**: Financial Analysts, Auditors
 - **External Systems**: SEC Edgar, OpenAI, HuggingFace
 
 ### L2: Container Diagram (One Level Down)
-Would show major containers within Filings Reviewer:
+Would show major containers within CMASB Disclosures Review:
 - Web Application (Flask)
 - Extraction Engine (V2)
 - Database (PostgreSQL)

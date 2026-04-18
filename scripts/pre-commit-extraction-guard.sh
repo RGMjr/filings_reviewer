@@ -68,8 +68,8 @@ EXTRACTION_PATTERNS=(
     "src/extraction/"
     "src/extraction_v2/"
     "config/metric_keywords.yaml"
-    "src/review/candidate_generator"
-    "src/review/pattern_analyzer"
+    "src/review/keyword_matching"
+    "src/review/false_positive_filter"
 )
 
 extraction_changed=false

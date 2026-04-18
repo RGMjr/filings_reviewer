@@ -35,5 +35,5 @@ pytest -k "test_pattern" -v
 
 When modifying extraction or keyword logic, run:
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator
 ```

@@ -4,7 +4,7 @@ This document defines the rules for creating and maintaining gold standard entri
 
 **Authoritative sources referenced:**
 - `config/metric_keywords.yaml` — metric taxonomy
-- `scripts/validate_against_gold_standard.py` — matching and normalization logic
+- `src/gold_standard/v2_validator.py` — matching and normalization logic
 
 **Baseline update procedures:** See [Gold Standard Runbook](operations/gold-standard-runbook.md).
 
@@ -30,7 +30,7 @@ grep '^cm_' config/metric_keywords.yaml | grep -v '^\s*#'
 
 ## 2. Value Normalization
 
-Gold standard values are compared to extracted values using `normalize_value()` in `scripts/validate_against_gold_standard.py:121`. The normalization rules are:
+Gold standard values are compared to extracted values using the value normalization logic in `src/gold_standard/v2_validator.py`. The normalization rules are:
 
 | Input format | Normalized result |
 |---|---|
@@ -122,7 +122,7 @@ The `duplicate_group` column (e.g., `G001:primary`) tracks entries where the sam
 
 ## 8. Matching Algorithm Summary
 
-For reference, the validation matching algorithm (`validate_filing()` in `scripts/validate_against_gold_standard.py`) uses a two-pass greedy optimal match:
+For reference, the V2 validator (`src/gold_standard/v2_validator.py`) uses a two-pass greedy optimal match:
 
 **Scoring:**
 | Condition | Points |
@@ -156,7 +156,6 @@ Checklist for adding a new company or filing:
    - Assign duplicate groups if the same value appears multiple times.
 5. Run validation to establish a baseline:
    ```bash
-   pytest -m gold_standard --gold-standard-mode=fresh -v
-   python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
+   python3 -m src.gold_standard.v2_validator --update-baseline --description "Added <company>"
    ```
-6. Commit both the CSV additions and the updated `data/gold_standard/baseline_metrics.json`.
+6. Commit both the CSV additions and the updated `data/gold_standard/v2_baseline.json`.

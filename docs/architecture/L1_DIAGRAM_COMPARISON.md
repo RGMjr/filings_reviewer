@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document compares UML Component Diagrams and C4 System Context Diagrams for the Filings Reviewer system, explaining their strengths and use cases.
+This document compares UML Component Diagrams and C4 System Context Diagrams for the CMASB Disclosures Review system, explaining their strengths and use cases.
 
 ---
 
@@ -50,7 +50,7 @@ This document compares UML Component Diagrams and C4 System Context Diagrams for
 ## C4 System Context (L1)
 
 ### What It Shows
-- The Filings Reviewer system as a single black box
+- The CMASB Disclosures Review system as a single black box
 - Types of users (Analysts, Auditors)
 - External systems (SEC Edgar, OpenAI, HuggingFace)
 - High-level relationships and data flows
@@ -96,13 +96,13 @@ Company Mapping          Vision Client → OpenAI API
 ```
 SEC Edgar API
     ↓
-[Filings Reviewer System]
+[CMASB Disclosures Review System]
     ↓
 PostgreSQL Database (implicit)
     ↓
 Analyst/Auditor Reviews
     ↓
-[Filings Reviewer System] ← OpenAI API
+[CMASB Disclosures Review System] ← OpenAI API
 ```
 
 ---

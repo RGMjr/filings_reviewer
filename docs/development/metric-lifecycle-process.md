@@ -5,7 +5,7 @@ Date: 2026-01-07
 
 ## 1. Overview
 
-This document provides the authoritative guide for adding, deprecating, and removing metrics in the Customer Metrics Filings Analysis system. Following this process ensures consistency across all system components.
+This document provides the authoritative guide for adding, deprecating, and removing metrics in the CMASB Disclosures Review system. Following this process ensures consistency across all system components.
 
 ### 1.1 Metric ID Naming Conventions
 
@@ -142,10 +142,10 @@ Include:
 
 ```bash
 # Run validation to check for regressions
-pytest -m gold_standard --gold-standard-mode=fresh
+python3 -m src.gold_standard.v2_validator
 
 # If intentional changes occurred, update baseline
-python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
+python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"
 ```
 
 ### Step 7: Verify in UI
@@ -335,7 +335,7 @@ grep -r "cm_xxx" tests/
 pytest -v
 
 # Run gold standard validation
-pytest -m gold_standard --gold-standard-mode=fresh
+python3 -m src.gold_standard.v2_validator
 ```
 
 ---
@@ -456,7 +456,7 @@ Use this checklist when making metric changes:
 - [ ] Added INSERT to `sql/04_seed_metrics_taxonomy.sql`
 - [ ] Added to `METRIC_DISPLAY_ORDER` in `src/web/routes/_metrics.py`
 - [ ] Updated `docs/development/metrics-taxonomy.md`
-- [ ] Ran `pytest -m gold_standard --gold-standard-mode=fresh`
+- [ ] Ran `python3 -m src.gold_standard.v2_validator`
 - [ ] Verified metric appears in UI dropdown
 - [ ] All tests passing
 
@@ -486,7 +486,7 @@ Use this checklist when making metric changes:
 3. Restart Flask app to pick up code changes
 
 ### Gold standard validation failing
-1. Run `python scripts/validate_against_gold_standard.py --all --mode fresh --baseline` to see delta
+1. Run `python3 -m src.gold_standard.v2_validator` to see delta
 2. Check if patterns are too broad or too narrow
 3. Review false positives/negatives in output
 

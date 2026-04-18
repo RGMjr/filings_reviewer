@@ -15,34 +15,6 @@ def pytest_configure(config):
 
 def pytest_addoption(parser):
     """Add global CLI options for tests."""
-    # Gold standard regression testing options
-    parser.addoption(
-        "--gold-standard-mode",
-        action="store",
-        default="fresh",
-        choices=["db", "fresh"],
-        help="Extraction mode: 'fresh' re-extracts from local HTML (default), 'db' uses existing database",
-    )
-    parser.addoption(
-        "--gold-standard-tolerance",
-        action="store",
-        type=float,
-        default=0.01,
-        help="Regression tolerance as decimal (e.g., 0.01 = 1%%, default: 0.01)",
-    )
-    parser.addoption(
-        "--gold-standard-update-baseline",
-        action="store_true",
-        default=False,
-        help="Update baseline instead of comparing against it",
-    )
-    parser.addoption(
-        "--gold-standard-workers",
-        action="store",
-        type=int,
-        default=4,
-        help="Number of parallel workers for V2 gold standard validation (default: 4)",
-    )
     # Transcript gold standard options
     parser.addoption(
         "--transcript-split",

@@ -35,7 +35,7 @@ Add to dropdown in `src/web/templates/` and route handlers.
 
 ### 4. Validate
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator
 ```
 
 ## Deprecating a Metric

@@ -34,7 +34,6 @@ As of 2026-04-08, V2 is the production extraction pipeline. This document tracks
 - `src/infra/db.py` — `get_source_segments_for_filing()` (3 queries)
 - `src/review/helpers.py` — calls `get_source_segments_for_filing()`
 - `src/web/routes/review.py` — LEFT JOIN in V1 candidate data fetch
-- `src/gold_standard/fresh_extractor.py` — indirectly (HTMLSegmenter writes to this via persistence)
 
 **Migration path:** V2 has `v2_segments` (stored as `Segment` in pipeline context but not always persisted). Migration requires ensuring V2 segment data is persisted and accessible at review time, then updating db.py queries.
 
