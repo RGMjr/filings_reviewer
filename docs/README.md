@@ -98,7 +98,7 @@ Historical documents for reference only. Not part of current operations.
 
 ### Operational Templates
 
-Use `/task-create` and `/task-run` slash commands for structured task execution. Worker prompt templates are archived at `archive/historical/process/`.
+Worker prompt templates are archived at `archive/historical/process/`. Use the Agent tool with sub-agents in `.claude/agents/` for structured task execution.
 
 ---
 
@@ -347,30 +347,27 @@ Workflow commands for common tasks:
 
 | Command | Purpose |
 |---------|---------|
-| `/task-create [ID]` | Generate a worker prompt for a task (does NOT execute) |
-| `/task-run [ID]` | Execute an existing worker prompt with approval gates |
-| `/ralph [mode]` | Start Ralph Loop for autonomous execution |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/commit` | Safe commit: runs ruff + pytest before committing |
-| `/merge-check` | Thorough merge readiness assessment (CI, migrations, imports, tests) |
-| `/ci-fix` | Autonomous CI fix loop: iterates ruff → mypy → pytest until all pass |
-| `/plan-execute` | Execute a multi-phase plan with parallel sub-agents per independent wave |
 | `/plan-review` | Review and critique a plan before execution |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 
-> **Note:** Only `/doc-audit`, `/metric-lifecycle`, and `/project-tutorial` are project-local command files in `.claude/commands/`. The other entries above (`/task-create`, `/task-run`, `/ralph`, `/commit`, `/merge-check`, `/ci-fix`, `/plan-execute`, `/plan-review`) are delivered via Claude Code skills/plugins rather than project-local files, so they won't appear under `.claude/commands/`.
+> **Note:** Only `/doc-audit`, `/metric-lifecycle`, and `/project-tutorial` are project-local command files in `.claude/commands/`. `/commit` and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files, so they won't appear under `.claude/commands/`.
 
-### Skills (`.claude/skills/`)
+### Sub-Agents (`.claude/agents/`)
 
-Internal prompt templates for consistent, efficient task execution. Skills reduce context usage and ensure consistency.
+Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks:
 
-| Skill | Purpose |
+| Agent | Purpose |
 |-------|---------|
-| `flask-api-builder.md` | Generate Flask routes, validation, tests |
-| `test-coverage-analyzer.md` | Find gaps, generate tests |
-| `database-migration-helper.md` | Generate SQL migrations + db.py methods |
-| `documentation-sync-validator.md` | Check documentation accuracy |
+| `dev-implementer` | General-purpose implementation (web routes, database, infra, scripts) |
+| `extraction-implementer` | Implements extraction code changes (keywords, classifiers, FP rules) |
+| `extraction-reviewer` | Reviews extraction changes against project rules before committing |
+| `gold-standard-validator` | Runs gold standard validation, compares against baseline, diagnoses regressions |
+| `keyword-config-checker` | Validates `metric_keywords.yaml` changes for regex errors and pattern overlaps |
+| `pipeline-debugger` | Traces V2 extraction results to diagnose false positives and regressions |
+| `test-runner` | Runs pytest, interprets failures, and re-runs targeted subsets |
 
 ---
 
