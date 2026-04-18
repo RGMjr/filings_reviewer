@@ -1,808 +1,749 @@
 # Data Model Specification
 
-**Version:** 2.0
-**Last Updated:** 2025-12-09
-**Status:** Production Schema
+**Version:** 3.0
+**Last Updated:** 2026-04-18
+**Status:** Production Schema (V2)
 
 ---
 
 ## Overview
 
-This document defines the complete data model for the Customer Metrics Filings Analysis system, including:
+This document defines the live PostgreSQL schema for the CMASB filings review system as of 2026-04-18, following the V1→V2 cutover (migrations `26_drop_filing_metric_incidence.sql`, `27_drop_v1_metric_tables.sql`, `30_drop_v1_image_review.sql`).
 
-- Core database schema (PostgreSQL)
-- Table structures, keys, and relationships
-- Field definitions and business meanings
-- Data conventions and allowed values
+V2 tables (`v2_*`) are the authoritative extraction output for all document types: SEC filings, transcripts, and investor presentations. A small set of V1 tables remains live only to support the legacy review-candidate workflow; their retirement is tracked in `docs/architecture/v1-table-deprecation-plan.md`.
 
-This schema supports all analytic needs defined in the requirements and is extensible to Phase 2 (10-K filings).
+Table structures, keys, enums, and relationships below match the live DB. Where the current Python code or unapplied SQL disagrees with the DB, that drift is called out in [Known Discrepancies](#known-discrepancies).
 
 ---
 
 ## Design Principles
 
-### 1. Provenance-First
-Every metric value, definition, and quality score must be traceable back to specific segments in specific filings.
-
-### 2. Analysis-First Grain
-Tables are designed around units of analysis:
-- Filing
-- Filing × metric
-- Filing × metric × period × cohort × segment
-- Filing × source segment
-
-### 3. Normalized but Practical
-Avoid excessive normalization that makes queries painful. Accept denormalization for common joins (e.g., keep basic filing metadata on fact tables).
-
-### 4. Metric Taxonomy Alignment
-All metrics use canonical IDs from the taxonomy. Mapping from issuer-defined labels to canonical IDs is explicit and stored.
-
-### 5. Extensibility
-Schema accommodates new metrics, filing types, and industries without breaking existing tables.
-
-### 6. PostgreSQL-Oriented
-Types are aligned with PostgreSQL (text, numeric, timestamptz, jsonb).
+1. **Provenance-first.** Every `v2_metric_facts` row carries a `source_locator` JSONB pointing to an exact DOM location and an `evidence_pack` JSONB with a renderable snippet. No value without provenance.
+2. **Idempotent writes.** The persistence layer upserts against a unique identity index on `v2_metric_facts`, so re-running extraction on the same filing produces stable row counts.
+3. **Analysis-first grain.** Tables are keyed to the units of analysis: document, fact (doc × metric × period × scope × cohort × source_type), table × cell, image asset, segment.
+4. **Canonical taxonomy.** All facts reference `metrics.metric_id`; issuer-specific definitions live in `v2_metric_definitions` per (doc, metric).
+5. **Extensible.** Check-constraint enums on `form_type`, `section_type`, `segment_type`, etc. absorb new document types (SEC 8-K, earnings calls, investor presentations) without table changes.
+6. **PostgreSQL-oriented.** Types align to Postgres (`text`, `numeric`, `timestamptz`, `jsonb`, `uuid`, `text[]`).
 
 ---
 
-## Entity Overview
+## Entity Map
 
-### Core Tables
+Tables are grouped into three tiers.
 
-1. `companies` – Issuer-level metadata
-2. `filings` – Individual SEC filings
-3. `source_segments` – Segmented units of each filing (paragraphs, tables, footnotes)
-4. `metrics` – Dimension table of canonical metrics (from taxonomy)
-5. `metric_values` – Extracted numeric metric values (fact table)
-6. `filing_metric_incidence` – Filing × metric incidence and quality scores
-7. `metric_definitions` – Metric definitions and methodologies per filing
+### Shared core
 
-### Relationships Summary
+| Table | Purpose |
+|-------|---------|
+| `companies` | Issuer-level metadata, keyed by CIK |
+| `filings` | One row per ingested document (SEC filing, transcript, or investor presentation) |
+| `metrics` | Canonical metric taxonomy (`cm_*`) |
+| `business_classifications` | Boolean flags per company for pipeline targeting |
+
+### V2 extraction (primary)
+
+| Table | Purpose |
+|-------|---------|
+| `v2_documents` | Filing-level V2 processing state and transcript/presentation metadata |
+| `v2_segments` | DOM-native content blocks with hierarchical `section_path` |
+| `v2_tables`, `v2_table_cells` | Reconstructed tables with resolved spans and `header_path`/`stub_path` arrays |
+| `v2_image_assets` | Extracted images with classification, OCR/chart results, and review status |
+| `v2_metric_facts` | Primary extraction output — every extracted metric with provenance and review status |
+| `v2_metric_definitions` | Issuer-specific definition and methodology text, one per (doc, metric) |
+| `v2_review_decisions` | Human review decisions on V2 facts (accept/reject/correct) |
+| `v2_image_review_decisions` | Human review decisions on V2 images |
+
+### V1 residual (retirement tracked in `v1-table-deprecation-plan.md`)
+
+| Table | Status |
+|-------|--------|
+| `source_segments` | Live — still consumed by `src/gold_standard/fresh_extractor.py` and V1 candidate-gen |
+| `review_candidates` | Live — V1 review workflow; HIGH-difficulty retirement |
+| `review_decisions` | Live — one-to-one with `review_candidates` |
+| `suppressed_candidates` | Live — suppression logging for V1 candidate-gen |
+| `learned_patterns` | Live — candidate-tuning telemetry |
+
+### Relationships (cheat sheet)
 
 - `companies` 1–N `filings`
-- `filings` 1–N `source_segments`
-- `metrics` 1–N `metric_values` (via `metric_id`)
-- `filings` 1–N `metric_values`
-- `filings` 1–N `filing_metric_incidence`
-- `filings` 1–N `metric_definitions`
-- `source_segments` 1–N `metric_values`
-- `source_segments` 1–N `metric_definitions`
+- `filings` 1–1 `v2_documents` (via `v2_documents.filing_id`, `UNIQUE`)
+- `filings` 1–N `v2_metric_facts`, `v2_segments`, `v2_tables`, `v2_image_assets`
+- `v2_metric_facts` 1–1 `v2_review_decisions` (via `v2_review_decisions.fact_id`, `UNIQUE`)
+- `v2_image_assets` 1–1 `v2_image_review_decisions` (via `UNIQUE img_id`)
+- `v2_segments` 0–N `v2_metric_definitions` (definition/methodology segment FKs)
+- `filings` 1–N `source_segments` (V1 residual)
+- `filings` 1–N `review_candidates` 1–1 `review_decisions` (V1 residual)
 
-Conceptually:
-- `source_segments` are the **atomic source units**
-- `metric_values` and `metric_definitions` are **facts** derived from segments
-- `filing_metric_incidence` summarizes at the filing-metric level
+**Naming gotcha:** the `doc_id` column on `v2_metric_facts`, `v2_segments`, `v2_tables`, and `v2_image_assets` is a `BIGINT` foreign key to `filings(filing_id)` — **not** to `v2_documents(doc_id)`. `v2_documents.doc_id` is a separate UUID primary key not referenced by any child table. `v2_metric_definitions.doc_id` is `INTEGER` and FKs to `v2_documents(filing_id)` via the `UNIQUE (filing_id)` constraint.
 
 ---
 
 ## Table Specifications
 
-### 1. `companies`
+### Shared core
 
-**Grain:** One row per issuer (company)
+#### `companies`
 
-**Purpose:** Central reference for issuer metadata; allows multiple filings per company
-
-**Schema:**
+**Grain:** One row per issuer.
 
 ```sql
 CREATE TABLE companies (
-    -- Primary key
-    company_id BIGSERIAL PRIMARY KEY,
-
-    -- External identifiers
-    cik TEXT NOT NULL UNIQUE,
-    company_name TEXT NOT NULL,
-    ticker TEXT,
-
-    -- Classification
-    country_of_domicile TEXT,
-    industry_code TEXT,
+    company_id                     BIGSERIAL PRIMARY KEY,
+    cik                            TEXT NOT NULL UNIQUE,
+    company_name                   TEXT NOT NULL,
+    ticker                         TEXT,
+    country_of_domicile            TEXT,
+    industry_code                  TEXT,
     industry_classification_source TEXT,
-
-    -- Metadata
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    created_at                     TIMESTAMPTZ DEFAULT now(),
+    updated_at                     TIMESTAMPTZ DEFAULT now()
 );
-
-CREATE INDEX idx_companies_cik ON companies(cik);
-CREATE INDEX idx_companies_industry ON companies(industry_code);
+-- idx_companies_cik, idx_companies_ticker (partial WHERE ticker IS NOT NULL),
+-- idx_companies_ticker_unique (UNIQUE, partial WHERE ticker IS NOT NULL)
 ```
 
-**Field Definitions:**
-
-| Column | Type | Required | Description |
-|--------|------|----------|-------------|
-| `company_id` | bigserial | yes | Internal surrogate key for the company. Used for joins inside our database. |
-| `cik` | text | yes | SEC Central Index Key (10 digits, zero-padded). Primary external identifier and join key to EDGAR. |
-| `company_name` | text | yes | Official issuer name as shown in SEC filings. |
-| `ticker` | text | no | Primary listed ticker symbol, if known. |
-| `country_of_domicile` | text | no | Country where the company is legally domiciled (e.g., `United States`, `Canada`). |
-| `industry_code` | text | no | SIC, GICS, or internal industry classification code. |
-| `industry_classification_source` | text | no | Source system or convention for `industry_code` (e.g., `sic`, `gics`, `manual`). |
-| `created_at` | timestamptz | yes | Timestamp when this row was created. |
-| `updated_at` | timestamptz | yes | Timestamp when this row was last updated. |
+`ticker` is globally unique when set; the partial unique index enforces this.
 
 ---
 
-### 2. `filings`
+#### `filings`
 
-**Grain:** One row per SEC filing document in scope
-
-**Purpose:** Represent each S-1/F-1 (and later 10-K) with classification flags and links to companies
-
-**Schema:**
+**Grain:** One row per ingested document. A single company may have many filings. Scope extends beyond SEC S-1/F-1: transcripts and investor presentations are also stored here with `document_type` disambiguating.
 
 ```sql
 CREATE TABLE filings (
-    -- Primary key
-    filing_id BIGSERIAL PRIMARY KEY,
+    filing_id              BIGSERIAL PRIMARY KEY,
+    company_id             BIGINT NOT NULL REFERENCES companies(company_id),
+    cik                    TEXT,
+    accession_number       TEXT,
+    form_type              TEXT NOT NULL,
+    filing_date            DATE NOT NULL,
+    period_end_date        DATE,
 
-    -- Company link
-    company_id BIGINT NOT NULL REFERENCES companies(company_id),
-    cik TEXT NOT NULL,
+    -- Source artifacts
+    sec_html_url           TEXT,
+    sec_txt_url            TEXT,
+    html_storage_path      TEXT,
+    txt_storage_path       TEXT,
+    html_content           TEXT,
+    html_fetched_at        TIMESTAMPTZ,
+    html_fetch_error       TEXT,
 
-    -- Filing identification
-    accession_number TEXT NOT NULL UNIQUE,
-    form_type TEXT NOT NULL,
-    filing_date DATE NOT NULL,
-    period_end_date DATE,
+    -- Universe / scope flags (Phase 1)
+    is_in_scope_phase1     BOOLEAN NOT NULL DEFAULT FALSE,
+    is_first_time_issuer   BOOLEAN,
+    is_spac                BOOLEAN,
+    is_post_combination    BOOLEAN NOT NULL DEFAULT FALSE,
+    is_investment_vehicle  BOOLEAN NOT NULL DEFAULT FALSE,
+    is_resource_extraction BOOLEAN NOT NULL DEFAULT FALSE,
+    offering_type          TEXT,
+    classification_method  TEXT,
 
-    -- SEC URLs
-    sec_html_url TEXT NOT NULL,
-    sec_txt_url TEXT,
+    -- Pipeline status
+    processing_status      TEXT NOT NULL DEFAULT 'pending',
+    processing_notes       TEXT,
 
-    -- Classification flags (Phase 1)
-    is_in_scope_phase1 BOOLEAN NOT NULL DEFAULT false,
-    is_first_time_issuer BOOLEAN,
-    is_spac BOOLEAN,
-    offering_type TEXT,
-    classification_method TEXT,
+    -- Transcript / presentation (non-SEC documents)
+    document_type          TEXT NOT NULL DEFAULT 'sec_filing',
+    ticker                 TEXT,
+    document_date          DATE,
+    transcript_source      TEXT,
 
-    -- Processing status
-    processing_status TEXT NOT NULL DEFAULT 'pending',
-    processing_notes TEXT,
+    created_at             TIMESTAMPTZ DEFAULT now(),
+    updated_at             TIMESTAMPTZ DEFAULT now(),
 
-    -- Metadata
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    CONSTRAINT unique_company_accession UNIQUE (company_id, accession_number)
 );
-
-CREATE INDEX idx_filings_company ON filings(company_id);
-CREATE INDEX idx_filings_cik ON filings(cik);
-CREATE INDEX idx_filings_date ON filings(filing_date);
-CREATE INDEX idx_filings_scope ON filings(is_in_scope_phase1) WHERE is_in_scope_phase1 = true;
-CREATE INDEX idx_filings_status ON filings(processing_status);
 ```
 
-**Field Definitions:**
+**`form_type` allowed values** (CHECK `check_form_type`):
+`S-1`, `S-1/A`, `F-1`, `F-1/A`, `10-K`, `10-K/A`, `8-K`, `earnings_call`, `investor_presentation`.
 
-| Column | Type | Required | Description |
-|--------|------|----------|-------------|
-| `filing_id` | bigserial | yes | Internal surrogate key for the filing. Used as the primary join key throughout the system. |
-| `company_id` | bigint | yes | Foreign key to `companies.company_id`. |
-| `cik` | text | yes | Denormalized copy of the company CIK for easier joins. Must match `companies.cik`. |
-| `accession_number` | text | yes | SEC accession number for the filing. Unique per filing across EDGAR. |
-| `form_type` | text | yes | SEC form type (e.g., `S-1`, `F-1`, `S-1/A`, `10-K` in Phase 2). |
-| `filing_date` | date | yes | Date the filing was submitted to the SEC. |
-| `period_end_date` | date | no | Period of report / fiscal year-end used in the filing, where available. |
-| `sec_html_url` | text | yes | Canonical SEC HTML URL for the filing body. Used as input to ingestion. |
-| `sec_txt_url` | text | no | URL to raw text version of the filing, if used. |
-| `is_in_scope_phase1` | boolean | yes | True if the filing is in the Phase 1 universe (S-1/F-1 for first-time issuers; no SPACs or secondary-only offerings). |
-| `is_first_time_issuer` | boolean | no | True if this filing corresponds to the company's first public equity issuance. |
-| `is_spac` | boolean | no | True if the issuer is a SPAC (special purpose acquisition company). Phase 1 excludes these. |
-| `offering_type` | text | no | High-level classification: `primary`, `secondary`, `mixed`. |
-| `classification_method` | text | no | How classification flags were determined: `heuristic`, `manual_review`, `uncertain`. |
-| `processing_status` | text | yes | Current state: `pending`, `fetched`, `segmented`, `processed`, `failed`. |
-| `processing_notes` | text | no | Free-text notes about errors or special handling. |
+**`classification_method` allowed values:** `heuristic`, `manual_review`, `uncertain` (or NULL).
+
+**`offering_type` allowed values:** `primary`, `secondary`, `mixed` (or NULL).
+
+**Key indexes:** `filing_id` PK, `accession_number`, `cik`, `filing_date`, `form_type`, `document_type`, `ticker` (partial), plus several partial indexes gated on scope flags (`is_in_scope_phase1`, `is_spac`, `is_investment_vehicle`, `is_post_combination`, `is_resource_extraction`).
 
 ---
 
-### 3. `source_segments`
+#### `metrics`
 
-**Grain:** One row per segment of a filing (paragraph, table, footnote, etc.)
-
-**Purpose:** Provide the audit trail and anchor for all extracted metrics and definitions
-
-**Schema:**
-
-```sql
-CREATE TABLE source_segments (
-    -- Primary key
-    source_segment_id BIGSERIAL PRIMARY KEY,
-
-    -- Filing reference
-    filing_id BIGINT NOT NULL REFERENCES filings(filing_id),
-
-    -- Segment metadata
-    segment_type TEXT NOT NULL,
-    section_path TEXT,
-    section_heading TEXT,
-    sequence_index INTEGER NOT NULL,
-
-    -- Location/provenance
-    html_selector TEXT,
-    char_start_offset INTEGER,  -- DEPRECATED: Always NULL (INV-1-FIX-v2)
-    char_end_offset INTEGER,    -- DEPRECATED: Always NULL (INV-1-FIX-v2)
-    page_number INTEGER,
-
-    -- Content
-    raw_text TEXT NOT NULL,
-    raw_html TEXT,
-
-    -- Classification metadata
-    candidate_metric_ids TEXT[],
-    contains_definition_flag BOOLEAN NOT NULL DEFAULT false,
-    contains_methodology_flag BOOLEAN NOT NULL DEFAULT false,
-    contains_numeric_disclosure_flag BOOLEAN NOT NULL DEFAULT false,
-    classifier_confidence NUMERIC,
-
-    -- Metadata
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_segments_filing ON source_segments(filing_id);
-CREATE INDEX idx_segments_type ON source_segments(segment_type);
-CREATE INDEX idx_segments_numeric ON source_segments(filing_id)
-    WHERE contains_numeric_disclosure_flag = true;
-```
-
-**Segment Types:**
-- `paragraph` - Text paragraphs
-- `table` - HTML tables (entire table as one segment)
-- `footnote` - Footnotes and endnotes
-- `definition_block` - Detected definition sections
-- `methodology_block` - Detected calculation methodology sections
-- `other` - Fallback
-
-**Field Definitions:**
-
-| Column | Type | Required | Description |
-|--------|------|----------|-------------|
-| `source_segment_id` | bigserial | yes | Internal surrogate key for the segment. |
-| `filing_id` | bigint | yes | Foreign key to `filings.filing_id`. |
-| `segment_type` | text | yes | Type of segment (see enum above). |
-| `section_path` | text | no | Logical path within filing (e.g., `Item 1. Business > Customers`). |
-| `section_heading` | text | no | Heading text associated with the segment's section. |
-| `sequence_index` | integer | yes | Ordering of segment within the filing (0-based). |
-| `html_selector` | text | no | XPath/CSS selector for precise location. |
-| `char_start_offset` | integer | no | **DEPRECATED (INV-1-FIX-v2)**: Always NULL. Use `html_selector` for source location. |
-| `char_end_offset` | integer | no | **DEPRECATED (INV-1-FIX-v2)**: Always NULL. Use `html_selector` for source location. |
-| `page_number` | integer | no | Page number in PDF, if available. |
-| `raw_text` | text | yes | Normalized plain text (visible content only). |
-| `raw_html` | text | no | Original HTML snippet. May be large. |
-| `candidate_metric_ids` | text[] | no | List of `metric_id` values the classifier believes may be present. |
-| `contains_definition_flag` | boolean | yes | True if segment likely contains metric definitions. |
-| `contains_methodology_flag` | boolean | yes | True if segment likely describes metric calculations. |
-| `contains_numeric_disclosure_flag` | boolean | yes | True if segment likely contains numeric values. |
-| `classifier_confidence` | numeric | no | Confidence score (0–1) of the classification. |
-
----
-
-### 4. `metrics`
-
-**Grain:** One row per canonical metric ID in the taxonomy
-
-**Purpose:** Dimension table for metrics; ties DB to metric taxonomy
-
-**Schema:**
+**Grain:** One row per canonical metric in the CMASB taxonomy.
 
 ```sql
 CREATE TABLE metrics (
-    -- Primary key
-    metric_id TEXT PRIMARY KEY,
-
-    -- Display
-    display_name TEXT NOT NULL,
-    metric_class TEXT NOT NULL,
-    description TEXT,
+    metric_id       TEXT PRIMARY KEY,
+    display_name    TEXT NOT NULL,
+    metric_class    TEXT NOT NULL,
+    description     TEXT,
     primary_concept TEXT,
-
-    -- Status
-    status TEXT NOT NULL DEFAULT 'active',
-    version INTEGER NOT NULL DEFAULT 1,
-
-    -- Metadata
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    status          TEXT NOT NULL DEFAULT 'active',
+    version         INTEGER NOT NULL DEFAULT 1,
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ DEFAULT now()
 );
-
-CREATE INDEX idx_metrics_class ON metrics(metric_class);
-CREATE INDEX idx_metrics_status ON metrics(status);
 ```
 
-**Metric Classes:**
-- `core` - Priority metrics for Phase 1
-- `extended` - Additional metrics
-- `future` - Planned metrics
+- `metric_class` ∈ `core`, `extended`, `future`
+- `status` ∈ `active`, `deprecated`, `experimental`
+- Canonical IDs use `cm_` prefix (e.g., `cm_net_revenue_retention`).
 
-**Field Definitions:**
-
-| Column | Type | Required | Description |
-|--------|------|----------|-------------|
-| `metric_id` | text | yes | Canonical ID (e.g., `cm_new_customers_acquired`). |
-| `display_name` | text | yes | Human-readable label. |
-| `metric_class` | text | yes | Classification: `core`, `extended`, `future`. |
-| `description` | text | no | Short description of what the metric measures. |
-| `primary_concept` | text | no | Primary business concept (e.g., `acquisition`, `cohort_revenue`). |
-| `status` | text | yes | Status: `active`, `deprecated`, `experimental`. |
-| `version` | integer | yes | Metric definition version (increment when definition changes). |
+Authoritative metric list: `config/metric_keywords.yaml`. Tier assignments (Tier 1 / Tier 2) live in that file and in `src/gold_standard/v2_validator.py`.
 
 ---
 
-### 5. `metric_values`
+#### `business_classifications`
 
-**Grain:** One row per filing × metric × period × cohort × segment value
-
-**Purpose:** Main fact table for quantitative analysis of disclosed metrics
-
-**Schema:**
+**Grain:** One row per company, holding boolean industry flags used by pipeline targeting.
 
 ```sql
-CREATE TABLE metric_values (
-    -- Primary key
-    metric_value_id BIGSERIAL PRIMARY KEY,
+CREATE TABLE business_classifications (
+    classification_id        SERIAL PRIMARY KEY,
+    company_id               INTEGER,
+    is_ecommerce_marketplace BOOLEAN DEFAULT FALSE,
+    is_platform_network      BOOLEAN DEFAULT FALSE,
+    is_healthcare_tech       BOOLEAN DEFAULT FALSE,
+    is_media_subscription    BOOLEAN DEFAULT FALSE,
+    is_fintech_crypto        BOOLEAN DEFAULT FALSE,
+    is_saas_software         BOOLEAN DEFAULT FALSE,
+    is_telecom               BOOLEAN DEFAULT FALSE,
+    created_at               TIMESTAMPTZ DEFAULT now()
+);
+```
 
-    -- Foreign keys
-    filing_id BIGINT NOT NULL REFERENCES filings(filing_id),
-    company_id BIGINT NOT NULL REFERENCES companies(company_id),
-    metric_id TEXT NOT NULL REFERENCES metrics(metric_id),
+No FK is declared on `company_id`. Rows are maintained manually or by the universe-builder.
 
-    -- Provenance
-    source_segment_id BIGINT NOT NULL REFERENCES source_segments(source_segment_id),
-    source_type TEXT NOT NULL,
-    extraction_method TEXT NOT NULL,
+---
+
+### V2 extraction
+
+#### `v2_documents`
+
+**Grain:** One row per filing. Enforced by `UNIQUE (filing_id)`.
+
+```sql
+CREATE TABLE v2_documents (
+    doc_id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filing_id            BIGINT NOT NULL UNIQUE,
+    parse_version        TEXT NOT NULL DEFAULT '2.0.0',
+    segment_count        INTEGER DEFAULT 0,
+    table_count          INTEGER DEFAULT 0,
+    image_count          INTEGER DEFAULT 0,
+    fact_count           INTEGER DEFAULT 0,
+    status               TEXT NOT NULL DEFAULT 'pending',
+    error_message        TEXT,
+    parse_started_at     TIMESTAMPTZ,
+    parse_completed_at   TIMESTAMPTZ,
+    extract_started_at   TIMESTAMPTZ,
+    extract_completed_at TIMESTAMPTZ,
+
+    -- Transcript / presentation metadata
+    document_type        VARCHAR(50) NOT NULL DEFAULT 'sec_filing',
+    ticker               VARCHAR(10),
+    document_date        DATE,
+    transcript_source    VARCHAR(200),
+
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+`status` ∈ `pending`, `parsing`, `extracting`, `reviewing`, `complete`, `failed`.
+
+`v2_metric_definitions.doc_id` FKs to `v2_documents(filing_id)` — not `doc_id`. All other child tables key on `filings(filing_id)` directly and do not join through `v2_documents`.
+
+---
+
+#### `v2_segments`
+
+**Grain:** One row per DOM-native content block (paragraph, table container, image reference, etc.).
+
+```sql
+CREATE TABLE v2_segments (
+    segment_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id          BIGINT NOT NULL,  -- = filings.filing_id
+    segment_type    TEXT NOT NULL,
+    segment_text    TEXT NOT NULL,
+    dom_locator     TEXT NOT NULL,
+    section_path    TEXT[],
+    section_type    TEXT,
+    sequence_idx    INTEGER NOT NULL,
+    prev_segment_id UUID REFERENCES v2_segments(segment_id),
+    next_segment_id UUID REFERENCES v2_segments(segment_id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**`segment_type`** (CHECK): `heading`, `paragraph`, `table`, `image_ref`, `caption`, `list`, `footnote`, `definition`, `methodology`, `other`.
+
+**`section_type`** (CHECK): `cover`, `risk_factors`, `mda`, `business`, `financials`, `notes`, `exhibits`, `signatures`, `other`, `unknown`, `prepared_remarks`, `qa`, `operator`, `disclaimer`, `presentation_slide`, `title_slide`, `key_metrics`, `financial_overview`, `guidance`, `appendix`. (Transcript and presentation values were added in migrations 13 and 14.)
+
+Indexes: `doc_id`, `(doc_id, sequence_idx)`, `section_type`, `segment_type`.
+
+---
+
+#### `v2_tables` and `v2_table_cells`
+
+**Grain:**
+- `v2_tables`: one row per reconstructed logical table after span resolution.
+- `v2_table_cells`: one row per `(table, row, col)` after span expansion. `UNIQUE (table_id, row_idx, col_idx)` guarantees a fully populated grid.
+
+```sql
+CREATE TABLE v2_tables (
+    table_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id       BIGINT NOT NULL,  -- = filings.filing_id
+    segment_id   BIGINT,
+    dom_locator  TEXT NOT NULL,
+    section_path TEXT[],
+    section_type TEXT,
+    row_count    INTEGER NOT NULL,
+    col_count    INTEGER NOT NULL,
+    header_rows  INTEGER NOT NULL DEFAULT 0,
+    stub_cols    INTEGER NOT NULL DEFAULT 0,
+    raw_html     TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE v2_table_cells (
+    cell_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    table_id    UUID NOT NULL REFERENCES v2_tables(table_id) ON DELETE CASCADE,
+    row_idx     INTEGER NOT NULL,
+    col_idx     INTEGER NOT NULL,
+    cell_text   TEXT NOT NULL,
+    is_header   BOOLEAN NOT NULL DEFAULT FALSE,
+    is_stub     BOOLEAN NOT NULL DEFAULT FALSE,
+    header_path TEXT[],
+    stub_path   TEXT[],
+    rowspan     INTEGER NOT NULL DEFAULT 1,
+    colspan     INTEGER NOT NULL DEFAULT 1,
+    dom_locator TEXT
+);
+```
+
+`header_path` (columns above a cell) and `stub_path` (rows to its left) are populated at reconstruction time and are the substrate for value binding: the extractor binds numeric cells to metrics by matching metric aliases against these arrays rather than by positional heuristics. GIN indexes on both arrays support fast lookups.
+
+`v2_tables.section_type` uses the same CHECK enum as `v2_segments.section_type`.
+
+---
+
+#### `v2_image_assets`
+
+**Grain:** One row per extracted image (chart, table-as-image, decorative, logo, signature).
+
+```sql
+CREATE TABLE v2_image_assets (
+    img_id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id              BIGINT NOT NULL,  -- = filings.filing_id
+    segment_id          BIGINT,
+    filename            TEXT NOT NULL,
+    file_path           TEXT,
+    width               INTEGER,
+    height              INTEGER,
+    dom_locator         TEXT NOT NULL,
+    nearby_text         TEXT,
+    section_path        TEXT[],
+    section_type        TEXT,
+
+    -- Classification
+    classification      TEXT NOT NULL DEFAULT 'unknown',
+    relevance_score     NUMERIC DEFAULT 0,
+    predicted_relevance NUMERIC(5,4),
+
+    -- OCR / chart parsing
+    ocr_text            TEXT,
+    ocr_table_id        UUID REFERENCES v2_tables(table_id),
+    chart_type          TEXT,
+    chart_data          JSONB,
+
+    -- Processing + review
+    processed           BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence          NUMERIC DEFAULT 0,
+    requires_manual     BOOLEAN NOT NULL DEFAULT FALSE,
+    review_status       TEXT NOT NULL DEFAULT 'pending',
+
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+- `classification` ∈ `chart`, `table_image`, `decorative`, `logo`, `signature`, `unknown`.
+- `chart_type` ∈ `bar`, `line`, `pie`, `stacked_bar`, `area`, `unknown` (or NULL).
+- `review_status` ∈ `pending`, `reviewed`, `skipped`, `auto_rejected`. `auto_rejected` was added in migration 20 for low-predicted-relevance images.
+- `predicted_relevance` (added in migration 19) is a 4-decimal score used to auto-defer low-relevance images from the review queue.
+- `section_type` uses the full transcript/presentation enum.
+
+Indexes on `doc_id`, `classification`, `review_status`, `relevance_score`, `predicted_relevance` (partial), plus `(doc_id, review_status) WHERE review_status='pending'` for the review queue.
+
+---
+
+#### `v2_metric_facts`
+
+**Grain:** One row per extracted fact. Identity is enforced by a partial unique index (see [V2 Fact Model](#v2-fact-model)).
+
+```sql
+CREATE TABLE v2_metric_facts (
+    fact_id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id                  BIGINT NOT NULL
+                                 REFERENCES filings(filing_id) ON DELETE CASCADE,
+    canonical_metric_id     TEXT NOT NULL REFERENCES metrics(metric_id),
 
     -- Value
-    value_numeric NUMERIC,
-    value_text TEXT,
-    unit TEXT,
-    currency TEXT,
+    value                   NUMERIC,
+    value_raw               TEXT NOT NULL,
+    unit                    TEXT NOT NULL,
+    currency                TEXT,
 
-    -- Time dimensions
-    period_start DATE,
-    period_end DATE,
-    period_type TEXT,
+    -- Time
+    period_type             TEXT,
+    period_start            DATE,
+    period_end              DATE,
 
-    -- Cohort dimensions
-    cohort_type TEXT,
-    cohort_bucket_raw TEXT,
-    cohort_bucket_normalized TEXT,
-
-    -- Segmentation dimensions
-    segment_dimension TEXT,
-    segment_value TEXT,
-
-    -- Quality/alignment
-    qa_status TEXT NOT NULL DEFAULT 'unreviewed',
-    qa_notes TEXT,
-    alignment_flag TEXT,
-
-    -- Metadata
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_values_filing_metric ON metric_values(filing_id, metric_id);
-CREATE INDEX idx_values_metric_period ON metric_values(metric_id, period_end);
-CREATE INDEX idx_values_source ON metric_values(source_segment_id);
-```
-
-**Source Types:**
-- `table` - Extracted from HTML table
-- `text` - Extracted from narrative text
-- `footnote` - Extracted from footnote
-- `other` - Other source
-
-**Extraction Methods:**
-- `rule_table` - Rule-based table extraction
-- `rule_text_smart` - Rule-based text extraction
-- `llm_text` - LLM-based text extraction (GPT-4o-mini)
-- `llm_table` - LLM-enhanced table extraction
-- `manual_review` - Manual correction/addition
-
-**Cohort Types:**
-- `acquisition` - Grouped by acquisition/signup period
-- `tenure` - Grouped by customer age/tenure
-- `other` - Other cohort dimension
-
-**Scope field (`v2_metric_facts`):**
-
-The `scope` column on `v2_metric_facts` distinguishes the analysis population. `scope=CUSTOMER_TYPE` is used for LTV/CAC tenure bucket facts produced by the chart fact bridge, where `cohort_def` holds a tenure bucket label (e.g., "1-2 Years") rather than a cohort vintage year. These facts bypass `CohortParser` and are not classified as acquisition cohorts.
-
-**QA Status:**
-- `unreviewed` - Not yet QA checked
-- `pass` - Passed QA checks
-- `warning` - QA warnings present
-- `fail` - Failed QA validation
-
----
-
-### 6. `filing_metric_incidence`
-
-**Grain:** One row per filing × metric
-
-**Purpose:** Support incidence and quality analyses at the filing-metric level
-
-**Schema:**
-
-```sql
-CREATE TABLE filing_metric_incidence (
-    -- Primary key
-    filing_metric_incidence_id BIGSERIAL PRIMARY KEY,
-
-    -- Foreign keys
-    filing_id BIGINT NOT NULL REFERENCES filings(filing_id),
-    company_id BIGINT NOT NULL REFERENCES companies(company_id),
-    metric_id TEXT NOT NULL REFERENCES metrics(metric_id),
-
-    -- Incidence
-    metric_disclosed_flag BOOLEAN NOT NULL,
-    num_numeric_segments INTEGER NOT NULL DEFAULT 0,
-    num_definition_segments INTEGER NOT NULL DEFAULT 0,
-    num_methodology_segments INTEGER NOT NULL DEFAULT 0,
-
-    -- Primary segments
-    primary_definition_segment_id BIGINT REFERENCES source_segments(source_segment_id),
-    primary_methodology_segment_id BIGINT REFERENCES source_segments(source_segment_id),
-
-    -- Quality scores (0-3 scale)
-    quality_overall_score INTEGER,
-    quality_definition_score INTEGER,
-    quality_methodology_score INTEGER,
-    quality_completeness_score INTEGER,
-    quality_comparability_score INTEGER,
-
-    -- Flags
-    alignment_flag TEXT,
-    quality_notes TEXT,
-    has_cohort_breakdown_flag BOOLEAN NOT NULL DEFAULT false,
-    has_tenure_breakdown_flag BOOLEAN NOT NULL DEFAULT false,
-    has_acquisition_cohort_flag BOOLEAN NOT NULL DEFAULT false,
-
-    -- Metadata
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now(),
-
-    -- Unique constraint
-    CONSTRAINT unique_filing_metric UNIQUE (filing_id, metric_id)
-);
-
-CREATE INDEX idx_incidence_metric ON filing_metric_incidence(metric_id);
-CREATE INDEX idx_incidence_disclosed ON filing_metric_incidence(metric_id)
-    WHERE metric_disclosed_flag = true;
-```
-
-**Quality Score Scale (0-3):**
-
-**Overall Quality:**
-- 0: Metric not disclosed
-- 1: Minimal (numeric value only, no definition)
-- 2: Moderate (value + definition OR methodology)
-- 3: Excellent (value + definition + methodology + cohort breakdown)
-
-**Definition Quality:**
-- 0: No definition provided
-- 1: Vague or incomplete definition
-- 2: Clear definition, mostly aligned
-- 3: Comprehensive definition, fully aligned with CMASB
-
-**Methodology Quality:**
-- 0: No methodology provided
-- 1: Vague calculation description
-- 2: Clear calculation method
-- 3: Detailed calculation formula with examples
-
-**Completeness:**
-- 0: Not disclosed
-- 1: Single aggregate number
-- 2: Breakdowns by period OR cohort
-- 3: Breakdowns by both period AND cohort
-
-**Comparability:**
-- 0: Not disclosed
-- 1: Definition differs significantly from CMASB
-- 2: Definition partially aligned
-- 3: Definition fully aligned with CMASB
-
----
-
-### 7. `metric_definitions`
-
-**Grain:** One row per filing × metric × definition_version
-
-**Purpose:** Capture issuer-specific definitions and calculation methodology text, plus alignment to canonical standards
-
-**Schema:**
-
-```sql
-CREATE TABLE metric_definitions (
-    -- Primary key
-    metric_definition_id BIGSERIAL PRIMARY KEY,
-
-    -- Foreign keys
-    filing_id BIGINT NOT NULL REFERENCES filings(filing_id),
-    company_id BIGINT NOT NULL REFERENCES companies(company_id),
-    metric_id TEXT NOT NULL REFERENCES metrics(metric_id),
-    definition_version_in_filing INTEGER NOT NULL DEFAULT 1,
-
-    -- Content
-    definition_text_normalized TEXT,
-    methodology_text_normalized TEXT,
-    definition_raw_text TEXT,
-    methodology_raw_text TEXT,
+    -- Scope / cohort
+    scope                   TEXT DEFAULT 'company',
+    scope_detail            TEXT,
+    cohort_def              TEXT,
+    cohort_type             TEXT,
+    customer_type           TEXT,
 
     -- Provenance
-    definition_segment_id BIGINT REFERENCES source_segments(source_segment_id),
-    methodology_segment_id BIGINT REFERENCES source_segments(source_segment_id),
+    source_type             TEXT NOT NULL,
+    source_locator          JSONB NOT NULL DEFAULT '{}',
+    evidence_pack           JSONB NOT NULL DEFAULT '{}',
 
-    -- Alignment
-    alignment_flag TEXT,
-    alignment_notes TEXT,
+    -- Quality
+    confidence              NUMERIC NOT NULL DEFAULT 0,
+    extraction_method       TEXT NOT NULL DEFAULT 'exact_match',
+    requires_review         BOOLEAN NOT NULL DEFAULT TRUE,
+    review_reason           TEXT,
+    review_status           TEXT NOT NULL DEFAULT 'pending_review',
 
-    -- Metadata
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
+    -- Dedup + cross-source
+    alternate_evidence      UUID[],
+    primary_fact_id         UUID REFERENCES v2_metric_facts(fact_id),
+    cross_source_confirmed  BOOLEAN NOT NULL DEFAULT FALSE,
+    confirming_source_types TEXT[] NOT NULL DEFAULT '{}',
+
+    pipeline_version        TEXT NOT NULL DEFAULT '2.0.0',
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE INDEX idx_definitions_filing_metric ON metric_definitions(filing_id, metric_id);
-CREATE INDEX idx_definitions_metric ON metric_definitions(metric_id);
 ```
 
-**Alignment Flags:**
-- `aligned` - Definition matches CMASB canonical definition
-- `partial` - Definition partially aligned with CMASB
-- `not_aligned` - Definition differs significantly from CMASB
-- `unknown` - Alignment not assessed
+**Enums (CHECK constraints):**
+
+| Column | Allowed values |
+|--------|----------------|
+| `unit` | `percent`, `currency`, `count`, `ratio`, `basis_points`, `other` |
+| `period_type` | `annual`, `quarterly`, `trailing`, `ytd`, `point_in_time`, `other` |
+| `scope` | `company`, `segment`, `geography`, `product`, `customer_type`, `cohort`, `other` |
+| `source_type` | `html_table`, `ocr_table`, `text`, `chart` |
+| `extraction_method` | `exact_match`, `alias_match`, `embedding`, `llm`, `manual` |
+| `review_status` | `auto_accepted`, `pending_review`, `accepted`, `rejected`, `corrected` |
+| `cohort_type` | `acquisition`, `tenure`, `other`, or NULL |
+
+**Invariants (named CHECK constraints):**
+- `valid_period`: `period_start <= period_end` (when both set).
+- `valid_currency`: `unit = 'currency'` ⇒ `currency IS NOT NULL`.
+- `confidence` ∈ [0, 1].
+
+**Indexes:**
+- `idx_v2_metric_facts_identity_unique` — partial UNIQUE index on
+  `(doc_id, canonical_metric_id, COALESCE(period_start,'1900-01-01'), COALESCE(period_end,'1900-01-01'), unit, scope, COALESCE(cohort_def,''), COALESCE(customer_type,''))`.
+  This is the idempotency guarantee: the persistence layer uses `ON CONFLICT DO UPDATE` against it. See [Known Discrepancies](#known-discrepancies) — the live index is 8 columns, though `sql/23_chart_source_dedup.sql` defines a 9-column variant including `source_type`.
+- Secondary indexes on `doc_id`, `canonical_metric_id`, `review_status`, `source_type`, `(period_start, period_end)`, `confidence`, plus GIN indexes on `evidence_pack` and `source_locator` JSONB.
+
+**Trigger:** `v2_metric_facts_updated_at` maintains `updated_at` on any update.
+
+---
+
+#### `v2_metric_definitions`
+
+**Grain:** One row per `(doc_id, canonical_metric_id)` (enforced by `UNIQUE (doc_id, canonical_metric_id)`).
+
+```sql
+CREATE TABLE v2_metric_definitions (
+    definition_id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id                      INTEGER NOT NULL
+                                    REFERENCES v2_documents(filing_id) ON DELETE CASCADE,
+    canonical_metric_id         TEXT NOT NULL,
+    definition_text             TEXT,
+    definition_text_normalized  TEXT,
+    methodology_text            TEXT,
+    methodology_text_normalized TEXT,
+    definition_segment_id       UUID
+                                    REFERENCES v2_segments(segment_id) ON DELETE SET NULL,
+    methodology_segment_id      UUID
+                                    REFERENCES v2_segments(segment_id) ON DELETE SET NULL,
+    alignment_flag              TEXT NOT NULL DEFAULT 'unknown',
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+- `alignment_flag` values used by the pipeline: `aligned`, `partial`, `not_aligned`, `unknown`. (Stored as free-form `TEXT` with a default; no DB-level CHECK.)
+- Rows are written by the Definition Extraction stage (`stages/definition_extraction.py`) when `definition` or `methodology` segments are discovered near a candidate.
+- Definitions link to the source `v2_segments` rows; retaining the segment join enables provenance lookup.
+
+---
+
+#### `v2_review_decisions`
+
+**Grain:** One row per reviewed fact (enforced by `UNIQUE (fact_id)`).
+
+```sql
+CREATE TABLE v2_review_decisions (
+    decision_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    fact_id             UUID NOT NULL
+                            REFERENCES v2_metric_facts(fact_id) ON DELETE CASCADE,
+    decision            TEXT NOT NULL,
+    assigned_metric_id  TEXT,
+    corrected_value     NUMERIC,
+    rejection_reason    TEXT,
+    rejection_category  TEXT,
+    reviewer_id         TEXT NOT NULL,
+    reviewer_notes      TEXT,
+    review_time_seconds INTEGER,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+- `decision` ∈ `accept`, `reject`, `correct`.
+- `rejection_category` ∈ `wrong_metric`, `not_a_metric`, `wrong_value`, `wrong_period`, `part_of_date`, `duplicate`, `other`. `part_of_date` was added in migration 24 to classify rejections where a digit was extracted from a date fragment.
+- **Trigger `v2_review_decision_updates_fact`** automatically promotes `v2_metric_facts.review_status` when a decision is inserted (accept → `accepted`, reject → `rejected`, correct → `corrected`).
+
+---
+
+#### `v2_image_review_decisions`
+
+**Grain:** One row per reviewed image (enforced by `UNIQUE (img_id)`).
+
+```sql
+CREATE TABLE v2_image_review_decisions (
+    image_decision_id   BIGSERIAL PRIMARY KEY,
+    img_id              UUID NOT NULL UNIQUE
+                            REFERENCES v2_image_assets(img_id) ON DELETE CASCADE,
+    decision            TEXT NOT NULL,
+    chart_type          TEXT,
+    rejection_reason    TEXT,
+    reviewer_id         TEXT,
+    reviewer_notes      TEXT,
+    review_time_seconds INTEGER,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+Semantic CHECK guards:
+- `decision` ∈ `relevant`, `not_relevant`.
+- If `decision = 'relevant'` → `chart_type` required (`check_v2_image_relevant_has_chart_type`), one of `cohort_table`, `cohort_parfait`, `line_chart`, `bar_chart`, `stacked_bar`, `other_chart`, `mixed`.
+- If `decision = 'not_relevant'` → `rejection_reason` required (`check_v2_image_not_relevant_has_reason`), one of `decorative`, `not_a_chart`, `wrong_subject`, `duplicate`, `unreadable`, `other`.
+
+`cohort_parfait` replaces the earlier `cohort_heatmap` value (migration 15).
+
+---
+
+### V1 residual
+
+These tables are live but on a retirement path. See `docs/architecture/v1-table-deprecation-plan.md` for migration roadmaps and difficulty assessments. The V2 pipeline does not read them; they support the legacy candidate-review UI and gold-standard tooling.
+
+#### `source_segments`
+
+Paragraph/table/footnote segmentation of SEC filings. Consumed by `src/gold_standard/fresh_extractor.py` and the V1 candidate-generator. Key columns:
+
+```sql
+filing_id, segment_type, section_path, section_heading, sequence_index,
+html_selector, page_number, raw_text, raw_html,
+candidate_metric_ids, contains_definition_flag, contains_methodology_flag,
+contains_numeric_disclosure_flag, classifier_confidence,
+metric_density, distinct_metric_count, contains_temporal_trend,
+contains_cohort_breakdown, image_count, richness_score
+```
+
+`segment_type` ∈ `paragraph`, `table`, `footnote`, `definition_block`, `methodology_block`, `other`.
+
+`char_start_offset` and `char_end_offset` are deprecated (INV-1-FIX-v2) — always NULL. Use `html_selector` for source location.
+
+**Retirement:** MEDIUM difficulty; blocked on ensuring V2 segment data is persisted and accessible at review time.
+
+#### `review_candidates`
+
+V1 candidate-generation output: keyword hits with nearby numeric values. Consumed by `src/review/*`, `src/infra/db.py`, and many scripts. `review_status` ∈ `pending`, `in_progress`, `reviewed`, `skipped`. **Retirement:** HIGH difficulty (2–4 weeks).
+
+#### `review_decisions`
+
+V1 reviewer outcome per candidate (`accept`/`reject`/`reclassify`). One-to-one with `review_candidates` via `UNIQUE (candidate_id)`. `rejection_category` shares the V2 enum (including `part_of_date`).
+
+#### `suppressed_candidates`
+
+Logs V1 candidates that were suppressed during generation. Suppression reasons: `lower_confidence`, `cross_sentence`, `duplicate_execution`, `runner_up`. **Retirement:** LOW-MEDIUM, deferred to the `review_candidates` project.
+
+#### `learned_patterns`
+
+Approval-tracked telemetry for candidate-tuning rules. `pattern_type` ∈ `accept_rule`, `reject_rule`, `feature_weight`. `status` ∈ `candidate`, `approved`, `rejected`, `deprecated`.
+
+---
+
+## V2 Fact Model
+
+This section describes how an extraction emits a `v2_metric_facts` row, how identity/dedup works, and how provenance is stored.
+
+### Identity
+
+A fact's identity is the tuple used for upsert-based deduplication. The **live DB index** (`idx_v2_metric_facts_identity_unique`) covers 8 columns:
+
+```
+(doc_id, canonical_metric_id,
+ COALESCE(period_start, '1900-01-01'), COALESCE(period_end, '1900-01-01'),
+ unit, scope, COALESCE(cohort_def, ''), COALESCE(customer_type, ''))
+```
+
+`src/extraction_v2/models.py::MetricFact.identity_tuple()` returns these same eight keys plus `source_type` as a ninth element (it also rounds `value` for tolerance comparisons). See [Known Discrepancies](#known-discrepancies).
+
+### Provenance
+
+Every fact carries two JSONB payloads:
+
+**`source_locator`** — machine-readable location:
+
+```json
+{
+  "segment_id": "…",          // v2_segments.segment_id, if text/footnote
+  "table_id":   "…",          // v2_tables.table_id, if table source
+  "cell_row":   3,
+  "cell_col":   1,
+  "text_span":  [120, 156],   // char offsets into segment_text
+  "img_id":     "…",          // v2_image_assets.img_id, if chart
+  "bbox":       {"x":…,"y":…,"width":…,"height":…},
+  "dom_locator":"/html/body/div[2]/table[1]/tr[4]/td[2]"
+}
+```
+
+**`evidence_pack`** — human-renderable evidence for the review UI:
+
+```json
+{
+  "snippet_html":   "<td>...<mark>112%</mark>...</td>",
+  "header_path":    ["FY2023", "Net Revenue Retention"],
+  "stub_path":      ["Enterprise customers"],
+  "context_before": "… our cohort of large customers saw ",
+  "context_after":  " expansion driven by seat growth.",
+  "raw_value_text": "112%",
+  "screenshot_path":"…optional cropped image…"
+}
+```
+
+`header_path` and `stub_path` mirror the `v2_table_cells` arrays, enabling the review UI to reconstruct the logical binding without rejoining to the cells table.
+
+### Source types and cross-source confirmation
+
+`source_type` ∈ `html_table`, `ocr_table`, `text`, `chart`. The `DeduplicationStage` annotates facts with `cross_source_confirmed = TRUE` when CHART and TEXT/TABLE facts agree on the same `(metric, period, value)` slot, and records the confirming types in `confirming_source_types` (e.g., `{CHART,TEXT}`).
+
+### Chart-bridge facts
+
+Facts sourced from chart images (`source_type = 'chart'`) use `scope = 'customer_type'` with `cohort_def` storing the tenure-bucket label (e.g., `"1-2 Years"`) when the chart encodes tenure-scoped metrics such as LTV/CAC. These facts bypass `CohortParser` and are not classified as acquisition cohorts. See `src/extraction_v2/stages/chart_fact_bridge.py` for the bridge logic.
+
+### Definitions
+
+`v2_metric_definitions` holds at most one row per `(doc, metric)`. Rows are populated by the Definition Extraction stage when definition/methodology segments are found near candidate matches. Each definition can reference the originating `v2_segments` row via `definition_segment_id` and `methodology_segment_id`.
 
 ---
 
 ## Data Conventions
 
-### Value Conventions
-
-- **Percentages:** Stored as raw percentages (e.g., 37.5, not 0.375)
-- **Monetary values:** Stored in base currency units (e.g., USD)
-- **Dates:** ISO-8601 format (`YYYY-MM-DD`)
-- **CIKs:** 10 digits, zero-padded (e.g., `0001234567`)
-
-### Naming Conventions
-
-- **Table names:** `lower_snake_case` (e.g., `metric_values`)
-- **Column names:** `lower_snake_case`
-- **Canonical metric IDs:** `cm_` prefix, `lower_snake_case` (e.g., `cm_new_customers_acquired`)
-
-### Types (Logical)
-
-- `text` – Free-form string
-- `integer` – Whole-number count
-- `numeric` – Decimal number (monetary, ratios, percentages)
-- `date` – Calendar date (no time zone)
-- `timestamptz` – Timestamp with time zone
-- `boolean` – `true` / `false`
-- `text[]` – Array of text values
+- **Percentages:** stored as raw percentages (37.5 represents 37.5%, not 0.375).
+- **Monetary values:** stored in the currency indicated by `currency`; `currency` is required when `unit = 'currency'`.
+- **Dates:** ISO-8601 (`YYYY-MM-DD`).
+- **CIKs:** zero-padded to 10 digits.
+- **Naming:** `lower_snake_case` tables and columns; canonical metric IDs use the `cm_` prefix.
+- **JSONB payloads** (`source_locator`, `evidence_pack`, `chart_data`, `learned_patterns.pattern_definition`, `review_candidates.features`) are queryable via Postgres operators; GIN indexes exist where latency matters.
 
 ---
 
-## Analysis-Ready Views
+## Analysis Views
 
-These logical views support common analytic queries:
+The live database contains five views. Three of them (prefixed `v_`) still target V1 residual tables.
 
-### v_filing_metric_incidence
+| View | Over | Purpose |
+|------|------|---------|
+| `v2_extraction_summary` | `v2_documents`, `filings`, `companies`, `v2_metric_facts` | Per-document extraction statistics: segment/table/image/fact counts, plus pending/accepted/rejected review counts. |
+| `v2_facts_pending_review` | `v2_metric_facts`, `filings`, `companies` | Facts with `review_status = 'pending_review'`, ordered by confidence descending. Primary feed for the review UI. |
+| `v_review_progress_by_filing` | `review_candidates`, `filings`, `companies` (V1) | V1 candidate-review progress per filing. |
+| `v_decision_stats_by_metric` | `review_decisions`, `review_candidates` (V1) | V1 decision mix per suggested metric. |
+| `v_rejection_reasons` | `review_decisions`, `review_candidates` (V1) | V1 rejection patterns per metric, with average keyword distance. |
 
-Joins filing, company, metric, and incidence data for analysis by year, industry, form type.
-
-```sql
-CREATE OR REPLACE VIEW v_filing_metric_incidence AS
-SELECT
-    fmi.*,
-    f.filing_date,
-    f.form_type,
-    c.company_name,
-    c.cik,
-    c.ticker,
-    c.industry_code,
-    m.display_name AS metric_name,
-    m.metric_class
-FROM filing_metric_incidence fmi
-JOIN filings f ON fmi.filing_id = f.filing_id
-JOIN companies c ON fmi.company_id = c.company_id
-JOIN metrics m ON fmi.metric_id = m.metric_id;
-```
-
-### v_metric_values_cohort
-
-Comprehensive view for cohort analysis with all dimensions.
-
-```sql
-CREATE OR REPLACE VIEW v_metric_values_cohort AS
-SELECT
-    mv.*,
-    f.filing_date,
-    f.form_type,
-    c.company_name,
-    c.cik,
-    c.ticker,
-    m.display_name AS metric_name,
-    m.metric_class
-FROM metric_values mv
-JOIN filings f ON mv.filing_id = f.filing_id
-JOIN companies c ON mv.company_id = c.company_id
-JOIN metrics m ON mv.metric_id = m.metric_id;
-```
-
-### v_metric_definitions
-
-View for comparability analysis of definitions across firms.
-
-```sql
-CREATE OR REPLACE VIEW v_metric_definitions AS
-SELECT
-    md.*,
-    f.filing_date,
-    c.company_name,
-    m.display_name AS metric_name
-FROM metric_definitions md
-JOIN filings f ON md.filing_id = f.filing_id
-JOIN companies c ON md.company_id = c.company_id
-JOIN metrics m ON md.metric_id = m.metric_id;
-```
+V2-fact-driven analytics views beyond `v2_extraction_summary` and `v2_facts_pending_review` are a pending deliverable; see `docs/architecture/v1-table-deprecation-plan.md`.
 
 ---
 
 ## Extensibility Notes
 
-### Adding New Metrics
+**Adding a new metric.** Insert into `metrics`; add keyword patterns to `config/metric_keywords.yaml`. No schema change.
 
-1. Insert row into `metrics` table with new `metric_id`
-2. Update metric classifier keyword patterns
-3. No schema changes required
+**Adding a new document type.** Extend the `form_type` CHECK on `filings` (pattern: new migration ALTER CONSTRAINT), then add section-type values to the `v2_segments`/`v2_tables`/`v2_image_assets` CHECK lists if the new document has novel section semantics. Migrations 13, 14, 16, 18 are prior examples.
 
-### Adding Filing Types (Phase 2: 10-K)
-
-1. Add filings with `form_type = '10-K'`
-2. Add new scope flag (e.g., `is_in_scope_phase2`) to `filings`
-3. Update Universe Builder logic
-4. Adjust classifier patterns for 10-K sections
-5. No other schema changes required
-
-### Versioning Metric Definitions
-
-When metric definition changes that affect comparability:
-1. Increment `metrics.version`
-2. Keep historical data linked to old version
-3. Document change in `metrics.description` or separate changelog
+**Versioning a metric definition.** Increment `metrics.version`; historical `v2_metric_facts` rows keep pointing at the same `metric_id`. Document the change in `metrics.description` or a project changelog.
 
 ---
 
----
+## Migration Index
 
-## Schema 09: Image Review and V2 Extraction Tables
+Authoritative DDL ordering. Applied to live DB in the order shown (see `schema_migrations`).
 
-Two additional schema files extend the core data model. Both are applied. The V2 tables are populated by the V2 pipeline, which is the sole production pipeline for all document types (SEC filings, transcripts, and presentations).
+| # | File | Purpose |
+|---|------|---------|
+| 00 | `00_init_databases.sql` | Initial DB bootstrap |
+| 01 | `01_create_schema.sql` | Shared core tables (`companies`, `filings`, `source_segments`, `metrics`) |
+| 02 | `02_add_filing_storage.sql` | HTML/text storage columns on `filings` |
+| 03 | `03_create_analysis_schema.sql` | V1 analysis tables (now dropped) |
+| 04 | `04_seed_metrics_taxonomy.sql` | Seed `metrics` rows |
+| 04 | `04_add_post_combination.sql` | `filings.is_post_combination` |
+| 05 | `05_add_business_type_exclusions.sql` | Universe-scope flags on `filings` |
+| 07 | `07_create_review_schema.sql` | V1 `review_candidates`, `review_decisions` |
+| 08 | `08_add_richness_metadata.sql` | Richness columns on `source_segments` |
+| 08 | `08_add_suppressed_candidates.sql` | `suppressed_candidates` |
+| 09 | `09_create_image_review_schema.sql` | V1 image-review tables (dropped in 30) |
+| 09 | `09_v2_schema.sql` | V2 table DDL (`v2_*` primary set) |
+| 10 | `10_add_html_content_column.sql` | `filings.html_content` |
+| 10 | `10_v2_fact_identity_dedup.sql` | Original 8-column identity index |
+| 11 | `11_transcript_support.sql` | Transcript columns on `filings` |
+| 11 | `11_v2_definitions.sql` | `v2_metric_definitions` |
+| 12 | `12_drop_v1_fk_constraints.sql` | FK cleanup |
+| 12 | `12_v2_documents_transcript_columns.sql` | Transcript/presentation cols on `v2_documents` |
+| 13 | `13_transcript_section_types.sql` | Transcript values in `section_type` CHECK |
+| 14 | `14_presentation_section_types.sql` | Presentation values in `section_type` CHECK |
+| 15 | `15_rename_cohort_heatmap_to_parfait.sql` | Rename `cohort_heatmap` → `cohort_parfait` |
+| 16 | `16_add_8k_form_type.sql` | Allow `8-K` in `form_type` CHECK |
+| 17 | `17_add_cohort_type_to_v2.sql` | `v2_metric_facts.cohort_type` |
+| 18 | `18_add_presentation_detection_tier.sql` | `presentation` in V1 image-review detection tier (tables later dropped) |
+| 19 | `19_add_predicted_relevance.sql` | `v2_image_assets.predicted_relevance` |
+| 20 | `20_add_auto_rejected_status.sql` | `auto_rejected` in `v2_image_assets.review_status` |
+| 21 | `21_create_image_cache.sql` | `image_cache` |
+| 22 | `22_seed_missing_metrics.sql` | Taxonomy backfill |
+| 23 | `23_chart_source_dedup.sql` | 9-column identity index (see Known Discrepancies) |
+| 24 | `24_add_part_of_date_rejection_category.sql` | `part_of_date` rejection category |
+| 25 | `25_cross_source_confirmation.sql` | `cross_source_confirmed`, `confirming_source_types` |
+| 26 | `26_drop_filing_metric_incidence.sql` | **Drops `filing_metric_incidence`** |
+| 27 | `27_drop_v1_metric_tables.sql` | **Drops `metric_values`, V1 `metric_definitions`** |
+| 28 | `28_extend_v2_image_assets_review.sql` | Review columns on `v2_image_assets` |
+| 29 | `29_create_v2_image_review_decisions.sql` | `v2_image_review_decisions` |
+| 30 | `30_drop_v1_image_review.sql` | **Drops V1 image-review tables** |
 
-### Image Review Tables (`sql/09_create_image_review_schema.sql`)
-
-Supports human-in-the-loop classification of chart images found in filings.
-
-**Grain:** `image_review_candidates` — one row per chart image candidate per filing.
-
-| Table | Purpose |
-|-------|---------|
-| `image_review_candidates` | Chart image candidates with context, detection tier, and cohort confidence score |
-| `image_review_decisions` | One-to-one human classification decisions (relevant/not_relevant) per candidate |
-
-**Key fields on `image_review_candidates`:**
-- `image_src`, `image_url` — image filename and full SEC URL
-- `detection_tier` — how discovered: `tier_1_cohort`, `tier_2_large`, `tier_3_all`, `seed_list`
-- `cohort_confidence` — numeric 0–1 heuristic confidence
-- `review_status` — `pending`, `reviewed`, `skipped`
-
-**Key fields on `image_review_decisions`:**
-- `decision` — `relevant` or `not_relevant`
-- `chart_type` — required when relevant: `cohort_table`, `cohort_parfait`, `line_chart`, `bar_chart`, `stacked_bar`, `other_chart`, `mixed`
-- `rejection_reason` — required when not relevant: `decorative`, `not_a_chart`, `wrong_subject`, `duplicate`, `unreadable`, `other`
-
-**Analysis views included:**
-- `v_image_review_progress_by_filing` — review completion percentage per filing
-- `v_image_decision_stats_by_tier` — decision distribution by detection tier
-- `v_image_chart_type_distribution` — chart type breakdown for relevant images
-- `v_image_rejection_reasons` — rejection patterns by tier
-
----
-
-### V2 Extraction Tables (`sql/09_v2_schema.sql`)
-
-Schema for the V2 unified extraction pipeline. Tables are populated by the V2 pipeline, which is the sole production pipeline for all document types.
-
-| Table | Purpose |
-|-------|---------|
-| `v2_metric_facts` | Primary extraction output: every extracted metric with full provenance, confidence, and review status |
-| `v2_tables` | Reconstructed HTML tables with colspan/rowspan resolution and section context |
-| `v2_table_cells` | Individual cells with `header_path` and `stub_path` arrays for semantic binding |
-| `v2_image_assets` | Extracted images with classification (chart/decorative/logo) and optional OCR results |
-| `v2_segments` | DOM-native content blocks with hierarchical `section_path` and `section_type` |
-| `v2_documents` | Filing-level V2 processing metadata and status tracking |
-| `v2_review_decisions` | Human review decisions for V2 facts (accept/reject/correct) |
-
-**Notable design choices vs V1:**
-- `v2_metric_facts.source_locator` is JSONB (vs foreign key to `source_segments`)
-- `v2_metric_facts.evidence_pack` is JSONB capturing snippet HTML, header/stub paths, and context
-- All primary keys are UUID (vs BIGSERIAL in V1 tables)
-- `v2_table_cells.header_path` / `stub_path` are `TEXT[]` arrays enabling binding without joins
-
-**Analysis views included:**
-- `v2_facts_pending_review` — facts awaiting human review, ordered by confidence
-- `v2_extraction_summary` — per-document extraction statistics and review counts
+Note: historical duplicate migration numbers (04/08/09/10/11/12) reflect prior splits. Do not add further duplicates.
 
 ---
 
-## Schema 10: V2 Fact Identity Index
+## Known Discrepancies
 
-### Migration 10 (`sql/10_v2_fact_identity_dedup.sql`)
-
-Created `idx_v2_metric_facts_identity_unique`, a partial unique index on `v2_metric_facts` that enforces deduplication across the 8 identity columns: `filing_id`, `metric_id`, `period_start`, `period_end`, `cohort_type`, `cohort_bucket_normalized`, `value_numeric`, and `segment_id`. This index is the persistence-layer enforcement of the idempotent upsert guarantee — re-running extraction on the same filing cannot produce duplicate rows. All V2 persistence writes use `ON CONFLICT DO UPDATE` against this index.
-
----
-
-## Schema 15, 16, and 23: Constraint Updates
-
-### Migration 25 (`sql/25_cross_source_confirmation.sql`)
-
-Adds two columns to `v2_metric_facts` to support the cross-source confirmation pass introduced in `DeduplicationStage`:
-
-```sql
-ALTER TABLE v2_metric_facts ADD COLUMN cross_source_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE v2_metric_facts ADD COLUMN confirming_source_types TEXT[] NOT NULL DEFAULT '{}';
-```
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `cross_source_confirmed` | `boolean NOT NULL DEFAULT FALSE` | Set to `TRUE` by `DeduplicationStage._annotate_cross_source_confirmation` when CHART and TEXT (or TABLE) facts agree on the same (metric, period, value) slot. Indicates the fact was independently corroborated by multiple source types. |
-| `confirming_source_types` | `text[] NOT NULL DEFAULT '{}'` | Array of `source_type` values that confirmed this fact (e.g., `'{CHART,TEXT}'`). Populated in the same post-dedup annotation pass. Empty array for unconfirmed facts. |
-
-This is the current latest migration (Migration 25).
-
----
-
-### Migration 23 (`sql/23_chart_source_dedup.sql`)
-
-Extends `idx_v2_metric_facts_identity_unique` (introduced in Migration 10) from 8 identity columns to 9 by adding `source_type` as the final column. This change allows a chart-sourced fact (`source_type = 'chart'`) and a text-sourced fact (`source_type = 'text'`) for the same metric+period+cohort slot to coexist as distinct rows, which is required by the `ChartFactBridgeStage`. The `MetricFact.identity_tuple()` method in `src/extraction_v2/models.py` was updated in parallel to return a 9-tuple.
-
-### Migration 15 (`sql/15_rename_cohort_heatmap_to_parfait.sql`)
-
-Renames the `cohort_heatmap` chart type to `cohort_parfait` in the `check_chart_type` constraint on `image_review_decisions`. The old name `cohort_heatmap` is no longer valid. The full allowed set is now: `cohort_table`, `cohort_parfait`, `line_chart`, `bar_chart`, `stacked_bar`, `other_chart`, `mixed`.
-
-### Migration 16 (`sql/16_add_8k_form_type.sql`)
-
-Adds `'8-K'` to the `check_form_type` constraint on the `filings` table. Investor presentations are filed as SEC 8-K exhibits, so `ingest_presentations.py` inserts rows with `form_type = '8-K'`. Without this migration, every presentation ingestion fails with a CHECK constraint violation. The full allowed set is now: `S-1`, `S-1/A`, `F-1`, `F-1/A`, `10-K`, `10-K/A`, `8-K`, `earnings_call`, `investor_presentation`.
-
-### Migration 17 (`sql/17_add_cohort_type_to_v2.sql`)
-
-Adds a `cohort_type` column to `v2_metric_facts`. The column is nullable text with a CHECK constraint that restricts values to `'acquisition'`, `'tenure'`, `'other'`, or NULL. This brings V2 fact rows into alignment with the cohort dimension already present on the V1 `metric_values` table.
-
-```sql
-ALTER TABLE v2_metric_facts ADD COLUMN cohort_type TEXT;
-ALTER TABLE v2_metric_facts ADD CONSTRAINT chk_cohort_type
-  CHECK (cohort_type IN ('acquisition', 'tenure', 'other') OR cohort_type IS NULL);
-```
-
-### Migration 18 (`sql/18_add_presentation_detection_tier.sql`)
-
-Adds `'presentation'` to the `check_detection_tier` constraint on `image_review_candidates`. This allows image candidates discovered from investor presentation filings to record `'presentation'` as their detection tier. The migration drops and recreates the constraint. The full allowed set is now: `tier_1_cohort`, `tier_2_large`, `tier_3_all`, `seed_list`, `presentation` (or NULL).
+- **Identity index column count.** `sql/23_chart_source_dedup.sql` defines `idx_v2_metric_facts_identity_unique` with 9 columns including `source_type`. The live DB index currently has 8 columns (no `source_type`). `MetricFact.identity_tuple()` in `src/extraction_v2/models.py` returns 9 elements. Persistence therefore relies on Python-side tolerance plus DB-side 8-column enforcement. Flagged for investigation; documented here rather than silently patched.
 
 ---
 
 ## Related Documentation
 
-- **System Architecture:** `docs/architecture/system-overview.md` - High-level design
-- **Extraction Pipeline:** `docs/architecture/extraction-pipeline.md` - Component details
-- **Metric Taxonomy:** `docs/development/metrics-taxonomy.md` - Canonical metric definitions
-- **Quality Model:** `docs/development/quality-model.md` - Quality scoring framework
-
----
-
-**Last Updated:** 2026-03-30
-**Version:** 2.1
-**Status:** Production Schema
+- **V1 retirement roadmap:** `docs/architecture/v1-table-deprecation-plan.md`
+- **Extraction decisions:** `docs/architecture/extraction-decisions.md`
+- **Metric taxonomy:** `docs/development/metrics-taxonomy.md`
+- **Human review system:** `docs/HUMAN_REVIEW_SYSTEM.md`
+- **Gold standard spec:** `docs/GOLD_STANDARD_SPECIFICATION.md`
+- **V2 schema DDL (authoritative):** `sql/09_v2_schema.sql` plus migrations 10–30 listed above
+- **V2 dataclasses (code-level truth for field meanings):** `src/extraction_v2/models.py`
+- **V2 persistence (upsert SQL):** `src/extraction_v2/persistence.py`
