@@ -197,6 +197,38 @@ Do NOT deploy code that depends on a new schema before the migration runs.
 
 ---
 
+## Pending Production Rollouts
+
+Migrations and follow-ups that have landed on `main` but **not yet applied to Neon prod**. Clear from this list once applied.
+
+### `sql/31_drop_v1_review_tables.sql` — V1 retirement
+
+See `sql/31_drop_v1_review_tables.sql` header for detailed prereqs. Drops V1 review tables + `source_segments`, creates `v2_audit_log`. Independent of sql/32 below — either order is fine, no schema conflicts.
+
+### `sql/32_add_detected_keywords_to_v2_image_assets.sql` — keyword audit trail
+
+Adds `detected_keywords TEXT[]` to `v2_image_assets` for review-UI "Detected Keywords" badges and model-training feature input. **Strict deploy order:**
+
+1. **Apply migration to prod first:**
+   ```bash
+   python3 scripts/apply_migrations.py
+   ```
+   Additive, nullable column; no existing code references it, so this step is safe in isolation.
+
+2. **Deploy the web service / extraction workers.**
+   The new `src/extraction_v2/persistence.py` writes `detected_keywords` on INSERT/UPSERT. It WILL FAIL if the column does not exist yet. Do NOT deploy before step 1 lands on prod.
+
+3. **Backfill historical rows** (~2K):
+   ```bash
+   python3 scripts/backfill_image_keywords.py --dry-run   # preview
+   python3 scripts/backfill_image_keywords.py             # apply
+   ```
+   Idempotent (skips `WHERE detected_keywords IS NOT NULL`); safe to re-run. Batches of 500, commits per batch.
+
+After step 3, the image review UI's "Detected Keywords" panel will show populated badges instead of "None detected".
+
+---
+
 ## Smoke Test After Deploy
 
 After each deploy, verify the service is healthy:
