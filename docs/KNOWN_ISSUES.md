@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-08
+**Last Updated**: 2026-04-18
 
 ---
 
@@ -185,6 +185,55 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (Issue #10) |
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
 | CMS-1 suppression: Active Consumers (Issue #10) | Open | Low | Low | cm_active_customers_total suppressed by cm_customers_period_end |
+| V2 metric facts identity index drift (Issue #13) | Open | Low | Low | DB index 8 cols; code / sql/23 expect 9 |
+
+---
+
+## 13. V2 Metric Facts Identity Index Drift
+
+**Status**: Open (documented 2026-04-18 during data-model.md rewrite; not yet fixed)
+**Severity**: Low (application-layer dedup in `MetricFact.identity_tuple()` still distinguishes `source_type`; no observed duplicate-row incidents)
+**Discovered**: 2026-04-18
+
+### Problem
+
+`sql/23_chart_source_dedup.sql` drops and recreates `idx_v2_metric_facts_identity_unique` as a 9-column partial UNIQUE index including `source_type`. The live database index has only 8 columns (no `source_type`). `MetricFact.identity_tuple()` in `src/extraction_v2/models.py` returns a 9-tuple with `source_type` at position 9.
+
+`23_chart_source_dedup.sql` is recorded in `schema_migrations`, so the migration ran at least once — but the live DDL does not reflect the 9-column shape.
+
+### Verified evidence (2026-04-18)
+
+```bash
+source .env && psql "$DATABASE_URL" -c \
+  "SELECT indexdef FROM pg_indexes WHERE indexname='idx_v2_metric_facts_identity_unique'"
+# Returns: CREATE UNIQUE INDEX ... (doc_id, canonical_metric_id,
+#   COALESCE(period_start,'1900-01-01'), COALESCE(period_end,'1900-01-01'),
+#   unit, scope, COALESCE(cohort_def,''), COALESCE(customer_type,''))
+# — 8 columns, source_type absent.
+
+source .env && psql "$DATABASE_URL" -c \
+  "SELECT id FROM schema_migrations WHERE id='23_chart_source_dedup.sql'"
+# Returns 1 row — migration is recorded as applied.
+```
+
+### Impact
+
+- **DB layer:** a chart-sourced fact and a text-sourced fact for the same `(doc_id, metric, period, cohort, customer_type, unit, scope)` slot would be treated as conflicting rows by the 8-column index, even though the application treats them as distinct via `source_type`.
+- **Application layer:** `MetricFact.identity_tuple()` includes `source_type`, so in-memory deduplication preserves CHART + TEXT/TABLE as separate facts. Persistence upserts via `ON CONFLICT DO UPDATE` against the 8-column index — a CHART fact may therefore overwrite a prior TEXT fact (or vice versa) on the same slot.
+- **Observed incidents:** none to date.
+
+### Next Steps
+
+- Re-apply `sql/23_chart_source_dedup.sql` against the live DB and investigate why the previous application did not extend the index to 9 columns (possibly the migration was reverted by a subsequent schema snapshot restore).
+- Alternatively: remove `source_type` from `MetricFact.identity_tuple()` and the `sql/23` file if 8-column dedup is intended.
+- Coordinate with whoever owns the cross-source-confirmation work (migration 25) before changing behavior — chart-bridge facts rely on the assumption that chart and text slots are independently unique.
+
+### References
+
+- `docs/architecture/data-model.md` — "Known Discrepancies" section
+- `sql/23_chart_source_dedup.sql` — proposed 9-column DDL
+- `src/extraction_v2/models.py::MetricFact.identity_tuple` — 9-element tuple
+- `src/extraction_v2/persistence.py` — UPSERT target
 
 ---
 
@@ -262,3 +311,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-03-26**: Added Issue #10 — CMS-1 suppression assigns Active Consumers to cm_customers_period_end instead of cm_active_customers_total
 - **2026-03-27**: Removed duplicate main-body sections for Issues #3, #7, #8 — already archived; stale "Open"/"Needs Discussion" statuses were conflicting with archive entries
 - **2026-04-07**: Removed orphaned summary table rows for Issues #7 and #8 (already in archive, no main body section); added Issue #10 cross-reference to Issue #2 remaining gaps
+- **2026-04-18**: Added Issue #13 — V2 metric facts identity index drift (live DB 8 columns, code + `sql/23` expect 9); documented during `docs/architecture/data-model.md` rewrite
