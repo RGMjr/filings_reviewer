@@ -8,7 +8,7 @@ Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclo
 
 Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, shared, web, llm, gold_standard). Config in `config/metric_keywords.yaml`. See `docs/README.md` for full index.
 
-**Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → V2QualityScorer → Database
+**Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 
 ## Key Commands
 

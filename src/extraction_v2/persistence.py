@@ -741,14 +741,6 @@ class V2PersistenceAdapter:
         logger.debug(f"Upserted {count} definitions for filing_id={filing_id}")
         return count
 
-    def persist_quality_scores(
-        self,
-        scores: list[Any],
-        filing_id: int,
-    ) -> int:
-        """No-op stub. V1 filing_metric_incidence table has been dropped."""
-        return 0
-
     def _persist_definitions_in_tx(
         self,
         cur: Any,

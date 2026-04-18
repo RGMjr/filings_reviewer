@@ -216,7 +216,6 @@ class DocsChecker:
             "CandidateGenerationStage": SRC / "extraction_v2" / "stages" / "candidate_generation.py",
             "ValueBindingStage": SRC / "extraction_v2" / "stages" / "value_binding.py",
             "DefinitionExtractionStage": SRC / "extraction_v2" / "stages" / "definition_extraction.py",
-            "V2QualityScorer": SRC / "extraction_v2" / "quality_scoring.py",
         }
 
         issues = []

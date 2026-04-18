@@ -1,4 +1,4 @@
-# Customer Metrics Filings Analysis
+# CMASB Disclosures Review
 
 **Version:** 2.2
 **Status:** In process
@@ -96,7 +96,7 @@ UniverseBuilder → FilingFetcher → HTMLSegmenter → CandidateGenerationStage
                                                           ↓
                                               ValueBindingStage + DefinitionExtractionStage
                                                           ↓
-                                                  V2QualityScorer → Database
+                                                       Database
 ```
 
 ## Documentation

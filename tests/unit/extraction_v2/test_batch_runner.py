@@ -95,7 +95,6 @@ class TestBatchConfig:
         assert config.dry_run is False
         assert config.resume_from is None
         assert config.limit is None
-        assert config.skip_quality_scoring is False
         assert config.no_images is False
         assert config.min_confidence == 0.90
         assert config.worker_timeout == 300
@@ -107,7 +106,6 @@ class TestBatchConfig:
             dry_run=True,
             resume_from=42,
             limit=200,
-            skip_quality_scoring=True,
             no_images=True,
             min_confidence=0.75,
         )
@@ -117,7 +115,6 @@ class TestBatchConfig:
         assert config.dry_run is True
         assert config.resume_from == 42
         assert config.limit == 200
-        assert config.skip_quality_scoring is True
         assert config.no_images is True
         assert config.min_confidence == 0.75
 

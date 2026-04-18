@@ -114,7 +114,6 @@ tests/
 │   │   ├── test_period_inference.py    # Period parsing and inference
 │   │   ├── test_number_parsing.py      # Number regex and multiplier handling
 │   │   ├── test_deduplication.py       # Fact deduplication logic
-│   │   ├── test_quality_scoring.py     # V2QualityScorer
 │   │   ├── test_presentation_converter.py # Presentation-to-Document converter
 │   │   ├── test_transcript_converter.py   # Transcript-to-Document converter
 │   │   ├── test_batch_runner.py        # BatchRunner logic (no DB)
@@ -165,8 +164,7 @@ tests/
 │   │   ├── test_batch_runner_db.py     # BatchRunner with real DB
 │   │   ├── test_presentation_e2e.py    # Presentation pipeline end-to-end
 │   │   ├── test_transcript_e2e.py      # Transcript pipeline end-to-end
-│   │   ├── test_transcript_gold_standard.py  # Transcript GS regression
-│   │   └── test_quality_scoring_integration.py
+│   │   └── test_transcript_gold_standard.py  # Transcript GS regression
 │   ├── web/                            # Web API integration tests (real DB + Flask test client)
 │   │   ├── test_api_integration.py     # Review API transaction integrity
 │   │   ├── test_review_workflow.py     # Full accept/reject/reclassify workflow

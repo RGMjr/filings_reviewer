@@ -85,7 +85,6 @@ class TestBatchConfig:
         assert config.dry_run is False
         assert config.resume_from is None
         assert config.limit is None
-        assert config.skip_quality_scoring is False
         assert config.no_images is False
         assert config.min_confidence == 0.90
         assert config.status is None
