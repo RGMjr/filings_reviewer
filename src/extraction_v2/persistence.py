@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
+from src.extraction_v2.exceptions import ReviewedFilingError
 from src.extraction_v2.models import (
     Cell,
     ChartData,
@@ -246,6 +247,8 @@ class V2PersistenceAdapter:
         self,
         facts: list[MetricFact],
         filing_id: int,
+        *,
+        force: bool = False,
     ) -> int:
         """
         Upsert V2 metric facts using identity-based conflict resolution.
@@ -257,13 +260,16 @@ class V2PersistenceAdapter:
         Args:
             facts: List of MetricFact models from pipeline
             filing_id: Database filing ID (foreign key)
+            force: If True, proceed even when the filing has existing human
+                review decisions (which will be CASCADE-deleted). Default
+                False raises ``ReviewedFilingError`` in that case.
 
         Returns:
             Number of facts upserted
         """
         with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                count = self._persist_facts_in_tx(cur, facts, filing_id)
+                count = self._persist_facts_in_tx(cur, facts, filing_id, force=force)
         logger.debug(f"Upserted {count} facts for filing_id={filing_id}")
         return count
 
@@ -275,6 +281,8 @@ class V2PersistenceAdapter:
         ticker: str | None = None,
         document_date: date | None = None,
         transcript_source: str | None = None,
+        *,
+        force: bool = False,
     ) -> PersistenceResult:
         """
         Persist a complete pipeline result in a single transaction.
@@ -282,6 +290,9 @@ class V2PersistenceAdapter:
         Args:
             result: PipelineResult from V2 pipeline execution
             filing_id: Database filing ID (foreign key)
+            force: If True, proceed even when the filing has existing human
+                review decisions (which will be CASCADE-deleted). Default
+                False raises ``ReviewedFilingError`` in that case.
 
         Returns:
             PersistenceResult with counts and any errors
@@ -320,7 +331,9 @@ class V2PersistenceAdapter:
                     img_count = self._persist_images_in_tx(cur, result.images, filing_id)
 
                     # 5. Persist facts
-                    fact_count = self._persist_facts_in_tx(cur, result.facts, filing_id)
+                    fact_count = self._persist_facts_in_tx(
+                        cur, result.facts, filing_id, force=force
+                    )
 
                     # 6. Persist definitions
                     def_count = self._persist_definitions_in_tx(cur, result.definitions, filing_id)
@@ -342,6 +355,10 @@ class V2PersistenceAdapter:
                 definitions_upserted=def_count,
             )
 
+        except ReviewedFilingError:
+            # Guard must surface to the caller so CLIs can distinguish
+            # "reviewed filing, needs --force-reextract" from generic failure.
+            raise
         except Exception as e:
             logger.exception(f"Failed to persist pipeline result: {e}")
             errors.append(str(e))
@@ -665,10 +682,48 @@ class V2PersistenceAdapter:
         cur: Any,
         facts: list[MetricFact],
         filing_id: int,
+        *,
+        force: bool = False,
     ) -> int:
-        """Persist facts within an existing transaction using delete-then-insert."""
+        """Persist facts within an existing transaction using delete-then-insert.
+
+        Guards against silent destruction of human review decisions: if any
+        fact for ``filing_id`` has a row in ``v2_review_decisions``, raises
+        ``ReviewedFilingError`` unless ``force=True``.
+        """
         if not facts:
             return 0
+
+        # Guard: refuse to wipe human review decisions without explicit opt-in.
+        # The DELETE below CASCADEs through v2_review_decisions.fact_id FK, so
+        # without this check any re-extraction silently destroys reviewer work.
+        cur.execute(
+            """
+            SELECT COUNT(*) AS decision_count,
+                   COUNT(DISTINCT rd.reviewer_id) AS reviewer_count
+              FROM v2_metric_facts mf
+              JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
+             WHERE mf.doc_id = %(filing_id)s
+            """,
+            {"filing_id": filing_id},
+        )
+        row = cur.fetchone()
+        decision_count = int(row["decision_count"]) if row else 0
+        reviewer_count = int(row["reviewer_count"]) if row else 0
+        if decision_count > 0:
+            if not force:
+                raise ReviewedFilingError(
+                    filing_id=filing_id,
+                    decision_count=decision_count,
+                    reviewer_count=reviewer_count,
+                )
+            logger.warning(
+                "force-reextract purging reviewed filing: "
+                "filing_id=%s purged_decision_count=%s distinct_reviewer_count=%s",
+                filing_id,
+                decision_count,
+                reviewer_count,
+            )
 
         # Delete existing facts for this filing before inserting fresh results.
         # This is idempotent and handles re-runs correctly without requiring a

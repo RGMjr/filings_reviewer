@@ -45,6 +45,7 @@ __version__ = "2.0.0-rc1"
 
 # Exceptions
 from src.extraction_v2.exceptions import (
+    ReviewedFilingError,
     V2FatalError,
     V2PipelineError,
     V2StageError,
@@ -58,6 +59,7 @@ from src.extraction_v2.persistence import (
 )
 
 __all__ = [
+    "ReviewedFilingError",
     "V2FatalError",
     "V2PipelineError",
     "V2StageError",

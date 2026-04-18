@@ -83,6 +83,7 @@ class BatchConfig:
     min_confidence: float = 0.90
     worker_timeout: int = 300  # Seconds before killing a hung worker
     status: str | None = None  # Filter filings by processing_status (e.g. 'fetched')
+    force_reextract: bool = False  # Purge existing human decisions on re-extract
 
 
 @dataclass
@@ -154,6 +155,7 @@ def _process_filing_worker(
     try:
         import tempfile
 
+        from src.extraction_v2.exceptions import ReviewedFilingError
         from src.extraction_v2.persistence import V2PersistenceAdapter
         from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
         from src.infra.db import DatabaseAdapter
@@ -247,7 +249,24 @@ def _process_filing_worker(
         # Persist results
         db = DatabaseAdapter(db_url)
         adapter = V2PersistenceAdapter(db)
-        persist_result = adapter.persist_pipeline_result(result, filing_id)
+        try:
+            persist_result = adapter.persist_pipeline_result(
+                result, filing_id, force=config_dict.get("force_reextract", False)
+            )
+        except ReviewedFilingError as guard_err:
+            # Non-destructive skip: filing has human decisions and --force-reextract
+            # was not passed. Leave processing_status untouched so re-runs behave
+            # consistently until the operator decides.
+            return {
+                "filing_id": filing_id,
+                "success": False,
+                "skipped_reviewed": True,
+                "fact_count": 0,
+                "definition_count": 0,
+                "error": str(guard_err),
+                "duration_ms": int(time.time() * 1000) - start_ms,
+                "retried": False,
+            }
 
         if not persist_result.success:
             try:
@@ -441,6 +460,7 @@ class BatchV2Runner:
             "dry_run": self.config.dry_run,
             "no_images": self.config.no_images,
             "min_confidence": self.config.min_confidence,
+            "force_reextract": self.config.force_reextract,
         }
 
         last_filing_id = 0
@@ -525,6 +545,15 @@ class BatchV2Runner:
                         stats.succeeded += 1
                         stats.total_facts += result.get("fact_count", 0)
                         consecutive_failures = 0
+                    elif result.get("skipped_reviewed"):
+                        stats.skipped += 1
+                        # Reset consecutive-failure counter: a reviewed-skip is not
+                        # an extraction failure, so it shouldn't trip the breaker.
+                        consecutive_failures = 0
+                        logger.info(
+                            f"Filing {result['filing_id']} skipped (has human review "
+                            "decisions; pass --force-reextract to override)"
+                        )
                     else:
                         stats.failed += 1
                         consecutive_failures += 1
@@ -538,6 +567,7 @@ class BatchV2Runner:
                             "filing_id": result["filing_id"],
                             "company_name": filing.get("company_name", ""),
                             "success": result["success"],
+                            "skipped_reviewed": result.get("skipped_reviewed", False),
                             "fact_count": result.get("fact_count", 0),
                             "error": result.get("error"),
                             "duration_ms": result.get("duration_ms", 0),
@@ -573,6 +603,7 @@ class BatchV2Runner:
             f"Batch extraction complete: "
             f"{stats.succeeded}/{stats.total_filings} succeeded, "
             f"{stats.failed} failed, "
+            f"{stats.skipped} skipped (reviewed), "
             f"{stats.total_facts} total facts, "
             f"{elapsed:.1f}s elapsed"
         )
@@ -618,6 +649,15 @@ def main() -> None:
         default=300,
         help="Seconds before killing a hung worker process (default: 300)",
     )
+    parser.add_argument(
+        "--force-reextract",
+        action="store_true",
+        help=(
+            "Purge existing human review decisions on filings that have them "
+            "and re-extract. Without this flag, such filings are skipped "
+            "(counted under 'skipped'); the batch continues."
+        ),
+    )
     args = parser.parse_args()
 
     if args.verbose:
@@ -641,6 +681,7 @@ def main() -> None:
         min_confidence=args.min_confidence,
         worker_timeout=args.worker_timeout,
         status=args.status,
+        force_reextract=args.force_reextract,
     )
 
     runner = BatchV2Runner(config=config, db_url=db_url)
