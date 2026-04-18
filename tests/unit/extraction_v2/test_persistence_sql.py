@@ -142,3 +142,47 @@ class TestPersistDedup:
         assert 'existing["confidence"]' in source, (
             "_persist_facts_in_tx must compare confidence to keep highest, not last-write-wins"
         )
+
+
+class TestImagePersistSQL:
+    """Verify detected_keywords is wired through _persist_images_in_tx (sql/32)."""
+
+    def _get_image_persist_source(self) -> str:
+        from src.extraction_v2.persistence import V2PersistenceAdapter
+
+        return inspect.getsource(V2PersistenceAdapter._persist_images_in_tx)
+
+    def test_detected_keywords_in_insert_columns(self) -> None:
+        source = self._get_image_persist_source()
+        insert_match = re.search(
+            r"INSERT INTO v2_image_assets\s*\((.*?)\)\s*VALUES",
+            source,
+            re.DOTALL | re.IGNORECASE,
+        )
+        assert insert_match, "Could not find INSERT column list in _persist_images_in_tx"
+        assert "detected_keywords" in insert_match.group(1), (
+            "detected_keywords must be in INSERT columns"
+        )
+
+    def test_detected_keywords_in_on_conflict_update(self) -> None:
+        source = self._get_image_persist_source()
+        assert "detected_keywords = EXCLUDED.detected_keywords" in source, (
+            "detected_keywords must be refreshed on ON CONFLICT DO UPDATE so re-extraction "
+            "recomputes keywords against current YAML patterns"
+        )
+
+    def test_matcher_invoked_for_each_image(self) -> None:
+        source = self._get_image_persist_source()
+        assert "match_nearby_text(" in source, (
+            "_persist_images_in_tx must call match_nearby_text() to compute detected_keywords"
+        )
+        assert "image.nearby_text" in source and "image.ocr_text" in source, (
+            "matcher must receive nearby_text + ocr_text concatenated"
+        )
+
+    def test_empty_matches_persist_as_null(self) -> None:
+        """` or None` ensures an empty list becomes NULL in SQL (not an empty array)."""
+        source = self._get_image_persist_source()
+        assert ") or None," in source, (
+            "Empty matcher result must collapse to None (NULL in SQL), not []"
+        )

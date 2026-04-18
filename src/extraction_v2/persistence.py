@@ -29,6 +29,7 @@ from src.extraction_v2.models import (
     Segment,
     Table,
 )
+from src.shared.keyword_config import match_nearby_text
 
 if TYPE_CHECKING:
     from src.extraction_v2.pipeline import PipelineResult
@@ -561,7 +562,8 @@ class V2PersistenceAdapter:
                 section_path, section_type,
                 classification, relevance_score,
                 ocr_text, ocr_table_id, chart_type, chart_data,
-                processed, confidence, requires_manual, created_at
+                processed, confidence, requires_manual,
+                detected_keywords, created_at
             )
             VALUES (
                 %(img_id)s, %(doc_id)s, %(segment_id)s, %(filename)s, %(file_path)s,
@@ -569,7 +571,8 @@ class V2PersistenceAdapter:
                 %(section_path)s, %(section_type)s,
                 %(classification)s, %(relevance_score)s,
                 %(ocr_text)s, %(ocr_table_id)s, %(chart_type)s, %(chart_data)s,
-                %(processed)s, %(confidence)s, %(requires_manual)s, NOW()
+                %(processed)s, %(confidence)s, %(requires_manual)s,
+                %(detected_keywords)s, NOW()
             )
             ON CONFLICT (img_id) DO UPDATE SET
                 segment_id = EXCLUDED.segment_id,
@@ -589,7 +592,8 @@ class V2PersistenceAdapter:
                 chart_data = EXCLUDED.chart_data,
                 processed = EXCLUDED.processed,
                 confidence = EXCLUDED.confidence,
-                requires_manual = EXCLUDED.requires_manual
+                requires_manual = EXCLUDED.requires_manual,
+                detected_keywords = EXCLUDED.detected_keywords
         """
 
         params_list = [
@@ -614,6 +618,9 @@ class V2PersistenceAdapter:
                 "processed": image.processed,
                 "confidence": image.confidence,
                 "requires_manual": image.requires_manual_capture,
+                "detected_keywords": match_nearby_text(
+                    ((image.nearby_text or "") + " " + (image.ocr_text or "")).strip()
+                ) or None,
             }
             for image in images
         ]
