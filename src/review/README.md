@@ -1,39 +1,25 @@
-# src/review — Shared Extraction Library + V1 Candidate Generator
+# src/review — Shared Extraction Library
 
-This package serves two distinct roles. Do not treat it as V1-only.
-
-## Role 1: Shared extraction library (consumed by V2 pipeline)
-
-These modules are imported by live V2 extraction stages and `src/shared/`.
-**Do not rename or move them without coordinating changes in the importers.**
+Utility modules consumed by the V2 extraction pipeline and the V2 web review
+layer. The package is named `review/` for historical reasons (the V1 candidate
+generator lived here); a full rename to `extraction_shared/` would churn ~70
+files and is not worth the diff noise.
 
 | Module | Exported symbols | Importer |
 |--------|-----------------|----------|
 | `false_positive_filter.py` | `FalsePositiveFilter`, `should_treat_as_percentage` | `src/extraction_v2/stages/false_positive_filter.py` |
-| `number_parsing.py` | `NumberMatch` | `src/extraction_v2/stages/value_binding.py` |
+| `number_parsing.py` | `NumberMatch`, `NumberParser`, `NUMBER_REGEX` | `src/extraction_v2/stages/value_binding.py`, `src/extraction_v2/stages/false_positive_filter.py` |
 | `respectively_parser.py` | `detect_respectively_pattern` | `src/extraction_v2/stages/value_binding.py` |
-| `boundary_detection.py` | `BoundaryDetector` | `src/shared/html_segmenter.py` |
+| `boundary_detection.py` | `BoundaryDetector`, `TextBoundary` | `src/shared/html_segmenter.py`, `keyword_matching.py`, `models.py` |
+| `keyword_matching.py` | `KeywordMatch`, `KeywordMatcher`, `METRIC_KEYWORDS` | V2 candidate-generation stage, tests |
+| `context_extraction.py` | `ContextExtractor` | V2 candidate-generation stage |
+| `marker_row_parser.py` | `MarkerRowParser` | V2 candidate-generation stage, keyword matching |
+| `table_structure.py` | `TableRowParser` | V2 candidate-generation stage |
+| `deduplicator.py` | `deduplicate_candidates` | V2 deduplication |
+| `models.py` | Shared enums (`DECISION_TYPES`, `KEYWORD_POSITIONS`, `IMAGE_*`, etc.), `CandidateFeatures`, `ReviewCandidate`, `SegmentDict` | `src/infra/db.py`, `src/web/routes/api_unified.py`, `src/web/routes/review_unified.py` |
+| `config.py` | `CandidateGenerationConfig`, `DEFAULT_CONFIG`, `DEFAULT_CONTEXT_WORDS` | Shared tuning constants |
+| `exceptions.py` | `CandidateGenerationError`, `SegmentProcessingError`, `NumberProcessingError` | Shared error types |
 
-## Role 2: V1 candidate generator (legacy)
+## History
 
-These modules generate candidates for the legacy `review_candidates` table.
-They are called by `src/gold_standard/fresh_extractor.py` and scripts under
-`scripts/generate_*candidates*.py`. They are **not** part of the V2 extraction
-path and are scheduled for eventual removal with the `review_candidates`
-table migration.
-
-| Module | Purpose |
-|--------|---------|
-| `candidate_generator.py` | Generates and inserts V1 review candidates |
-| `helpers.py` (`generate_candidates_for_filing`) | Per-filing V1 candidate generation |
-| `pattern_analyzer.py` | Reads `review_decisions` for pattern learning |
-| `confidence_scoring.py` | V1 confidence scores |
-| `feature_extractor.py` | V1 feature extraction |
-| `rule_applicator.py` | V1 rule-based filtering |
-
-## Why the package is named `review/`
-
-A full rename to `extraction_shared/` would churn ~70 files (mostly tests).
-The current name is retained; this README and the `__init__.py` docstring
-provide the canonical description. See
-`docs/architecture/v1-table-deprecation-plan.md` for the migration roadmap.
+Prior to `refactor(v1): retire review_candidates + source_segments + suppressed_candidates` (2026-04-18), this package also housed a V1 candidate generator (`candidate_generator.py`, `pattern_analyzer.py`, `helpers.py`, `rule_applicator.py`, `feature_extractor.py`, `confidence_scoring.py`, `statistical_tests.py`) which wrote to the now-dropped `review_candidates` and `review_decisions` tables. That code and its tests were removed; the V2 pipeline does not rely on them. If you find lingering references in `docs/archive/`, they are historical records.

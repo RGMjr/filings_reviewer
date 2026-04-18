@@ -367,18 +367,15 @@ Filing Metadata (CIK, accession number, form type)
 
 ## Database Schema
 
-### Core Tables (sql/01-08)
+### Core Tables (sql/01, sql/04)
 
 | Table | Purpose |
 |-------|---------|
 | `companies` | One row per issuer; CIK, name, ticker, industry |
 | `filings` | One row per SEC filing; classification flags, processing status |
-| `source_segments` | V1/legacy segment storage; still referenced by review tools |
-| `review_candidates` | Human review queue |
-| `review_decisions` | Completed human review decisions |
 | `metrics` | Canonical metric registry (metric_id, display_name, etc.) |
 
-### V2 Tables (sql/09_v2_schema.sql)
+### V2 Tables (sql/09_v2_schema.sql, sql/29, sql/31)
 
 | Table | Purpose |
 |-------|---------|
@@ -389,6 +386,8 @@ Filing Metadata (CIK, accession number, form type)
 | `v2_image_assets` | Extracted images with classification, OCR text, and chart data |
 | `v2_documents` | Filing-level processing metadata and status |
 | `v2_review_decisions` | Human review decisions linked to V2 facts |
+| `v2_image_review_decisions` | Human review decisions on image assets |
+| `v2_audit_log` | HTTP audit trail for V2 review routes (replaces V1 `review_audit_log`) |
 
 ### Key V2 Fact Columns
 
