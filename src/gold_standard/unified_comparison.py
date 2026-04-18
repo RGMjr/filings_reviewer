@@ -690,6 +690,7 @@ class UnifiedComparisonRunner:
             config = PipelineConfig(
                 enable_image_extraction=False,
                 enable_chart_extraction=False,
+                enable_chart_fact_bridge=False,
             )
             self._v2_text_pipeline = V2Pipeline(config=config)
         return self._v2_text_pipeline
@@ -912,11 +913,14 @@ class UnifiedComparisonRunner:
         """
         pipeline = self.v2_full_pipeline if enable_images else self.v2_text_pipeline
         try:
+            raw_filing_date = metadata.get("filing_date")
+            document_date = date.fromisoformat(raw_filing_date) if raw_filing_date else None
             result = pipeline.process(
                 html_path=filing_path,
                 filing_id=0,
                 cik=metadata.get("cik", ""),
                 accession_number=metadata.get("accession_number", ""),
+                document_date=document_date,
             )
             if not result.success:
                 logger.warning("V2 pipeline failed for %s: %s", company_name, result.error_message)
