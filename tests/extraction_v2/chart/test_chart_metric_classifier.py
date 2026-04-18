@@ -203,6 +203,86 @@ def test_annotation_scoring_capped_at_08(classifier: ChartMetricClassifier) -> N
     assert score_1 < 0.5
 
 
+def test_empty_axes_cohort_margin_chart_classifies_via_point_years(
+    classifier: ChartMetricClassifier,
+) -> None:
+    # Matches the real FTCH Order Contribution Margin chart (g607688g09d00.jpg):
+    # OCR returned empty title/axes but populated series with customer-type
+    # names and year x-values. nearby_text carries the "Order Contribution Margin"
+    # context from the filing caption.
+    chart = ChartData(
+        chart_type=ChartType.LINE,
+        title="",
+        y_axis_label="",
+        x_axis_label="",
+        series=[
+            ChartSeries(
+                name="Existing Consumers",
+                points=[
+                    DataPoint(x="2015", y=45.0, label="45%"),
+                    DataPoint(x="2016", y=46.0, label="46%"),
+                    DataPoint(x="2017", y=54.0, label="54%"),
+                ],
+            ),
+            ChartSeries(
+                name="All Consumers - Blended",
+                points=[
+                    DataPoint(x="2015", y=33.0, label="33%"),
+                    DataPoint(x="2016", y=36.0, label="36%"),
+                    DataPoint(x="2017", y=44.0, label="44%"),
+                ],
+            ),
+            ChartSeries(
+                name="New Consumers",
+                points=[
+                    DataPoint(x="2015", y=23.0, label="23%"),
+                    DataPoint(x="2016", y=26.0, label="26%"),
+                    DataPoint(x="2017", y=31.0, label="31%"),
+                ],
+            ),
+        ],
+    )
+    # nearby_text shape seen in the real filing DB: mentions
+    # "Order Contribution Margin" but without the customer-type keyword
+    # within 80 chars, so the YAML text patterns do NOT match. The
+    # classification must therefore clear the 0.6 threshold via the
+    # structural-signature bonus alone.
+    nearby_text = (
+        "Table of Contents Marketplace Order Contribution Margin "
+        "(% Adjusted Marketplace Revenue) Fulfilment To facilitate and grow "
+        "our platform, we provide fulfilment services to Marketplace "
+        "consumers and receive revenue from the provision of these services."
+    )
+    metric_id, score = classifier.classify(chart, nearby_text)
+    assert metric_id == "cm_gross_margin_by_cohort"
+    assert score >= 0.6
+
+
+def test_non_cohort_empty_axes_chart_still_rejected(
+    classifier: ChartMetricClassifier,
+) -> None:
+    # Regional revenue chart with years in x-values but non-cohort series names.
+    # Must still return None because no customer-type series and no margin gate.
+    chart = ChartData(
+        chart_type=ChartType.BAR,
+        title="",
+        y_axis_label="",
+        x_axis_label="",
+        series=[
+            ChartSeries(
+                name="North America",
+                points=[DataPoint(x="2019", y=100.0), DataPoint(x="2020", y=120.0)],
+            ),
+            ChartSeries(
+                name="Europe",
+                points=[DataPoint(x="2019", y=80.0), DataPoint(x="2020", y=95.0)],
+            ),
+        ],
+    )
+    metric_id, _score = classifier.classify(chart, "Revenue by region over time")
+    assert metric_id is None
+
+
 def test_ltv_cac_gate_accepts_common_phrasings() -> None:
     from src.extraction_v2.chart.metric_classifier import _metric_gate
 

@@ -20,6 +20,12 @@ _SUPPORTED_METRICS = (
 _MAX_POSSIBLE_RAW = 8.3
 _COHORT_YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 _COHORT_GATE_EXEMPT = frozenset({"cm_ltv_to_cac_ratio"})
+_CUSTOMER_TYPE_RE = re.compile(
+    r"\b(?:new|existing|returning|blended|all|acquired|prior|repeat)\b[^,.;]{0,40}"
+    r"\b(?:consumer|customer|member|subscriber|user|buyer|account|client)s?\b"
+    r"|\b(?:consumer|customer|member|subscriber|user|buyer|account|client)s?\s+(?:cohort|segment)\b",
+    re.IGNORECASE,
+)
 
 
 def _any_match(patterns: list[str], text: str) -> bool:
@@ -32,10 +38,20 @@ def _cohort_gate(chart: ChartData) -> bool:
     for field in (chart.title, chart.x_axis_label, chart.y_axis_label):
         if re.search(r"\b(?:cohort|vintage)\b", field, re.IGNORECASE):
             return True
+    # Fallback: fiscal year lives in point.x across multiple distinct years
+    # (e.g. FTCH Order Contribution Margin — customer-type series, year x-axis).
+    point_years: set[str] = set()
+    for s in chart.series:
+        for p in s.points:
+            m = _COHORT_YEAR_RE.search(str(p.x or ""))
+            if m:
+                point_years.add(m.group())
+    if len(point_years) >= 2 and any(_CUSTOMER_TYPE_RE.search(s.name) for s in chart.series):
+        return True
     return False
 
 
-def _metric_gate(metric_id: str, chart: ChartData) -> bool:
+def _metric_gate(metric_id: str, chart: ChartData, nearby_text: str = "") -> bool:
     if metric_id == "cm_balance_by_cohort":
         has_deposit_or_balance = re.search(
             r"\b(?:deposits?|balance)\b",
@@ -45,7 +61,25 @@ def _metric_gate(metric_id: str, chart: ChartData) -> bool:
         has_chart_type = chart.chart_type in (ChartType.BAR, ChartType.STACKED_BAR)
         return bool(has_deposit_or_balance and has_chart_type)
     if metric_id == "cm_gross_margin_by_cohort":
-        return bool(re.search(r"%|margin|contribution\s+margin", chart.y_axis_label, re.IGNORECASE))
+        if re.search(r"%|margin|contribution\s+margin", chart.y_axis_label, re.IGNORECASE):
+            return True
+        # Fallback for OCR outputs with missing y_axis_label: require margin /
+        # contribution keyword somewhere in chart text OR nearby_text, AND a
+        # percentage signal (point labels or axis).
+        text_blob = " ".join([
+            chart.title or "",
+            chart.x_axis_label or "",
+            chart.y_axis_label or "",
+            " ".join(s.name or "" for s in chart.series),
+            nearby_text[:1500] if nearby_text else "",
+        ])
+        has_margin = bool(
+            re.search(r"\b(?:margin|contribution)\b", text_blob, re.IGNORECASE)
+        )
+        has_percent = "%" in (chart.y_axis_label or "") or any(
+            "%" in (p.label or "") for s in chart.series for p in s.points
+        )
+        return has_margin and has_percent
     if metric_id == "cm_revenue_by_cohort":
         combined = chart.title + " " + chart.y_axis_label
         has_revenue_signal = bool(
@@ -92,18 +126,46 @@ def _score_metric(
     specific = specific_by_metric.get(metric_id, [])
     excl = exclusions.get(metric_id, [])
 
+    # When OCR returns a chart with no title/y_axis_label (the FTCH Order
+    # Contribution Margin case), fall back to the first ~200 chars of
+    # nearby_text as a pseudo-title so pattern matches can still score.
+    effective_title = chart.title if chart.title else nearby_text[:200]
+    title_fallback_used = not chart.title and bool(nearby_text)
+
     raw = 0.0
-    if specific and _any_match(specific, chart.title):
+    if specific and _any_match(specific, effective_title):
         raw += 3.0
-    if patterns and _any_match(patterns, chart.title):
+    if patterns and _any_match(patterns, effective_title):
         raw += 2.0
     if patterns and _any_match(patterns, chart.y_axis_label):
         raw += 1.5
-    if patterns and _any_match(patterns, chart.x_axis_label + " " + nearby_text[:1500]):
+    # Avoid double-counting nearby_text when it's already been promoted to
+    # title; compare against x_axis_label + empty when that promotion fired.
+    axis_near_text = chart.x_axis_label + " " + ("" if title_fallback_used else nearby_text[:1500])
+    if patterns and _any_match(patterns, axis_near_text):
         raw += 1.0
     if patterns:
         ann_hits = sum(1 for ann in chart.annotations if _any_match(patterns, ann.text))
         raw += min(0.8, 0.8 * ann_hits)
+    # Structural bonus: cohort-percentage chart with customer-type series
+    # (e.g. FTCH Order Contribution Margin) that lacks title/axes but is
+    # structurally a gross-margin-by-cohort chart.
+    if metric_id == "cm_gross_margin_by_cohort":
+        has_pct_labels = any(
+            "%" in (p.label or "") for s in chart.series for p in s.points
+        )
+        point_years = {
+            m.group()
+            for s in chart.series
+            for p in s.points
+            if (m := _COHORT_YEAR_RE.search(str(p.x or "")))
+        }
+        has_customer_type = any(_CUSTOMER_TYPE_RE.search(s.name) for s in chart.series)
+        if has_pct_labels and len(point_years) >= 2 and has_customer_type:
+            # Structural signature alone must clear the 0.6 threshold
+            # (≈4.98 raw), since charts of this shape often arrive with
+            # empty title/axes and no nearby-text pattern match.
+            raw += 5.5
     if excl and _any_match(excl, chart.title + " " + chart.y_axis_label):
         raw -= 5.0
 
@@ -134,10 +196,10 @@ class ChartMetricClassifier:
         candidates: list[tuple[str, float]] = []
         for mid in _SUPPORTED_METRICS:
             if mid in _COHORT_GATE_EXEMPT:
-                if _metric_gate(mid, chart):
+                if _metric_gate(mid, chart, nearby_text):
                     candidates.append((mid, scores[mid]))
             else:
-                if cohort_passed and _metric_gate(mid, chart):
+                if cohort_passed and _metric_gate(mid, chart, nearby_text):
                     candidates.append((mid, scores[mid]))
 
         if not candidates:
