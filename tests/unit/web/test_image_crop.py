@@ -61,16 +61,36 @@ def _data_dir_from_app_root(app) -> Path:
     return (project_root / "data").resolve()
 
 
+@pytest.fixture()
+def make_png_in_data_dir(app):
+    """
+    Write a throwaway PNG into the real project data/ dir (required by the
+    endpoint's security guard) and delete it on teardown so the working tree
+    stays clean. Returns a factory that records every path it creates.
+    """
+    data_dir = _data_dir_from_app_root(app)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    created: list[Path] = []
+
+    def _factory(filename: str) -> Path:
+        path = _make_test_png(data_dir, filename)
+        created.append(path)
+        return path
+
+    yield _factory
+
+    for path in created:
+        path.unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # Success path
 # ---------------------------------------------------------------------------
 
 
 class TestImageCropSuccess:
-    def test_returns_200(self, app, client, mock_db, tmp_path):
-        data_dir = _data_dir_from_app_root(app)
-        data_dir.mkdir(parents=True, exist_ok=True)
-        img_path = _make_test_png(data_dir, "test_chart.png")
+    def test_returns_200(self, client, mock_db, make_png_in_data_dir):
+        img_path = make_png_in_data_dir("test_chart.png")
 
         mock_db.query.return_value = [{"file_path": str(img_path)}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
@@ -78,10 +98,8 @@ class TestImageCropSuccess:
 
         assert resp.status_code == 200
 
-    def test_content_type_is_png(self, app, client, mock_db):
-        data_dir = _data_dir_from_app_root(app)
-        data_dir.mkdir(parents=True, exist_ok=True)
-        img_path = _make_test_png(data_dir, "test_chart2.png")
+    def test_content_type_is_png(self, client, mock_db, make_png_in_data_dir):
+        img_path = make_png_in_data_dir("test_chart2.png")
 
         mock_db.query.return_value = [{"file_path": str(img_path)}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
@@ -89,10 +107,8 @@ class TestImageCropSuccess:
 
         assert resp.content_type.startswith("image/png")
 
-    def test_response_body_is_valid_png(self, app, client, mock_db):
-        data_dir = _data_dir_from_app_root(app)
-        data_dir.mkdir(parents=True, exist_ok=True)
-        img_path = _make_test_png(data_dir, "test_chart3.png")
+    def test_response_body_is_valid_png(self, client, mock_db, make_png_in_data_dir):
+        img_path = make_png_in_data_dir("test_chart3.png")
 
         mock_db.query.return_value = [{"file_path": str(img_path)}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
