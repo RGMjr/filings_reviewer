@@ -2215,6 +2215,88 @@ class TestWordFormNumberParsing:
         assert result is not None
         value, unit, raw = result
         assert value == 1_000_000_000
+
+
+class TestWordNumberTimeUnitParsing:
+    """Tests for bare word-number + time-unit parsing (Issue #17).
+
+    Used for `cm_cac_payback_period` where the gold-standard value is expressed
+    as "six months" (value=6, unit=months). Gated to TIME_UNIT_VALUED_METRICS
+    so bare word-numbers elsewhere in filings don't bind to unrelated candidates.
+    """
+
+    def test_six_months_parsed_for_time_valued_metric(self) -> None:
+        """'six months' near a cac_payback candidate should bind to value=6."""
+        stage = ValueBindingStage()
+        text = "the payback period on CAC has been consistently less than six months."
+        kw_start = text.find("payback period on CAC")
+        kw_end = kw_start + len("payback period on CAC")
+        results = stage._find_numbers_in_proximity(
+            text, kw_start, kw_end, stage.proximity_window, metric_id="cm_cac_payback_period"
+        )
+        values = [r[1] for r in results]
+        raws = [r[3] for r in results]
+        assert 6.0 in values, f"expected 6.0 in values, got {values}"
+        assert any("six months" in r.lower() for r in raws), f"raw texts: {raws}"
+
+    def test_six_months_skipped_for_non_time_valued_metric(self) -> None:
+        """'six months' near an unrelated metric should NOT bind (FP guard)."""
+        stage = ValueBindingStage()
+        text = "the past six months have been strong for total customers"
+        kw_start = text.find("total customers")
+        kw_end = kw_start + len("total customers")
+        results = stage._find_numbers_in_proximity(
+            text, kw_start, kw_end, stage.proximity_window, metric_id="cm_customers_period_end"
+        )
+        values = [r[1] for r in results]
+        assert 6.0 not in values, f"word-number '6' should not bind to non-time metric; values={values}"
+
+    def test_time_unit_pattern_without_metric_id(self) -> None:
+        """No metric_id passed → no time-unit parsing (preserves existing behavior)."""
+        stage = ValueBindingStage()
+        text = "less than six months"
+        results = stage._find_numbers_in_proximity(text, 0, 10, 100)
+        values = [r[1] for r in results]
+        assert 6.0 not in values
+
+    def test_twelve_weeks_parsed(self) -> None:
+        """Other time units: 'twelve weeks' binds to 12."""
+        stage = ValueBindingStage()
+        text = "payback period on CAC was twelve weeks"
+        kw_start = text.find("payback period on CAC")
+        kw_end = kw_start + len("payback period on CAC")
+        results = stage._find_numbers_in_proximity(
+            text, kw_start, kw_end, stage.proximity_window, metric_id="cm_cac_payback_period"
+        )
+        values = [r[1] for r in results]
+        assert 12.0 in values
+
+    def test_bare_six_alone_not_parsed(self) -> None:
+        """Bare 'six' without a time unit is not a value — pattern requires the unit."""
+        stage = ValueBindingStage()
+        text = "payback period on CAC was six to seven total"
+        kw_start = text.find("payback period on CAC")
+        kw_end = kw_start + len("payback period on CAC")
+        results = stage._find_numbers_in_proximity(
+            text, kw_start, kw_end, stage.proximity_window, metric_id="cm_cac_payback_period"
+        )
+        raws = [r[3] for r in results]
+        assert not any(r.strip().lower() == "six" for r in raws)
+        assert not any(r.strip().lower() == "seven" for r in raws)
+
+    def test_sixth_does_not_match(self) -> None:
+        """Word boundary: 'sixth' must not match as 'six'."""
+        stage = ValueBindingStage()
+        text = "payback period on CAC in the sixth month exceeded target"
+        kw_start = text.find("payback period on CAC")
+        kw_end = kw_start + len("payback period on CAC")
+        results = stage._find_numbers_in_proximity(
+            text, kw_start, kw_end, stage.proximity_window, metric_id="cm_cac_payback_period"
+        )
+        values = [r[1] for r in results]
+        assert 6.0 not in values
+
+
 class TestTableScaleFactorCountMetrics:
     """Tests for decimal-gated count scaling in '(in thousands)' tables.
 

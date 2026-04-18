@@ -137,6 +137,16 @@ _V1_FINANCIAL_OVERRIDE_METRICS = frozenset({
     "cm_cac_payback_period",
 })
 
+# Metrics whose values are expressed in time units (days/weeks/months/years) and
+# thus legitimately use bare word-numbers like "six months" — without a scale
+# magnitude. The V1 spelled_out_no_magnitude rule would otherwise reject these.
+# See ValueBindingStage.TIME_UNIT_VALUED_METRICS in value_binding.py — the two
+# sets must stay consistent; both are kept local to their respective stages so
+# each change is reviewed against its own FP/binding surface.
+_V1_SPELLED_OUT_OVERRIDE_METRICS = frozenset({
+    "cm_cac_payback_period",
+})
+
 # Metrics where percent values need conjunction-clause gating (relaxed mode).
 # In transcript text like "TPV grew 50% and MAAs grew 30%", both values
 # fall in the 400-char proximity window, but only "30%" belongs to MAU.
@@ -2151,6 +2161,20 @@ class FalsePositiveFilterStage:
                         and reason.startswith("financial_line_item")
                         and (metric_id in _V1_FINANCIAL_OVERRIDE_METRICS
                              or bv.binding_confidence >= _SOFT_RULE_CONFIDENCE_FLOOR)
+                    ):
+                        is_fp = False
+                        reason = None
+
+                    # Override V1 spelled_out_no_magnitude for time-unit-valued metrics.
+                    # Bare word-numbers like "six months" are legitimate values for
+                    # cm_cac_payback_period (gold standard contains "six months" → value=6).
+                    # The V2 value_binding stage only emits such bindings when the candidate
+                    # metric is in TIME_UNIT_VALUED_METRICS, so this override is safe —
+                    # the rule still fires for every other metric's spelled-out numbers.
+                    if (
+                        is_fp
+                        and reason == "spelled_out_no_magnitude"
+                        and metric_id in _V1_SPELLED_OUT_OVERRIDE_METRICS
                     ):
                         is_fp = False
                         reason = None

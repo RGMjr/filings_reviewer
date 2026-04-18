@@ -160,6 +160,29 @@ class ValueBindingStage:
         re.IGNORECASE | re.VERBOSE,
     )
 
+    # Word-number + time-unit pattern ("six months", "twelve weeks", etc.).
+    # Used ONLY for metrics in TIME_UNIT_VALUED_METRICS so that bare word-numbers
+    # elsewhere in a filing (e.g., "in the past six months" as a period reference)
+    # don't bind to unrelated candidates. Requires the time unit as a word boundary
+    # on both sides so "six" alone or "sixth" won't match.
+    WORD_NUMBER_TIME_PATTERN = re.compile(
+        r"""
+        \b
+        (?P<word_num>one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)
+        \s+
+        (?P<time_unit>days?|weeks?|months?|years?|quarters?)
+        \b
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+
+    # Metrics whose gold values are expressed in time units (days/weeks/months/years/quarters).
+    # Only candidates for these metrics get the WORD_NUMBER_TIME_PATTERN parser run on their
+    # proximity window. Widening this set requires re-checking for FP risk across the GS suite.
+    TIME_UNIT_VALUED_METRICS: frozenset[str] = frozenset({
+        "cm_cac_payback_period",
+    })
+
     def __init__(self, proximity_window: int = 100) -> None:
         """
         Initialize the value binding stage.
@@ -722,7 +745,9 @@ class ValueBindingStage:
             return []
         kw_end = kw_start + len(keyword)
 
-        numbers = self._find_numbers_in_proximity(text, kw_start, kw_end, self.proximity_window)
+        numbers = self._find_numbers_in_proximity(
+            text, kw_start, kw_end, self.proximity_window, metric_id=candidate.metric_id
+        )
         if not numbers:
             return self._bind_respectively_pattern(candidate, cell)
 
@@ -887,7 +912,9 @@ class ValueBindingStage:
 
         effective_prox = proximity_chars if proximity_chars is not None else self.proximity_window
         window_start = max(0, match_start - effective_prox)
-        numbers = self._find_numbers_in_proximity(text, match_start, match_end, effective_prox)
+        numbers = self._find_numbers_in_proximity(
+            text, match_start, match_end, effective_prox, metric_id=candidate.metric_id
+        )
 
         if not numbers:
             return None
@@ -1247,6 +1274,7 @@ class ValueBindingStage:
         match_start: int,
         match_end: int,
         proximity_chars: int,
+        metric_id: str | None = None,
     ) -> list[tuple[re.Match[str], float, Unit, str]]:
         """
         Find numbers within proximity of a match.
@@ -1256,6 +1284,9 @@ class ValueBindingStage:
             match_start: Start of keyword match
             match_end: End of keyword match
             proximity_chars: Max characters to search
+            metric_id: Optional canonical metric_id of the candidate being bound.
+                Used to enable metric-gated parsers (e.g., bare word-number +
+                time-unit binding for `cm_cac_payback_period`).
 
         Returns:
             List of (match, value, unit, raw_text) tuples
@@ -1281,7 +1312,33 @@ class ValueBindingStage:
                 value, unit, raw = parsed
                 results.append((match, value, unit, raw))
 
+        # Bare word-number + time-unit parsing ("six months", "twelve weeks").
+        # Gated to metrics whose gold values are time-unit-based so bare word-numbers
+        # elsewhere in filings don't get bound as values by mistake.
+        if metric_id and metric_id in self.TIME_UNIT_VALUED_METRICS:
+            for match in self.WORD_NUMBER_TIME_PATTERN.finditer(window_text):
+                parsed = self._parse_word_number_time(match)
+                if parsed:
+                    value, unit, raw = parsed
+                    results.append((match, value, unit, raw))
+
         return results
+
+    def _parse_word_number_time(
+        self, match: re.Match[str]
+    ) -> tuple[float, Unit, str] | None:
+        """Parse a word-number + time-unit match (e.g., 'six months' → 6).
+
+        Returns (value, unit, raw) where unit is Unit.COUNT (the number itself is
+        a scalar; the time-unit context lives in the metric definition, not the Unit
+        enum, which doesn't have a TIME_PERIOD variant).
+        """
+        word = match.group("word_num").lower()
+        value = self.WORD_NUMBERS.get(word)
+        if value is None:
+            return None
+        raw = match.group().strip()
+        return float(value), Unit.COUNT, raw
 
     def _parse_number(self, text: str) -> tuple[float, Unit, str] | None:
         """Parse a number from text.
