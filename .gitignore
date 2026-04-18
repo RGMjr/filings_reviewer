@@ -35,6 +35,9 @@ data/transcripts/
 # Downloaded investor presentations (use scripts/ingest_presentations.py to fetch)
 data/presentations/
 
+# Ad-hoc chart debug artifacts (scratch files produced during chart bridge development)
+data/test_chart*.png
+
 # But keep fixture metadata
 !data/fixtures/*.json
 
