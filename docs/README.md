@@ -359,6 +359,8 @@ Workflow commands for common tasks:
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 
+> **Note:** Only `/doc-audit`, `/metric-lifecycle`, and `/project-tutorial` are project-local command files in `.claude/commands/`. The other entries above (`/task-create`, `/task-run`, `/ralph`, `/commit`, `/merge-check`, `/ci-fix`, `/plan-execute`, `/plan-review`) are delivered via Claude Code skills/plugins rather than project-local files, so they won't appear under `.claude/commands/`.
+
 ### Skills (`.claude/skills/`)
 
 Internal prompt templates for consistent, efficient task execution. Skills reduce context usage and ensure consistency.
