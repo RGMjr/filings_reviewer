@@ -97,7 +97,11 @@ class TestGetImageReviewCandidatesForFilingV2:
         assert float(row["cohort_confidence"]) == pytest.approx(0.9)
         assert row["is_decorative"] is False
         assert row["detection_tier"] == "tier_1_cohort"  # chart + relevance >= 0.6
-        assert "1234567/000123456724000001/chart.jpg" in row["image_url"]
+        assert row["image_url"] == "/images/cache/1234567/000123456724000001/chart.jpg"
+        assert row["image_src_url"] == (
+            "https://www.sec.gov/Archives/edgar/data/"
+            "1234567/000123456724000001/chart.jpg"
+        )
         # decision fields NULL when no decision exists
         assert row["image_decision_id"] is None
         assert row["decision"] is None

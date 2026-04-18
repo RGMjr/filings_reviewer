@@ -169,6 +169,17 @@ MOCK_AVAILABLE_METRICS = [
     'cm_gross_revenue_retention',
 ]
 
+MOCK_ALL_METRICS = [
+    {'metric_id': 'cm_net_revenue_retention', 'display_name': 'Net Revenue Retention'},
+    {'metric_id': 'cm_gross_revenue_retention', 'display_name': 'Gross Revenue Retention'},
+    {'metric_id': 'cm_customer_retention_rate', 'display_name': 'Customer Retention Rate'},
+    {'metric_id': 'cm_total_customers', 'display_name': 'Total Customers'},
+    {'metric_id': 'cm_arpu', 'display_name': 'Average Revenue Per User'},
+    {'metric_id': 'cm_churn_rate', 'display_name': 'Churn Rate'},
+    {'metric_id': 'cm_customer_acquisition_cost', 'display_name': 'Customer Acquisition Cost'},
+    {'metric_id': 'cm_lifetime_value_per_customer', 'display_name': 'Lifetime Value per Customer'},
+]
+
 MOCK_CURRENT_FILTERS = {
     'status': 'all',
     'metric': 'all',
@@ -268,6 +279,7 @@ def _shared_template_vars(active_tab='text', current_fact=_UNSET, existing_decis
         current_fact=current_fact,
         existing_decision=existing_decision,
         available_metrics=MOCK_AVAILABLE_METRICS,
+        all_metrics=MOCK_ALL_METRICS,
         current_filters=MOCK_CURRENT_FILTERS,
         total_facts=len(facts),
         total_facts_unfiltered=len(MOCK_FACTS),

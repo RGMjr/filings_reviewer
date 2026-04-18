@@ -231,7 +231,7 @@ curl -H "X-API-Key: $API_KEY" "$BASE_URL/api/review/candidates?limit=1"
 
 ### Image storage — resolved
 
-Chart images are cached in PostgreSQL (`image_cache` table in Neon) and persist across Render redeploys. The browser loads images directly from SEC EDGAR URLs and falls back to `/images/cache/<cik>/<accession_no>/<filename>` if SEC EDGAR is unavailable. The proxy route lazily populates the cache on first fetch.
+Chart images are cached in PostgreSQL (`image_cache` table in Neon) and persist across Render redeploys. The browser always loads images via `/images/cache/<cik>/<accession_no>/<filename>`; the proxy route serves cached bytes on hit and lazily fetches from SEC EDGAR (with the server-side `SEC_USER_AGENT`) on miss. The original SEC EDGAR URL is exposed as `image_src_url` for the "Open in SEC EDGAR" fallback link in the review UI.
 
 ### LLM cache — resolved
 

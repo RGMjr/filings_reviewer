@@ -28,7 +28,6 @@ from flask import (
 )
 
 from src.infra.db import DatabaseAdapter
-from src.infra.sec_client import SECClient
 from src.review.models import (
     IMAGE_CHART_TYPE_LABELS,
     IMAGE_CHART_TYPES,
@@ -331,24 +330,16 @@ def review_filing(filing_id: int):
                 "reviewer_id": current_fact.get("reviewer_id"),
             }
 
-        # Resolve source document URL for the "View source" link.
-        sec_filing_url = None
-        if document_type == "sec_filing" and filing.get("cik"):
-            # SEC filings: use the latest S-1/S-1/A for the company so the
-            # link always points to the most current registration statement.
-            try:
-                sec_client = SECClient()
-                latest = sec_client.get_latest_registration_filing(filing["cik"])
-                if latest:
-                    sec_filing_url = latest.primary_doc_url
-            except Exception:
-                pass  # Non-fatal — link just won't appear
-        elif document_type == "investor_presentation":
-            # Presentations: use sec_html_url (8-K filing page) if available,
-            # otherwise fall back to the EDGAR filing directory.
-            sec_filing_url = filing.get("sec_html_url")
-            if not sec_filing_url and filing.get("cik") and filing.get("accession_number"):
-                sec_filing_url = _build_sec_directory_url(filing["cik"], filing["accession_number"])
+        # Resolve source document URL for the "View source" link — always the
+        # filing under review, not the company's latest registration.
+        sec_filing_url = filing.get("sec_html_url")
+        if (
+            not sec_filing_url
+            and document_type == "investor_presentation"
+            and filing.get("cik")
+            and filing.get("accession_number")
+        ):
+            sec_filing_url = _build_sec_directory_url(filing["cik"], filing["accession_number"])
 
         # Current filter state
         current_filters = {

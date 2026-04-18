@@ -1509,10 +1509,14 @@ class DatabaseAdapter:
         f.company_id,
         v.filename,
         v.filename AS image_src,
-        'https://www.sec.gov/Archives/edgar/data/'
+        '/images/cache/'
             || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
             || '/' || REPLACE(f.accession_number, '-', '')
             || '/' || v.filename AS image_url,
+        'https://www.sec.gov/Archives/edgar/data/'
+            || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
+            || '/' || REPLACE(f.accession_number, '-', '')
+            || '/' || v.filename AS image_src_url,
         v.width AS image_width,
         v.height AS image_height,
         v.nearby_text AS preceding_text,

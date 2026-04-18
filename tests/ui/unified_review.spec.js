@@ -477,19 +477,21 @@ test.describe('Correct Form', () => {
     await expect(page.locator('#reject-form')).toBeHidden();
   });
 
-  test('metric select shows current metric as default option', async ({ page }) => {
+  test('metric input shows current metric as placeholder', async ({ page }) => {
     await page.goto('/');
     await page.locator('#btn-correct').click();
-    const defaultOption = page.locator('#correct-metric option[value=""]');
-    await expect(defaultOption).toContainText('Keep current: cm_net_revenue_retention');
+    await expect(page.locator('#correct-metric')).toHaveAttribute(
+      'placeholder', 'Keep current: cm_net_revenue_retention'
+    );
   });
 
-  test('metric select has other available metrics', async ({ page }) => {
+  test('metric input is bound to the all-metrics datalist for search', async ({ page }) => {
     await page.goto('/');
     await page.locator('#btn-correct').click();
-    const options = page.locator('#correct-metric option');
-    // "" (keep current) + 4 other metrics (not the current one)
-    await expect(options).toHaveCount(5);
+    await expect(page.locator('#correct-metric')).toHaveAttribute('list', 'all-metrics-datalist');
+    // Datalist populated from all active metrics (not filing-scoped subset)
+    const options = page.locator('#all-metrics-datalist option');
+    await expect(await options.count()).toBeGreaterThan(0);
   });
 
   test('corrected value input is present', async ({ page }) => {
@@ -863,7 +865,7 @@ test.describe('Decision Submission', () => {
 
     await page.goto('/');
     await page.locator('#btn-correct').click();
-    await page.locator('#correct-metric').selectOption('cm_arpu');
+    await page.locator('#correct-metric').fill('cm_arpu');
     await page.locator('#correct-value').fill('120');
     await page.locator('#correct-form button.btn-primary').click();
 
