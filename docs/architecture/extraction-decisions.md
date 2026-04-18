@@ -92,10 +92,10 @@ When keywords from different metrics overlap:
 Canonical metric IDs can have aliases for gold standard compatibility:
 - Aliases defined in `config/metric_keywords.yaml` under each metric's `aliases` field
 - Functions in `keyword_config.py`: `get_aliases()`, `resolve_to_canonical()`, `get_all_equivalent_ids()`, `metrics_are_equivalent()`
-- Used by `validate_against_gold_standard.py` for accurate precision/recall measurement
+- Used by `src/gold_standard/v2_validator.py` for accurate precision/recall measurement
 - System always generates canonical IDs; aliases only used for comparison/validation
 
-**Implementation**: `src/shared/keyword_config.py`, `scripts/validate_against_gold_standard.py`
+**Implementation**: `src/shared/keyword_config.py`, `src/gold_standard/v2_validator.py`
 
 ---
 

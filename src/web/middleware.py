@@ -78,18 +78,17 @@ def register_timing(bp: Blueprint) -> None:
 
 def insert_audit_log_entry(
     response: Any,
-    candidate_id: int | None = None,
     filing_id: int | None = None,
     query_params: dict | None = None,
 ) -> Any:
     """
-    Insert an audit log entry for the current request.
+    Insert a v2_audit_log entry for the current request.
 
     Extracts common fields (timing, session, IP, user agent, route) automatically.
-    Callers supply the blueprint-specific context (candidate_id, filing_id, query_params).
+    Callers supply the blueprint-specific context (filing_id, query_params).
 
     Returns the response unchanged so it can be used in after_request hooks:
-        return insert_audit_log_entry(response, candidate_id=..., ...)
+        return insert_audit_log_entry(response, filing_id=..., ...)
     """
     from src.web.app import get_db
 
@@ -107,7 +106,6 @@ def insert_audit_log_entry(
             http_method=request.method,
             url_path=request.path,
             filing_id=filing_id,
-            candidate_id=candidate_id,
             query_params=query_params,
             response_status=response.status_code,
             response_time_ms=response_time_ms,

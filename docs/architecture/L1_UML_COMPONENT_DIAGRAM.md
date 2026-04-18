@@ -1,4 +1,4 @@
-# L1 UML Component Diagram - Filings Reviewer System
+# L1 UML Component Diagram - CMASB Disclosures Review System
 
 ## PlantUML Syntax (copy into PlantUML Editor)
 
@@ -15,7 +15,7 @@ skinparam component {
     borderColor #333
 }
 
-package "Filings Reviewer System" {
+package "CMASB Disclosures Review System" {
     package "Infrastructure Layer" {
         component [Database Adapter] as db_adapter <<infrastructure>>
         component [SEC Client] as sec_client <<infrastructure>>
@@ -58,7 +58,6 @@ package "Filings Reviewer System" {
     package "Validation & Testing" {
         component [Gold Standard] as gold_standard <<testing>>
         component [V2 Validator] as v2_validator <<testing>>
-        component [Fresh Extractor] as fresh_extractor <<testing>>
     }
 
     package "Configuration" {
@@ -117,7 +116,6 @@ llm_cache --> postgres : stores cache
 
 gold_standard --> v2_validator : validates
 v2_validator --> extraction_v2 : compares
-fresh_extractor --> extraction_v2 : extracts
 
 config --> v2_stages : keyword patterns
 

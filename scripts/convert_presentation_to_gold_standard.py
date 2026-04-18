@@ -129,7 +129,7 @@ def parse_sec_url_local(url: str):
 
 
 def normalize_company_for_path(company_name: str) -> str:
-    """Match the logic in fresh_extractor._normalize_company_for_path."""
+    """Normalize a company name for use in a path segment (spaces and dots → underscore)."""
     normalized = company_name.replace(" ", "_").replace(".", "_")
     while "__" in normalized:
         normalized = normalized.replace("__", "_")

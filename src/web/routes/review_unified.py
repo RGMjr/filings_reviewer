@@ -85,7 +85,6 @@ def _log_request_complete(response):
             "http_method": request.method,
             "url_path": request.path,
             "filing_id": request.view_args.get("filing_id") if request.view_args else None,
-            "candidate_id": None,
             "query_params": dict(request.args) if request.args else None,
             "response_status": response.status_code,
             "response_time_ms": response_time_ms,

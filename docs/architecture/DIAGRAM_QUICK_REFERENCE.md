@@ -139,7 +139,7 @@ Styles by function:
 
 C4 model has 4 levels (we document L1):
 
-**L1: System Context** (Filings Reviewer as a black box)
+**L1: System Context** (CMASB Disclosures Review as a black box)
 - What: Users + External Systems + Our System
 - Who: Everyone
 - When: Initial requirements, executive presentations

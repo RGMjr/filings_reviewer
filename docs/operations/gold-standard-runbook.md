@@ -6,8 +6,7 @@ Three validation pipelines maintain independent baselines:
 
 | Pipeline | Status | Baseline file |
 |----------|--------|---------------|
-| Pre-commit regression guard (`validate_against_gold_standard.py`, SEC + presentation, 15 companies) | Active | `data/gold_standard/baseline_metrics.json` |
-| V2 SEC-only diagnostic (`v2_validator.py`, 15 companies) | Active | `data/gold_standard/v2_baseline.json` |
+| V2 SEC extraction (`v2_validator.py`, 15 companies) — pre-commit regression guard | Active | `data/gold_standard/v2_baseline.json` |
 | Transcript | Active | `data/transcript_gold_standard/transcript_baseline_{split}.json` |
 | Presentation | Active | `data/presentation_results/presentation_baseline.json` |
 
@@ -37,25 +36,9 @@ The **gold standard CSV** (`data/gold_standard/golden_set_260408.csv`) is the hu
 
 ---
 
-## 2. Updating the Pre-commit Regression Baseline
+## 2. Updating the V2 Baseline
 
-Used by `validate_against_gold_standard.py` as the pre-commit regression guard (covers SEC + presentation data, 15 companies).
-
-### Command
-
-```bash
-python3 scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
-```
-
-### Files to commit
-
-```
-data/gold_standard/baseline_metrics.json
-```
-
----
-
-## 3. Updating the V2 Baseline
+The V2 validator is the pre-commit regression guard (covers SEC data, 15 companies).
 
 ### Command
 
@@ -66,7 +49,7 @@ python3 -m src.gold_standard.v2_validator --update-baseline --description "Brief
 ### Verification
 
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator --fail-on-regression
 ```
 
 ### Files to commit
@@ -77,7 +60,7 @@ data/gold_standard/v2_baseline.json
 
 ---
 
-## 4. Updating Transcript Baselines
+## 3. Updating Transcript Baselines
 
 ### Commands
 
@@ -97,7 +80,7 @@ pytest -m transcript_gold_standard -v
 
 ---
 
-## 5. Updating the Presentation Baseline
+## 4. Updating the Presentation Baseline
 
 ### Command
 
@@ -120,17 +103,17 @@ pytest -m presentation_gold_standard -v
 
 ---
 
-## 6. Full Validation Sweep
+## 5. Full Validation Sweep
 
 Run before committing any extraction or keyword config change:
 
 ```bash
-python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline && python3 -m src.gold_standard.v2_validator && python3 scripts/validate_transcript_extraction.py --split tuning --baseline --verbose
+python3 -m src.gold_standard.v2_validator && python3 scripts/validate_transcript_extraction.py --split tuning --baseline --verbose
 ```
 
 ---
 
-## 7. Updating the Chart-Pipeline Baseline
+## 6. Updating the Chart-Pipeline Baseline
 
 After Phase 1 or later chart-bridge work delivers new recall for chart-embedded metrics:
 
@@ -143,7 +126,7 @@ Then commit `data/gold_standard/v2_baseline.json` separately with message `chore
 
 ---
 
-## 8. Reading V2 Validator Output
+## 7. Reading V2 Validator Output
 
 After each validator run (`v2_validator.py`), output includes a Tier breakdown followed by a chart confirmation line:
 
@@ -160,6 +143,6 @@ A soft `WARNING` is printed if `pct < 30%`. This warning is not a hard failure a
 
 ---
 
-## 9. Phase 2 Chart Fixture Recording Procedure
+## 8. Phase 2 Chart Fixture Recording Procedure
 
 Phase 2 fixtures are hand-authored JSON files in `tests/fixtures/charts/`. To add a new fixture: create `<NAME>.chart_data.json` matching the `ChartData` schema (`chart_type`, `title`, `x_axis_label`, `y_axis_label`, `series[]`, `annotations[]`). Series point values should represent what Vision OCR would return. No API calls required.

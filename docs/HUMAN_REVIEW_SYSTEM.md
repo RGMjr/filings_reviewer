@@ -153,7 +153,7 @@ WHERE pattern_id = 123;
 Run gold standard validation to measure extraction improvement after rules are applied:
 
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator
 ```
 
 To export review decisions for offline analysis:

@@ -67,6 +67,10 @@ MIGRATIONS = [
     "28_extend_v2_image_assets_review.sql",
     "29_create_v2_image_review_decisions.sql",
     "30_drop_v1_image_review.sql",
+    # NOTE: 31_drop_v1_review_tables.sql is part of in-flight V1-retirement
+    # work; it registers itself in a separate commit. 32 below must NOT depend
+    # on any schema object 31 drops (it only ALTERs v2_image_assets, untouched).
+    "32_add_detected_keywords_to_v2_image_assets.sql",
 ]
 
 BOOTSTRAP_DDL = """

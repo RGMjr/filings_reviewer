@@ -106,10 +106,10 @@ Before promoting V2 to primary, validate extraction quality against the gold sta
 ### Run Gold Standard Validation
 
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator
 ```
 
-The test suite prints per-company and aggregate scores. Check the final summary block:
+The validator prints per-company and aggregate scores. Check the final summary block:
 
 ```
 === Gold Standard Summary ===
@@ -122,9 +122,7 @@ F1:        XX.X%  (threshold: >=65%)
 **No-Go** if any threshold is missed — investigate regressions before proceeding. See
 `.claude/rules/gold-standard.md` for the full regression workflow.
 
-Current baseline scores are saved to `data/gold_standard/v2_baseline.json`. Pass
-`--gold-standard-mode=baseline` to compare against the saved baseline rather than
-recomputing fresh extraction.
+Current baseline scores are saved to `data/gold_standard/v2_baseline.json`.
 
 ---
 
@@ -261,7 +259,7 @@ psql $DATABASE_URL -c "
 ### Step 2: Validate Gold Standard
 
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator
 ```
 
 **Gate**: All three thresholds must pass (P>=75%, R>=55%, F1>=65%). If any fail, stop and investigate before proceeding.
@@ -390,7 +388,7 @@ TRUNCATE v2_quality_scores, v2_metric_facts, v2_metric_definitions,
 | `run_v2_extraction.py` | Single filing V2 extraction | `--filing-id`, `--accession`, `--dry-run`, `--verbose` |
 | `batch_v2_extraction.py` | Batch parallel V2 extraction | `--workers`, `--limit`, `--resume-from`, `--dry-run` |
 | `apply_migrations.py` | Apply DB schema migrations | (no flags) |
-| `validate_against_gold_standard.py` | Compare vs gold standard | `--all`, `--company`, `--mode fresh` |
+| `src.gold_standard.v2_validator` (module) | Compare vs gold standard | `--companies`, `--limit`, `--workers`, `--update-baseline` |
 | `run_review_server.py` | Start Flask review interface | (runs on port 5000) |
 
 ---

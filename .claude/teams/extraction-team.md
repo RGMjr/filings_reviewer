@@ -43,7 +43,7 @@ Task(
     prompt="""
     The extraction-implementer just completed changes. Validate:
 
-    1. Run: python3 scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+    1. Run: python3 -m src.gold_standard.v2_validator
     2. Report precision/recall/F1 deltas
     3. If regression >1%: diagnose root cause with file:line references
     4. Status: PASS or REGRESSION DETECTED

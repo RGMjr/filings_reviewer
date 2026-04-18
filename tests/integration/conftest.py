@@ -612,53 +612,6 @@ def mock_sec_client_with_fixtures(all_fixtures):
 
 
 # =============================================================================
-# Gold Standard Regression Test Fixtures
-# =============================================================================
-
-# Default baseline path
-GOLD_STANDARD_BASELINE_PATH = Path(__file__).parent.parent.parent / "data" / "gold_standard" / "baseline_metrics.json"
-
-
-@pytest.fixture(scope="module")
-def gold_standard_mode(request):
-    """Return the gold standard extraction mode from CLI options."""
-    return request.config.getoption("--gold-standard-mode")
-
-
-@pytest.fixture(scope="module")
-def gold_standard_tolerance(request):
-    """Return the regression tolerance from CLI options."""
-    return request.config.getoption("--gold-standard-tolerance")
-
-
-@pytest.fixture(scope="module")
-def gold_standard_update_baseline(request):
-    """Return whether to update baseline instead of comparing."""
-    return request.config.getoption("--gold-standard-update-baseline")
-
-
-@pytest.fixture(scope="module")
-def baseline_path():
-    """Return the path to the baseline metrics file."""
-    return GOLD_STANDARD_BASELINE_PATH
-
-
-@pytest.fixture(scope="module")
-def baseline_metrics(baseline_path):
-    """
-    Load baseline metrics from file.
-
-    Returns None if baseline file doesn't exist (allows tests to skip gracefully).
-    """
-    from src.gold_standard.baseline import load_baseline
-
-    if not baseline_path.exists():
-        return None
-
-    return load_baseline(baseline_path)
-
-
-# =============================================================================
 # V2 Gold Standard Regression Test Fixtures
 # =============================================================================
 

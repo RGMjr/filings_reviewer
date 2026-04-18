@@ -10,9 +10,9 @@ paths:
 | Type | Examples | Purpose |
 |------|----------|---------|
 | Ingestion | `ingest_transcripts.py`, `ingest_presentations.py`, `ingest_all.py` | Batch document ingestion |
-| Validation | `validate_transcript_extraction.py`, `validate_presentation_extraction.py`, `validate_against_gold_standard.py` | R/P/F1 benchmarking |
+| Validation | `validate_transcript_extraction.py`, `validate_presentation_extraction.py`, `src.gold_standard.v2_validator` (python module) | R/P/F1 benchmarking |
 | Batch | `batch_v2_extraction.py`, `batch_download_filings.py` | Bulk filing operations |
-| Export | `export_review_decisions.py`, `export_image_decisions.py` | Export to CSV/JSON |
+| Export | `export_image_decisions.py` | Export to CSV/JSON |
 | Migration | `apply_migrations.py`, `apply_all_migrations.py` | DB schema migration |
 | Preannotate | `preannotate_presentations.py`, `preannotate_transcript.py` | Generate gold standard candidates |
 

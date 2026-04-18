@@ -86,7 +86,7 @@ For each lesson, follow this pattern:
 3. `CLAUDE.md` — read the "Metric Priority Tiers" section
 4. `config/metric_keywords.yaml` — search for `tier:` fields and show examples
 
-**Walk through:** Explain the validation command (`pytest -m gold_standard --gold-standard-mode=fresh -v`), what it compares against, and what happens when a regression is detected.
+**Walk through:** Explain the validation command (`python3 -m src.gold_standard.v2_validator`), what it compares against, and what happens when a regression is detected.
 
 **Highlight:**
 - Tier 1 regression = blocker, must fix before commit. Tier 2 regression = acceptable if Tier 1 improves.

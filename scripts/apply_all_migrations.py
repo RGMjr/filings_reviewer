@@ -84,6 +84,7 @@ MIGRATION_ORDER = [
     "28_extend_v2_image_assets_review.sql",
     "29_create_v2_image_review_decisions.sql",
     "30_drop_v1_image_review.sql",
+    "31_drop_v1_review_tables.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.

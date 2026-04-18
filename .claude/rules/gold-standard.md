@@ -1,6 +1,5 @@
 ---
 paths:
-  - "scripts/validate_against_gold_standard.py"
   - "src/gold_standard/**"
   - "data/gold_standard/**"
   - "data/presentation_gold_standard/**"
@@ -16,22 +15,21 @@ paths:
 - `src/extraction_v2/` modules (active V2 pipeline)
 - `src/shared/html_segmenter.py` or `src/shared/models.py` (HTMLSegmenter and SourceSegment)
 - `src/shared/keyword_config.py` or `src/shared/models.py`
-- `src/review/candidate_generator.py`
 - `src/review/keyword_matching.py`
 
 ## Validation Workflow
 
 ### 1. Quick Check (during development)
 ```bash
-python scripts/validate_against_gold_standard.py --all --mode fresh --baseline
+python3 -m src.gold_standard.v2_validator --limit 3 --workers 1
 ```
 Review delta: positive = improvement, negative = regression.
 
 ### 2. Formal Validation (before commit)
 ```bash
-pytest -m gold_standard --gold-standard-mode=fresh -v
+python3 -m src.gold_standard.v2_validator --fail-on-regression
 ```
-All tests must pass. Regressions cause test failures.
+Non-zero exit indicates a regression.
 
 ### 3. If Regression Detected
 
@@ -51,19 +49,13 @@ For any regression:
 - Check if trade-off is intentional (precision vs recall)
 - If unintentional on Tier 1, fix before committing
 
-### 4. Update Baseline (after intentional changes)
-```bash
-python scripts/validate_against_gold_standard.py --all --mode fresh --update-baseline
-```
-Commit the updated `data/gold_standard/baseline_metrics.json`.
-
-### 5. Update V2 Baseline (after intentional V2 changes)
+### 4. Update V2 Baseline (after intentional changes)
 ```bash
 python3 -m src.gold_standard.v2_validator --update-baseline --description "Rationale"
 ```
 Commit the updated `data/gold_standard/v2_baseline.json`.
 
-### 6. Subsetting during iteration
+### 5. Subsetting during iteration
 
 When tuning a single metric or debugging one filing, run only a subset:
 ```bash
@@ -77,14 +69,14 @@ python3 -m src.gold_standard.v2_validator --limit 3 --workers 1
 
 ## Key Metrics
 
-- **Precision**: % of generated candidates that are correct
+- **Precision**: % of extracted facts that are correct
 - **Recall**: % of gold standard metrics that were found
 - **F1**: Harmonic mean of precision and recall
 
 ## Thresholds
 
 - Regression tolerance: 1% (configurable via `--tolerance`)
-- Tests fail if any metric drops below baseline - tolerance
+- Validator fails if any metric drops below baseline - tolerance
 - **Tier-aware policy:** Tier 1 regressions are blockers; Tier 2 regressions are acceptable trade-offs (see "If Regression Detected" above)
 - Tier definitions: `config/metric_keywords.yaml` (`tier:` field per metric)
 
@@ -118,12 +110,10 @@ python3 scripts/validate_transcript_extraction.py --split test --save-baseline
 
 ## Known Quirks
 
-**SEC validator requires DB:** `validate_against_gold_standard.py --all --mode fresh --baseline` produces 0 candidates without a live DB connection. Always use `pytest -m gold_standard --gold-standard-mode=fresh` for the authoritative SEC check.
-
 **Known flaky transcript files:** TMUS_2025-04-24 and META_2025-04-30 vary by 1 TP between runs due to non-deterministic dedup ordering. Allow ±1pp per metric before flagging as a regression.
 
 **SNAP presentations:** SNAP Q3/Q4 2025 filings have poor precision (~29%) due to an image-based investor letter generating spurious text candidates. This is a known limitation, not a regression signal.
 
 ## Full Procedures
 
-See `docs/operations/gold-standard-runbook.md` for the complete baseline update runbook covering V1, V2, transcript, and presentation pipelines.
+See `docs/operations/gold-standard-runbook.md` for the complete baseline update runbook covering V2, transcript, and presentation pipelines.

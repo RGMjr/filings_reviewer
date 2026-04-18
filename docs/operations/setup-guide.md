@@ -295,7 +295,7 @@ filings_reviewer/
 │   ├── web/             # Flask application: routes/, templates/, static/
 │   ├── llm/             # OpenAI integration with PostgreSQL-backed response cache;
 │   │                    #   includes vision_client.py and prompts.py
-│   └── gold_standard/   # Validation framework: baseline.py, fresh_extractor.py,
+│   └── gold_standard/   # Validation framework: baseline.py,
 │                        #   v2_validator.py, unified_comparison.py
 ├── scripts/             # Runnable scripts (see section 5)
 ├── sql/                 # Schema migration files (00–16)

@@ -74,6 +74,14 @@ Reads decisions from the database and `_image_decisions.json`, joins them agains
 - "No candidate found" warnings — should be 0. If any appear, run Step 1 for the affected ticker and re-run this step.
 - Per-source row counts (SEC vs. presentation) — note these for comparison after the next retrain.
 
+**Available feature: `detected_keywords`** (persisted on `v2_image_assets`, migration `sql/32`).
+Each row carries the sorted, unique set of metric-keyword strings matched at the time
+the image was extracted — a time-stamped snapshot of what the reviewer saw at decision
+time. Prefer this column over re-deriving keywords from `nearby_text` at training time:
+`config/metric_keywords.yaml` evolves, and re-deriving would disagree with the YAML
+that surfaced the image. NULL on pre-backfill rows; run
+`python3 scripts/backfill_image_keywords.py` once to populate historical data.
+
 ---
 
 ## Step 3: Train Model
