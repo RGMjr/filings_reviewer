@@ -201,57 +201,9 @@ Do NOT deploy code that depends on a new schema before the migration runs.
 
 Migrations and follow-ups that have landed on `main` but **not yet applied to Neon prod**. Clear from this list once applied.
 
-### `sql/31_drop_v1_review_tables.sql` — V1 retirement
+_No pending rollouts._ Last cleared 2026-04-18 after applying `sql/31_drop_v1_review_tables.sql`, `sql/32_add_detected_keywords_to_v2_image_assets.sql`, and `sql/33_fix_identity_index.sql` to unblock the Review page (the missing `detected_keywords` column was causing `undefined_column` exceptions in `review_unified.review_filing`, triggering the bare-`except` redirect to the filing list). V1 review data archived to `data/archive/review_{decisions,candidates}_pre_drop_2026-04-18.sql`.
 
-See `sql/31_drop_v1_review_tables.sql` header for detailed prereqs. Drops V1 review tables + `source_segments`, creates `v2_audit_log`. Independent of sql/32 below — either order is fine, no schema conflicts.
-
-### `sql/33_fix_identity_index.sql` — identity index 9-column repair (Issue #13)
-
-Drops and recreates `idx_v2_metric_facts_identity_unique` with all 9 columns including `source_type`, matching the original intent of `sql/23_chart_source_dedup.sql` and the `MetricFact.identity_tuple()` 9-element contract.
-
-**Safe additive rebuild — no code deploy order dependency:**
-
-- Pure DDL (DROP INDEX + CREATE UNIQUE INDEX). No data is modified.
-- The persistence layer uses delete-then-insert (not `ON CONFLICT`), so the index shape does not affect any live INSERT path. Safe to apply before or after any code deploy.
-- Idempotent: running twice drops and rebuilds the same index.
-- No prerequisite data migrations or service restarts required.
-
-```bash
-python3 scripts/apply_migrations.py
-```
-
-After applying, verify the index has 9 columns:
-
-```sql
-SELECT indexdef
-FROM pg_indexes
-WHERE indexname = 'idx_v2_metric_facts_identity_unique';
--- Expected: includes source_type as the 9th expression
-```
-
-**Note:** The persistence layer's in-memory dedup key (`src/extraction_v2/persistence.py` lines 710–719) also omits `source_type`. This is a separate gap (KNOWN_ISSUES.md Issue #13 secondary finding) and is not addressed by this migration.
-
-### `sql/32_add_detected_keywords_to_v2_image_assets.sql` — keyword audit trail
-
-Adds `detected_keywords TEXT[]` to `v2_image_assets` for review-UI "Detected Keywords" badges and model-training feature input. **Strict deploy order:**
-
-1. **Apply migration to prod first:**
-   ```bash
-   python3 scripts/apply_migrations.py
-   ```
-   Additive, nullable column; no existing code references it, so this step is safe in isolation.
-
-2. **Deploy the web service / extraction workers.**
-   The new `src/extraction_v2/persistence.py` writes `detected_keywords` on INSERT/UPSERT. It WILL FAIL if the column does not exist yet. Do NOT deploy before step 1 lands on prod.
-
-3. **Backfill historical rows** (~2K):
-   ```bash
-   python3 scripts/backfill_image_keywords.py --dry-run   # preview
-   python3 scripts/backfill_image_keywords.py             # apply
-   ```
-   Idempotent (skips `WHERE detected_keywords IS NOT NULL`); safe to re-run. Batches of 500, commits per batch.
-
-After step 3, the image review UI's "Detected Keywords" panel will show populated badges instead of "None detected".
+Optional follow-up: `python3 scripts/backfill_image_keywords.py` to populate `detected_keywords` for historical rows so the "Detected Keywords" badges show values instead of "None detected".
 
 ---
 
