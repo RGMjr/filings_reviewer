@@ -201,7 +201,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `test_candidate_generation_finds_active_consumers` (Issue #10) | Re-scoped | Low | Low | Original CMS-1 hypothesis disproven; real root cause TBD |
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
 | V2 metric facts identity index drift (Issue #13) | Migration prepared (sql/33) | Low | Low | DB index 8 cols; sql/33 recreates 9-col index; pending prod apply |
-| Farfetch LTV/CAC dedup collision (Issue #14) | Open | Medium | High | 4 T1 FNs from layout-table misclassification → shared cohort_def → identity collision |
+| Farfetch LTV/CAC dedup collision (Issue #14) | Open | Medium | Medium | 4 T1 FNs; respectively_parser exists + parses correctly but only runs as fallback, layout-table path bypasses it |
 | Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Open | Medium | Medium | 10 Farfetch T1 FNs; 2026-04-17 chart fix didn't lift metric; needs chart_fact_bridge investigation |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
@@ -328,13 +328,16 @@ Why does `test_candidate_generation_finds_active_consumers` still fail if pipeli
 
 ## 14. Farfetch LTV/CAC Dedup Collision on Layout Tables
 
-**Status**: Open
+**Status**: Open (partial infrastructure exists; not wired for this case)
 **Severity**: Medium (4 Tier 1 FNs on Farfetch)
 **Discovered**: 2026-04-18
+**Re-verified**: 2026-04-18 (after #17/#19 commit)
 
 ### Problem
 
-Farfetch's LTV/CAC cohort values (1.42, 1.53, 1.77) are all correctly extracted pre-dedup but collapse to a single surviving fact (1.77) per metric, producing 4 Tier 1 FNs on `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort`.
+Farfetch's LTV/CAC cohort values (1.42, 1.53, 1.77) are all correctly extracted pre-dedup but collapse to a single surviving fact (1.77) per metric, producing 4 Tier 1 FNs on `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort`. Current GS numbers on Farfetch:
+- `cm_ltv_to_cac_ratio`: P=100%, R=33.3%, F1=50.0% (2 FNs: 1.42, 1.53)
+- `cm_ltv_to_cac_ratio_by_cohort`: P=100%, R=16.7%, F1=28.6% (2 text FNs + 4 chart FNs)
 
 ### Root Cause Chain
 
@@ -344,15 +347,22 @@ Farfetch's LTV/CAC cohort values (1.42, 1.53, 1.77) are all correctly extracted 
 4. All 3 facts share an identical 9-column identity tuple (metric + period=2015-12-31 + unit + scope + same cohort_def + customer_type + source_type). Value is NOT part of identity.
 5. `deduplication.py:375 _collapse_post_transfer_collisions` enforces the DB unique index (`sql/23_chart_source_dedup.sql`). Drops 2 of 3; keeps 1.77 (highest value_raw tie-break).
 
-Confirmed 2026-04-18 via `/tmp/diag_farfetch_ltvcac.py`: pre-dedup has 6 LTV/CAC facts; post-dedup has 2.
+Confirmed 2026-04-18 via `/tmp/diag_farfetch_ltvcac.py`: pre-dedup has 6 LTV/CAC facts; post-dedup has 2. FN diagnostic (post-#19) correctly classifies all 4 as `dedup_collision`.
+
+### Partial Infrastructure Already in Place
+
+A `respectively_parser` module (`src/review/respectively_parser.py`) exists and **correctly parses the Farfetch LTV/CAC prose** — verified 2026-04-18 by calling `detect_respectively_pattern()` directly on the text, which returns the correct associations `[(1.42, 2015), (1.53, 2016), (1.77, 2017)]` with confidence 0.9.
+
+However, the parser is **only invoked as a fallback** (`value_binding.py:787` and `:1119`) when no other bindings exist for the candidate. For Farfetch LTV/CAC, the layout-table-as-data-table extraction already produces 3 bindings, so the respectively-parser fallback never fires — the parser's per-cohort associations are never applied.
 
 ### Fix Options
 
-- **(a) Layout-table detection** in `table_reconstruction`: skip reconstruction when the table has a single row, no header row, and a cell containing `&#149;` or long prose. Correct but architectural; affects many filings.
-- **(b) "Respectively" pattern parser** for `cohort_def`: when the header is a long prose sentence containing parallel number-list + cohort-list ("A, B, C respectively for X, Y, Z"), extract per-position cohort year. Targeted but pattern-specific; FP risk.
-- **(c) Add `value` to DB unique index** + relax dedup collision logic. Highest blast radius; needs migration.
+- **(a) Layout-table detection** in `table_reconstruction`: skip reconstruction when the table has a single row, no header row, and a cell containing `&#149;` or long prose. This would route the values through the text path (where the respectively fallback could fire). Architectural; affects many filings.
+- **(b) Prefer respectively-parser results over table bindings when the cell is prose-like**: invert the fallback in `_bind_table_prose_cell` (line 787) so the respectively parser runs first when the cell text contains "respectively" and matches the pattern. Targeted; some FP risk if the parser mis-associates.
+- **(c) Apply respectively-parser output to `cohort_def` during fact construction**: even if the bindings come from table extraction, if the cell's `header_path` contains a respectively-parseable sentence, assign each extracted value the cohort year from the parser's association list. Medium complexity; needs position-aware mapping.
+- **(d) Add `value` to DB unique index** + relax dedup collision logic. Highest blast radius; needs migration.
 
-Not fixing this session. Tracked for future layout-table-detection work.
+Not fixing this session. Tracked as unresolved.
 
 ---
 
