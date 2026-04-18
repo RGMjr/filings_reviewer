@@ -90,35 +90,49 @@ the CMS-1 tie-breaker assigns it to `cm_customers_period_end`. The gold standard
 
 ---
 
-## 2. Low Farfetch Recall (12.5%)
+## 2. Low Farfetch Recall
 
-**Status**: Partially Diagnosed
+**Status**: Re-diagnosed 2026-04-18; umbrella issue superseded by sub-issues #14–#19 below.
 **Severity**: Medium
 **Discovered**: 2026-01-01
+**Re-measured**: 2026-04-18
 
-### Problem
+### Current Farfetch Metrics (2026-04-18)
 
-Only 1 of 8 non-chart Farfetch gold standard values matched during validation.
+Re-measured via `python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited" --fn-diagnostics`:
 
-### Contributing Factors
+- **Overall**: P=50.0%, R=36.7%, F1=42.3% (TP=11, FP=11, FN=19)
+- **Tier 1**: P=100%, R=10%, F1=18.2%
+- **Tier 2**: P=45%, R=90%, F1=60%
 
-1. ~~**Metric ID mismatch** (see Issue #1)~~ — resolved; gold standard IDs now aligned
-2. ~~**URL issue**: `sec_html_url` for Farfetch resolves to a directory index (see Issue #6)~~ — resolved; re-fetch 78 cloud-stored filings on Render
-3. **Value normalization differences**: Gold uses exact values, system may normalize differently
-4. **Missing patterns**: Some keywords may not trigger candidate generation
+Original "12.5%" figure (1 of 8 non-chart) is stale. The gold standard grew from 8 to ~30 Farfetch rows (49 total, 32 non-chart, 17 chart) since this issue was filed.
 
-### CAC Payback Period (FIXED)
+### Per-Metric Breakdown
 
-The CAC payback period value "six" (months) was not being extracted:
-- Pattern `\bpayback\s+period\s+(?:on|for)\s+cac\b` added to catch this variant
-- Spelled-out number support added to handle "six"
-- Now correctly generates candidate for `cm_cac_payback_period: six`
+| Metric | Tier | P | R | F1 | Notes |
+|---|---|---|---|---|---|
+| `cm_gross_margin_by_cohort` | T1 | 0% | 0% | 0% | 10 FNs — chart (see #15) |
+| `cm_ltv_to_cac_ratio` | T1 | 100% | 33% | 50% | 2 FNs — dedup collision (see #14) |
+| `cm_ltv_to_cac_ratio_by_cohort` | T1 | 100% | 17% | 29% | 2 FNs — dedup collision (see #14) |
+| `cm_revenue_by_cohort` | T1 | 0% | 0% | 0% | 2 FNs — chart (see #15) |
+| `cm_active_customers_total` | T2 | 29% | **100%** | 44% | Recall fine; 5 FPs (see #16) |
+| `cm_average_order_value` | T2 | 100% | 100% | 100% | ✓ |
+| `cm_cac_payback_period` | T2 | 0% | 0% | 0% | 1 FN — bare word-number (see #17) |
+| `cm_purchase_transactions_overall` | T2 | 25% | 100% | 40% | Recall fine; 4 FPs (see #16) |
 
-### Remaining Gaps
+### Contributing Factors (Updated)
 
-- Re-evaluate Farfetch recall after cloud re-fetch of 78 filings is complete (Issue #6 fix applied; re-fetch pending on Render)
-- Review Active Consumers, Number of Orders, Take Rate patterns once document fetch is working
-- Active Consumers misassignment is also tracked under Issue #10 (CMS-1 suppression)
+1. ~~**Metric ID mismatch** (Issue #1)~~ — resolved
+2. ~~**URL issue** (Issue #6)~~ — resolved
+3. ~~**CAC Payback "six"**~~ — KNOWN_ISSUES.md previously claimed this was fixed; **claim was inaccurate**. Spelled-out number support was added only for scaled forms ("six million"), not for time-unit forms ("six months"). See #17.
+4. ~~**Take Rate patterns**~~ — void: `cm_take_rate` was removed from taxonomy 2026-01-02 (not a customer metric).
+5. **Layout-table dedup collision** — new root cause: see #14.
+6. **Chart extraction blocked locally** — no `OPENAI_API_KEY` means chart-sourced gold rows can't be tested/recovered locally. See #15.
+7. **Table-scale + period precision drag** — see #16.
+
+### Next Steps
+
+Issue #2 is now an umbrella. Individual gaps are tracked in sub-issues #14–#19. Close or demote Issue #2 after those sub-issues are triaged.
 
 ---
 
@@ -178,15 +192,21 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 | Issue | Status | Priority | Effort | Impact |
 |-------|--------|----------|--------|--------|
-| Low Farfetch Recall | Partially diagnosed | Medium | Medium | extract_fresh_batch bug fixed; recall gap (50%) requires keyword work |
+| Low Farfetch Recall (Issue #2) | Re-diagnosed umbrella | Medium | — | Superseded by sub-issues #14–#19; P=50% R=37% F1=42% on 2026-04-18 |
 | Gold Standard Methodology | Resolved | — | — | Spec doc created |
 | Spelled-Out Number Limits | Open | Low | High | Edge case coverage |
 | Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
-| Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (Issue #10) |
+| Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (now linked to Issue #10 re-scope) |
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
-| CMS-1 suppression: Active Consumers (Issue #10) | Open | Low | Low | cm_active_customers_total suppressed by cm_customers_period_end |
+| `test_candidate_generation_finds_active_consumers` (Issue #10) | Re-scoped | Low | Low | Original CMS-1 hypothesis disproven; real root cause TBD |
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
 | V2 metric facts identity index drift (Issue #13) | Open | Low | Low | DB index 8 cols; code / sql/23 expect 9 |
+| Farfetch LTV/CAC dedup collision (Issue #14) | Open | Medium | High | 4 T1 FNs from layout-table misclassification → shared cohort_def → identity collision |
+| Chart pipeline blocked without OPENAI_API_KEY (Issue #15) | Env limitation | Medium | Low | 12 Farfetch T1 FNs hidden when API key absent |
+| Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
+| CAC payback "six months" not bound (Issue #17) | Open | Low | Low | Bare word-number + time unit isn't parsed (1 FN on Farfetch + likely others) |
+| Migration checksum mismatch — `sql/01_create_schema.sql` (Issue #18) | Open | Low | Low | Blocks pytest gold standard; v2_validator module path works |
+| FN diagnostic classification gaps (Issue #19) | Open | Low | Low | 3 of 3 investigated categories misclassified on 2026-04-18 |
 
 ---
 
@@ -265,27 +285,203 @@ source .env && psql "$DATABASE_URL" -c \
 
 ---
 
-## 10. CMS-1 Suppression: Active Consumers Assigned to Wrong Metric
+## 10. `test_candidate_generation_finds_active_consumers` — Root Cause Unclear
 
-**Status**: Open
+**Status**: Re-scoped 2026-04-18 (original description was inaccurate)
 **Severity**: Low
 **Discovered**: 2026-03-26
+**Re-diagnosed**: 2026-04-18
 
 ### Problem
 
-`test_candidate_generation_finds_active_consumers` fails because value `1,118,047` ("Active Consumers") is assigned to `cm_customers_period_end` instead of `cm_active_customers_total`.
+`tests/integration/test_gold_standard_coverage.py::TestCandidateGeneration::test_candidate_generation_finds_active_consumers` fails. Original report claimed this was CMS-1 suppression assigning Active Consumers to `cm_customers_period_end`.
 
-### Root Cause
+### 2026-04-18 Re-Diagnosis
 
-Both metrics share the keyword "Active Consumers". CMS-1 cross-metric suppression (`keyword_matching.py:793`) fires when two keywords are equidistant from a number, and the longer pattern wins. `cm_customers_period_end`'s "Active Consumers" pattern wins the tie-breaker, suppressing `cm_active_customers_total`.
+The CMS-1 suppression hypothesis is **not supported by data**:
 
-This also contributes to Farfetch's low recall (Issue #2) — Active Consumer values in Farfetch are systematically misassigned to `cm_customers_period_end`.
+- `config/metric_keywords.yaml:120-212` shows `cm_customers_period_end` has **no "Active Consumers" pattern**. Only `cm_active_customers_total` (lines 325, 355) matches `\bactive\s+consumers?\b`.
+- Pipeline-level validation (`python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited" --fn-diagnostics`) shows `cm_active_customers_total` recall = **100%** for Farfetch. No misassignment occurring at the pipeline level.
+- The integration test failure is at the **candidate-generation layer** (not full pipeline), which may use different matching rules than what the pipeline eventually resolves.
+
+### Remaining Question
+
+Why does `test_candidate_generation_finds_active_consumers` still fail if pipeline recall is 100%? Hypotheses:
+- Candidate-generation-only path has a CMS-1 behavior that the downstream pipeline overrides.
+- The test's expectation differs from what the pipeline produces (e.g., checks candidate metric assignment directly).
+- Some other keyword (not "Active Consumers" itself) triggers a cross-metric suppression that later stages resolve.
 
 ### Next Steps
 
-- Determine whether Farfetch "Active Consumers" should map to `cm_active_customers_total` or `cm_customers_period_end` (both are plausible: active consumers = customers at period end who were active)
-- If `cm_active_customers_total` is correct: adjust the CMS-1 priority so `cm_active_customers_total` wins for Farfetch's specific phrasing
-- If `cm_customers_period_end` is correct: update the gold standard CSV to use `cm_customers_period_end` for Farfetch Active Consumers
+- Re-run the failing test with debug logging to see what candidate(s) it actually produces.
+- Compare that against what the full pipeline emits for the same segment.
+- If the full pipeline is correct and only the unit test is stale, update the test assertion (not the pipeline).
+- Until re-diagnosed, the test remains skipped/xfail; this does NOT affect Farfetch recall (Issue #2).
+
+---
+
+## 14. Farfetch LTV/CAC Dedup Collision on Layout Tables
+
+**Status**: Open
+**Severity**: Medium (4 Tier 1 FNs on Farfetch)
+**Discovered**: 2026-04-18
+
+### Problem
+
+Farfetch's LTV/CAC cohort values (1.42, 1.53, 1.77) are all correctly extracted pre-dedup but collapse to a single surviving fact (1.77) per metric, producing 4 Tier 1 FNs on `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort`.
+
+### Root Cause Chain
+
+1. The filing has a bullet-point rendered via HTML `<TABLE>` used purely for layout (indent + `&#149;` + prose `<TD>`). No semantic data table.
+2. `table_reconstruction` classifies this layout table as a data table; extracts "1.42, 1.53, 1.77" as three cells; uses the whole prose sentence "Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 and 2017 cohorts was 1.42, 1.53 and 1.77, respectively" as `header_path`.
+3. `fact_construction.py:441 _extract_cohort_def` parses the prose as an "acquisition" cohort label (matches year pattern) → assigns the **entire sentence** as `cohort_def` for all 3 facts.
+4. All 3 facts share an identical 9-column identity tuple (metric + period=2015-12-31 + unit + scope + same cohort_def + customer_type + source_type). Value is NOT part of identity.
+5. `deduplication.py:375 _collapse_post_transfer_collisions` enforces the DB unique index (`sql/23_chart_source_dedup.sql`). Drops 2 of 3; keeps 1.77 (highest value_raw tie-break).
+
+Confirmed 2026-04-18 via `/tmp/diag_farfetch_ltvcac.py`: pre-dedup has 6 LTV/CAC facts; post-dedup has 2.
+
+### Fix Options
+
+- **(a) Layout-table detection** in `table_reconstruction`: skip reconstruction when the table has a single row, no header row, and a cell containing `&#149;` or long prose. Correct but architectural; affects many filings.
+- **(b) "Respectively" pattern parser** for `cohort_def`: when the header is a long prose sentence containing parallel number-list + cohort-list ("A, B, C respectively for X, Y, Z"), extract per-position cohort year. Targeted but pattern-specific; FP risk.
+- **(c) Add `value` to DB unique index** + relax dedup collision logic. Highest blast radius; needs migration.
+
+Not fixing this session. Tracked for future layout-table-detection work.
+
+---
+
+## 15. Chart Pipeline Blocked Locally by Missing OPENAI_API_KEY
+
+**Status**: Environment limitation (not a code bug)
+**Severity**: Medium (blocks local re-measurement of Tier 1 chart metrics)
+**Discovered**: 2026-04-18
+
+### Problem
+
+Running `python3 -m src.gold_standard.v2_validator` locally without `OPENAI_API_KEY` set prints:
+
+```
+OPENAI_API_KEY is not set. Disabling image and chart extraction (Stages 4 and 5).
+```
+
+All chart-sourced gold rows thus appear as FNs regardless of actual chart pipeline health. Affected Farfetch metrics:
+- `cm_gross_margin_by_cohort`: 10 Tier 1 FNs (all chart)
+- `cm_revenue_by_cohort`: 2 Tier 1 FNs (gold `segment_type=chart` for 44.4% / 55.6% consumer cohort values)
+
+### Next Steps
+
+- Document `OPENAI_API_KEY` as a prerequisite for gold standard validation in `.claude/rules/gold-standard.md` (currently silent on this).
+- Optionally: add a startup check in `v2_validator` that prints a clearer warning when chart-sourced gold rows exist but the API key is missing.
+
+---
+
+## 16. Farfetch Precision Drag — Table-Scale + Period Attribution
+
+**Status**: Open (not blocking recall)
+**Severity**: Low (creates review-queue noise; doesn't block gold-standard TPs)
+**Discovered**: 2026-04-18
+
+### Problem
+
+Two Tier 2 Farfetch metrics show high recall but low precision due to table-scale inference producing near-match FPs:
+
+- `cm_active_customers_total`: P=29%, R=100%, 5 FPs. Examples:
+  - raw `935.8` → 935,800 (table "in thousands" applied); gold=796,297 in same period → BOTH_MISMATCH
+  - raw `1,118.0` → 1,118,000 in 2018-H1; gold=796,297 in 2017-H1 → period + value mismatch
+- `cm_purchase_transactions_overall`: P=25%, R=100%, 4 FPs. Same pattern (raw `800.5` → 800,500, etc.).
+
+### Root Cause
+
+For each period (e.g., 2015, 2016, 2017 + H1), the system extracts ONE correct value and several near-match values from adjacent periods with slightly different scales. These produce period-mismatch or value-mismatch FPs rather than clean TPs.
+
+### Next Steps
+
+- Investigate whether period-attribution logic can be tightened to prefer the nearest-period match when multiple extracted values share a metric.
+- Consider dedup-collapsing same-metric near-matches that share source-locator ancestors.
+- Low priority; doesn't affect recall or Tier 1.
+
+---
+
+## 17. CAC Payback "Six Months" — Bare Word-Number Not Bound
+
+**Status**: Open
+**Severity**: Low (1 Farfetch T2 FN; likely also affects other filings)
+**Discovered**: 2026-04-18
+
+### Problem
+
+Farfetch gold expects `cm_cac_payback_period = 6` (unit: months) from the prose "the payback period on CAC has been consistently less than six months." The pipeline generates the correct candidate (match="payback period on CAC") but produces **0 value bindings**.
+
+### Root Cause
+
+`value_binding.py:152-161 WORD_NUMBER_PATTERN` requires a scale suffix (`million`/`billion`/`trillion`/`thousand`). Bare word-numbers followed by a time unit (e.g., "six months", "twelve weeks") are not matched. So "six" isn't parsed as 6.
+
+### Historical Note
+
+KNOWN_ISSUES.md previously claimed this was fixed via "Spelled-out number support added to handle 'six'". The claim was **inaccurate** — support was added only for scaled forms (e.g., "six million"), not for bare word-numbers followed by time units.
+
+### Fix Options
+
+- **Narrow regex**: add `WORD_NUMBER_TIME_PATTERN` for `(one|...|twelve)\s+(days?|weeks?|months?|years?|quarters?)`. Small diff.
+- **FP risk**: bare word-numbers elsewhere in prose could bind to unrelated candidates ("the past six months" as a period reference could get bound as a value).
+- **Mitigation**: either (a) gate this parser to specific metrics that expect time-unit values, or (b) add an FP rule that rejects time-unit-word-numbers when they appear in period contexts.
+
+Not fixing this session.
+
+---
+
+## 18. Migration Checksum Mismatch on `sql/01_create_schema.sql`
+
+**Status**: Open (test infra)
+**Severity**: Low (blocks pytest-based gold standard; v2_validator module path works)
+**Discovered**: 2026-04-18
+
+### Problem
+
+Running `pytest -m gold_standard --gold-standard-mode=fresh` errors during session fixture setup:
+
+```
+RuntimeError: Checksum mismatch for 01_create_schema.sql: expected 38c41050…, got 01538bd6….
+Migration file was modified after it was applied.
+```
+
+The `schema_migrations` ledger in the local test DB has a stale checksum for `01_create_schema.sql`. All 14 gold-standard-tagged pytest tests error out at setup.
+
+### Workaround (used 2026-04-18)
+
+Use `python3 -m src.gold_standard.v2_validator` directly. This bypasses pytest fixtures entirely and does not require the test DB. Also aligns with the updated `.claude/rules/gold-standard.md` which now recommends the v2_validator module.
+
+### Next Steps
+
+- Reconcile the local test DB's `schema_migrations` row for `01_create_schema.sql` (either re-apply or update the recorded checksum).
+- Verify no actual schema drift between the checksum-recorded version and the current file.
+- Consider adding a helper script (e.g., `scripts/sync_test_db_checksums.py --dry-run`) for this recurring scenario.
+
+---
+
+## 19. FN Diagnostic Classification Gaps
+
+**Status**: Open (diagnostic tool quality)
+**Severity**: Low (misleads investigation but doesn't affect production)
+**Discovered**: 2026-04-18
+
+### Problem
+
+The FN root-cause analysis in `src/gold_standard/v2_validator.py` (lines 900–1040) classified three Farfetch FNs into misleading categories during 2026-04-18 diagnosis:
+
+1. **`cm_ltv_to_cac_ratio` classified as `wrong_period`**. Actual root cause: dedup collision from shared `cohort_def` (Issue #14). The category fires because the diagnostic's `all_metric_facts` set includes pre-dedup facts — so the "value matches but period doesn't" check hits even when the matching fact was later dropped by dedup.
+2. **`cm_revenue_by_cohort` classified as `fp_filtered`**. Actual root cause: the 2 removed bindings were date fragments (`31`, `2017`) from a different candidate; the expected 44.4%/55.6% values were never bound to any candidate at all (chart-sourced, blocked by API key).
+3. **`cm_cac_payback_period`** would likely misclassify as well (candidate exists with 0 bindings — either `no_value_binding` or similar), but the diagnostic for this case is less critical.
+
+### Impact
+
+Each misleading classification cost ~30 minutes of investigation time that could have been avoided with more precise categorization.
+
+### Next Steps
+
+- `wrong_period` category: only emit when the matched fact is in `deduplicated_facts` (not in pre-dedup `context.facts`). If the fact was dropped by dedup, emit a `dedup_collision` category instead.
+- `fp_filtered` category: check that the removed bindings' values actually match the expected value before emitting this classification. If they don't, emit `wrong_candidate_binding` or `value_not_bound`.
+- Consider adding a `candidate_count_by_value` check so "expected value X but no candidate bound near X" is distinguished from "candidate bound X to wrong metric".
 
 ---
 
@@ -342,3 +538,11 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Added Issue #12 — `test_image_crop.py` writes PNGs into real `data/` dir with no teardown
 - **2026-04-18**: Issue #12 resolved — `make_png_in_data_dir` fixture added; cleans up PNGs on teardown
 - **2026-04-18**: Added Issue #13 — V2 metric facts identity index drift (live DB 8 columns, code + `sql/23` expect 9); documented during `docs/architecture/data-model.md` rewrite
+- **2026-04-18**: Issue #2 re-diagnosed; re-measured Farfetch P=50% R=37% F1=42% via v2_validator; stale 12.5% figure replaced; umbrella superseded by sub-issues #14–#19; Take Rate bullet removed (metric was retired 2026-01-02); "CAC Payback FIXED" claim corrected (partial — see #17)
+- **2026-04-18**: Issue #10 re-scoped — original CMS-1 suppression hypothesis disproven (`cm_customers_period_end` has no "Active Consumers" pattern; `cm_active_customers_total` recall is 100% at pipeline layer); real root cause for unit-test failure is TBD
+- **2026-04-18**: Added Issue #14 — Farfetch LTV/CAC dedup collision on layout-table misclassification (4 T1 FNs)
+- **2026-04-18**: Added Issue #15 — chart pipeline blocked locally by missing OPENAI_API_KEY
+- **2026-04-18**: Added Issue #16 — Farfetch precision drag from table-scale + period attribution
+- **2026-04-18**: Added Issue #17 — CAC payback bare word-number + time unit not bound
+- **2026-04-18**: Added Issue #18 — migration checksum mismatch on `sql/01_create_schema.sql` (blocks pytest gold standard; v2_validator module workaround)
+- **2026-04-18**: Added Issue #19 — FN diagnostic misclassified 3 of 3 categories investigated during 2026-04-18 Farfetch diagnosis
