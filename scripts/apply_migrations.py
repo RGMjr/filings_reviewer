@@ -20,9 +20,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
-# Add src to path
+# Add src to path before importing from it
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.infra.db import DatabaseAdapter
@@ -156,6 +154,7 @@ def apply_migration(
 
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Apply SQL migrations")
     parser.add_argument(
         "--test",
