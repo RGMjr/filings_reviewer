@@ -1534,3 +1534,138 @@
     font-weight: bold;
     color: #212529;
 }
+
+/* =============================================================================
+   Sticky Review Header (compact top matter, sticks below navbar)
+   ============================================================================= */
+.review-sticky-header {
+    position: sticky;
+    top: 56px; /* Bootstrap navbar-expand-lg rendered height; calibrate if needed */
+    z-index: 1010; /* below modal (1050), above main content */
+    background: #fff;
+    border-bottom: 1px solid var(--color-border);
+    margin-top: -1rem; /* absorb container mt-4 so it hugs the navbar */
+    margin-left: calc(-1 * var(--bs-gutter-x, 0.75rem));
+    margin-right: calc(-1 * var(--bs-gutter-x, 0.75rem));
+    padding: 0.5rem var(--bs-gutter-x, 0.75rem) 0.25rem;
+    margin-bottom: 1rem;
+}
+
+.review-sticky-header > .row,
+.review-sticky-header > .nav-tabs,
+.review-sticky-header > form,
+.review-sticky-header > .review-filter-bar {
+    margin-bottom: 0.25rem !important;
+}
+
+.review-sticky-header .nav-tabs {
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 0.5rem !important;
+}
+
+.review-sticky-header h4,
+.review-sticky-header h1 {
+    font-size: 1.25rem;
+    margin-bottom: 0.125rem;
+}
+
+/* =============================================================================
+   Compact Fact Detail Header (collapsible)
+   ============================================================================= */
+.fact-header-compact {
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 0.75rem;
+}
+
+.fact-header-compact .fact-summary-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.fact-header-compact .fact-metric-id {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.fact-header-compact .fact-summary-values {
+    color: var(--color-text);
+    font-size: 0.9rem;
+    margin-left: 0.25rem;
+}
+
+.fact-header-compact .fact-confidence {
+    margin-left: auto;
+}
+
+.fact-header-compact .fact-header-toggle {
+    background: none;
+    border: none;
+    padding: 0 0.25rem;
+    cursor: pointer;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+    line-height: 1;
+}
+
+.fact-header-compact .fact-header-toggle .chevron {
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+
+.fact-header-compact[data-collapsed="true"] .fact-header-toggle .chevron {
+    transform: rotate(-90deg);
+}
+
+.fact-header-compact[data-collapsed="true"] .fact-header-expanded {
+    display: none;
+}
+
+.fact-header-compact .fact-header-expanded {
+    margin-top: 0.5rem;
+}
+
+.fact-header-compact .fact-values {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.fact-header-compact .fact-values > div label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    margin-bottom: 0;
+}
+
+/* =============================================================================
+   Compact Image Detail Header (single-line)
+   ============================================================================= */
+.image-header-compact {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 0.75rem;
+}
+
+.image-header-compact .image-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.image-header-compact .image-meta {
+    color: var(--color-muted);
+    font-size: 0.85rem;
+}
+
+.image-header-compact .image-badges {
+    margin-left: auto;
+    display: flex;
+    gap: 0.5rem;
+}
