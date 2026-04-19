@@ -942,6 +942,10 @@ const FACTS = [
 const CURRENT_FACT_ID = {% if current_fact %}"{{ current_fact.fact_id }}"{% else %}null{% endif %};
 const IMAGE_PENDING = {{ image_pending|tojson }};
 const NEXT_FILING_URL = {{ next_filing_url|tojson }};
+window.NEXT_FILING_URL = NEXT_FILING_URL;
+// Exposed for the images-tab IIFE so it can mirror the text-tab's
+// "hand off to the other tab before advancing" behavior.
+window.TEXT_PENDING = {{ pending_count|tojson }};
 let reviewStartTime = Date.now();
 
 function filterParams() {
@@ -1028,7 +1032,8 @@ function submitDecision(decision) {
       if (IMAGE_PENDING > 0) {
         window.location.href = `/v2/review/${FILING_ID}?tab=images`;
       } else {
-        window.location.href = `/v2/review/${FILING_ID}?fact_id=${CURRENT_FACT_ID}&tab=text`;
+        // Text done and no pending images — advance to next filing.
+        window.location.href = NEXT_FILING_URL || '/v2/review/';
       }
     } else {
       alert('Error: ' + (data.message || JSON.stringify(data.errors)));
@@ -1100,13 +1105,19 @@ function addMissedMetric() {
   .catch(err => alert('Network error: ' + err));
 }
 
-// Keyboard shortcuts (text tab only — safe on images tab since elements won't exist)
+// Keyboard shortcuts. F is tab-agnostic (handled on both tabs); the rest are
+// text-tab-only (images tab has its own handler in review_images_v2.js).
 document.addEventListener('keydown', function(e) {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
   // Don't intercept browser/OS shortcuts (Cmd+C, Ctrl+V, etc.) — lets users copy highlighted evidence text.
   if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-  // Only activate text shortcuts when on text tab
+  if (e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    if (NEXT_FILING_URL) window.location.href = NEXT_FILING_URL;
+    return;
+  }
+
   {% if active_tab == 'text' %}
   switch(e.key.toLowerCase()) {
     case 'a':
@@ -1130,10 +1141,6 @@ document.addEventListener('keydown', function(e) {
     case 'arrowleft':
       e.preventDefault();
       navigateFact('prev');
-      break;
-    case 'f':
-      e.preventDefault();
-      if (NEXT_FILING_URL) window.location.href = NEXT_FILING_URL;
       break;
   }
   {% endif %}

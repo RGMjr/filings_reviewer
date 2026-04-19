@@ -890,7 +890,7 @@ class DatabaseAdapter:
         result = self.query(sql, params if params else None)
         return result[0]["cnt"] if result else 0
 
-    def get_next_filing_with_pending_facts(
+    def get_next_filing_with_pending_work(
         self,
         current_filing_id: int,
         document_type: str | None = None,
@@ -898,11 +898,13 @@ class DatabaseAdapter:
         sort_by: str = "date",
         sort_dir: str = "desc",
     ) -> int | None:
-        """Return the filing_id of the next filing with pending text facts.
+        """Return the filing_id of the next filing with pending review work.
 
-        Uses the same sort/filter logic as get_unified_filings_for_review and
-        finds the first row after the current filing (by ROW_NUMBER) that still
-        has facts_pending > 0.
+        "Pending work" means either pending text facts OR pending images —
+        otherwise image-only filings are unreachable via cross-filing
+        navigation. Uses the same sort/filter logic as
+        get_unified_filings_for_review and finds the first row after the
+        current filing (by ROW_NUMBER) that still has pending work.
 
         Args:
             current_filing_id: The filing_id of the filing currently being reviewed.
@@ -960,7 +962,8 @@ class DatabaseAdapter:
                 SELECT
                     f.filing_id,
                     ROW_NUMBER() OVER (ORDER BY {order_col} {order_dir} NULLS LAST, c.company_name) AS rn,
-                    COALESCE(tp.facts_pending, 0) AS facts_pending
+                    COALESCE(tp.facts_pending, 0) AS facts_pending,
+                    COALESCE(ip.images_pending, 0) AS images_pending
                 FROM filings f
                 JOIN companies c ON f.company_id = c.company_id
                 JOIN v2_documents d ON d.filing_id = f.filing_id
@@ -976,7 +979,7 @@ class DatabaseAdapter:
             SELECT filing_id
             FROM candidates
             WHERE rn > (SELECT rn FROM current_rn)
-              AND facts_pending > 0
+              AND (facts_pending > 0 OR images_pending > 0)
             ORDER BY rn ASC
             LIMIT 1
         """
