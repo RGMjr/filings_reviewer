@@ -208,7 +208,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | No reviewed-filing guard on image re-extraction (Issue #22) | Resolved (2026-04-18) | — | — | `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` on visible→hidden re-classification |
 | `v2_image_assets.segment_id` dead column (Issue #23) | Resolved (2026-04-18) | — | — | sql/35 drops column; persistence.py cleaned up |
 | `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | New facts consistent post-#21; historical orphans likely remain |
-| `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Open | Trivial | Trivial | Script only touches gold-standard JSON, not production DB |
+| `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Resolved (2026-04-18) | — | — | Docstring expanded to clarify JSON-only scope |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
 | CAC payback "six months" not bound (Issue #17) | Resolved (2026-04-18) | — | — | Added `WORD_NUMBER_TIME_PATTERN` gated to time-valued metrics; cm_cac_payback_period 0% → 100% F1 |
 | Migration checksum mismatch — `sql/01_create_schema.sql` (Issue #18) | Resolved (2026-04-18) | — | — | Self-healed via V1 retirement merge |
@@ -713,17 +713,18 @@ Add a scheduled integrity-check script, or promote `img_id` to a dedicated FK co
 
 ## 25. `scripts/migrate_image_ids_to_deterministic.py` Scope Is Confusing
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-18)
 **Severity**: Trivial
 **Discovered**: 2026-04-18
+**Resolved**: 2026-04-18
 
 ### Problem
 
-The script name implies a production DB migration, but it only rewrites `data/presentation_gold_standard/_image_*.json` files — it never touches the database. Readers discovering it during DB image-identity investigations will be misled.
+The script name implied a production DB migration, but it only rewrites `data/presentation_gold_standard/_image_*.json` files — it never touches the database. Readers discovering it during DB image-identity investigations could be misled.
 
-### Suggested Fix
+### Resolution
 
-Either move the script to `scripts/archive/` (only if that directory already exists; do not create it) or add a module-level docstring clarifying: "This script only modifies local gold-standard JSON files in `data/presentation_gold_standard/`. It does not modify the production database."
+Expanded the module-level docstring in `scripts/migrate_image_ids_to_deterministic.py` to open with explicit scope: "One-time transformation of local gold-standard JSON files. Scope: … Does NOT modify the production database or any `v2_image_assets` rows — the word 'migration' in the filename refers to a JSON-format upgrade, not a DB schema migration." `scripts/archive/` does not exist on disk; per the original suggestion, the docstring-only fix is applied instead of a move.
 
 ---
 
@@ -803,3 +804,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Added Issues #22–#25 — out-of-scope follow-ups surfaced during Issue #21 investigation: image re-extraction guard gap, dead segment_id column, img_id referential integrity, migrate_image_ids script scope confusion
 - **2026-04-18**: Issue #23 resolved — `sql/35_drop_v2_image_assets_segment_id.sql` drops the dead column (applied to Neon prod + local test DB); `_persist_images_in_tx` in `src/extraction_v2/persistence.py` no longer references it; migration registered in `scripts/apply_migrations.py`
 - **2026-04-18**: Issue #22 resolved — `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` when a decided image would be re-classified from the visible set (`chart`/`table_image`/`unknown`) into the hidden set (`decorative`/`logo`/`signature`); `force=True` proceeds with a structured warning; `ReviewedFilingError.__init__` gained an optional `context` kwarg (default `"facts"` preserves prior message shape); 5 new tests in `TestGuardOnPersistImages`; `_persist_images_in_tx` signature gains keyword-only `force: bool = False` (backwards compatible; `persist_pipeline_result` threads through)
+- **2026-04-18**: Issue #25 resolved — expanded docstring on `scripts/migrate_image_ids_to_deterministic.py` to clarify the script only rewrites local gold-standard JSON files and does not modify the database
