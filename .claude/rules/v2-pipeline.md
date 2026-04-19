@@ -27,6 +27,10 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 # result.fact_count, result.facts, result.total_duration_ms
 ```
 
+## Image Asset Identity
+
+`v2_image_assets` is unique on `(doc_id, filename)`; `img_id` is stable across re-extractions because `_persist_images_in_tx` upserts via `ON CONFLICT (doc_id, filename) DO UPDATE` and preserves the existing `img_id` on conflict. `persist_pipeline_result` uses the old→stable img_id map returned by `_persist_images_in_tx` to rewrite in-memory fact `source_locator.img_id` values before fact persistence, keeping metric-fact provenance consistent with the canonical DB row.
+
 ## Reviewed-Filing Guard
 
 `V2PersistenceAdapter._persist_facts_in_tx` (`src/extraction_v2/persistence.py`)

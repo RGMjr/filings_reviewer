@@ -239,7 +239,7 @@ class V2PersistenceAdapter:
         """
         with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                count = self._persist_images_in_tx(cur, images, filing_id)
+                count, _img_id_map = self._persist_images_in_tx(cur, images, filing_id)
         logger.debug(f"Upserted {count} images for filing_id={filing_id}")
         return count
 
@@ -301,34 +301,57 @@ class V2PersistenceAdapter:
 
         try:
             with self._db.transaction() as conn:
-                with conn.pipeline(), conn.cursor() as cur:
-                    # 1. Persist document
-                    doc_count = self._persist_document_in_tx(
-                        cur,
-                        result.document,
-                        filing_id,
-                        len(result.segments),
-                        len(result.tables),
-                        len(result.images),
-                        len(result.facts),
-                        "complete" if result.success else "failed",
-                        error_message=result.error_message,
-                        document_type=document_type,
-                        ticker=ticker,
-                        document_date=document_date,
-                        transcript_source=transcript_source,
+                with conn.cursor() as cur:
+                    # Bulk inserts (document, segments, tables/cells) run under
+                    # pipeline mode for batched round-trips. Image persistence
+                    # uses RETURNING to harvest the stable DB-side img_id on
+                    # conflict, which psycopg3 can't interleave with pending
+                    # pipeline results — so it runs after the pipeline exits.
+                    with conn.pipeline():
+                        # 1. Persist document
+                        doc_count = self._persist_document_in_tx(
+                            cur,
+                            result.document,
+                            filing_id,
+                            len(result.segments),
+                            len(result.tables),
+                            len(result.images),
+                            len(result.facts),
+                            "complete" if result.success else "failed",
+                            error_message=result.error_message,
+                            document_type=document_type,
+                            ticker=ticker,
+                            document_date=document_date,
+                            transcript_source=transcript_source,
+                        )
+
+                        # 2. Persist segments
+                        seg_count = self._persist_segments_in_tx(
+                            cur, result.segments, filing_id
+                        )
+
+                        # 3. Persist tables and cells
+                        table_count, cell_count = self._persist_tables_in_tx(
+                            cur, result.tables, filing_id
+                        )
+
+                    # 4. Persist images. img_id_map captures cases where an
+                    # existing DB row's img_id was preserved on conflict —
+                    # fresh in-memory ImageAsset.img_id values (random uuid4
+                    # per run) differ from the stable DB value, so we must
+                    # remap before persisting facts.
+                    img_count, img_id_map = self._persist_images_in_tx(
+                        cur, result.images, filing_id
                     )
 
-                    # 2. Persist segments
-                    seg_count = self._persist_segments_in_tx(cur, result.segments, filing_id)
-
-                    # 3. Persist tables and cells
-                    table_count, cell_count = self._persist_tables_in_tx(
-                        cur, result.tables, filing_id
-                    )
-
-                    # 4. Persist images
-                    img_count = self._persist_images_in_tx(cur, result.images, filing_id)
+                    if img_id_map:
+                        for image in result.images:
+                            if image.img_id in img_id_map:
+                                image.img_id = img_id_map[image.img_id]
+                        for fact in result.facts:
+                            locator = fact.source_locator
+                            if locator is not None and locator.img_id in img_id_map:
+                                locator.img_id = img_id_map[locator.img_id]
 
                     # 5. Persist facts
                     fact_count = self._persist_facts_in_tx(
@@ -567,11 +590,24 @@ class V2PersistenceAdapter:
         cur: Any,
         images: list[ImageAsset],
         filing_id: int,
-    ) -> int:
-        """Persist images within an existing transaction."""
-        if not images:
-            return 0
+    ) -> tuple[int, dict[str, str]]:
+        """Persist images within an existing transaction.
 
+        Returns ``(count, img_id_map)`` where ``img_id_map`` maps each in-memory
+        ``ImageAsset.img_id`` whose row already existed in the DB to the stable
+        ``img_id`` of the existing row. Entries are only present for rows
+        resolved via ON CONFLICT — first-time inserts are omitted.
+        """
+        if not images:
+            return 0, {}
+
+        # Upsert on (doc_id, filename), NOT on img_id: ImageAsset.img_id is a
+        # fresh random UUID per extraction run, so keying on img_id would
+        # insert a new row every time and orphan decisions in
+        # v2_image_review_decisions (which FK to img_id). The UNIQUE constraint
+        # added in sql/34_dedup_v2_image_assets.sql backs this target. img_id
+        # is deliberately absent from the DO UPDATE SET list to preserve the
+        # existing value on conflict.
         sql = """
             INSERT INTO v2_image_assets (
                 img_id, doc_id, segment_id, filename, file_path,
@@ -591,9 +627,8 @@ class V2PersistenceAdapter:
                 %(processed)s, %(confidence)s, %(requires_manual)s,
                 %(detected_keywords)s, NOW()
             )
-            ON CONFLICT (img_id) DO UPDATE SET
+            ON CONFLICT (doc_id, filename) DO UPDATE SET
                 segment_id = EXCLUDED.segment_id,
-                filename = EXCLUDED.filename,
                 file_path = EXCLUDED.file_path,
                 width = EXCLUDED.width,
                 height = EXCLUDED.height,
@@ -611,6 +646,7 @@ class V2PersistenceAdapter:
                 confidence = EXCLUDED.confidence,
                 requires_manual = EXCLUDED.requires_manual,
                 detected_keywords = EXCLUDED.detected_keywords
+            RETURNING img_id
         """
 
         params_list = [
@@ -641,8 +677,19 @@ class V2PersistenceAdapter:
             }
             for image in images
         ]
-        cur.executemany(sql, params_list)
-        return len(params_list)
+
+        img_id_map: dict[str, str] = {}
+        for params in params_list:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            if row is None:
+                continue
+            returned_img_id = str(row["img_id"]) if isinstance(row, dict) else str(row[0])
+            in_memory_img_id = str(params["img_id"])
+            if returned_img_id != in_memory_img_id:
+                img_id_map[in_memory_img_id] = returned_img_id
+
+        return len(params_list), img_id_map
 
     def _fact_to_params(self, fact: MetricFact, filing_id: int) -> dict[str, Any]:
         """Convert MetricFact to database parameters."""

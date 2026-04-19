@@ -71,6 +71,9 @@ MIGRATIONS = [
     # work; it registers itself in a separate commit. 32 below must NOT depend
     # on any schema object 31 drops (it only ALTERs v2_image_assets, untouched).
     "32_add_detected_keywords_to_v2_image_assets.sql",
+    # sql/33_fix_identity_index.sql is registered separately (applied to Neon
+    # in the prior rollout batch).
+    "34_dedup_v2_image_assets.sql",
 ]
 
 BOOTSTRAP_DDL = """
