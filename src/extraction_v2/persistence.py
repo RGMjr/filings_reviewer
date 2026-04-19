@@ -610,7 +610,7 @@ class V2PersistenceAdapter:
         # existing value on conflict.
         sql = """
             INSERT INTO v2_image_assets (
-                img_id, doc_id, segment_id, filename, file_path,
+                img_id, doc_id, filename, file_path,
                 width, height, dom_locator, nearby_text,
                 section_path, section_type,
                 classification, relevance_score,
@@ -619,7 +619,7 @@ class V2PersistenceAdapter:
                 detected_keywords, created_at
             )
             VALUES (
-                %(img_id)s, %(doc_id)s, %(segment_id)s, %(filename)s, %(file_path)s,
+                %(img_id)s, %(doc_id)s, %(filename)s, %(file_path)s,
                 %(width)s, %(height)s, %(dom_locator)s, %(nearby_text)s,
                 %(section_path)s, %(section_type)s,
                 %(classification)s, %(relevance_score)s,
@@ -628,7 +628,6 @@ class V2PersistenceAdapter:
                 %(detected_keywords)s, NOW()
             )
             ON CONFLICT (doc_id, filename) DO UPDATE SET
-                segment_id = EXCLUDED.segment_id,
                 file_path = EXCLUDED.file_path,
                 width = EXCLUDED.width,
                 height = EXCLUDED.height,
@@ -653,7 +652,6 @@ class V2PersistenceAdapter:
             {
                 "img_id": image.img_id,
                 "doc_id": filing_id,
-                "segment_id": None,  # v2_image_assets.segment_id FKs to V1 source_segments; not used in V2
                 "filename": image.filename,
                 "file_path": image.file_path,
                 "width": image.width,

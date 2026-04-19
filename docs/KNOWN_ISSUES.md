@@ -206,7 +206,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Resolved (2026-04-18) | — | — | Classifier+parser gates relaxed for customer-type/year-in-point.x shape; 0% → 100% F1 on Farfetch; Tier 1 overall +5.4pp |
 | `v2_image_assets` duplicates + pending-count discrepancy — Maplebear S-1 (Issue #21) | Resolved (2026-04-18) | — | — | sql/34 dedup migration + stable img_id upsert (ON CONFLICT (doc_id, filename)) + in-memory fact source_locator remap |
 | No reviewed-filing guard on image re-extraction (Issue #22) | Open | Low | Low | Decisions survive post-#21; hidden-decision risk on re-classification only |
-| `v2_image_assets.segment_id` dead column (Issue #23) | Open | Trivial | Trivial | Never written/read; V1 source_segments dropped in sql/31 |
+| `v2_image_assets.segment_id` dead column (Issue #23) | Resolved (2026-04-18) | — | — | sql/35 drops column; persistence.py cleaned up |
 | `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | New facts consistent post-#21; historical orphans likely remain |
 | `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Open | Trivial | Trivial | Script only touches gold-standard JSON, not production DB |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
@@ -650,17 +650,20 @@ Extend the reviewed-filing guard to check for existing `v2_image_review_decision
 
 ## 23. `v2_image_assets.segment_id` Is a Dead Column
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-18)
 **Severity**: Trivial (cosmetic)
 **Discovered**: 2026-04-18
+**Resolved**: 2026-04-18
 
 ### Problem
 
-`src/extraction_v2/persistence.py:620` sets `segment_id` to NULL with the comment "FKs to V1 source_segments; not used in V2". The V1 `source_segments` table was dropped in `sql/31_drop_v1_review_tables.sql`. The column is never read or written with a meaningful value.
+`src/extraction_v2/persistence.py` set `segment_id` to NULL with the comment "FKs to V1 source_segments; not used in V2". The V1 `source_segments` table was dropped in `sql/31_drop_v1_review_tables.sql`. The column was never read or written with a meaningful value.
 
-### Suggested Fix
+### Resolution
 
-Drop the column in a new migration (e.g., `sql/35_drop_image_assets_segment_id.sql`). Pure DDL; no application code change required.
+1. **`sql/35_drop_v2_image_assets_segment_id.sql`** — idempotent `ALTER TABLE v2_image_assets DROP COLUMN IF EXISTS segment_id`. FK was already dropped in sql/31; no explicit DROP CONSTRAINT needed. Applied to Neon prod + local test DB 2026-04-18.
+2. **`src/extraction_v2/persistence.py`** — removed `segment_id` from INSERT column list, VALUES, DO UPDATE SET, and params dict in `_persist_images_in_tx`.
+3. **`scripts/apply_migrations.py`** — registered sql/35 in `MIGRATIONS` list.
 
 ---
 
@@ -770,3 +773,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Added Issue #21 — `v2_image_assets` duplicate rows on re-extraction (random UUID upsert key) + asymmetric dedup in progress counter vs. review-list query caused 220 pending / 0 queue discrepancy on Maplebear S-1
 - **2026-04-18**: Issue #21 resolved — `sql/34_dedup_v2_image_assets.sql` collapses duplicates + adds UNIQUE (doc_id, filename); `_persist_images_in_tx` upserts on (doc_id, filename) preserving stable img_id; `persist_pipeline_result` remaps in-memory fact source_locator.img_id before fact insert
 - **2026-04-18**: Added Issues #22–#25 — out-of-scope follow-ups surfaced during Issue #21 investigation: image re-extraction guard gap, dead segment_id column, img_id referential integrity, migrate_image_ids script scope confusion
+- **2026-04-18**: Issue #23 resolved — `sql/35_drop_v2_image_assets_segment_id.sql` drops the dead column (applied to Neon prod + local test DB); `_persist_images_in_tx` in `src/extraction_v2/persistence.py` no longer references it; migration registered in `scripts/apply_migrations.py`
