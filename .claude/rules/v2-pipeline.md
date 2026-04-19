@@ -57,6 +57,18 @@ When the override fires, the adapter emits a structured warning log:
 Purged decisions are **not archived** — recovery requires restoring from
 a backup.
 
+`_persist_images_in_tx` enforces a narrower variant (`ReviewedFilingError` with
+`context="image classifications"`): it refuses re-extraction when an image with
+an existing `v2_image_review_decisions` row would be re-classified from a
+visible class (`chart` / `table_image` / `unknown`) into a hidden class
+(`decorative` / `logo` / `signature`). The asset row is preserved by
+`ON CONFLICT (doc_id, filename)`, so the decision survives — but the review
+UI's `classification NOT IN ('decorative','logo','signature')` filter would
+make it invisible. `force=True` proceeds and logs
+`force-reextract hiding reviewed images: filing_id=X hidden_image_count=N filenames=[…]`.
+Re-classifications within the visible set, or re-classifications of an
+already-hidden image, are not blocked.
+
 ## Metric Priority Tiers
 
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
