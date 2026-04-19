@@ -21,6 +21,7 @@ from src.gold_standard.v2_validator import (
     MatchResult,
     V2GoldStandardValidator,
     ValidationResult,
+    _derive_chart_native_metrics,
     normalize_metric_id,
     normalize_value,
 )
@@ -2348,3 +2349,218 @@ class TestStageTimingSummary:
         assert vb_idx < ing_idx < val_idx
         # Totals line
         assert "1,230" in out  # sum of all stage durations
+
+
+class TestDeriveChartNativeMetrics:
+    """Tests for _derive_chart_native_metrics()."""
+
+    def _write_rows(
+        self, path: Path, rows: list[tuple[str, str]]
+    ) -> None:
+        """Write (metric_name, segment_type) rows to a gold standard CSV."""
+        full_rows = [
+            {
+                "Document URL": "https://sec.gov/test",
+                "Company": "TestCo",
+                "Standard Metric Name": metric_name,
+                "Name in the text": "",
+                "Raw value": "1",
+                "Scaled value": "",
+                "Scale/unit": "",
+                "Period": "",
+                "Definition": "",
+                "Quote/context": "",
+                "segment_type": seg,
+                "is_definition_only": "",
+                "value_context": "",
+                "detection_difficulty": "easy",
+                "period_start": "",
+                "period_end": "",
+            }
+            for metric_name, seg in rows
+        ]
+        write_gold_standard_csv(path, full_rows)
+
+    def test_classifies_pure_chart_metric(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "gs.csv"
+        # 5 rows all chart → chart-native
+        self._write_rows(
+            csv_path, [("cm_balance_by_cohort", "chart")] * 5
+        )
+        native = _derive_chart_native_metrics(csv_path)
+        assert "cm_balance_by_cohort" in native
+
+    def test_borderline_metric_excluded(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "gs.csv"
+        # 10 rows: 6 chart, 4 text → 60% chart, below 80% threshold
+        rows = [("cm_revenue_by_cohort", "chart")] * 6 + [
+            ("cm_revenue_by_cohort", "text")
+        ] * 4
+        self._write_rows(csv_path, rows)
+        native = _derive_chart_native_metrics(csv_path)
+        assert "cm_revenue_by_cohort" not in native
+
+    def test_min_row_floor_excludes_small_sample(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "gs.csv"
+        # Only 2 rows (below min of 3), both chart → excluded
+        self._write_rows(csv_path, [("cm_obscure", "chart")] * 2)
+        native = _derive_chart_native_metrics(csv_path)
+        assert "cm_obscure" not in native
+
+    def test_missing_csv_returns_empty_set(self, tmp_path: Path) -> None:
+        missing = tmp_path / "does_not_exist.csv"
+        native = _derive_chart_native_metrics(missing)
+        assert native == frozenset()
+
+
+class TestCrossSourceGate:
+    """Tests for the cross-source confirmation gate counters and print block."""
+
+    def test_chart_native_not_counted_in_text_derivable(self, tmp_path: Path) -> None:
+        """Partition logic: chart facts on chart-native metrics go into the
+        chart-native bucket; others go into text-derivable."""
+        # Build a gold standard where cm_balance_by_cohort is chart-native
+        # and cm_arr is text-derivable.
+        csv_path = tmp_path / "gs.csv"
+        rows = (
+            [
+                {
+                    "Document URL": "https://sec.gov/x",
+                    "Company": "TestCo",
+                    "Standard Metric Name": "cm_balance_by_cohort",
+                    "Name in the text": "",
+                    "Raw value": "1",
+                    "Scaled value": "",
+                    "Scale/unit": "",
+                    "Period": "",
+                    "Definition": "",
+                    "Quote/context": "",
+                    "segment_type": "chart",
+                    "is_definition_only": "",
+                    "value_context": "",
+                    "detection_difficulty": "easy",
+                    "period_start": "",
+                    "period_end": "",
+                }
+            ]
+            * 5
+            + [
+                {
+                    "Document URL": "https://sec.gov/y",
+                    "Company": "TestCo",
+                    "Standard Metric Name": "cm_arr",
+                    "Name in the text": "",
+                    "Raw value": "1",
+                    "Scaled value": "",
+                    "Scale/unit": "",
+                    "Period": "",
+                    "Definition": "",
+                    "Quote/context": "",
+                    "segment_type": "text",
+                    "is_definition_only": "",
+                    "value_context": "",
+                    "detection_difficulty": "easy",
+                    "period_start": "",
+                    "period_end": "",
+                }
+            ]
+            * 5
+        )
+        write_gold_standard_csv(csv_path, rows)
+
+        # Configure a validator that uses the synthetic CSV for chart-native
+        # derivation. Pass a dummy v2_config so no real pipeline is built.
+        validator = V2GoldStandardValidator(gold_standard_path=csv_path)
+        assert "cm_balance_by_cohort" in validator._chart_native_metrics
+        assert "cm_arr" not in validator._chart_native_metrics
+
+        # Build 5 synthetic chart facts: 2 on the chart-native metric (one
+        # cross-confirmed), 3 on the text-derivable metric (one cross-confirmed).
+        from src.extraction_v2.models import SourceType
+
+        def chart_fact(metric_id: str, fact_id: str, confirmed: bool) -> MetricFact:
+            f = make_fact(fact_id=fact_id, canonical_metric_id=metric_id)
+            f.source_type = SourceType.CHART
+            f.cross_source_confirmed = confirmed
+            return f
+
+        result = ValidationResult(
+            company_name="TestCo",
+            filing_path="",
+            total_expected=0,
+            matched=0,
+            missed=0,
+            extra=0,
+        )
+        facts = [
+            chart_fact("cm_balance_by_cohort", "a1", True),
+            chart_fact("cm_balance_by_cohort", "a2", False),
+            chart_fact("cm_arr", "b1", True),
+            chart_fact("cm_arr", "b2", False),
+            chart_fact("cm_arr", "b3", False),
+        ]
+        # Drive the same partition logic validate_filing uses.
+        for f in facts:
+            metric_id = normalize_metric_id(f.canonical_metric_id)
+            result.chart_facts_total += 1
+            if f.cross_source_confirmed:
+                result.chart_facts_cross_confirmed += 1
+            if metric_id in validator._chart_native_metrics:
+                result.chart_facts_by_chart_native_metric[metric_id] = (
+                    result.chart_facts_by_chart_native_metric.get(metric_id, 0) + 1
+                )
+            else:
+                result.chart_facts_text_derivable_total += 1
+                if f.cross_source_confirmed:
+                    result.chart_facts_text_derivable_cross_confirmed += 1
+
+        assert result.chart_facts_total == 5
+        assert result.chart_facts_text_derivable_total == 3
+        assert result.chart_facts_text_derivable_cross_confirmed == 1
+        assert result.chart_facts_by_chart_native_metric == {
+            "cm_balance_by_cohort": 2
+        }
+
+    def test_gate_warning_respects_text_derivable_threshold(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The WARNING fires only when text-derivable pct < 30%. If only
+        chart-native facts exist, no warning should fire."""
+        # Case A: text-derivable below threshold → WARNING fires.
+        metrics_a = AggregateMetrics(
+            precision=0.0,
+            recall=0.0,
+            f1=0.0,
+            total_true_positives=0,
+            total_false_positives=0,
+            total_false_negatives=0,
+            chart_facts_total=10,
+            chart_facts_cross_confirmed=1,
+            chart_facts_text_derivable_total=10,
+            chart_facts_text_derivable_cross_confirmed=1,
+            chart_facts_by_chart_native_metric={},
+        )
+        V2GoldStandardValidator.print_cross_source_gate(metrics_a)
+        out_a = capsys.readouterr().out
+        assert "text-derivable metrics): 1/10 (10%)" in out_a
+        assert "WARNING" in out_a
+
+        # Case B: only chart-native facts → no WARNING.
+        metrics_b = AggregateMetrics(
+            precision=0.0,
+            recall=0.0,
+            f1=0.0,
+            total_true_positives=0,
+            total_false_positives=0,
+            total_false_negatives=0,
+            chart_facts_total=10,
+            chart_facts_cross_confirmed=0,
+            chart_facts_text_derivable_total=0,
+            chart_facts_text_derivable_cross_confirmed=0,
+            chart_facts_by_chart_native_metric={"cm_balance_by_cohort": 10},
+        )
+        V2GoldStandardValidator.print_cross_source_gate(metrics_b)
+        out_b = capsys.readouterr().out
+        assert "Chart-native metrics" in out_b
+        assert "cm_balance_by_cohort: 10 chart facts" in out_b
+        assert "WARNING" not in out_b

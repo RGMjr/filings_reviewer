@@ -75,6 +75,54 @@ def get_tier(metric_id: str) -> int:
     return _load_metric_tiers().get(metric_id, 2)
 
 
+# Chart-native metric classification for the CHART cross-source confirmation gate.
+# A metric is "chart-native" when its real-world disclosure is overwhelmingly
+# chart-embedded in the gold standard — demanding text/table cross-confirmation
+# for such metrics is structurally impossible and would produce misleading gate
+# warnings (e.g. cm_balance_by_cohort, cm_gross_margin_by_cohort).
+_CHART_NATIVE_MIN_ROWS = 3
+_CHART_NATIVE_MIN_CHART_SHARE = 0.80
+
+
+def _derive_chart_native_metrics(csv_path: Path) -> frozenset[str]:
+    """Classify metrics as chart-native by reading the gold standard CSV.
+
+    A metric qualifies when it has at least ``_CHART_NATIVE_MIN_ROWS`` gold rows
+    AND the share of those rows with ``segment_type == 'chart'`` is at least
+    ``_CHART_NATIVE_MIN_CHART_SHARE``. Missing CSV → empty set (with a warning).
+    """
+    chart_counts: dict[str, int] = {}
+    total_counts: dict[str, int] = {}
+    try:
+        with open(csv_path, encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                metric_id = normalize_metric_id(row.get("Standard Metric Name", ""))
+                if not metric_id:
+                    continue
+                segment = (row.get("segment_type") or "").strip().lower()
+                if segment not in ("text", "table", "chart"):
+                    continue
+                total_counts[metric_id] = total_counts.get(metric_id, 0) + 1
+                if segment == "chart":
+                    chart_counts[metric_id] = chart_counts.get(metric_id, 0) + 1
+    except OSError as e:
+        logger.warning(
+            f"Could not derive chart-native metrics from {csv_path}: {e}. "
+            f"Cross-source gate will treat all chart facts as text-derivable."
+        )
+        return frozenset()
+
+    native: set[str] = set()
+    for metric_id, total in total_counts.items():
+        if total < _CHART_NATIVE_MIN_ROWS:
+            continue
+        share = chart_counts.get(metric_id, 0) / total
+        if share >= _CHART_NATIVE_MIN_CHART_SHARE:
+            native.add(metric_id)
+    return frozenset(native)
+
+
 @dataclass
 class GoldStandardEntry:
     """A single expected value from the gold standard dataset."""
@@ -193,6 +241,12 @@ class ValidationResult:
     # Cross-source confirmation counts (populated from above-threshold v2_facts)
     chart_facts_total: int = 0
     chart_facts_cross_confirmed: int = 0
+    # Partition of chart facts by whether the metric is chart-native (disclosure
+    # is structurally chart-only per gold standard) — text-derivable counters are
+    # what the 30% gate enforces; chart-native counters are informational.
+    chart_facts_text_derivable_total: int = 0
+    chart_facts_text_derivable_cross_confirmed: int = 0
+    chart_facts_by_chart_native_metric: dict[str, int] = field(default_factory=dict)
 
     # All extracted facts (pre-threshold) — stored so metrics can be recomputed
     # at a different confidence threshold without re-running the pipeline.
@@ -245,6 +299,9 @@ class AggregateMetrics:
     by_tier: dict[int, MetricScores] = field(default_factory=dict)
     chart_facts_total: int = 0
     chart_facts_cross_confirmed: int = 0
+    chart_facts_text_derivable_total: int = 0
+    chart_facts_text_derivable_cross_confirmed: int = 0
+    chart_facts_by_chart_native_metric: dict[str, int] = field(default_factory=dict)
 
     def to_baseline_metrics(
         self,
@@ -309,6 +366,13 @@ class V2GoldStandardValidator:
 
         # Cache for gold standard entries
         self._entries_by_company: dict[str, list[GoldStandardEntry]] | None = None
+
+        # Derive chart-native metric set from the gold standard itself; used by
+        # the CHART cross-source confirmation gate to skip structurally chart-only
+        # metrics. Computed once per validator instance.
+        self._chart_native_metrics: frozenset[str] = _derive_chart_native_metrics(
+            self.gold_standard_path
+        )
 
     def load_gold_standard(self) -> dict[str, list[GoldStandardEntry]]:
         """
@@ -492,12 +556,25 @@ class V2GoldStandardValidator:
             }
             result.total_pipeline_ms = v2_result.total_duration_ms
 
-            # Count chart facts and cross-source confirmation for Phase 3 gate
+            # Count chart facts and cross-source confirmation for Phase 3 gate.
+            # Partition by chart-native vs text-derivable — only the latter is
+            # enforced at the 30% threshold (chart-native metrics lack text
+            # counterparts by design; see _derive_chart_native_metrics docstring).
             for f in v2_facts:
-                if f.source_type == SourceType.CHART:
-                    result.chart_facts_total += 1
+                if f.source_type != SourceType.CHART:
+                    continue
+                metric_id = normalize_metric_id(f.canonical_metric_id)
+                result.chart_facts_total += 1
+                if f.cross_source_confirmed:
+                    result.chart_facts_cross_confirmed += 1
+                if metric_id in self._chart_native_metrics:
+                    result.chart_facts_by_chart_native_metric[metric_id] = (
+                        result.chart_facts_by_chart_native_metric.get(metric_id, 0) + 1
+                    )
+                else:
+                    result.chart_facts_text_derivable_total += 1
                     if f.cross_source_confirmed:
-                        result.chart_facts_cross_confirmed += 1
+                        result.chart_facts_text_derivable_cross_confirmed += 1
 
             logger.debug(
                 f"{company_name}: {len(v2_result.facts)} total facts, "
@@ -1524,6 +1601,47 @@ class V2GoldStandardValidator:
                 f"{s.precision:>6.1%}  {s.recall:>6.1%}  {s.f1:>6.1%}"
             )
 
+    @staticmethod
+    def print_cross_source_gate(metrics: AggregateMetrics) -> None:
+        """Print the CHART cross-source confirmation gate.
+
+        The 30% gate is enforced only on text-derivable metrics — metrics whose
+        gold standard disclosures are structurally chart-only (chart-native) are
+        reported separately as informational counts.
+        """
+        if metrics.chart_facts_total == 0:
+            print("\nCHART cross-source confirmation: 0/0 (no chart facts in this run)")
+            return
+
+        td_total = metrics.chart_facts_text_derivable_total
+        td_confirmed = metrics.chart_facts_text_derivable_cross_confirmed
+        if td_total > 0:
+            td_pct = round(100 * td_confirmed / td_total)
+            print(
+                f"\nCHART cross-source confirmation (text-derivable metrics): "
+                f"{td_confirmed}/{td_total} ({td_pct}%)"
+            )
+            if td_pct < 30:
+                print(
+                    "WARNING: text-derivable cross-source confirmation below 30% gate"
+                    " — discuss before updating baseline"
+                )
+        else:
+            print(
+                "\nCHART cross-source confirmation (text-derivable metrics): 0/0"
+                " (no text-derivable chart facts in this run)"
+            )
+
+        native_counts = metrics.chart_facts_by_chart_native_metric
+        native_total = sum(native_counts.values())
+        if native_total > 0:
+            print(
+                f"Chart-native metrics (bypass gate — structurally chart-only): "
+                f"{native_total} facts"
+            )
+            for metric_id in sorted(native_counts):
+                print(f"    {metric_id}: {native_counts[metric_id]} chart facts")
+
     def compute_metrics(self, results: list[ValidationResult]) -> AggregateMetrics:
         """
         Compute aggregate metrics from validation results.
@@ -1598,6 +1716,18 @@ class V2GoldStandardValidator:
 
         chart_facts_total = sum(r.chart_facts_total for r in results)
         chart_facts_cross_confirmed = sum(r.chart_facts_cross_confirmed for r in results)
+        chart_facts_text_derivable_total = sum(
+            r.chart_facts_text_derivable_total for r in results
+        )
+        chart_facts_text_derivable_cross_confirmed = sum(
+            r.chart_facts_text_derivable_cross_confirmed for r in results
+        )
+        chart_facts_by_chart_native_metric: dict[str, int] = {}
+        for r in results:
+            for metric_id, count in r.chart_facts_by_chart_native_metric.items():
+                chart_facts_by_chart_native_metric[metric_id] = (
+                    chart_facts_by_chart_native_metric.get(metric_id, 0) + count
+                )
 
         return AggregateMetrics(
             precision=precision,
@@ -1611,6 +1741,9 @@ class V2GoldStandardValidator:
             by_tier=by_tier,
             chart_facts_total=chart_facts_total,
             chart_facts_cross_confirmed=chart_facts_cross_confirmed,
+            chart_facts_text_derivable_total=chart_facts_text_derivable_total,
+            chart_facts_text_derivable_cross_confirmed=chart_facts_text_derivable_cross_confirmed,
+            chart_facts_by_chart_native_metric=chart_facts_by_chart_native_metric,
         )
 
     def compute_metrics_at_threshold(
@@ -1919,20 +2052,8 @@ def run_validation(
     # Print tier breakdown
     V2GoldStandardValidator.print_tier_report(metrics)
 
-    # Print CHART cross-source confirmation gate (Phase 3 go/no-go)
-    if metrics.chart_facts_total > 0:
-        pct = round(100 * metrics.chart_facts_cross_confirmed / metrics.chart_facts_total)
-        print(
-            f"\nCHART cross-source confirmation: "
-            f"{metrics.chart_facts_cross_confirmed}/{metrics.chart_facts_total} ({pct}%)"
-        )
-        if pct < 30:
-            print(
-                "WARNING: CHART cross-source confirmation below 30% gate"
-                " — discuss before updating baseline"
-            )
-    else:
-        print("\nCHART cross-source confirmation: 0/0 (no chart facts in this run)")
+    # Print CHART cross-source confirmation gate (Phase 3 go/no-go).
+    V2GoldStandardValidator.print_cross_source_gate(metrics)
 
     # Print FP diagnostics
     V2GoldStandardValidator.print_fp_diagnostics(results)
