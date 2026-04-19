@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise)
 
 ---
 
@@ -200,7 +200,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
 | `test_candidate_generation_finds_active_consumers` (Issue #10) | Resolved (2026-04-19) | — | — | Resolved-by-deletion in commit `03a8a20` (V1 retirement); test module retired |
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
-| V2 metric facts identity index drift (Issue #13) | Migration prepared (sql/33) | Low | Low | DB index 8 cols; sql/33 recreates 9-col index; pending prod apply |
+| V2 metric facts identity index drift (Issue #13) | Status inconsistent across docs (2026-04-19) | Low | Low | Local test DB verified 9-col; `apply_migrations.py` comment says prod already applied; this doc still said "pending" — needs prod `pg_indexes` query to settle |
 | Farfetch LTV/CAC dedup collision (Issue #14) | Resolved (2026-04-18) | — | — | cm_ltv_to_cac_ratio 33%→100%; cm_ltv_to_cac_ratio_by_cohort 17%→50%; Farfetch F1 +10.3pp |
 | Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Resolved (2026-04-18) | — | — | Classifier+parser gates relaxed for customer-type/year-in-point.x shape; 0% → 100% F1 on Farfetch; Tier 1 overall +5.4pp |
@@ -208,14 +208,15 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | No reviewed-filing guard on image re-extraction (Issue #22) | Resolved (2026-04-18) | — | — | `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` on visible→hidden re-classification |
 | `v2_image_assets.segment_id` dead column (Issue #23) | Resolved (2026-04-18) | — | — | sql/35 drops column; persistence.py cleaned up |
 | `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | Diagnostic script added 2026-04-19; 9 orphan facts in local DB across 4 docs; cleanup + FK promotion still open |
-| `cm_new_customers_acquired` 2.71x chart FP on Farfetch LTV/CAC (Issue #29) | Open | Low | Low | 1 FP per Farfetch baseline; mis-classified chart value from `g607688g54x53.jpg` |
+| `cm_new_customers_acquired` 2.71x chart FP on Farfetch LTV/CAC (Issue #29) | Resolved (2026-04-19) | Low | Low | New `_rule_ratio_suffix_on_count_metric` in FP filter; 6 regression tests; Farfetch GS confirms `2.71x` FP eliminated |
 | `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Resolved (2026-04-18) | — | — | Docstring expanded to clarify JSON-only scope |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
 | CAC payback "six months" not bound (Issue #17) | Resolved (2026-04-18) | — | — | Added `WORD_NUMBER_TIME_PATTERN` gated to time-valued metrics; cm_cac_payback_period 0% → 100% F1 |
 | Migration checksum mismatch — `sql/01_create_schema.sql` (Issue #18) | Resolved (2026-04-18) | — | — | Self-healed via V1 retirement merge |
 | FN diagnostic classification gaps (Issue #19) | Resolved (2026-04-18) | — | — | Added `dedup_collision` + `no_matching_binding` categories; `wrong_period` restricted to post-dedup |
-| Images Tab Playwright assertions fail (Issue #27) | Open | Low | Medium | 3 tests in `tests/ui/review.spec.js` (Images Tab) fail pre-existing; will be visible on every PR once `ui-e2e` CI job runs |
+| Images Tab Playwright assertions fail (Issue #27) | Partially resolved (2026-04-19) | Low | Low | 1 test fixed via `img_id` mock update; 2 stale assertions `test.skip`-ed with TODOs; CI green |
 | Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
+| Async audit log DNS error in tests (Issue #31) | Partially resolved (2026-04-19) | Low | Low | `review_unified.py` async path now `DEBUG` under `TESTING=True`; related `middleware.py:114` path still `ERROR` (flagged in #31 body) |
 
 ---
 
@@ -248,9 +249,10 @@ the fixture instead of calling `_make_test_png(data_dir, ...)` directly. Verifie
 
 ## 13. V2 Metric Facts Identity Index Drift
 
-**Status**: Migration prepared; pending prod apply (`sql/33_fix_identity_index.sql`)
+**Status**: Local test DB verified 9-col on 2026-04-19; prod status inconsistent in docs — needs verification
 **Severity**: Low (application-layer dedup in `MetricFact.identity_tuple()` still distinguishes `source_type`; no observed duplicate-row incidents)
 **Discovered**: 2026-04-18
+**Updated**: 2026-04-19
 
 ### Problem
 
@@ -289,9 +291,27 @@ Secondary finding: `_persist_facts_in_tx` in `src/extraction_v2/persistence.py` 
 
 `sql/33_fix_identity_index.sql` idempotently drops `idx_v2_metric_facts_identity_unique` and recreates it with all 9 columns including `source_type`. Pure DDL; no code deploy required. See `docs/operations/cloud-deployment-runbook.md` Pending Production Rollouts for apply instructions.
 
+### Status reconciliation (2026-04-19)
+
+The status above is inconsistent across the repo:
+
+1. **Local test DB** (`$TEST_DATABASE_URL` → `localhost:5433/filings_analysis_test`) — verified 9-column on 2026-04-19; `source_type` present. No drift locally.
+2. **`scripts/apply_migrations.py`** (lines 68–74, comment on `MIGRATIONS`) — asserts `sql/33_fix_identity_index.sql` was "already applied to Neon prod out-of-band"; deliberately unregistered so `--test` doesn't re-run it on fresh test DBs.
+3. **This document** — still reads "pending prod apply".
+
+(2) and (3) cannot both be true. To settle this, an operator should run:
+
+```bash
+source .env && psql "$DATABASE_URL" -c \
+  "SELECT indexdef FROM pg_indexes WHERE indexname='idx_v2_metric_facts_identity_unique'"
+```
+
+on Neon prod and update this document accordingly. If prod is 9-col, mark this issue resolved and keep the note in `apply_migrations.py`. If prod is still 8-col, the `apply_migrations.py` comment is stale and sql/33 still needs a prod apply.
+
 ### References
 
-- `sql/33_fix_identity_index.sql` — fix migration (pending prod apply)
+- `sql/33_fix_identity_index.sql` — fix migration
+- `scripts/apply_migrations.py:68-74` — registration comment claiming prod already applied
 - `docs/architecture/data-model.md` — "Known Discrepancies" section
 - `sql/23_chart_source_dedup.sql` — original 9-column DDL intent
 - `src/extraction_v2/models.py::MetricFact.identity_tuple` — 9-element tuple
@@ -751,9 +771,10 @@ Seven-part fix centralising URL construction and closing the detection gap:
 
 ## 27. Images Tab Playwright Assertions Fail
 
-**Status**: Open
+**Status**: Partially resolved (2026-04-19) — 1 test fixed via mock update; 2 stale assertions skipped
 **Severity**: Low (test-only; no production impact)
 **Discovered**: 2026-04-19 (latent; visible once `ui-e2e` CI job runs)
+**Updated**: 2026-04-19
 
 ### Problem
 
@@ -773,9 +794,19 @@ Either (a) the mock server's `/images-tab` route does not populate the exact sha
 
 The `ui-e2e` CI job added in commit `413b386` will flag these three tests red on every PR. Without fixing or explicitly skipping them, developers will start ignoring the suite's red status — the exact failure mode the CI job was meant to prevent.
 
-### Next Steps
+### Resolution (2026-04-19, partial)
 
-Either fix the three assertions (or the corresponding mock-server stub) or mark them `test.skip` with a TODO referencing this issue. Not to be bundled with Issue #28 — these are assertion-level bugs, not an architectural coupling concern.
+Root causes diagnosed via DOM inspection of `/images-tab` on the local mock server:
+
+1. **`review.spec.js:965` (thumbnail active)** — `unified_review.html:617` compares `candidate.img_id == current_image.img_id`; the two mock dicts in `tests/ui/test_server.py` lacked `img_id`, so both thumbnails matched (`None == None`) and `.thumbnail-item.active` resolved to 2 elements. **Fixed** by adding distinct `img_id` values (`img-pending-10`, `img-reviewed-11`) to `MOCK_IMAGE_CANDIDATE_PENDING` / `MOCK_IMAGE_CANDIDATE_REVIEWED`.
+2. **`review.spec.js:1037` (`.keyword-badge`)** — template has no `.keyword-badge` element; assertion is stale. **Skipped** with `test.skip` + TODO(KNOWN_ISSUES #27).
+3. **`review.spec.js:1054` ("Image 1 of 2")** — template renders "Image #N" in the main display (`unified_review.html:668`), not "Image N of M" in the context panel; assertion is stale. **Skipped** with `test.skip` + TODO(KNOWN_ISSUES #27).
+
+Verified via `npx playwright test review.spec.js`: 142 pass, 2 skip, 0 fail.
+
+### Remaining
+
+If the "Image N of M" counter and keyword-badge visualisation are features that *should* exist in the context panel, re-introduce them in `unified_review.html` and unskip the two tests. Otherwise delete the skipped tests next time this module is touched. Tracked here because the product intent is unclear.
 
 ---
 
@@ -817,19 +848,47 @@ Not urgent. Revisit if the smoke spec starts missing real breakages or if the mo
 
 ## 29. `cm_new_customers_acquired` Receives `2.71x` Chart Fact From Farfetch LTV/CAC Chart
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-19) — value-level FP rule; confirmed via Farfetch GS
 **Severity**: Low (1 Farfetch FP; does not block recall)
 **Discovered**: 2026-04-18 (flagged in Issue #20 "Out of scope"); filed as its own issue 2026-04-19
+**Resolved**: 2026-04-19
 
 ### Problem
 
-FTCH's LTV/CAC tenure chart `g607688g54x53.jpg` emits a chart fact with value `2.71` (raw `"2.71x"`) that is mis-classified into `cm_new_customers_acquired`. Surfaces as a `NO_MATCH` FP on the Farfetch gold-standard run (1 of 12 FPs on 2026-04-19 baseline). The correct home for this value is `cm_ltv_to_cac_ratio_by_cohort` (or the tenure-bucket variant); chart bridge routing picks the wrong metric gate.
+FTCH's LTV/CAC tenure chart `g607688g54x53.jpg` emits chart point labels `"2.71x"`, `"1.81x"`, `"2.04x"` that get bound to `cm_new_customers_acquired` (a count metric). Surfaces as a `NO_MATCH` FP on the Farfetch gold-standard run (1 of 12 FPs on 2026-04-19 baseline). The correct home for these values is `cm_ltv_to_cac_ratio_by_cohort`.
 
-### Next Steps
+### Root Cause (diagnosed 2026-04-19 via DIAG print in `_scan_chart`)
 
-- Trace the chart-fact-bridge flow for this image in `src/extraction_v2/chart/metric_classifier.py` — likely a gate that over-accepts `x`-suffixed numeric labels under `cm_new_customers_acquired`.
-- Consider adding an exclusion similar to the one used for percent-prefixed `new/existing consumers` annotations (see `.claude/rules/v2-pipeline.md` "Chart classifier mis-tag (fixed 2026-04-17)").
-- Low priority — does not affect Tier 1 recall and only surfaces on the FTCH tenure chart.
+The chart_data for `g54x53` is:
+
+```
+title=''  y_axis=''  x_axis=''  annotations=[]
+series=[
+  ('2015 Cohort', [('LTV / CAC after 6 months',  1.42, '1.42 x'),
+                    ('LTV / CAC after 12 months', 1.53, '1.53 x'),
+                    ('LTV / CAC after 24 months', 1.77, '1.77 x')]),
+  ('2016 Cohort', [..., ('LTV / CAC after 24 months', 2.04, '2.04 x')]),
+  ('2017 Cohort', [('LTV / CAC after 24 months', 2.71, '2.71x')])
+]
+```
+
+`combined_text` (built from title/axes/series.name/annotation.text) is just `'2015 Cohort 2016 Cohort 2017 Cohort'` — no customer-type keywords. A yaml-level exclusion on chart combined_text would not help here.
+
+The mis-classification enters via `_scan_chart`'s **second pass** against `nearby_text` (`candidate_generation.py:459-485`). Farfetch's prose around this image reads: *"as we have managed to lower our CAC and increase our LTV of acquired consumers over time. This has allowed us to increase total consumer acquisition spend, and as a result, increase our number of new Marketplace consumers."* → legitimately matches `\bnew\s+consumers?\b` / `\bconsumers?\s+acquired\b` for `cm_new_customers_acquired`. A candidate is created; value binding then attaches the chart point.label `2.71` to it. Similar paths exist for `cm_customer_acquisition_cost` (currency), `cm_lifetime_value_per_customer` (currency), etc.
+
+### Resolution
+
+Added `_rule_ratio_suffix_on_count_metric` to `src/extraction_v2/stages/false_positive_filter.py`, mirroring the existing `_rule_revenue_concentration_ratio_suffix`. Whitelists ratio metrics (`cm_ltv_to_cac_ratio`, `cm_ltv_to_cac_ratio_by_cohort`) implicitly by not listing them; rejects any `N.NNx` / `N.NN×` raw value bound to count / currency / rate / time metrics in `_RATIO_SUFFIX_COUNT_METRICS` (18 metrics). Registered in `_FP_RULES` immediately after `revenue_concentration_ratio_suffix`.
+
+### Validation
+
+- 6 new unit tests in `tests/unit/extraction_v2/test_false_positive_filter_stage.py::TestRatioSuffixOnCountMetric` covering: `2.71x` blocked on `cm_new_customers_acquired`; `1.81x` blocked on `cm_active_customers_total`; unicode `×` variant; legitimate `500` count not blocked; `2.71x` allowed on `cm_ltv_to_cac_ratio_by_cohort`; `2.71x` allowed on `cm_ltv_to_cac_ratio`.
+- Full unit-test run: **2233 pass, 11 skip, 0 fail** (`pytest tests/unit/review/ tests/unit/extraction_v2/ tests/extraction_v2/chart/`).
+- Farfetch GS validator (`python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited"`): the `2.71x` `NO_MATCH` FP on `cm_new_customers_acquired` is **eliminated**. Total Farfetch FP count unchanged at 12 — see note below.
+
+### Note on observed dedup-displacement side effect
+
+Removing the `2.71x` binding unmasks a pre-existing sibling FP: `cm_new_customers_acquired: 54.0 (raw='54%')` now appears in the Farfetch `NO_MATCH` slot. This is a **separate, pre-existing** candidate previously tiebroken-away by `2.71x` during dedup. Root cause: a percent value from elsewhere in the filing binding to `cm_new_customers_acquired` with `unit=COUNT` (so `_rule_percent_on_count_metric` skips it — that rule requires `unit=PERCENT`). **Not fixed here** per CLAUDE.md scope discipline; should be filed as its own issue if it persists after broader percent-on-count hardening.
 
 ---
 
@@ -864,17 +923,22 @@ ORDER BY f.filing_id;
 
 ## 31. Async Audit Log Spams DNS Error in Test / Dev
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-19) for `review_unified.py` path; related `middleware.py` path noted below
 **Severity**: Low (cosmetic — tests pass, UI works, log noise only)
 **Discovered**: 2026-04-19 (observed during Issue #26 test-suite runs)
+**Resolved**: 2026-04-19
 
 ### Problem
 
-`src/web/routes/review_unified.py:102` (`_write` inside the audit-log thread) logs `ERROR Async audit log write failed: [Errno 8] nodename nor servname provided, or not known` on every request when `DATABASE_URL` is a testing sentinel like `postgresql://test` (used by `tests/unit/web/*`). The error is swallowed — response is unaffected — but pollutes pytest output and could mask real audit-log failures.
+`src/web/routes/review_unified.py:102` (`_write` inside the audit-log thread) logged `ERROR Async audit log write failed: [Errno 8] nodename nor servname provided, or not known` on every request when `DATABASE_URL` is a testing sentinel like `postgresql://test` (used by `tests/unit/web/*`). The error was swallowed — response unaffected — but polluted pytest output and could mask real audit-log failures.
 
-### Fix (cheap)
+### Resolution
 
-Wrap the `psycopg.connect` call in the audit thread with a short-circuit for obviously-non-network DSN strings (e.g. host resolves to nothing), or log at `DEBUG` when `app.config['TESTING']` is True. One-off change, under 10 LOC. Defer until someone is otherwise in `review_unified.py`.
+`src/web/routes/review_unified.py:97-109` — captured `testing = bool(current_app.config.get("TESTING"))` into the worker-thread closure alongside `database_url`/`pool` and downgraded the log to `DEBUG` when `testing` is true; preserved `ERROR` otherwise so real audit-log failures remain visible in production.
+
+### Related — not in scope here
+
+`src/web/middleware.py:114` has a separate synchronous audit-log path (`insert_audit_log_entry`) that logs `ERROR Failed to insert audit log: ...` with the same test-DSN-failure pattern. This path accounts for most of the current pytest-output noise. It was intentionally not touched because Issue #31 explicitly named only the async `review_unified.py` path; fixing it is a trivial follow-up (same `TESTING` branch).
 
 ---
 
@@ -1007,3 +1071,7 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Added Issue #28 — Playwright mock server duplicates production template context; Apr 17 breakage (commit `3e398fd`) was the symptom class. Commit `413b386` added `tests/ui/smoke.spec.js` as a fast pre-flight to catch render-time failures, but the underlying duplicated-contract coupling remains
 - **2026-04-19**: Issue #24 diagnostic baseline recorded — `scripts/check_image_referential_integrity.py` against the local dev DB reports 9 orphan facts across 4 docs (1546: 4, 1545: 2, 1551: 2, 1539: 1). Historical facts predating the `sql/34` dedup migration. Prod not yet scanned; cleanup strategy still open
 - **2026-04-19**: Added Issue #29 — `cm_new_customers_acquired` receives `2.71x` chart fact from Farfetch LTV/CAC tenure chart `g607688g54x53.jpg`; 1 FP per Farfetch baseline. Filed as its own issue after originally being noted in Issue #20 "Out of scope"
+- **2026-04-19**: Issue #31 partial resolution — `review_unified.py:97-109` captures `current_app.config["TESTING"]` into the worker-thread closure and logs `DEBUG` instead of `ERROR` when `TESTING=True`; production path unchanged. Related `src/web/middleware.py:114` synchronous path has the same pattern but was intentionally left for a separate fix (Issue #31 explicitly named only the async path)
+- **2026-04-19**: Issue #27 partial resolution — `review.spec.js:965` passes after `img_id` added to `MOCK_IMAGE_CANDIDATE_PENDING` / `MOCK_IMAGE_CANDIDATE_REVIEWED` in `tests/ui/test_server.py`; `review.spec.js:1037` (`.keyword-badge`) and `review.spec.js:1054` ("Image 1 of 2") are stale assertions (no matching template elements) and now `test.skip` with TODO(KNOWN_ISSUES #27). Full Playwright suite 142 pass / 2 skip / 0 fail locally
+- **2026-04-19**: Issue #13 docs reconciled — local test DB verified 9-col (includes `source_type`); `scripts/apply_migrations.py` comment asserts prod already applied out-of-band; this doc previously said "pending prod apply". Prod `pg_indexes` query still needed to settle the contradiction
+- **2026-04-19**: Issue #29 resolved — root cause was NOT candidate-level (yaml exclusion didn't help: chart combined_text was just `'2015 Cohort 2016 Cohort 2017 Cohort'`, no customer-type keywords). The mis-classification entered via `_scan_chart`'s nearby_text second pass (Farfetch prose legitimately mentions "new Marketplace consumers" near the LTV/CAC chart); value binding then attached the chart point.label `2.71x` to the candidate. Fix: added `_rule_ratio_suffix_on_count_metric` in `false_positive_filter.py` mirroring the existing `_rule_revenue_concentration_ratio_suffix`, rejecting `N.NNx`/`N.NN×` raw values bound to count/currency/rate/time metrics (whitelists `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort` implicitly). 6 new unit tests. Farfetch GS confirms the `2.71x` FP is eliminated; total Farfetch FP count unchanged at 12 because a pre-existing sibling FP (`54%` percent-on-count with `unit=COUNT`) was previously tiebroken-away by `2.71x` and now surfaces — separate, pre-existing issue, not fixed here

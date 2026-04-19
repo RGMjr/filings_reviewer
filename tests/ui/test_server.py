@@ -189,6 +189,7 @@ MOCK_CURRENT_FILTERS = {
 
 MOCK_IMAGE_CANDIDATE_PENDING = {
     'image_candidate_id': 10,
+    'img_id': 'img-pending-10',
     'filing_id': 1,
     'image_url': 'https://via.placeholder.com/400x300?text=Chart1',
     'image_alt': 'Net Revenue Retention Chart',
@@ -211,6 +212,7 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
 
 MOCK_IMAGE_CANDIDATE_REVIEWED = {
     'image_candidate_id': 11,
+    'img_id': 'img-reviewed-11',
     'filing_id': 1,
     'image_url': 'https://via.placeholder.com/400x300?text=Chart2',
     'image_alt': 'Churn Rate Chart',
