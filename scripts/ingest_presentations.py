@@ -177,6 +177,29 @@ def _get_or_create_company(conn: Any, ticker: str, company_name: str, cik: str |
         return row["company_id"]
 
 
+def _derive_presentation_urls(source_id: str) -> tuple[str | None, str | None]:
+    """
+    Parse source_id into (cik, sec_html_url).
+
+    source_id format: "<cik>/<accession>/<filename>" — matches the canonical
+    SECPresentationSource identifier. Returns (None, None) if the format does
+    not match so the caller can decide whether to raise.
+    """
+    parts = source_id.split("/")
+    if len(parts) != 3:
+        return None, None
+    cik_padded, accession, filename = parts
+    if not cik_padded.isdigit() or not filename:
+        return None, None
+    cik_stripped = cik_padded.lstrip("0") or "0"
+    accession_no_dashes = accession.replace("-", "")
+    sec_html_url = (
+        f"https://www.sec.gov/Archives/edgar/data/"
+        f"{cik_stripped}/{accession_no_dashes}/{filename}"
+    )
+    return cik_padded, sec_html_url
+
+
 def _upsert_presentation_filing(
     conn: Any,
     company_id: int,
@@ -189,11 +212,19 @@ def _upsert_presentation_filing(
     Create or update a filings record for an investor presentation.
 
     Uses source_id (which encodes cik/accession/filename) as the
-    unique key via the accession_number column.
+    unique key via the accession_number column. Also writes filings.cik and
+    filings.sec_html_url derived from source_id so the review UI can link to
+    the source document. Raises ValueError if either resolves to NULL after
+    the write — ingestion must never silently store broken source links.
     Returns the filing_id.
     """
     # Encode source_id as the accession number for uniqueness
     accession = f"presentation:{source_id}"
+
+    # Derive the real CIK (zero-padded) and SEC EDGAR file URL from source_id.
+    derived_cik, sec_html_url = _derive_presentation_urls(source_id)
+    # Prefer an explicitly passed cik when present (matches prior behaviour).
+    effective_cik = cik or derived_cik
 
     with conn.cursor() as cur:
         cur.execute(
@@ -201,12 +232,12 @@ def _upsert_presentation_filing(
             INSERT INTO filings (
                 company_id, accession_number, form_type, filing_date,
                 document_type, ticker, document_date, transcript_source,
-                processing_status, updated_at
+                processing_status, cik, sec_html_url, updated_at
             )
             VALUES (
                 %(company_id)s, %(accession_number)s, %(form_type)s, %(filing_date)s,
                 %(document_type)s, %(ticker)s, %(document_date)s, %(transcript_source)s,
-                %(processing_status)s, NOW()
+                %(processing_status)s, %(cik)s, %(sec_html_url)s, NOW()
             )
             ON CONFLICT (company_id, accession_number) DO UPDATE SET
                 document_type = EXCLUDED.document_type,
@@ -214,8 +245,10 @@ def _upsert_presentation_filing(
                 document_date = EXCLUDED.document_date,
                 transcript_source = EXCLUDED.transcript_source,
                 processing_status = EXCLUDED.processing_status,
+                cik = COALESCE(filings.cik, EXCLUDED.cik),
+                sec_html_url = COALESCE(NULLIF(filings.sec_html_url, ''), EXCLUDED.sec_html_url),
                 updated_at = NOW()
-            RETURNING filing_id
+            RETURNING filing_id, cik, sec_html_url
             """,
             {
                 "company_id": company_id,
@@ -227,9 +260,20 @@ def _upsert_presentation_filing(
                 "document_date": document_date,
                 "transcript_source": "sec_edgar_presentation",
                 "processing_status": "processing",
+                "cik": effective_cik,
+                "sec_html_url": sec_html_url,
             },
         )
         row = cur.fetchone()
+        # Invariant: the review UI expects both cik and sec_html_url to be
+        # populated. Fail loudly inside the transaction so the caller sees a
+        # rollback instead of silently storing a row that renders broken links.
+        if not row["cik"] or not row["sec_html_url"]:
+            raise ValueError(
+                "Presentation filing written with NULL cik or sec_html_url "
+                f"(source_id={source_id!r}, filing_id={row['filing_id']}). "
+                "Check source_id format; ingestion is incomplete."
+            )
         return row["filing_id"]
 
 

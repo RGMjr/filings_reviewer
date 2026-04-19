@@ -75,6 +75,7 @@ MIGRATIONS = [
     # in the prior rollout batch).
     "34_dedup_v2_image_assets.sql",
     "35_drop_v2_image_assets_segment_id.sql",
+    "36_backfill_presentation_urls.sql",
 ]
 
 BOOTSTRAP_DDL = """

@@ -38,6 +38,7 @@ from src.review.models import (
 )
 from src.web.app import get_db
 from src.web.routes._metrics import get_active_metrics
+from src.web.url_builders import build_sec_directory_url, resolve_sec_filing_url
 
 review_unified_bp = Blueprint("review_unified", __name__, url_prefix="/v2/review")
 logger = logging.getLogger(__name__)
@@ -331,15 +332,9 @@ def review_filing(filing_id: int):
             }
 
         # Resolve source document URL for the "View source" link — always the
-        # filing under review, not the company's latest registration.
-        sec_filing_url = filing.get("sec_html_url")
-        if (
-            not sec_filing_url
-            and document_type == "investor_presentation"
-            and filing.get("cik")
-            and filing.get("accession_number")
-        ):
-            sec_filing_url = _build_sec_directory_url(filing["cik"], filing["accession_number"])
+        # filing under review, not the company's latest registration. All URL
+        # construction goes through src/web/url_builders.py.
+        sec_filing_url = resolve_sec_filing_url(filing)
 
         # Current filter state
         current_filters = {
@@ -381,10 +376,15 @@ def review_filing(filing_id: int):
             1 for c in all_image_candidates if c["review_status"] == "auto_rejected"
         )
 
-        # SEC directory URL for image linking
-        sec_url = _build_sec_directory_url(
-            filing.get("cik", ""), filing.get("accession_number", "")
-        )
+        # SEC directory URL for image linking — falls back to the resolved
+        # source URL when the filing doesn't have a canonical cik/accession
+        # pair (e.g. historic presentation rows pre-sql/36 backfill).
+        cik_value = filing.get("cik") or ""
+        acc_value = filing.get("accession_number") or ""
+        if cik_value and acc_value and not acc_value.startswith("presentation:"):
+            sec_url = build_sec_directory_url(cik_value, acc_value)
+        else:
+            sec_url = sec_filing_url or ""
 
         chart_types = [(ct, IMAGE_CHART_TYPE_LABELS[ct]) for ct in IMAGE_CHART_TYPES]
         rejection_reasons = [
@@ -615,13 +615,6 @@ def _select_current_fact(facts: list[dict], requested_id: str | None) -> dict | 
         (f for f in facts if f["review_status"] == "pending_review"),
         facts[0],
     )
-
-
-def _build_sec_directory_url(cik: str, accession_number: str) -> str:
-    """Build URL to SEC EDGAR filing directory for image linking."""
-    acc_no_dashes = accession_number.replace("-", "")
-    cik_stripped = cik.lstrip("0") or "0"
-    return f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{acc_no_dashes}/"
 
 
 def _select_current_image(candidates: list[dict], requested_img_id: str | None) -> dict | None:
