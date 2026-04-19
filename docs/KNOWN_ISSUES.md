@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 scope clarified, #10 resolved-by-deletion, #24 diagnostic script added, #27–#28 opened on Playwright consolidation)
+**Last Updated**: 2026-04-19 (Issues #9 scope clarified, #10 resolved-by-deletion, #24 diagnostic script added, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation)
 
 ---
 

@@ -1511,11 +1511,25 @@ class DatabaseAdapter:
         v.filename AS image_src,
         '/images/cache/'
             || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
-            || '/' || REPLACE(f.accession_number, '-', '')
+            || '/'
+            || REPLACE(
+                 CASE
+                   WHEN f.accession_number LIKE 'presentation:%%'
+                     THEN split_part(substring(f.accession_number FROM 14), '/', 2)
+                   ELSE f.accession_number
+                 END,
+                 '-', '')
             || '/' || v.filename AS image_url,
         'https://www.sec.gov/Archives/edgar/data/'
             || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
-            || '/' || REPLACE(f.accession_number, '-', '')
+            || '/'
+            || REPLACE(
+                 CASE
+                   WHEN f.accession_number LIKE 'presentation:%%'
+                     THEN split_part(substring(f.accession_number FROM 14), '/', 2)
+                   ELSE f.accession_number
+                 END,
+                 '-', '')
             || '/' || v.filename AS image_src_url,
         v.width AS image_width,
         v.height AS image_height,
