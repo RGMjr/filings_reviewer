@@ -1,0 +1,231 @@
+"""Unit tests for scripts/onboard_tickers.py.
+
+Covers: industry-map loading & resolution, year/form-type arg parsing,
+SIC-code validation, and the already-extracted interactive guard state machine.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+import yaml
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "onboard_tickers.py"
+
+
+def _load_script_module():
+    """Import the CLI script as a module for in-process testing."""
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    mod_name = "onboard_tickers_cli"
+    spec = importlib.util.spec_from_file_location(mod_name, SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = module  # required so @dataclass can resolve cls.__module__
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def cli():
+    return _load_script_module()
+
+
+# ---------------------------------------------------------------------------
+# Industry map
+# ---------------------------------------------------------------------------
+
+
+def test_shipped_yaml_loads_and_validates(cli):
+    """The shipped config/industry_sic_codes.yaml must parse and every SIC must be 4-digit."""
+    im = cli.load_industry_map()
+    assert "software" in im["industries"]
+    software_codes = im["industries"]["software"]["sic_codes"]
+    assert software_codes, "software must declare at least one SIC code"
+    for code in software_codes:
+        assert isinstance(code, str) and len(code) == 4 and code.isdigit(), code
+
+
+def test_resolve_known_industry(cli):
+    im = cli.load_industry_map()
+    canonical, codes = cli.resolve_industry("software", im)
+    assert canonical == "software"
+    assert "7372" in codes
+
+
+def test_resolve_alias(cli):
+    im = cli.load_industry_map()
+    canonical, codes = cli.resolve_industry("saas", im)
+    assert canonical == "software"
+    assert "7372" in codes
+
+
+def test_resolve_unknown_industry_raises(cli):
+    im = cli.load_industry_map()
+    with pytest.raises(ValueError, match="Unknown industry"):
+        cli.resolve_industry("quantum_widgets", im)
+
+
+def test_yaml_rejects_non_numeric_sic(cli, tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(yaml.safe_dump({"industries": {"x": {"sic_codes": ["73AB"]}}}))
+    with pytest.raises(ValueError, match="Invalid SIC code"):
+        cli.load_industry_map(bad)
+
+
+def test_yaml_rejects_three_digit_sic(cli, tmp_path):
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(yaml.safe_dump({"industries": {"x": {"sic_codes": ["737"]}}}))
+    with pytest.raises(ValueError, match="Invalid SIC code"):
+        cli.load_industry_map(bad)
+
+
+# ---------------------------------------------------------------------------
+# Year and form-type parsing
+# ---------------------------------------------------------------------------
+
+
+def test_parse_year_single(cli):
+    assert cli.parse_year_arg("2015") == (2015, 2015)
+
+
+def test_parse_year_range(cli):
+    assert cli.parse_year_arg("2014-2016") == (2014, 2016)
+
+
+def test_parse_year_inverted_raises(cli):
+    import argparse as _ap
+
+    with pytest.raises(_ap.ArgumentTypeError):
+        cli.parse_year_arg("2016-2014")
+
+
+def test_resolve_form_types_bundle(cli):
+    assert cli.resolve_form_types("s1f1") == ["S-1", "S-1/A", "F-1", "F-1/A"]
+
+
+def test_resolve_form_types_single(cli):
+    assert cli.resolve_form_types("S-1") == ["S-1"]
+
+
+def test_resolve_form_types_unknown_raises(cli):
+    import argparse as _ap
+
+    with pytest.raises(_ap.ArgumentTypeError):
+        cli.resolve_form_types("10-Q")
+
+
+# ---------------------------------------------------------------------------
+# Guard state machine — prompt_already_extracted
+# ---------------------------------------------------------------------------
+
+
+def _make_candidate(cli, filing_id: int):
+    return cli.Candidate(
+        filing_id=filing_id,
+        cik=f"{filing_id:010d}",
+        ticker=None,
+        company_name=f"Co {filing_id}",
+        form_type="S-1",
+        filing_date="2015-06-01",
+        industry_code="7372",
+        accession_number=f"acc-{filing_id}",
+        primary_doc_url="http://x",
+        txt_url=None,
+        already_extracted=True,
+        extracted_at="2026-03-01",
+    )
+
+
+def test_guard_empty_list(cli):
+    assert cli.prompt_already_extracted([], auto_yes=False) == {}
+
+
+def test_guard_auto_yes_applies_to_all(cli):
+    cands = [_make_candidate(cli, i) for i in (1, 2, 3)]
+    result = cli.prompt_already_extracted(cands, auto_yes=True)
+    assert result == {1: True, 2: True, 3: True}
+
+
+def test_guard_default_no_skips_all(cli):
+    cands = [_make_candidate(cli, i) for i in (1, 2, 3)]
+    with patch("builtins.input", side_effect=["", "", ""]):
+        result = cli.prompt_already_extracted(cands, auto_yes=False)
+    assert result == {1: False, 2: False, 3: False}
+
+
+def test_guard_y_reextract_only_that_one(cli):
+    cands = [_make_candidate(cli, i) for i in (1, 2, 3)]
+    with patch("builtins.input", side_effect=["y", "", "N"]):
+        result = cli.prompt_already_extracted(cands, auto_yes=False)
+    assert result == {1: True, 2: False, 3: False}
+
+
+def test_guard_a_applies_to_remaining(cli):
+    cands = [_make_candidate(cli, i) for i in (1, 2, 3, 4)]
+    with patch("builtins.input", side_effect=["N", "a"]):
+        result = cli.prompt_already_extracted(cands, auto_yes=False)
+    # First: N (skip). Second: a (apply yes to remaining). 3 and 4 get True
+    # without further prompts.
+    assert result == {1: False, 2: True, 3: True, 4: True}
+
+
+def test_guard_q_aborts(cli):
+    cands = [_make_candidate(cli, i) for i in (1, 2)]
+    with patch("builtins.input", side_effect=["q"]):
+        with pytest.raises(SystemExit) as exc_info:
+            cli.prompt_already_extracted(cands, auto_yes=False)
+    assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# Discovery SQL: parameter construction (does not hit DB)
+# ---------------------------------------------------------------------------
+
+
+class _RecordingDB:
+    """Stand-in DatabaseAdapter: records query params, returns no rows."""
+
+    def __init__(self) -> None:
+        self.last_sql: str | None = None
+        self.last_params: dict | None = None
+
+    def query(self, sql, params=None):
+        self.last_sql = sql
+        self.last_params = params
+        return []
+
+
+def test_discovery_query_params(cli):
+    db = _RecordingDB()
+    out = cli.discover_candidates(
+        db,
+        form_types=["S-1", "S-1/A"],
+        year_min=2015,
+        year_max=2015,
+        sic_codes=["7372", "7371"],
+    )
+    assert out == []
+    assert db.last_params == {
+        "form_types": ["S-1", "S-1/A"],
+        "year_min": 2015,
+        "year_max": 2015,
+        "sic_codes": ["7372", "7371"],
+    }
+    assert "industry_code = ANY" in db.last_sql
+    assert "is_in_scope_phase1 = TRUE" in db.last_sql
+    assert "LEFT JOIN v2_documents" in db.last_sql
+
+
+# ---------------------------------------------------------------------------
+# Form-type bundles sanity
+# ---------------------------------------------------------------------------
+
+
+def test_form_type_bundles_include_s1f1(cli):
+    assert set(cli.FORM_TYPE_BUNDLES["s1f1"]) == {"S-1", "S-1/A", "F-1", "F-1/A"}

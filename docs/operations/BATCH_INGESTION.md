@@ -2,6 +2,8 @@
 
 This document covers the batch ingestion system for earnings call transcripts and investor presentations (Beyond SEC feature set, `earnings-call-exploration` branch).
 
+> **See also:** [TICKER_ONBOARDING.md](TICKER_ONBOARDING.md) for onboarding SEC S-1/F-1 filings filtered by industry / year / form-type via `scripts/onboard_tickers.py`.
+
 ## Overview
 
 The ingestion pipeline fetches documents from external sources, runs them through the V2 pipeline, and optionally persists extracted facts to the database. Three scripts are provided:
