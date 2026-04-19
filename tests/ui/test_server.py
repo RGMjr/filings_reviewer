@@ -1,7 +1,7 @@
 """
 Minimal Flask server for Playwright UI tests of the unified review interface.
 Renders unified_review.html with mock data and stub API endpoints.
-Port 5200 (separate from existing test_server on 5199).
+Port 5200.
 """
 import os
 
