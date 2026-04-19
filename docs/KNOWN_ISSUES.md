@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 scope clarified, #10 resolved-by-deletion, #24 diagnostic script added)
+**Last Updated**: 2026-04-19 (Issues #9 scope clarified, #10 resolved-by-deletion, #24 diagnostic script added, #27–#28 opened on Playwright consolidation)
 
 ---
 
@@ -213,6 +213,8 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | CAC payback "six months" not bound (Issue #17) | Resolved (2026-04-18) | — | — | Added `WORD_NUMBER_TIME_PATTERN` gated to time-valued metrics; cm_cac_payback_period 0% → 100% F1 |
 | Migration checksum mismatch — `sql/01_create_schema.sql` (Issue #18) | Resolved (2026-04-18) | — | — | Self-healed via V1 retirement merge |
 | FN diagnostic classification gaps (Issue #19) | Resolved (2026-04-18) | — | — | Added `dedup_collision` + `no_matching_binding` categories; `wrong_period` restricted to post-dedup |
+| Images Tab Playwright assertions fail (Issue #27) | Open | Low | Medium | 3 tests in `tests/ui/review.spec.js` (Images Tab) fail pre-existing; will be visible on every PR once `ui-e2e` CI job runs |
+| Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
 
 ---
 
@@ -742,6 +744,72 @@ Seven-part fix centralising URL construction and closing the detection gap:
 
 ---
 
+## 27. Images Tab Playwright Assertions Fail
+
+**Status**: Open
+**Severity**: Low (test-only; no production impact)
+**Discovered**: 2026-04-19 (latent; visible once `ui-e2e` CI job runs)
+
+### Problem
+
+Three tests in the Images Tab group of `tests/ui/review.spec.js` fail against the current mock server:
+
+- `review.spec.js:965` — "first thumbnail item is active (current image)"
+- `review.spec.js:1037` — "keyword badges shown in context panel"
+- `review.spec.js:1054` — "image position shown in context panel" (expects `.image-context-panel` to contain text `"Image 1 of 2"`)
+
+Verified byte-identical to the pre-rename `unified_review.spec.js` at `HEAD` before commit `413b386`, so the failures predate the Playwright-consolidation work and were masked by the suite never running in CI.
+
+### Likely Cause
+
+Either (a) the mock server's `/images-tab` route does not populate the exact shape `unified_review.html` expects for the "active thumbnail" / "image 1 of 2" / "keyword badge" markup, or (b) the template markup changed after the tests were authored without updating the tests. Needs a DOM inspection of the rendered page vs. the assertions.
+
+### Why This Matters Now
+
+The `ui-e2e` CI job added in commit `413b386` will flag these three tests red on every PR. Without fixing or explicitly skipping them, developers will start ignoring the suite's red status — the exact failure mode the CI job was meant to prevent.
+
+### Next Steps
+
+Either fix the three assertions (or the corresponding mock-server stub) or mark them `test.skip` with a TODO referencing this issue. Not to be bundled with Issue #28 — these are assertion-level bugs, not an architectural coupling concern.
+
+---
+
+## 28. Mock-Server / Template-Contract Coupling
+
+**Status**: Open
+**Severity**: Low (smoke spec mitigates the most common breakage class)
+**Discovered**: 2026-04-17 (symptom in commit `3e398fd`); follow-up surfaced 2026-04-19 during Playwright consolidation
+
+### Problem
+
+`tests/ui/test_server.py` must supply every template variable that production routes pass to `unified_review.html`. Whenever a new variable is introduced in `src/web/routes/review_unified.py` (e.g. `next_filing_url|tojson` in commit `3e398fd`), the mock server renders an `Undefined` and Jinja raises `TypeError` on filters like `|tojson`, returning 500 across every route.
+
+Related surface: the mock also ships stubs for `POST /api/v2/decisions`, `DELETE /api/v2/decisions/<id>`, `POST /api/v2/image-decisions`, and `POST /api/v2/missed-metric`. Their response shapes are maintained in parallel with production; no contract check enforces parity.
+
+### Mitigation Already In Place
+
+Commit `413b386` added `tests/ui/smoke.spec.js` which iterates the 7 template-rendering routes and asserts HTTP 200 + no `pageerror` events. This catches the Apr 17 failure class (500 on render) in ~5 seconds before the functional suite runs.
+
+### What the Mitigation Doesn't Catch
+
+1. Template variable that is defined but wrong *shape* (e.g. string where list expected) — no 500, but functional tests fail with harder-to-read assertions.
+2. Drift in the POST stub JSON response shape vs. production.
+3. New production routes or template files that the mock server has not been updated to support.
+
+### Possible Fixes (Pick One Later)
+
+| Option | Effort | Robustness | Notes |
+|---|---|---|---|
+| Extend smoke spec to POST routes | Small | Low | Asserts 2xx on each stub endpoint; doesn't verify response shape against production |
+| Declarative template-variable contract | Medium | Medium | Introduce a `mock_context.py` module listing all vars; add a unit test that imports the real route function and asserts the mock context is a superset |
+| Swap mock server for real Flask app + seeded test DB | Large | High | Eliminates the parallel implementation entirely; requires DB setup in Playwright webServer command |
+
+### Next Steps
+
+Not urgent. Revisit if the smoke spec starts missing real breakages or if the mock server grows enough routes that the duplication becomes a regular drag.
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
@@ -822,3 +890,5 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Issue #10 resolved-by-deletion — `tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` (V1 retirement); re-diagnosis is no longer actionable against a non-existent test
 - **2026-04-19**: Issue #9 scope clarified — the "remaining" follow-up is NOT a simple `companies.cik` column update. Filing 32 in the local DB contains RMR Group content, not Snap content; a correct fix requires re-ingesting the actual Snap S-1/A (accession `0001193125-17-056992`) as a separate workstream. Expanded inline comment in `scripts/gi3_richness_analysis.py:41-46` to match
 - **2026-04-19**: Issue #24 diagnostic script added — `scripts/check_image_referential_integrity.py` scans `v2_metric_facts.source_locator.img_id` against `v2_image_assets`, reports orphans, exits non-zero when any found (suitable for nightly cron). Does not promote `img_id` to a FK column — that remains open
+- **2026-04-19**: Added Issue #27 — 3 Images Tab assertions in `tests/ui/review.spec.js` fail pre-existing against the current mock server; latent since the suite never ran in CI. Commit `413b386` added a `ui-e2e` CI job that will now surface them on every PR
+- **2026-04-19**: Added Issue #28 — Playwright mock server duplicates production template context; Apr 17 breakage (commit `3e398fd`) was the symptom class. Commit `413b386` added `tests/ui/smoke.spec.js` as a fast pre-flight to catch render-time failures, but the underlying duplicated-contract coupling remains
