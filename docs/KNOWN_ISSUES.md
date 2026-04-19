@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issue #13 resolved — prod verified 9-col; #31 fully resolved — sync middleware path now matches async TESTING guard; #36 resolved — `populate --limit N` + `build_universe(limit=)`; #37 resolved — FTI classifier gated to S-1/F-1; #41 resolved — `--navbar-height` CSS var + compact navbar + pill flex-wrap + three badges dropped; deployed Render build verified visually)
+**Last Updated**: 2026-04-19 (Issue #13 resolved — prod verified 9-col; #31 fully resolved — sync middleware path now matches async TESTING guard; #36 resolved — `populate --limit N` + `build_universe(limit=)`; #37 resolved — FTI classifier gated to S-1/F-1; #41 resolved — `--navbar-height` CSS var + compact navbar + pill flex-wrap + three badges dropped; deployed Render build verified visually; #30 resolved — audit→Path-A URL fix on 15 Spectrum Brands co-registrants; #43–#45 opened from #30 audit out-of-scope follow-ups)
 
 ---
 
@@ -911,30 +911,34 @@ Removing the `2.71x` binding unmasks a pre-existing sibling FP: `cm_new_customer
 
 ## 30. 15 Filings With CIK / sec_html_url Mismatch
 
-**Status**: Open
-**Severity**: Medium — the review UI's "View source" link on these 15 filings points to the wrong SEC document; reviewers could attribute facts to the wrong filing
+**Status**: ✅ Resolved (2026-04-19) — reviewer-facing URL column corrected on all 15 rows. Latent cached-HTML residue logged as Issue #43.
+**Severity**: Medium — the review UI's "View source" link on these 15 filings pointed to the wrong SEC document; reviewers could attribute facts to the wrong filing
 **Discovered**: 2026-04-19 (surfaced by new `scripts/validate_database_urls.py --fail-on-errors` gate while resolving Issue #26)
+**Resolved**: 2026-04-19
 
 ### Problem
 
-15 filings in the production DB have a `sec_html_url` that points at CIK `0001725792` / `d745640ds1a.htm` (the Uber S-1/A document) while their own `filings.cik` holds a different value. Affected `filing_id`s: 904, 905, 906, 907, 908, 909, 910, 911, 912, plus 5 more. Appears to be fallout from the pre-Issue-#6 FilingFetcher exhibit-pattern-matching incidents (Dec 2025): the fetcher saved one filing's content across many rows, and the URL never got corrected.
+15 filings in the production DB had a `sec_html_url` that pointed at CIK `0001725792` / `d745640ds1a.htm` (the Uber S-1/A path) while their own `filings.cik` held a different value. Fallout from pre-Issue-#6 FilingFetcher exhibit-pattern-matching incidents (Dec 2025): the fetcher saved one filing's content across many rows, and the URL never got corrected.
 
-`scripts/validate_database_urls.py` reports these as **warnings** by design — the class of bug Issue #26 protects against is NULL/malformed URLs, and failing CI on pre-existing corruption would be a backward-compatibility regression. Listing here so the issue has a home.
+### Root Cause (discovered during audit)
 
-### Next Steps (triage required)
+The 15 rows are **not** 15 independent corruptions. They are **one SEC filing co-registered by 15 affiliated entities** — Spectrum Brands + 14 subsidiaries (accession `0001193125-19-149408`, a 2019 S-1/A for debt securities). SEC archives the same primary document at 15 distinct CIK-keyed paths (one per co-registrant), which is normal for multi-entity registrations. The pre-#6 fetcher saved the wrong HTML once at `data/filings/0001725792/000119312519149408/primary.htm` (Uber CIK dir, Spectrum accession) and every co-registrant row ended up pointing at that stale URL + shared storage file.
 
-Pick one:
-- **Re-fetch**: run `FilingFetcher` for each of the 15 CIKs individually, letting the URL resolver set `sec_html_url` fresh from SEC EDGAR. Safest; preserves `filing_id` so review decisions aren't affected.
-- **Delete and re-ingest**: only appropriate if no `v2_metric_facts` / `v2_review_decisions` rows reference these `filing_id`s. Check first.
-- **Accept**: if these 15 are not actively being reviewed and not in the gold standard, defer indefinitely.
+Affected `filing_id`s: 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 913, 914, 915, 916, 919 (earlier estimate "904–912 + 5 more" was inexact).
 
-Run to inspect:
-```sql
-SELECT f.filing_id, c.company_name, f.cik, f.accession_number, f.sec_html_url
-FROM filings f JOIN companies c USING (company_id)
-WHERE f.filing_id IN (904,905,906,907,908,909,910,911,912,...)
-ORDER BY f.filing_id;
-```
+### Resolution
+
+**Audit → Path A fix → verify**, per plan at `.claude/plans/let-s-tackle-known-issue-agile-pearl.md`.
+
+1. `scripts/audit_filing_url_mismatch.py` enumerated affected rows, resolved the correct per-CIK URL via `SECClient.resolve_primary_document_url(cik, accession)`, sniffed on-disk + `html_content` column for Uber fingerprints, and counted `v2_metric_facts` / `v2_review_decisions` / `v2_image_review_decisions` per row. All 15 returned `facts=0, reviews=0, img_reviews=0`.
+2. `scripts/repair_filing_url_mismatch.py --path A --include-path-c --apply` executed per-row `UPDATE filings SET sec_html_url = <per-CIK URL>` statements, optimistic-locked on `(filing_id, old_url)`. 15 applied, 0 skipped. Apply log preserved at `data/audit/issue_30_applied_20260419T210109Z.jsonl`.
+3. Re-ran audit: 0 affected rows. Reviewer-facing "View source" links now open each co-registrant's own SEC URL (same underlying document, different CIK in the path).
+
+The audit did NOT refetch the cached HTML file, which still contains Uber content at the shared `html_storage_path`. Since `facts=0` and no extraction has run, this is a latent (not active) issue — filed as **Issue #43** so a future re-fetch is explicit rather than implicit.
+
+### Classifier note
+
+The audit's path-classifier pessimistically downgraded all 15 to Path C because `accession_collides_in_scope=True` and `html_storage_path_shared_with≠[]` — guards designed to prevent double-writes in `FilingFetcher._update_database` (which filters by `WHERE accession_number`). In this case the collision is legitimate SEC multi-entity co-registration, not corruption. Added `--include-path-c` flag to the repair script for cases where a human has confirmed safety (requires `facts=0 AND reviews=0 AND img_reviews=0`, re-asserted as a backstop in `_eligible_rows`). Classifier refinement filed as **Issue #44**.
 
 ---
 
@@ -1384,6 +1388,92 @@ Lightweight — <20 LOC of CSS, no template restructure.
 2. Delete the now-unused `cache_dir = image_cache_dir() / "pipeline" / ...` construction.
 3. Update `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading` to assert `asset.file_path` is under the SECClient cache layout.
 4. `image_cache_dir()` continues to be the single canonical root; just one layout underneath.
+
+---
+
+## 43. Spectrum Brands Co-Registrant Filings Still Have Uber HTML Cached on Disk
+
+**Status**: Open
+**Severity**: Low (latent — no facts extracted yet, no reviewer work affected; becomes a hazard only if extraction runs before the HTML is refreshed)
+**Discovered**: 2026-04-19 (audit for Issue #30)
+
+### Problem
+
+Filing_ids 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 913, 914, 915, 916, 919 all point `html_storage_path` at `data/filings/0001725792/000119312519149408/primary.htm`. That file contains **Uber S-1/A content**, not the Spectrum Brands 2019 S-1/A content these rows represent (accession `0001193125-19-149408`, co-registered by 15 Spectrum Brands entities). Root cause is the same pre-Issue-#6 FilingFetcher mis-save that caused Issue #30 — the URL column was fixed by the #30 resolution, but the cached HTML file was not replaced.
+
+### Why it's latent, not active
+
+All 15 rows have `v2_metric_facts_count = 0`, `v2_review_decisions_count = 0`, `v2_image_review_decisions_count = 0`. No extraction has run on these filings, so no facts are derived from the wrong HTML. Reviewer-facing UI links point to the correct SEC documents (fixed in Issue #30). The problem would only surface if/when someone runs `scripts/batch_v2_extraction.py` against these filing_ids — they'd get Uber facts attributed to Spectrum Brands.
+
+### Next Steps
+
+Pick one:
+
+1. **Refetch once, update all 15** (preferred): Call `FilingFetcher.fetch_filing()` for one co-registrant (e.g., the primary Spectrum Brands CIK `0001028985`) with the correct resolved URL, writing to a new storage path under `data/filings/0001028985/000119312519149408/primary.htm`. Then `UPDATE filings SET html_storage_path = <new path>, html_content = NULL WHERE filing_id IN (902, 903, ..., 919)`. Force-reextract not needed because `facts=0`.
+2. **Delete the stale file + clear paths**: Just `UPDATE filings SET html_storage_path = NULL, html_content = NULL, html_fetched_at = NULL, processing_status = 'pending' WHERE filing_id IN (...)` and let the normal `FilingFetcher` flow re-download on next run. Simpler, but reverts processing_status.
+3. **Remove from universe**: if Spectrum Brands debt-securities S-1/A is not actually in scope for customer-metrics analysis (these are consumer-goods entities, not tech/SaaS), consider deleting the 15 rows entirely — safe here because `facts=0 AND reviews=0`.
+
+### Context
+
+See Issue #30 resolution notes for full audit trail. Apply log at `data/audit/issue_30_applied_20260419T210109Z.jsonl`.
+
+---
+
+## 44. `audit_filing_url_mismatch.py` Classifier Over-Rotates on Legitimate Co-Registrant Sharing
+
+**Status**: Open
+**Severity**: Low — cosmetic/ergonomic; a human-in-the-loop confirms the override via `--include-path-c`
+**Discovered**: 2026-04-19 (audit for Issue #30 classified all 15 rows as Path C when Path A was safe)
+
+### Problem
+
+`scripts/audit_filing_url_mismatch.py::_classify_path` treats `accession_collides_in_scope=True` OR `html_storage_path_shared_with≠[]` as a Path-C trigger. The logic was defensive: `FilingFetcher._update_database` filters `WHERE accession_number = %s`, so two rows sharing an accession would double-update during Path B refetch. That's correct for Path B.
+
+But Path A is a per-row `UPDATE sec_html_url ... WHERE filing_id=%s` — collision-safe. And legitimate SEC multi-entity co-registrations (one filing, N co-registrants, N filings rows with identical accession_number) are the normal case, not corruption. The classifier's blanket downgrade to C pushes humans into using `--include-path-c` for a pattern that should just be Path A by default.
+
+### Next Steps
+
+Refine the classifier's decision tree:
+
+```
+if html_content_is_uber == False:
+    return "A"                       # URL-only is sufficient
+if reviews > 0 or img_reviews > 0 or in_gold_standard:
+    return "C"                       # reviewer work at risk
+if facts == 0 and no reviews:
+    return "A"                       # URL-only safe; cached-HTML residue is latent — log follow-up
+# else: facts > 0 and reviews == 0
+if accession_collides or storage_shared:
+    return "B_coordinated"           # one refetch, N row updates — new sub-path
+return "B"                           # force-reextract in place
+```
+
+The `B_coordinated` sub-path is the correct design for the Spectrum Brands pattern *when* facts exist and need regeneration. For Issue #30 it wasn't needed because `facts=0`, but the classifier should know about it.
+
+### Acceptance
+
+- Rerunning the Issue #30 audit post-fix would classify the 15 rows as Path A automatically, without `--include-path-c`.
+- A synthetic test case with `facts>0` AND shared accession/storage would classify as `B_coordinated`, not C.
+
+---
+
+## 45. `scripts/validate_database_urls.py` Missing `load_dotenv()`
+
+**Status**: Open
+**Severity**: Low — cosmetic (confusing UX); the script has a working connection path when the shell already exports `DATABASE_URL`
+**Discovered**: 2026-04-19 (attempted verification run during Issue #30 resolution fell back to `localhost:5432` / non-existent `filings_analysis` DB)
+
+### Problem
+
+`scripts/validate_database_urls.py` does not call `load_dotenv()` before reading `DATABASE_URL`. Running it via `python3 scripts/validate_database_urls.py` in a shell that hasn't pre-exported `DATABASE_URL` (common during ad-hoc ops work) fails with a confusing `psycopg.OperationalError: connection to server at "127.0.0.1", port 5432 failed: FATAL: database "filings_analysis" does not exist` — psycopg's default-connect-without-DSN behavior.
+
+Other scripts in the project (`batch_v2_extraction.py:48-53`, the new `audit_filing_url_mismatch.py`, `repair_filing_url_mismatch.py`) load the project's `.env` automatically.
+
+### Fix
+
+Add `from dotenv import load_dotenv` import and `load_dotenv()` call before the `DatabaseAdapter(db_url)` construction. ~3 lines.
+
+Keep the error message when `DATABASE_URL` is still unset after `load_dotenv()` — that branch exists and is correct; this fix just populates the var first when a `.env` is present.
 
 ---
 
