@@ -41,9 +41,16 @@ if TYPE_CHECKING:
 # Snowflake/DocuSign. Filing 33 (labeled Snap, CIK 0001644378) contained RMR Group Inc.
 # data — mislabeling confirmed, correct Snap CIK is 0001564408.
 # IDs 31/33 no longer in use after DB reorganization.
+#
+# NOTE (2026-04-19): Filing 32 (below) is still mislabeled: the DB row labelled
+# "Snap" stores RMR Group Inc. filing content. A `companies.cik` column update
+# alone will NOT fix this — the extracted facts are sourced from RMR's filing,
+# not Snap's. A correct fix requires re-ingesting the actual Snap S-1/A
+# (accession 0001193125-17-056992, filed 2017-02-27) via the normal ingestion
+# pipeline. Tracked in docs/KNOWN_ISSUES.md Issue #9 as a separate workstream.
 FILING_MAP = {
     29: "Farfetch Ltd",
-    32: "Snap",               # NOTE: CIK fix pending — correct CIK is 0001564408 (S-1/A 2017-02-27)
+    32: "Snap",               # MISLABELED: filing content is RMR Group, not Snap. See Issue #9.
     34: "SUSHI GINZA ONODERA",
     35: "Slack Technologies",
     39: "Snowflake Inc",      # Real Snowflake S-1/A (CIK 0001640147, 2020-09-14)

@@ -884,6 +884,7 @@ class V2PersistenceAdapter:
                 p["scope"],
                 p["cohort_def"] or "",
                 p["customer_type"] or "",
+                p["source_type"],
             )
             existing = seen.get(key)
             if existing is None or p["confidence"] > existing["confidence"]:

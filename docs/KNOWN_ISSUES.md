@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19
+**Last Updated**: 2026-04-19 (Issues #9 scope clarified, #10 resolved-by-deletion, #24 diagnostic script added)
 
 ---
 
@@ -46,7 +46,7 @@ to prevent accidentally committing production database dumps.
 
 ### Remaining (Low Priority)
 
-- Upsert Snap with correct CIK `0001564408` and add to gold standard (separate task, not blocking)
+- Re-ingest the actual Snap S-1/A (CIK `0001564408`, accession `0001193125-17-056992`, filed 2017-02-27) and add to the gold standard. **This is not a simple `companies.cik` column update** — filing 32 in the local DB (labeled "Snap") contains RMR Group content, so changing the CIK alone would leave the extracted facts pointing at the wrong company. A correct fix deletes or archives the orphaned filing 32 row, then runs the normal ingestion pipeline against the real Snap S-1/A URL. Track this as a separate workstream; not blocking.
 
 ### Partial Fix Applied (2026-03-19)
 
@@ -198,7 +198,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
 | Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (now linked to Issue #10 re-scope) |
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
-| `test_candidate_generation_finds_active_consumers` (Issue #10) | Re-scoped | Low | Low | Original CMS-1 hypothesis disproven; real root cause TBD |
+| `test_candidate_generation_finds_active_consumers` (Issue #10) | Resolved (2026-04-19) | — | — | Resolved-by-deletion in commit `03a8a20` (V1 retirement); test module retired |
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
 | V2 metric facts identity index drift (Issue #13) | Migration prepared (sql/33) | Low | Low | DB index 8 cols; sql/33 recreates 9-col index; pending prod apply |
 | Farfetch LTV/CAC dedup collision (Issue #14) | Resolved (2026-04-18) | — | — | cm_ltv_to_cac_ratio 33%→100%; cm_ltv_to_cac_ratio_by_cohort 17%→50%; Farfetch F1 +10.3pp |
@@ -298,36 +298,15 @@ Secondary finding: `_persist_facts_in_tx` in `src/extraction_v2/persistence.py` 
 
 ## 10. `test_candidate_generation_finds_active_consumers` — Root Cause Unclear
 
-**Status**: Re-scoped 2026-04-18 (original description was inaccurate)
+**Status**: ✅ Resolved-by-deletion (2026-04-19)
 **Severity**: Low
 **Discovered**: 2026-03-26
-**Re-diagnosed**: 2026-04-18
 
-### Problem
+### Resolution
 
-`tests/integration/test_gold_standard_coverage.py::TestCandidateGeneration::test_candidate_generation_finds_active_consumers` fails. Original report claimed this was CMS-1 suppression assigning Active Consumers to `cm_customers_period_end`.
+`tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The failing test no longer exists — the entire candidate-generation coverage module was retired alongside the V1 review tables. Pipeline-level recall for `cm_active_customers_total` remains 100% on Farfetch, so no replacement test is needed at this time.
 
-### 2026-04-18 Re-Diagnosis
-
-The CMS-1 suppression hypothesis is **not supported by data**:
-
-- `config/metric_keywords.yaml:120-212` shows `cm_customers_period_end` has **no "Active Consumers" pattern**. Only `cm_active_customers_total` (lines 325, 355) matches `\bactive\s+consumers?\b`.
-- Pipeline-level validation (`python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited" --fn-diagnostics`) shows `cm_active_customers_total` recall = **100%** for Farfetch. No misassignment occurring at the pipeline level.
-- The integration test failure is at the **candidate-generation layer** (not full pipeline), which may use different matching rules than what the pipeline eventually resolves.
-
-### Remaining Question
-
-Why does `test_candidate_generation_finds_active_consumers` still fail if pipeline recall is 100%? Hypotheses:
-- Candidate-generation-only path has a CMS-1 behavior that the downstream pipeline overrides.
-- The test's expectation differs from what the pipeline produces (e.g., checks candidate metric assignment directly).
-- Some other keyword (not "Active Consumers" itself) triggers a cross-metric suppression that later stages resolve.
-
-### Next Steps
-
-- Re-run the failing test with debug logging to see what candidate(s) it actually produces.
-- Compare that against what the full pipeline emits for the same segment.
-- If the full pipeline is correct and only the unit test is stale, update the test assertion (not the pipeline).
-- Until re-diagnosed, the test remains skipped/xfail; this does NOT affect Farfetch recall (Issue #2).
+If candidate-generation coverage is later reintroduced (e.g., for V2-native candidate paths), any new test should assert against `src/gold_standard/v2_validator.py` output rather than the retired V1 candidate-generation module.
 
 ---
 
@@ -728,6 +707,41 @@ Expanded the module-level docstring in `scripts/migrate_image_ids_to_determinist
 
 ---
 
+## 26. Review UI — Lost SEC + Image Links for Investor Presentations
+
+**Status**: ✅ Resolved (2026-04-19)
+**Severity**: Medium — all 166 investor-presentation filings rendered with no "View source" anchor and 404-ing image thumbnails (507 image assets affected)
+**Discovered**: 2026-04-19
+
+### Problem
+
+`scripts/ingest_presentations.py:_upsert_presentation_filing` inserted filings rows without `cik` or `sec_html_url`, encoding the SEC location inside `accession_number` as `presentation:<cik>/<accession>/<filename>`. The review UI consumed this in two places:
+
+- `src/web/routes/review_unified.py:335-342` set `sec_filing_url = filing["sec_html_url"]` (NULL) then fell back to `_build_sec_directory_url(filing["cik"], ...)` only if `filing["cik"]` was truthy (NULL). Template guard `{% if sec_filing_url %}` dropped the anchor.
+- `src/infra/db.py:_V2_IMAGE_CANDIDATE_SELECT` built `/images/cache/<cik>/<REPLACE(accession,'-','')>/<filename>`. For encoded accessions this produced a four-segment path that did not match the three-segment Flask route.
+
+Eighth link breakage in four months — the recurrence driver is that URL construction was duplicated across routes, templates, SQL projections, and ingest scripts, so every new filing shape required patching all of them.
+
+### Resolution
+
+Seven-part fix centralising URL construction and closing the detection gap:
+
+- `sql/36_backfill_presentation_urls.sql` — one-time `UPDATE` backfill for the 166 rows (idempotent; format verified 166/166 rows match).
+- `scripts/ingest_presentations.py:_upsert_presentation_filing` — writes `cik` and `sec_html_url` on INSERT/UPDATE and raises `ValueError` inside the transaction if the returned row still has either as NULL.
+- `src/infra/db.py:_V2_IMAGE_CANDIDATE_SELECT` — `CASE` expression strips the `presentation:<cik>/` prefix and trailing `/<filename>` from `accession_number` before building image URLs (defence in depth).
+- `src/web/url_builders.py` (new) — single `resolve_sec_filing_url()` / `build_image_cache_url()` / `build_sec_directory_url()` helpers used by all route code.
+- `src/web/routes/review_unified.py` — inline URL logic replaced with helper calls; `_build_sec_directory_url` local helper deleted.
+- `tests/unit/web/test_review_link_integrity.py` (new) — real Flask `test_client` renders `/v2/review/<id>` for each document_type and asserts `<a>` and `<img src>` HTML matches the route regex. Closes the gap where `tests/unit/web/test_review_v2_routes.py` mocks `render_template`.
+- `tests/unit/web/test_url_for_resolves.py` (new) — smoke test that every route name referenced by the unified templates resolves via `url_for` (catches the typo class historically responsible for one of the eight incidents).
+- `scripts/validate_database_urls.py` — gained `--fail-on-errors` / `--document-type`; wired into CI `integration-tests` job as a post-migration link-integrity gate.
+- `.claude/rules/web.md` — codified "URL construction goes through `src/web/url_builders.py`" to keep future filing shapes landing in one place.
+
+### Related — not patched in this resolution
+
+`scripts/ingest_specific_presentations.py:100-133` has the same INSERT pattern without `cik` or `sec_html_url`. Not in scope for this fix, but will be caught by the post-ingest invariant as soon as it's updated to match `ingest_presentations.py`, and the CI link-integrity gate will flag any rows it produces.
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
@@ -805,3 +819,6 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Issue #23 resolved — `sql/35_drop_v2_image_assets_segment_id.sql` drops the dead column (applied to Neon prod + local test DB); `_persist_images_in_tx` in `src/extraction_v2/persistence.py` no longer references it; migration registered in `scripts/apply_migrations.py`
 - **2026-04-18**: Issue #22 resolved — `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` when a decided image would be re-classified from the visible set (`chart`/`table_image`/`unknown`) into the hidden set (`decorative`/`logo`/`signature`); `force=True` proceeds with a structured warning; `ReviewedFilingError.__init__` gained an optional `context` kwarg (default `"facts"` preserves prior message shape); 5 new tests in `TestGuardOnPersistImages`; `_persist_images_in_tx` signature gains keyword-only `force: bool = False` (backwards compatible; `persist_pipeline_result` threads through)
 - **2026-04-18**: Issue #25 resolved — expanded docstring on `scripts/migrate_image_ids_to_deterministic.py` to clarify the script only rewrites local gold-standard JSON files and does not modify the database
+- **2026-04-19**: Issue #10 resolved-by-deletion — `tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` (V1 retirement); re-diagnosis is no longer actionable against a non-existent test
+- **2026-04-19**: Issue #9 scope clarified — the "remaining" follow-up is NOT a simple `companies.cik` column update. Filing 32 in the local DB contains RMR Group content, not Snap content; a correct fix requires re-ingesting the actual Snap S-1/A (accession `0001193125-17-056992`) as a separate workstream. Expanded inline comment in `scripts/gi3_richness_analysis.py:41-46` to match
+- **2026-04-19**: Issue #24 diagnostic script added — `scripts/check_image_referential_integrity.py` scans `v2_metric_facts.source_locator.img_id` against `v2_image_assets`, reports orphans, exits non-zero when any found (suitable for nightly cron). Does not promote `img_id` to a FK column — that remains open

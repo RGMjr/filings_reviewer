@@ -96,13 +96,19 @@ class TestPersistDedup:
                 p.get("scope"),
                 p.get("cohort_def") or "",
                 p.get("customer_type") or "",
+                p.get("source_type"),
             )
             existing = seen.get(key)
             if existing is None or p["confidence"] > existing["confidence"]:
                 seen[key] = p
         return list(seen.values())
 
-    def _make_param(self, fact_id: str, confidence: float) -> dict:
+    def _make_param(
+        self,
+        fact_id: str,
+        confidence: float,
+        source_type: str = "text",
+    ) -> dict:
         return {
             "doc_id": 1,
             "canonical_metric_id": "cm_average_order_value",
@@ -112,6 +118,7 @@ class TestPersistDedup:
             "scope": "COMPANY",
             "cohort_def": None,
             "customer_type": None,
+            "source_type": source_type,
             "confidence": confidence,
             "fact_id": fact_id,
         }
@@ -141,6 +148,24 @@ class TestPersistDedup:
         source = self._get_dedup_source()
         assert 'existing["confidence"]' in source, (
             "_persist_facts_in_tx must compare confidence to keep highest, not last-write-wins"
+        )
+
+    def test_persist_dedup_preserves_distinct_source_types(self) -> None:
+        """Facts differing only in source_type must not collapse (matches DB 9-col identity index)."""
+        text_fact = self._make_param("text", confidence=0.8, source_type="text")
+        chart_fact = self._make_param("chart", confidence=0.8, source_type="chart")
+
+        result = self._run_dedup([text_fact, chart_fact])
+
+        assert len(result) == 2
+        assert {p["fact_id"] for p in result} == {"text", "chart"}
+
+    def test_persist_dedup_source_key_includes_source_type(self) -> None:
+        """_persist_facts_in_tx dedup key must include source_type (9-col identity)."""
+        source = self._get_dedup_source()
+        assert 'p["source_type"]' in source, (
+            "_persist_facts_in_tx dedup key must include source_type so CHART + TEXT "
+            "facts on the same slot are not silently collapsed within a single run"
         )
 
 
