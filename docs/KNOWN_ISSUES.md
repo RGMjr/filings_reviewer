@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 TMPDIR image cache root opened, #35 pre-2026-04-17 chart-OCR backfill opened)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 TMPDIR image cache root opened, #35 pre-2026-04-17 chart-OCR backfill opened, #36–#40 opened from Issue #7 10-K parameterization follow-ups)
 
 ---
 
@@ -217,6 +217,11 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved (2026-04-19) | Low | Low | 1 test fixed via `img_id` mock update; 2 stale assertions `test.skip`-ed with TODOs; CI green |
 | Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
 | Async audit log DNS error in tests (Issue #31) | Partially resolved (2026-04-19) | Low | Low | `review_unified.py` async path now `DEBUG` under `TESTING=True`; related `middleware.py:114` path still `ERROR` (flagged in #31 body) |
+| `populate` has no `--limit` (Issue #36) | Open | Low | Low | Year-scale 10-K sweep (~15 min SEC traffic) can be triggered accidentally; ~20 LOC fix |
+| `classify_first_time_issuer=True` for 10-K filers (Issue #37) | Open | Low | Low | `filings.is_first_time_issuer` stores misleading values for non-S-1/F-1 forms; no runtime bug |
+| `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
+| `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Low | Medium | Column name implies "in active universe" but means "Phase 1 IPO candidate"; confusing with 10-Ks present; needs rename or form-aware companion column |
+| 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
 
 ---
 
@@ -1050,6 +1055,225 @@ Prod count is unknown — run the diagnostic against Neon before sizing the back
 - Issue #34 — backfill is wasted effort unless the image cache is moved out of TMPDIR first
 - Issue #24 — any backfill must also clear the 9 Class (B) orphan refs
 - CLAUDE.md Core Design Principle #6 — reviewed-filing guard on re-extraction
+
+---
+
+## 36. `onboard_tickers.py populate` Has No `--limit`
+
+**Status**: Open
+**Severity**: Low — safety / operator footgun
+**Discovered**: 2026-04-19 (during Issue #7 implementation)
+
+### Problem
+
+`scripts/onboard_tickers.py populate --year YYYY [--form-type 10k]` wraps
+`UniverseBuilder.build_universe` over every matching filing in the SEC
+daily index for the year. With `--form-type 10k`, a single year is ~5–10k
+filings at ~100ms per CIK (`get_company_info` submissions-API lookup) plus
+daily-index reads — ~15 minutes of SEC traffic. There is no `--limit`
+flag to cap the sweep.
+
+An operator experimenting with onboarding can accidentally trigger a full
+year-scale run; the only brake is Ctrl+C.
+
+### Suggested Fix
+
+Add `--limit N` to `cmd_populate` and thread an optional `limit: int | None`
+kwarg into `UniverseBuilder.build_universe` (break out of the `for filing in
+filings` loop after N in-scope upserts). Non-default parameter; default
+preserves existing unbounded behavior.
+
+Estimated ~20 LOC + 1 test. Independent of all other open issues.
+
+### Cross-References
+
+- `src/universe/universe_builder.py:51-108` (`build_universe`)
+- `scripts/onboard_tickers.py::cmd_populate`
+- Issue #7 — landed `--form-type` parameterization without `--limit` coverage
+
+---
+
+## 37. `classify_first_time_issuer` Reports `True` for Non-S-1/F-1 Filers
+
+**Status**: Open
+**Severity**: Low — misleading DB values, no functional impact today
+**Discovered**: 2026-04-19 (during Issue #7 implementation)
+
+### Problem
+
+`classify_first_time_issuer(cik, filing_date, previous_ipo_date)` in
+`src/universe/classifiers.py:92-128` is form-agnostic in its code: it
+returns `(True, 'heuristic')` whenever `previous_ipo_date is None`, and
+`get_first_ipo_filing_date(cik)` returns `None` for any CIK without a
+prior S-1 in the DB — which is almost always the case when populating
+10-Ks via `populate --form-type 10k`. Result: `filings.is_first_time_issuer`
+is set to `TRUE` for 10-Ks where the concept is nonsensical.
+
+Harmless at runtime because `is_in_scope_phase1(form_type=...)` gates on
+form type first (classifiers.py:832-834) and returns `False` for 10-K
+regardless of FTI. But the column has misleading data that would confuse
+any downstream analytic query joining on `is_first_time_issuer`.
+
+### Suggested Fix
+
+Two options, in order of preference:
+
+1. **Gate the call in `_process_filing`:** only invoke
+   `classify_first_time_issuer` for `form_type in DEFAULT_FORM_TYPES_S1F1`;
+   set `is_first_time_issuer=None` otherwise. Preserves classifier
+   function's signature. ~10 LOC.
+2. **Widen the classifier:** accept `form_type` and return `(None,
+   'not_applicable')` for non-S-1/F-1 forms. Touches every caller.
+
+Either approach: add a unit test asserting `filings.is_first_time_issuer
+IS NULL` after a 10-K upsert.
+
+### Cross-References
+
+- `src/universe/classifiers.py:92-128` — `classify_first_time_issuer`
+- `src/universe/universe_builder.py:165-173` — call site in `_process_filing`
+- Issue #7 — introduced 10-K populate path that surfaces this
+
+---
+
+## 38. `v2_metric_facts.doc_id` Is Misleadingly Named
+
+**Status**: Open
+**Severity**: Low — tech debt; migration + multi-file rename required
+**Discovered**: 2026-04-19 (prod SQL failure in `count_review_decisions`)
+
+### Problem
+
+`v2_metric_facts.doc_id` is `BIGINT REFERENCES filings(filing_id)` per
+`sql/09_v2_schema.sql:18` — i.e., it's a `filing_id`, not a reference to
+`v2_documents.doc_id` (which is a separate UUID primary key). The column
+name suggests the latter.
+
+This tripped me during Issue #7 hotfix work: `count_review_decisions` in
+`scripts/onboard_tickers.py` originally joined
+`v2_documents.doc_id (UUID) = v2_metric_facts.doc_id (BIGINT)`, producing
+a runtime `operator does not exist: uuid = bigint` error that only fired
+in production (fixed in commit `c353e83`). Any future developer writing
+a cross-table query is likely to hit the same trap.
+
+### Suggested Fix
+
+Rename `v2_metric_facts.doc_id` → `filing_id` via a migration:
+
+- `sql/NN_rename_metric_facts_doc_id.sql` — `ALTER TABLE v2_metric_facts
+  RENAME COLUMN doc_id TO filing_id`.
+- Update every caller in `src/` (look for `.doc_id` on fact objects or in
+  raw SQL touching `v2_metric_facts`).
+- Update `MetricFact` dataclass if the attribute is exposed.
+- Identity-tuple logic in `src/extraction_v2/models.py` and
+  `src/extraction_v2/persistence.py` references `doc_id` — check.
+
+Not urgent (inline comment in `scripts/onboard_tickers.py` flags the
+naming; `count_review_decisions` SQL correct). Queue when `v2_*` has a
+broader cleanup window.
+
+### Cross-References
+
+- `sql/09_v2_schema.sql:18` — column definition
+- `scripts/onboard_tickers.py::REVIEW_DECISIONS_SQL` — inline caveat comment
+- commit `c353e83` — the bug that surfaced this
+
+---
+
+## 39. `is_in_scope_phase1` Is a Misnomer Post-Issue-#7
+
+**Status**: Open
+**Severity**: Low — naming / documentation, no functional bug
+**Discovered**: 2026-04-19 (during Issue #7 implementation)
+
+### Problem
+
+`filings.is_in_scope_phase1` suggests "this filing is in the active
+universe." Its actual semantic is stricter: "this is an S-1/F-1 filing
+from a first-time non-SPAC non-investment-vehicle non-resource-extraction
+issuer" (classifiers.py:832-834). With 10-K support (Issue #7) landed,
+10-K rows correctly have `is_in_scope_phase1=FALSE` — but that reads as
+"out of scope" to anyone browsing `filings`. The column and query-time
+filter are now confusing.
+
+### Suggested Fix
+
+Two options:
+
+1. **Rename column** → `is_phase1_ipo_candidate` (scoped to S-1/F-1 by
+   design). Migration + updates to `filings` upserts, discovery SQL in
+   `scripts/onboard_tickers.py::_build_discovery_sql`, gold-standard
+   validator queries, any `WHERE is_in_scope_phase1 = ...` usage.
+2. **Add a form-aware companion column** `is_customer_metric_candidate`
+   that's true for S-1/F-1 FTI _and_ true for 10-K/10-K/A that pass basic
+   filters (non-SPAC, non-investment-vehicle, non-resource-extraction).
+   Leave `is_in_scope_phase1` as-is for historical callers.
+
+Option 2 is less disruptive but adds DB surface area. Option 1 is
+conceptually cleaner but requires a coordinated migration + code sweep.
+
+Bundle with Issue #38 if tackled — both are column-name clarifications in
+the same schema area.
+
+### Cross-References
+
+- `src/universe/classifiers.py:832-834` — `is_in_scope_phase1` definition
+- `scripts/onboard_tickers.py::_build_discovery_sql` — already has a
+  workaround (conditionally omits the Phase-1 filter for non-S-1/F-1
+  form types)
+- `docs/operations/TICKER_ONBOARDING.md` — "10-K onboarding semantics"
+  section documents the current confusing behavior
+- Issue #7 — introduced 10-K support that makes the misnomer visible
+
+---
+
+## 40. 10-K/A Supersession Semantics Undefined
+
+**Status**: Open
+**Severity**: Low — design decision, needs stakeholder input
+**Discovered**: 2026-04-19 (during Issue #7 implementation)
+
+### Problem
+
+`UniverseBuilder` after-loop step `self.db.mark_superseded_filings()`
+(universe_builder.py:107) demotes earlier S-1/S-1/A/F-1/F-1/A filings per
+CIK — "only the latest amendment in scope." For 10-K/A (restatements),
+the method is scoped to S-1/F-1 only; 10-K and 10-K/A rows are preserved
+as separate in-scope entries.
+
+Two defensible interpretations:
+
+- **"Restatement replaces original":** 10-K/A is the corrected version —
+  the original is misleading and should be marked superseded. Matches
+  S-1/A semantics.
+- **"Both are distinct fiscal-year events":** each row represents a
+  point-in-time filing with different disclosures; analytics may want to
+  compare pre- vs post-restatement. Current behavior.
+
+Current behavior is option 2 (both survive). No one has validated this is
+the intended operator workflow; no 10-Ks are in prod today (Issue #7 just
+shipped the capability).
+
+### Suggested Fix
+
+Before the first operator bulk-onboards 10-Ks:
+
+1. Decide which semantic matches the analytic use case (ask CMASB
+   stakeholders).
+2. If "restatement replaces": extend `mark_superseded_filings` to include
+   10-K/A pairs, add a test, document in the runbook.
+3. If "both distinct": document the decision in
+   `docs/operations/TICKER_ONBOARDING.md` under "10-K onboarding semantics"
+   so reviewers / analysts know what to expect.
+
+Lightweight either way — <30 LOC + tests + doc line.
+
+### Cross-References
+
+- `src/universe/universe_builder.py:107` — `mark_superseded_filings` call
+- `src/infra/db.py::mark_superseded_filings` — form-type scope
+- `docs/operations/TICKER_ONBOARDING.md` — "10-K onboarding semantics"
+- Issue #7 — landed 10-K support without resolving this
 
 ---
 
