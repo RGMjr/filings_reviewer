@@ -40,6 +40,7 @@ from src.extraction_v2.stages.false_positive_filter import (
     _is_percent_in_keyword_clause,
     _is_v2_false_positive,
     _make_number_matches,
+    _rule_ratio_suffix_on_count_metric,
     _rule_stub_financial_line_item,
     _rule_truncated_year,
 )
@@ -4120,3 +4121,46 @@ class TestRuleTruncatedYear:
         # "20" appears at position 0 (in "2023", next char "2") and position 9 (in "2024", next char "2")
         # both adjacent to a digit → all_embedded → fires
         assert _rule_truncated_year(bv, source, "cm_customers_period_end") == "v2_truncated_year"
+
+
+class TestRatioSuffixOnCountMetric:
+    """_rule_ratio_suffix_on_count_metric blocks `Nx` raw values on count metrics (Issue #29)."""
+
+    def test_nx_raw_blocked_on_new_customers_acquired(self):
+        """'2.71x' must not bind to cm_new_customers_acquired (FTCH LTV/CAC tenure chart)."""
+        bv = _make_bound_value("c1", 2.71, "2.71x", Unit.COUNT)
+        assert (
+            _rule_ratio_suffix_on_count_metric(bv, "", "cm_new_customers_acquired")
+            == "v2_ratio_suffix_on_count_metric"
+        )
+
+    def test_nx_raw_blocked_on_active_customers(self):
+        """'1.81x' must not bind to cm_active_customers_total."""
+        bv = _make_bound_value("c1", 1.81, "1.81x", Unit.COUNT)
+        assert (
+            _rule_ratio_suffix_on_count_metric(bv, "", "cm_active_customers_total")
+            == "v2_ratio_suffix_on_count_metric"
+        )
+
+    def test_times_symbol_variant_blocked(self):
+        """Unicode × suffix also blocked."""
+        bv = _make_bound_value("c1", 2.04, "2.04×", Unit.COUNT)
+        assert (
+            _rule_ratio_suffix_on_count_metric(bv, "", "cm_new_customers_acquired")
+            == "v2_ratio_suffix_on_count_metric"
+        )
+
+    def test_legitimate_count_raw_not_blocked(self):
+        """'500' raw value on cm_new_customers_acquired must still bind."""
+        bv = _make_bound_value("c1", 500.0, "500", Unit.COUNT)
+        assert _rule_ratio_suffix_on_count_metric(bv, "", "cm_new_customers_acquired") is None
+
+    def test_nx_raw_allowed_on_ratio_metric(self):
+        """'2.71x' on cm_ltv_to_cac_ratio_by_cohort must still bind (it IS a ratio)."""
+        bv = _make_bound_value("c1", 2.71, "2.71x", Unit.COUNT)
+        assert _rule_ratio_suffix_on_count_metric(bv, "", "cm_ltv_to_cac_ratio_by_cohort") is None
+
+    def test_nx_raw_allowed_on_non_listed_metric(self):
+        """Metrics outside _RATIO_SUFFIX_COUNT_METRICS set (e.g. cm_ltv_to_cac_ratio) unaffected."""
+        bv = _make_bound_value("c1", 2.71, "2.71x", Unit.COUNT)
+        assert _rule_ratio_suffix_on_count_metric(bv, "", "cm_ltv_to_cac_ratio") is None

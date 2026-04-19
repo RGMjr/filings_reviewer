@@ -93,13 +93,17 @@ def _log_request_complete(response):
         # Capture DATABASE_URL and pool ref so the thread creates its own adapter.
         database_url = current_app.config["DATABASE_URL"]
         pool = current_app.config.get("_db_pool")
+        testing = bool(current_app.config.get("TESTING"))
 
         def _write():
             try:
                 db = DatabaseAdapter(database_url, pool=pool)
                 db.insert_audit_log(**audit_kwargs)
             except Exception as exc:
-                logger.error(f"Async audit log write failed: {exc}")
+                if testing:
+                    logger.debug(f"Async audit log write failed: {exc}")
+                else:
+                    logger.error(f"Async audit log write failed: {exc}")
 
         t = threading.Thread(target=_write, daemon=True)
         t.start()
@@ -227,10 +231,17 @@ def review_filing(filing_id: int):
         filing = dict(filing_result[0])
         document_type = filing.get("document_type") or "sec_filing"
 
-        # Validate active tab
-        active_tab = request.args.get("tab", "text")
-        if active_tab not in ("text", "images"):
+        # Resolve active tab: if caller passed an explicit ?tab=, honor it
+        # (unknown values fall back to "text"). Otherwise defer the decision
+        # until after pending_count / image_pending are computed so we can
+        # land on Images when there's no text work left to do.
+        tab_param = request.args.get("tab")
+        if tab_param in ("text", "images"):
+            active_tab = tab_param
+            tab_explicit = True
+        else:
             active_tab = "text"
+            tab_explicit = False
 
         # List-page sort context (threaded from Review button for cross-filing navigation)
         list_sort_by = request.args.get("list_sort_by", "date")
@@ -364,6 +375,15 @@ def review_filing(filing_id: int):
             limit=1000,
         )
 
+        # Stable partition: pending first (in existing probability-desc order),
+        # then everything else. Matches the order the reviewer will be advanced
+        # through via /api/v2/image-decisions -> next_candidate, so the thumbnail
+        # strip lets them glance ahead.
+        image_candidates = sorted(
+            image_candidates,
+            key=lambda c: 0 if c["review_status"] == "pending" else 1,
+        )
+
         current_image = _select_current_image(
             image_candidates, request.args.get("img_id")
         )
@@ -375,6 +395,11 @@ def review_filing(filing_id: int):
         image_auto_rejected = sum(
             1 for c in all_image_candidates if c["review_status"] == "auto_rejected"
         )
+
+        # Finalize tab default: if the caller did not pass an explicit ?tab=
+        # and text is empty but images have pending work, open the images tab.
+        if not tab_explicit and pending_count == 0 and image_pending > 0:
+            active_tab = "images"
 
         # SEC directory URL for image linking — falls back to the resolved
         # source URL when the filing doesn't have a canonical cik/accession
@@ -464,10 +489,11 @@ def next_filing():
         )
 
         if next_id:
+            # Intentionally omit tab= so review_filing() can pick the tab based
+            # on which side actually has pending work (text vs images).
             params = urlencode(
                 {
                     "status": "pending_review",
-                    "tab": "text",
                     "list_sort_by": sort_by,
                     "list_sort_dir": sort_dir,
                     "list_hide_completed": 1 if hide_completed else 0,

@@ -1669,6 +1669,58 @@ def _rule_revenue_concentration_ratio_suffix(
     return None
 
 
+# Metrics whose values are inherently NOT ratios. A raw value with an
+# 'x' / '×' suffix (e.g. '2.71x') must never bind here — such suffixes mark
+# LTV/CAC ratios, ARR multiples, or other multiplier metrics that got
+# mis-routed (see Issue #29: FTCH LTV/CAC tenure chart point.label '2.71x'
+# reaches cm_new_customers_acquired / cm_customer_acquisition_cost through
+# nearby_text candidate generation).
+# `cm_revenue_concentration` has its own rule (_rule_revenue_concentration_ratio_suffix).
+# Ratio metrics explicitly NOT in this set: cm_ltv_to_cac_ratio,
+# cm_ltv_to_cac_ratio_by_cohort.
+_RATIO_SUFFIX_COUNT_METRICS = frozenset({
+    # Count metrics
+    "cm_new_customers_acquired",
+    "cm_customers_period_end",
+    "cm_active_customers_total",
+    "cm_large_customers_period_end",
+    "cm_customers_period_end_by_tenure",
+    "cm_purchase_transactions_overall",
+    "cm_transactions_by_cohort",
+    # Currency metrics
+    "cm_customer_acquisition_cost",
+    "cm_lifetime_value_per_customer",
+    "cm_average_order_value",
+    "cm_arpu",
+    "cm_revenue_by_cohort",
+    "cm_balance_by_cohort",
+    # Rate / percentage metrics
+    "cm_customer_retention_rate",
+    "cm_net_revenue_retention",
+    "cm_gross_revenue_retention",
+    "cm_gross_margin_by_cohort",
+    # Time metrics
+    "cm_cac_payback_period",
+})
+
+
+def _rule_ratio_suffix_on_count_metric(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
+    """Block non-ratio metrics when raw value has a 'Nx' / 'N×' suffix.
+
+    Chart point.label values like '2.71x', '1.81x' are payback-ratio annotations.
+    They must bind only to ratio metrics (LTV/CAC etc.), never to count,
+    currency, rate, or time metrics.
+    """
+    if metric_id not in _RATIO_SUFFIX_COUNT_METRICS:
+        return None
+    raw = bv.value_raw or ""
+    if _RATIO_SUFFIX_RE.search(raw.strip()):
+        return "v2_ratio_suffix_on_count_metric"
+    return None
+
+
 def _rule_large_customers_small_arr_threshold(
     bv: BoundValue, source_text: str, metric_id: str
 ) -> str | None:
@@ -1725,6 +1777,7 @@ _FP_RULES: list[tuple[str, Callable[[BoundValue, str, str], str | None], bool]] 
     ("magnitude_sanity", _rule_magnitude_sanity, False),
     ("revenue_per_customer_fin_annotation", _rule_revenue_per_customer_fin_annotation, False),
     ("revenue_concentration_ratio_suffix", _rule_revenue_concentration_ratio_suffix, False),
+    ("ratio_suffix_on_count_metric", _rule_ratio_suffix_on_count_metric, False),
     ("large_customers_small_arr_threshold", _rule_large_customers_small_arr_threshold, False),
     ("arpu_context_on_customer_count", _rule_arpu_context_on_customer_count, True),
     ("financial_context_customer_metric", _rule_financial_context_on_customer_metric, True),
