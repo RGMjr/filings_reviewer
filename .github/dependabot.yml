@@ -1,0 +1,32 @@
+# Dependabot configuration.
+#
+# Keeps Python dependencies and GitHub Actions up to date. Added after an
+# 18-hour CI red-state caused by an un-patched pillow CVE (see Issue #26
+# follow-up in docs/KNOWN_ISSUES.md). Security-only majors still open as
+# individual PRs so the advisory is visible; minor/patch noise is grouped
+# to keep PR volume sustainable.
+
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "ci"

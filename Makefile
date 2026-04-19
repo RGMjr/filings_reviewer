@@ -39,9 +39,15 @@ install:
 	@echo "✅ Dependencies installed"
 
 hooks-install:
-	git config core.hooksPath .githooks
-	@echo "✅ Git hooks installed from .githooks/"
-	@echo "   Pre-commit will now check documentation freshness"
+	# Install the default pre-commit hook (ruff + yaml checks on commit).
+	uv run pre-commit install
+	# Install the pre-push hook (unit tests before push).
+	uv run pre-commit install --hook-type pre-push
+	# Pre-fetch hook environments so the first commit isn't a minute-long wait.
+	uv run pre-commit install-hooks
+	@echo "pre-commit hooks installed (pre-commit + pre-push)"
+	@echo "If you previously ran the old hooks-install, clear the stale config:"
+	@echo "  git config --unset core.hooksPath"
 
 # -----------------------------------------------------------------------------
 # Development
