@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #32 opened for html_segmenter coverage deferred work)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise)
 
 ---
 
@@ -909,7 +909,17 @@ Rough sizing: a single happy-path test that parses a trimmed 10-K excerpt and as
 
 ### Prevent another coverage crisis
 
-Once `html_segmenter.py` is meaningfully covered, consider raising `fail_under` from 75 to 80 in `pyproject.toml` so future dead/untested code can't re-park CI at the threshold. Track under a separate follow-up.
+Once `html_segmenter.py` is meaningfully covered, consider raising `fail_under` from 75 to 80 in `pyproject.toml` so future dead/untested code can't re-park CI at the threshold. Track under a separate follow-up — see Issue #33.
+
+---
+
+## 33. Raise Coverage Threshold to 80% After Issue #32
+
+**Status**: Open (blocked on #32)
+**Severity**: Low — prevention
+**Discovered**: 2026-04-19 (follow-up from the CI red-state drift incident)
+
+After `html_segmenter.py` is covered (Issue #32), raise `fail_under` from 75 to 80 in `pyproject.toml` `[tool.coverage.report]`. The 75% floor is where the original incident parked — any new 0%-coverage module dropped the total back under the gate. A higher floor forces the fix at contribution time rather than letting dead code accumulate. Trivial edit (one number) once #32 lands.
 
 ---
 
