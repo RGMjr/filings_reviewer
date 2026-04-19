@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #32 opened for html_segmenter coverage deferred work)
 
 ---
 
@@ -875,6 +875,41 @@ ORDER BY f.filing_id;
 ### Fix (cheap)
 
 Wrap the `psycopg.connect` call in the audit thread with a short-circuit for obviously-non-network DSN strings (e.g. host resolves to nothing), or log at `DEBUG` when `app.config['TESTING']` is True. One-off change, under 10 LOC. Defer until someone is otherwise in `review_unified.py`.
+
+---
+
+## 32. `src/shared/html_segmenter.py` Has 0% Test Coverage (761 LOC)
+
+**Status**: Open
+**Severity**: Medium — blocks CI coverage gate (current coverage 74–75% hovers at the 75% threshold; any regression tips it back red)
+**Discovered**: 2026-04-19 (surfaced while fixing the CI coverage failure — see Issue #30's neighbour)
+
+### Problem
+
+`src/shared/html_segmenter.py` is 761 lines of live V2 code (imported by `src/extraction_v2/stages/ingestion.py`) with **zero test coverage**. It is by far the single largest contributor to CI coverage being parked near the 75% threshold. Small companion modules (`src/shared/extraction_exceptions.py`, `src/shared/models.py`, `src/shared/segment_validators.py`) have been covered as part of this fix-wave, which is enough to get CI green — but only by a narrow margin.
+
+### Why it was deferred
+
+The cheap wins (delete `src/web/table_html_extractor.py` + `src/web/utils.py`, cover the three small `src/shared/*` files) were executed in commits addressing the original red-CI incident. Testing `html_segmenter.py` requires:
+
+- A representative minimal SEC HTML fixture under `tests/fixtures/html/` (doesn't exist yet — existing integration tests use `data/sec_html/` which is gitignored).
+- Understanding of the segmenter's public API (`SECHTMLSegmenter` class, primary parse entrypoint) to decide which paths are worth pinning down first.
+- Decisions about which internal helpers (table-truncation, encoding fallback, context-prefix detection) deserve direct tests vs. end-to-end coverage via the main entrypoint.
+
+Rough sizing: a single happy-path test that parses a trimmed 10-K excerpt and asserts segment count + types would cover 20–30% of the module (150–230 LOC), pushing total coverage to ~76–77% and giving headroom.
+
+### Plan when taken up
+
+1. Capture a minimal SEC HTML fixture (~5–10 KB) by trimming `data/sec_html/<filing>.htm` to one section containing prose + a table + a footnote. Commit to `tests/fixtures/html/`.
+2. Write `tests/unit/shared/test_html_segmenter.py` with:
+   - One happy-path test calling the primary entrypoint on the fixture; assert returned `SourceSegment` list is non-empty and has expected `segment_type` values.
+   - One test per error branch: malformed HTML → `HTMLParsingError`; bad encoding → `EncodingError`; invalid filing_id → `ValidationError`.
+   - One test for table-truncation behaviour with an oversized inline table.
+3. Target 30%+ coverage of `html_segmenter.py` in the first pass. Not 100% — the SEC-specific quirks (broken encodings, nested CDATA, etc.) are better covered by integration tests against real filings.
+
+### Prevent another coverage crisis
+
+Once `html_segmenter.py` is meaningfully covered, consider raising `fail_under` from 75 to 80 in `pyproject.toml` so future dead/untested code can't re-park CI at the threshold. Track under a separate follow-up.
 
 ---
 
