@@ -127,22 +127,25 @@ industries:
   software:
     description: "Prepackaged software and computer services"
     sic_codes:
-      - "7370"  # Services-Computer Services
-      - "7371"  # Services-Computer Programming, Data Processing
-      - "7372"  # Services-Prepackaged Software
-      - "7373"  # Services-Computer Integrated Systems Design
-      - "7374"  # Services-Computer Processing & Data Preparation
-      - "7377"  # Services-Computer Rental and Leasing
-      - "7379"  # Services-Computer Services, NEC
+      - "7370"  # SERVICES-COMPUTER PROGRAMMING, DATA PROCESSING, ETC.
+      - "7371"  # SERVICES-COMPUTER PROGRAMMING SERVICES
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE
+      - "7373"  # SERVICES-COMPUTER INTEGRATED SYSTEMS DESIGN
+      - "7374"  # SERVICES-COMPUTER PROCESSING & DATA PREPARATION
+      - "7377"  # SERVICES-COMPUTER RENTAL & LEASING
 aliases:
   saas: software
   "computer services": software
 ```
 
 The CLI prints the resolved codes on every run. To add an industry, edit the
-YAML; codes must be 4-digit numeric strings (validated at load).
+YAML; codes must be 4-digit numeric strings (validated at load). Only codes
+that appear in SEC's published list should be added — other codes are never
+assigned to `companies.industry_code` by the pipeline, so including them is a
+silent no-op.
 
-SIC reference: <https://www.sec.gov/info/edgar/siccodes.htm>.
+SIC reference (live, verified 2026-04-19):
+<https://www.sec.gov/corpfin/division-of-corporation-finance-standard-industrial-classification-sic-code-list>
 
 ### Null `industry_code` caveat
 
@@ -155,14 +158,45 @@ If you suspect this is hiding valid rows, re-run `populate --year YYYY` to
 refresh `industry_code` via `UniverseBuilder._process_filing → get_company_info`.
 Future: explicit `--refresh-sic` flag (deferred; see plan).
 
+## Shell-filing caveat
+
+The industry filter relies on SEC's SIC classification + first-time-issuer
+heuristics. Shell companies sometimes pass both: they get assigned a software
+SIC and are flagged as first-time issuers, but their filings contain no
+customer metrics. Example (from the 2015 software discover): SPELZON CORP,
+JAREX SOLUTIONS CORP, Broke Out Inc., TODEX CORP, OPTILEAF, INC.
+
+Mitigations (combine as needed):
+
+- **`--exclude-amendments`** — drops `S-1/A` and `F-1/A` from the form-type
+  set, keeping only original `S-1` / `F-1`. Removes many (not all) pure-amendment
+  shells. For the 2015 software cohort this cut 41 candidates to 22.
+- **Visual review** — the discover table shows company name, form, and date.
+  Recognize shells by distinctive names (ALL CAPS single-word companies,
+  generic "-CORP"/"INC"), and pass `--limit N` with a hand-picked list if
+  targeted onboarding is needed.
+
+Name-based auto-filtering was considered and rejected — too unreliable.
+
+## When bare amendments legitimately yield 0 facts
+
+Small S-1/A amendments often contain only diff-level changes (e.g., a revised
+risk-factor paragraph) without restating financials or customer disclosures.
+Example: Intellicheck Mobilisa S-1/A (2015-01-06, filing 1806) — 60 KB total,
+zero occurrences of "customer" — correctly produces 0 facts. Not a bug.
+
+If your `onboard` run reports `fact_count=0` for an amendment, confirm the
+filing has customer content before filing a bug report.
+
 ## Flag reference
 
 | Flag | Subcommands | Purpose |
 |---|---|---|
 | `--industry NAME` | discover, onboard | Required. Everyday name or alias. |
-| `--year YYYY` or `--year YYYY-YYYY` | discover, onboard | Filter. Range supported for discover/onboard only. |
+| `--year YYYY` or `--year YYYY-YYYY` | discover, onboard | **Required.** Prevents unbounded onboard runs. |
 | `--year YYYY` | populate | Required single year for `UniverseBuilder`. |
 | `--form-type {s1f1,S-1,S-1/A,F-1,F-1/A}` | discover, onboard | Default: `s1f1` (the union). |
+| `--exclude-amendments` | discover, onboard | Drop `S-1/A`/`F-1/A` from the form-type set. |
 | `--limit N` | discover, onboard | Cap NEW rows shown or processed. |
 | `--dry-run` | onboard | Print plan; no writes. |
 | `--skip-txt` | onboard | Skip the TXT filing fetch (HTML only). |
@@ -201,7 +235,28 @@ matches reality:
   `scripts/onboard_tickers.py`. The discovery SQL already parameterizes
   `form_type`. Check `sql/01_create_schema.sql` line 79 for the `CHECK`
   constraint (10-K is already allowed). Note that `UniverseBuilder.build_universe`
-  currently hardcodes S-1/F-1; extending to 10-K requires a separate path.
+  currently hardcodes S-1/F-1; extending to 10-K requires a separate path
+  (see "Known limitations" below).
 - **New industry**: append under `industries:` in the YAML.
 - **Ticker → CIK fast path**: deferred. When the operator knows the CIK up
   front, add `build_universe_for_ciks` to `UniverseBuilder`.
+
+## Known limitations
+
+- **`populate` is S-1/F-1 only.** `UniverseBuilder.build_universe`
+  (`src/universe/universe_builder.py:73`) hardcodes
+  `form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]`. Running
+  `populate --year YYYY` will not discover 8-K, 10-K, or other form types on
+  EDGAR. `discover` and `onboard` accept arbitrary form-type values, but will
+  only return rows that were previously populated. Extending to other forms
+  requires threading a form-type list through `build_universe` plus new
+  classification logic (the SPAC / first-time-issuer / offering-type rules
+  don't apply to 10-K or 8-K). Tracked as follow-up; separate workstream.
+- **Hardcoded column widths in the discover table.** Long company names get
+  truncated at 30 characters; no terminal-size detection. Cosmetic only;
+  does not affect correctness.
+- **`companies.industry_code IS NULL` is silently excluded.** The discovery
+  filter `c.industry_code = ANY(sic_codes)` drops NULL rows. If a company
+  exists in `companies` without a SIC assignment, it will never appear under
+  any `--industry` filter. Re-run `populate --year YYYY` to refresh via
+  `get_company_info`.
