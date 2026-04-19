@@ -172,3 +172,64 @@ def test_cmd_onboard_idempotent_default_skips_already_extracted(clean_db, tmp_pa
         "cmd_onboard must not call process_filing on already-extracted filings "
         "without --include-already-extracted"
     )
+
+
+def test_cmd_onboard_include_already_extracted_yes_path(clean_db, tmp_path, cli):
+    """--include-already-extracted --yes re-extracts with force=True.
+
+    This path executes `count_review_decisions` (real SQL against clean_db),
+    which caught a production SQL-type-mismatch bug (v2_documents.doc_id UUID
+    vs v2_metric_facts.doc_id BIGINT) that only fired in prod.
+    """
+    _, filing_id, cik, accession = _seed_filing(
+        clean_db, cik="0000999003", accession="0000999003-15-000003"
+    )
+    _prewrite_cached_html(tmp_path, cik, accession)
+
+    # Mark as already-extracted via v2_documents row
+    with clean_db.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO v2_documents (filing_id, document_type, status, fact_count, created_at, updated_at)
+                VALUES (%s, 'sec_filing', 'complete', 0, now(), now())
+                """,
+                (filing_id,),
+            )
+        conn.commit()
+
+    mock_pipeline_result = MagicMock()
+    mock_pipeline_result.fact_count = 0
+
+    with (
+        patch.object(cli, "process_filing", return_value=mock_pipeline_result) as mock_proc,
+        patch.object(cli, "V2PersistenceAdapter") as mock_persist_cls,
+        patch.object(cli, "SECClient"),
+    ):
+        mock_persist_cls.return_value = MagicMock()
+
+        args = SimpleNamespace(
+            industry="software",
+            year="2015",
+            form_type="S-1",
+            limit=None,
+            storage_root=str(tmp_path),
+            skip_txt=True,
+            include_already_extracted=True,
+            yes=True,  # auto-confirms first prompt
+            dry_run=False,
+            user_agent="integration-test/1.0",
+            exclude_amendments=False,
+        )
+        rc = cli.cmd_onboard(args, clean_db)
+
+    assert rc == 0
+    # With --yes, the already-extracted filing is re-processed with force=True
+    assert mock_proc.call_count == 1
+    persist_calls = mock_persist_cls.return_value.persist_pipeline_result.call_args_list
+    assert len(persist_calls) == 1
+    _, kwargs = persist_calls[0]
+    assert kwargs["force"] is True, (
+        "Already-extracted filing with --yes must reach persist_pipeline_result "
+        "with force=True"
+    )
