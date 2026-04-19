@@ -38,72 +38,62 @@
 
 {% block content %}
 
-{# Filing Header #}
-<div class="row mb-3">
-  <div class="col-12">
-    <nav aria-label="breadcrumb">
-      <ol class="breadcrumb mb-1">
-        <li class="breadcrumb-item"><a href="{{ url_for('review_unified.filing_list') }}">Review Filings</a></li>
-        <li class="breadcrumb-item active">{{ filing.company_name }}{% if filing.ticker %} ({{ filing.ticker }}){% endif %}</li>
-      </ol>
-    </nav>
-    <div class="d-flex justify-content-between align-items-center">
-      <div>
-        <h4 class="mb-0">{{ filing.company_name }}{% if filing.ticker %} <small class="text-muted" style="font-size: 0.65em;">{{ filing.ticker }}</small>{% endif %}</h4>
-        <small class="text-muted">
-          {{ filing.accession_number }}
-          {% if filing.form_type %}&middot; {{ filing.form_type }}{% endif %}
-          {% if sec_filing_url %}
-          &middot; <a href="{{ sec_filing_url }}" target="_blank" rel="noopener" style="font-size:0.8em;">
-            {% if document_type == 'investor_presentation' %}View source document{% else %}View source filing{% endif %}
-          </a>
+<div class="review-sticky-header">
+  {# Filing Header #}
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h4 class="mb-0">{{ filing.company_name }}{% if filing.ticker %} <small class="text-muted" style="font-size: 0.65em;">{{ filing.ticker }}</small>{% endif %}</h4>
+          <small class="text-muted">
+            {{ filing.accession_number }}
+            {% if filing.form_type %}&middot; {{ filing.form_type }}{% endif %}
+            {% if sec_filing_url %}
+            &middot; <a href="{{ sec_filing_url }}" target="_blank" rel="noopener" style="font-size:0.8em;">
+              {% if document_type == 'investor_presentation' %}View source document{% else %}View source filing{% endif %}
+            </a>
+            {% endif %}
+          </small>
+        </div>
+        <div class="text-end">
+          <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
+          <span class="badge bg-warning text-dark">{{ pending_count }} pending</span>
+          <span class="badge bg-success">{{ accepted_count }} accepted</span>
+          <span class="badge bg-danger">{{ rejected_count }} rejected</span>
+          {% if image_pending is defined %}
+          <span class="badge bg-info text-dark ms-2">{{ image_pending }} img pending</span>
+          <span class="badge bg-secondary">{{ image_reviewed }} img reviewed</span>
+          {% if image_auto_rejected is defined and image_auto_rejected > 0 %}
+          <span class="badge bg-warning text-dark">{{ image_auto_rejected }} auto-rejected</span>
           {% endif %}
-        </small>
-      </div>
-      <div class="text-end">
-        <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
-        <span class="badge bg-warning text-dark">{{ pending_count }} pending</span>
-        <span class="badge bg-success">{{ accepted_count }} accepted</span>
-        <span class="badge bg-danger">{{ rejected_count }} rejected</span>
-        {% if image_pending is defined %}
-        <span class="badge bg-info text-dark ms-2">{{ image_pending }} img pending</span>
-        <span class="badge bg-secondary">{{ image_reviewed }} img reviewed</span>
-        {% if image_auto_rejected is defined and image_auto_rejected > 0 %}
-        <span class="badge bg-warning text-dark">{{ image_auto_rejected }} auto-rejected</span>
-        {% endif %}
-        {% endif %}
-        <a href="{{ next_filing_url }}" class="btn btn-sm btn-outline-secondary ms-2">
-          Next filing <span class="kbd ms-1">F</span>
-        </a>
+          {% endif %}
+          <a href="{{ next_filing_url }}" class="btn btn-sm btn-outline-secondary ms-2">
+            Next filing <span class="kbd ms-1">F</span>
+          </a>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-{# Tab Bar #}
-<ul class="nav nav-tabs mb-3">
-  <li class="nav-item">
-    <a class="nav-link {% if active_tab == 'text' %}active{% endif %}"
-       href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=text">
-      Text ({{ pending_count }} pending)
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if active_tab == 'images' %}active{% endif %}"
-       href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=images">
-      Images ({{ image_pending if image_pending is defined else 0 }} pending)
-    </a>
-  </li>
-</ul>
+  {# Tab Bar #}
+  <ul class="nav nav-tabs">
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'text' %}active{% endif %}"
+         href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=text">
+        Text ({{ pending_count }} pending)
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link {% if active_tab == 'images' %}active{% endif %}"
+         href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=images">
+        Images ({{ image_pending if image_pending is defined else 0 }} pending)
+      </a>
+    </li>
+  </ul>
 
-{# =========================================================================
-   TEXT TAB
-   ========================================================================= #}
-{% if active_tab == 'text' %}
-
-{# Filters #}
-<div class="row mb-3">
-  <div class="col-12">
+  {# Tab-specific filter bar (sticky with header + tabs) #}
+  {% if active_tab == 'text' %}
+  <div class="review-filter-bar">
     <form method="get" class="d-flex gap-2 align-items-center flex-wrap">
       <input type="hidden" name="tab" value="text">
       <select name="status" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
@@ -132,7 +122,28 @@
       </span>
     </form>
   </div>
+  {% elif active_tab == 'images' and image_candidates and image_candidates|length > 0 %}
+  <div class="review-filter-bar">
+    <form method="GET" class="d-flex gap-2 align-items-center flex-wrap">
+      <input type="hidden" name="tab" value="images">
+      <label class="visually-hidden" for="imgStatusFilter">Status</label>
+      <select name="image_status" id="imgStatusFilter" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+        <option value="all" {% if image_filters.status == 'all' %}selected{% endif %}>All Status</option>
+        {% for status in review_statuses_images %}
+        <option value="{{ status }}" {% if image_filters.status == status %}selected{% endif %}>
+          {{ status|capitalize }}
+        </option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  {% endif %}
 </div>
+
+{# =========================================================================
+   TEXT TAB
+   ========================================================================= #}
+{% if active_tab == 'text' %}
 
 <div class="row">
   {# Left: Fact Navigation Panel #}
@@ -167,63 +178,58 @@
     {% if current_fact %}
     <div class="card fact-card {{ current_fact.review_status }}" id="fact-detail">
       <div class="card-body">
-        {# Fact Header #}
-        <div class="d-flex justify-content-between align-items-start mb-3">
-          <div>
-            <h5 class="mb-1">{{ current_fact.canonical_metric_id }}</h5>
-            <small class="text-muted">
-              {{ current_fact.source_type }} &middot; {{ current_fact.extraction_method }}
-              &middot; {{ current_fact.review_status.replace('_', ' ').title() }}
-              {% if current_fact.source_type == 'chart' or current_fact.source_type == 'CHART' %}
-              <span class="badge bg-info text-dark ms-1" style="font-size:0.75rem;">Chart</span>
-              {% endif %}
-            </small>
-          </div>
-          <div>
-            {% set conf = current_fact.confidence %}
-            {% if conf >= 0.85 %}
-            <span class="badge confidence-badge confidence-high">{{ (conf * 100)|round(0)|int }}%</span>
-            {% elif conf >= 0.50 %}
-            <span class="badge confidence-badge confidence-medium">{{ (conf * 100)|round(0)|int }}%</span>
-            {% else %}
-            <span class="badge confidence-badge confidence-low">{{ (conf * 100)|round(0)|int }}%</span>
+        {# Compact Fact Header (collapsible) #}
+        {% set conf = current_fact.confidence %}
+        {% set conf_class = 'confidence-high' if conf >= 0.85 else ('confidence-medium' if conf >= 0.50 else 'confidence-low') %}
+        {% set period_display %}{% if current_fact.period_start and current_fact.period_end %}{{ current_fact.period_start }} &mdash; {{ current_fact.period_end }}{% elif current_fact.period_end %}As of {{ current_fact.period_end }}{% else %}Not determined{% endif %}{% endset %}
+        <div class="fact-header-compact" data-collapsed="false">
+          <div class="fact-summary-line">
+            <button type="button" class="fact-header-toggle" aria-expanded="true" aria-label="Toggle details">
+              <span class="chevron">&#9662;</span>
+            </button>
+            <span class="fact-metric-id">{{ current_fact.canonical_metric_id }}</span>
+            {% if current_fact.source_type == 'chart' or current_fact.source_type == 'CHART' %}
+            <span class="badge bg-info text-dark" style="font-size:0.75rem;">Chart</span>
             {% endif %}
+            <span class="badge status-{{ current_fact.review_status }} bg-light text-dark border" style="font-size:0.75rem;">
+              {{ current_fact.review_status.replace('_', ' ').title() }}
+            </span>
+            <span class="fact-summary-values">
+              {{ current_fact.value_raw }} &middot; {{ period_display|safe }} &middot; {{ current_fact.scope or 'company' }}
+            </span>
+            <span class="fact-confidence badge confidence-badge {{ conf_class }}">{{ (conf * 100)|round(0)|int }}%</span>
           </div>
-        </div>
 
-        {# Value Display #}
-        <div class="row mb-3">
-          <div class="col-md-4">
-            <label class="form-label text-muted mb-0" style="font-size: 0.8rem;">Value</label>
-            <div class="fs-4 fw-bold">{{ current_fact.value_raw }}</div>
-            {% if current_fact.value is not none %}
-            <small class="text-muted">Parsed: {{ current_fact.value }} {{ current_fact.unit }}</small>
-            {% endif %}
-          </div>
-          <div class="col-md-4">
-            <label class="form-label text-muted mb-0" style="font-size: 0.8rem;">Period</label>
-            <div>
-              {% if current_fact.period_start and current_fact.period_end %}
-              {{ current_fact.period_start }} &mdash; {{ current_fact.period_end }}
-              {% elif current_fact.period_end %}
-              As of {{ current_fact.period_end }}
-              {% else %}
-              <span class="text-muted">Not determined</span>
-              {% endif %}
+          <div class="fact-header-expanded">
+            <small class="text-muted">
+              source: {{ current_fact.source_type }} &middot; method: {{ current_fact.extraction_method }}
+            </small>
+            <div class="fact-values mt-1">
+              <div>
+                <label>Value</label>
+                <div class="fs-5 fw-bold">{{ current_fact.value_raw }}</div>
+                {% if current_fact.value is not none %}
+                <small class="text-muted">Parsed: {{ current_fact.value }} {{ current_fact.unit }}</small>
+                {% endif %}
+              </div>
+              <div>
+                <label>Period</label>
+                <div>{{ period_display|safe }}</div>
+                {% if current_fact.period_type %}
+                <small class="text-muted">{{ current_fact.period_type }}</small>
+                {% endif %}
+              </div>
+              <div>
+                <label>Scope</label>
+                <div>{{ current_fact.scope or 'company' }}</div>
+                {% if current_fact.scope_detail %}
+                <small class="text-muted">{{ current_fact.scope_detail }}</small>
+                {% endif %}
+                {% if current_fact.customer_type %}
+                <small class="text-muted d-block">Customer type: {{ current_fact.customer_type }}</small>
+                {% endif %}
+              </div>
             </div>
-            {% if current_fact.period_type %}
-            <small class="text-muted">{{ current_fact.period_type }}</small>
-            {% endif %}
-          </div>
-          <div class="col-md-4">
-            <label class="form-label text-muted mb-0" style="font-size: 0.8rem;">Scope</label>
-            <div>{{ current_fact.scope or 'company' }}</div>
-            {% if current_fact.scope_detail %}
-            <small class="text-muted">{{ current_fact.scope_detail }}</small>
-            {% endif %}
-            {% if current_fact.customer_type %}
-            <small class="text-muted d-block">Customer type: {{ current_fact.customer_type }}</small>
-            {% endif %}
           </div>
         </div>
 
@@ -614,27 +620,7 @@
   </div>
   {% else %}
 
-  {# Filter and Sort Controls #}
-  <div class="card mb-3">
-    <div class="card-body py-2">
-      <form method="GET" class="row g-2 align-items-center">
-        <input type="hidden" name="tab" value="images">
-        <div class="col-auto">
-          <label class="visually-hidden" for="imgStatusFilter">Status</label>
-          <select name="image_status" id="imgStatusFilter" class="form-select form-select-sm" onchange="this.form.submit()">
-            <option value="all" {% if image_filters.status == 'all' %}selected{% endif %}>All Status</option>
-            {% for status in review_statuses_images %}
-            <option value="{{ status }}" {% if image_filters.status == status %}selected{% endif %}>
-              {{ status|capitalize }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  {# Main 3-Column Layout #}
+  {# Main 3-Column Layout (filter bar moved to sticky header above) #}
   <div class="row image-review-layout">
     {# Left Column: Thumbnail Sidebar #}
     <div class="col-auto image-thumbnail-sidebar">
@@ -693,14 +679,16 @@
       {% if current_image %}
       <div class="card">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-start mb-3">
-            <div>
-              <h5 class="mb-1">
-                Image #{% for c in image_candidates %}{% if c.img_id == current_image.img_id %}{{ loop.index }}{% endif %}{% endfor %}
-              </h5>
-              <small class="text-muted">{{ current_image.image_src }}</small>
-            </div>
-            <div class="d-flex gap-2">
+          {# Compact single-line image header #}
+          <div class="image-header-compact">
+            <span class="image-title">
+              Image #{% for c in image_candidates %}{% if c.img_id == current_image.img_id %}{{ loop.index }}{% endif %}{% endfor %}
+            </span>
+            <span class="image-meta">{{ current_image.image_src }}</span>
+            {% if current_image.image_width and current_image.image_height %}
+            <span class="image-meta">{{ current_image.image_width }}&times;{{ current_image.image_height }} px</span>
+            {% endif %}
+            <div class="image-badges">
               <span class="badge image-tier-badge tier-{{ current_image.detection_tier or 'unknown' }}"
                     title="Detection tier: {{ current_image.detection_tier or 'Unknown' }}">
                 {% if current_image.detection_tier == 'tier_1_cohort' %}Tier 1: Cohort
@@ -732,14 +720,6 @@
                 Open in SEC EDGAR
               </a>
             </div>
-          </div>
-
-          <div class="image-metadata text-muted small mb-3">
-            {% if current_image.image_width and current_image.image_height %}
-            <span>{{ current_image.image_width }} x {{ current_image.image_height }} px</span>
-            <span class="mx-2">&bull;</span>
-            {% endif %}
-            <span>{{ current_image.image_src }}</span>
           </div>
 
           {% if current_image.review_status == 'pending' %}
@@ -1176,6 +1156,24 @@ document.addEventListener('keydown', function(e) {
   }
   {% endif %}
 });
+
+// Collapsible fact detail header with localStorage persistence
+(function () {
+  const KEY = 'fact_header_collapsed';
+  const el = document.querySelector('.fact-header-compact');
+  if (!el) return;
+  const btn = el.querySelector('.fact-header-toggle');
+  if (!btn) return;
+  const initial = localStorage.getItem(KEY) === '1';
+  el.dataset.collapsed = initial ? 'true' : 'false';
+  btn.setAttribute('aria-expanded', initial ? 'false' : 'true');
+  btn.addEventListener('click', function () {
+    const nextCollapsed = el.dataset.collapsed !== 'true';
+    el.dataset.collapsed = nextCollapsed ? 'true' : 'false';
+    btn.setAttribute('aria-expanded', nextCollapsed ? 'false' : 'true');
+    localStorage.setItem(KEY, nextCollapsed ? '1' : '0');
+  });
+})();
 
 // Keyboard flow within reject/correct panels
 (function () {

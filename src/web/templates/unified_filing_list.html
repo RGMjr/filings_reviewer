@@ -3,40 +3,41 @@
 {% block title %}Review Filings - {{ super() }}{% endblock %}
 
 {% block content %}
-<div class="row mb-4">
-  <div class="col-12">
-    <h1>Review Filings</h1>
-    <p class="text-muted">Review metric facts and images extracted from filings</p>
-  </div>
-</div>
-
-{# Document type filter tabs #}
-<div class="row mb-3 align-items-center">
-  <div class="col-auto">
-    <div class="btn-group" role="group" aria-label="Document type filter">
-      <a href="{{ url_for('review_unified.filing_list', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
-         class="btn {% if current_document_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-        All
-      </a>
-      <a href="{{ url_for('review_unified.filing_list', document_type='sec_filing', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
-         class="btn {% if current_document_type == 'sec_filing' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-        SEC Filings
-      </a>
-      <a href="{{ url_for('review_unified.filing_list', document_type='earnings_call', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
-         class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-        Earnings Calls
-      </a>
-      <a href="{{ url_for('review_unified.filing_list', document_type='investor_presentation', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
-         class="btn {% if current_document_type == 'investor_presentation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-        Presentations
-      </a>
+<div class="review-sticky-header">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="mb-0">Review Filings</h1>
     </div>
   </div>
-  <div class="col-auto ms-3">
-    <div class="form-check form-check-inline mb-0">
-      <input class="form-check-input" type="checkbox" id="hideCompleted"
-             {% if hide_completed %}checked{% endif %}>
-      <label class="form-check-label text-muted" for="hideCompleted">Hide completed</label>
+
+  {# Document type filter tabs #}
+  <div class="row align-items-center">
+    <div class="col-auto">
+      <div class="btn-group btn-group-sm" role="group" aria-label="Document type filter">
+        <a href="{{ url_for('review_unified.filing_list', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+           class="btn {% if current_document_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          All
+        </a>
+        <a href="{{ url_for('review_unified.filing_list', document_type='sec_filing', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+           class="btn {% if current_document_type == 'sec_filing' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          SEC Filings
+        </a>
+        <a href="{{ url_for('review_unified.filing_list', document_type='earnings_call', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+           class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          Earnings Calls
+        </a>
+        <a href="{{ url_for('review_unified.filing_list', document_type='investor_presentation', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+           class="btn {% if current_document_type == 'investor_presentation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          Presentations
+        </a>
+      </div>
+    </div>
+    <div class="col-auto ms-3">
+      <div class="form-check form-check-inline mb-0">
+        <input class="form-check-input" type="checkbox" id="hideCompleted"
+               {% if hide_completed %}checked{% endif %}>
+        <label class="form-check-label text-muted" for="hideCompleted">Hide completed</label>
+      </div>
     </div>
   </div>
 </div>
