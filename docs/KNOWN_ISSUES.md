@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups)
 
 ---
 
@@ -830,6 +830,51 @@ FTCH's LTV/CAC tenure chart `g607688g54x53.jpg` emits a chart fact with value `2
 - Trace the chart-fact-bridge flow for this image in `src/extraction_v2/chart/metric_classifier.py` — likely a gate that over-accepts `x`-suffixed numeric labels under `cm_new_customers_acquired`.
 - Consider adding an exclusion similar to the one used for percent-prefixed `new/existing consumers` annotations (see `.claude/rules/v2-pipeline.md` "Chart classifier mis-tag (fixed 2026-04-17)").
 - Low priority — does not affect Tier 1 recall and only surfaces on the FTCH tenure chart.
+
+---
+
+## 30. 15 Filings With CIK / sec_html_url Mismatch
+
+**Status**: Open
+**Severity**: Medium — the review UI's "View source" link on these 15 filings points to the wrong SEC document; reviewers could attribute facts to the wrong filing
+**Discovered**: 2026-04-19 (surfaced by new `scripts/validate_database_urls.py --fail-on-errors` gate while resolving Issue #26)
+
+### Problem
+
+15 filings in the production DB have a `sec_html_url` that points at CIK `0001725792` / `d745640ds1a.htm` (the Uber S-1/A document) while their own `filings.cik` holds a different value. Affected `filing_id`s: 904, 905, 906, 907, 908, 909, 910, 911, 912, plus 5 more. Appears to be fallout from the pre-Issue-#6 FilingFetcher exhibit-pattern-matching incidents (Dec 2025): the fetcher saved one filing's content across many rows, and the URL never got corrected.
+
+`scripts/validate_database_urls.py` reports these as **warnings** by design — the class of bug Issue #26 protects against is NULL/malformed URLs, and failing CI on pre-existing corruption would be a backward-compatibility regression. Listing here so the issue has a home.
+
+### Next Steps (triage required)
+
+Pick one:
+- **Re-fetch**: run `FilingFetcher` for each of the 15 CIKs individually, letting the URL resolver set `sec_html_url` fresh from SEC EDGAR. Safest; preserves `filing_id` so review decisions aren't affected.
+- **Delete and re-ingest**: only appropriate if no `v2_metric_facts` / `v2_review_decisions` rows reference these `filing_id`s. Check first.
+- **Accept**: if these 15 are not actively being reviewed and not in the gold standard, defer indefinitely.
+
+Run to inspect:
+```sql
+SELECT f.filing_id, c.company_name, f.cik, f.accession_number, f.sec_html_url
+FROM filings f JOIN companies c USING (company_id)
+WHERE f.filing_id IN (904,905,906,907,908,909,910,911,912,...)
+ORDER BY f.filing_id;
+```
+
+---
+
+## 31. Async Audit Log Spams DNS Error in Test / Dev
+
+**Status**: Open
+**Severity**: Low (cosmetic — tests pass, UI works, log noise only)
+**Discovered**: 2026-04-19 (observed during Issue #26 test-suite runs)
+
+### Problem
+
+`src/web/routes/review_unified.py:102` (`_write` inside the audit-log thread) logs `ERROR Async audit log write failed: [Errno 8] nodename nor servname provided, or not known` on every request when `DATABASE_URL` is a testing sentinel like `postgresql://test` (used by `tests/unit/web/*`). The error is swallowed — response is unaffected — but pollutes pytest output and could mask real audit-log failures.
+
+### Fix (cheap)
+
+Wrap the `psycopg.connect` call in the audit thread with a short-circuit for obviously-non-network DSN strings (e.g. host resolves to nothing), or log at `DEBUG` when `app.config['TESTING']` is True. One-off change, under 10 LOC. Defer until someone is otherwise in `review_unified.py`.
 
 ---
 

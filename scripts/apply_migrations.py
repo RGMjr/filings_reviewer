@@ -67,12 +67,16 @@ MIGRATIONS = [
     "28_extend_v2_image_assets_review.sql",
     "29_create_v2_image_review_decisions.sql",
     "30_drop_v1_image_review.sql",
-    # NOTE: 31_drop_v1_review_tables.sql is part of in-flight V1-retirement
-    # work; it registers itself in a separate commit. 32 below must NOT depend
-    # on any schema object 31 drops (it only ALTERs v2_image_assets, untouched).
+    # NOTE: 31_drop_v1_review_tables.sql and 33_fix_identity_index.sql are
+    # intentionally not registered here — both were already applied to Neon
+    # prod out-of-band (sql/31 via commit 03a8a20 V1 retirement batch; sql/33
+    # via the identity-index rollout; see docs/KNOWN_ISSUES.md Issue #13).
+    # `apply_migrations.py --test` does not apply them to fresh test DBs, but
+    # CI's integration-tests job does not depend on V1 tables existing, and
+    # the V2 code path does not require the sql/33 index fix to run.
+    # 32 below must NOT depend on any schema object 31 drops (it only ALTERs
+    # v2_image_assets, untouched by sql/31).
     "32_add_detected_keywords_to_v2_image_assets.sql",
-    # sql/33_fix_identity_index.sql is registered separately (applied to Neon
-    # in the prior rollout batch).
     "34_dedup_v2_image_assets.sql",
     "35_drop_v2_image_assets_segment_id.sql",
     "36_backfill_presentation_urls.sql",
