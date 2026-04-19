@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issue #13 resolved — prod verified 9-col; #31 fully resolved — sync middleware path now matches async TESTING guard; #36 resolved — `populate --limit N` + `build_universe(limit=)`; #37 resolved — FTI classifier gated to S-1/F-1; #41 code landed — `--navbar-height` CSS var + compact navbar + pill flex-wrap + three badges dropped; browser verification pending)
+**Last Updated**: 2026-04-19 (Issue #13 resolved — prod verified 9-col; #31 fully resolved — sync middleware path now matches async TESTING guard; #36 resolved — `populate --limit N` + `build_universe(limit=)`; #37 resolved — FTI classifier gated to S-1/F-1; #41 resolved — `--navbar-height` CSS var + compact navbar + pill flex-wrap + three badges dropped; deployed Render build verified visually)
 
 ---
 
@@ -224,7 +224,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
 | `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Low | Medium | Column name implies "in active universe" but means "Phase 1 IPO candidate"; confusing with 10-Ks present; needs rename or form-aware companion column |
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
-| Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Code landed 2026-04-19 (commit `366d9dd`); browser verification pending | Low | Low | `--navbar-height: 48px`, compact navbar, `.review-pill-row` flex-wrap; three badges dropped to free horizontal space; deployed build awaiting visual calibration |
+| Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Resolved (2026-04-19) | — | — | `--navbar-height: 48px`, compact navbar, `.review-pill-row` flex-wrap; three badges dropped; deployed Render build verified visually |
 | `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
 
 ---
@@ -1309,18 +1309,16 @@ Lightweight either way — <30 LOC + tests + doc line.
 
 ## 41. Review-UI Sticky Header Offset Mismatch + Narrow-Width Overlap Unverified
 
-**Status**: Code landed 2026-04-19 (commit `366d9dd`); browser verification pending
+**Status**: ✅ Resolved (2026-04-19) — verified on deployed Render build
 **Severity**: Low — cosmetic
 **Discovered**: 2026-04-19 (during review-UI sticky-header work, commit `ba35424`)
-**Updated**: 2026-04-19
+**Resolved**: 2026-04-19
 
-### Resolution (code portion)
+### Resolution
 
-Shared `--navbar-height` CSS custom property introduced in `:root` (`src/web/static/css/review.css`) and applied to both `.sticky-top-below-nav` and `.review-sticky-header`. Compact-navbar styling (`.navbar.sticky-top` padding-y 0.25rem, `--navbar-height: 48px`) and a `.review-pill-row` flex-wrap class keep stat-pill badges from colliding with the "Next filing F" button at narrow widths. `unified_review.html:58` stat-pill row now uses `.review-pill-row`; `accepted`, `rejected`, and `img reviewed` badges removed to reduce horizontal load. Sticky-header vertical padding trimmed to absorb `container.mt-4` for a tighter gap under the navbar.
+Shared `--navbar-height` CSS custom property introduced in `:root` (`src/web/static/css/review.css`) and applied to both `.sticky-top-below-nav` and `.review-sticky-header`. Compact-navbar styling (`.navbar.sticky-top` padding-y 0.25rem, `--navbar-height: 48px`) and a `.review-pill-row` flex-wrap class keep stat-pill badges from colliding with the "Next filing F" button at narrow widths. `unified_review.html:58` stat-pill row now uses `.review-pill-row`; `accepted`, `rejected`, and `img reviewed` badges removed to reduce horizontal load. Sticky-header vertical padding trimmed to absorb `container.mt-4` for a tighter gap under the navbar. Badge font size shrunk to 0.7rem.
 
-### Remaining
-
-Browser verification at default width and ~1024px viewport to confirm flex-wrap + navbar-height calibration behave as intended on the deployed build. Close this issue once confirmed.
+Deployed Render build verified visually 2026-04-19 — sticky-header, pill-wrap, and navbar calibration land as intended. Code in commit `366d9dd`.
 
 ### Problem
 
@@ -1486,4 +1484,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Issue #31 fully resolved — `src/web/middleware.py:87-120` synchronous audit-log path now mirrors the async pattern (captures `TESTING`, downgrades except-clause log to DEBUG when true). New `tests/unit/web/test_middleware.py::TestAuditLogFailureLogging` covers both cases. Commit `366d9dd`
 - **2026-04-19**: Issue #36 resolved — `UniverseBuilder.build_universe` gained optional `limit: int | None` kwarg; `scripts/onboard_tickers.py populate --limit N` threads through. Default `None` preserves unbounded behaviour; regression test at `tests/unit/universe/test_universe_builder.py::test_limit_stops_after_n_in_scope_upserts`. Commit `366d9dd`
 - **2026-04-19**: Issue #37 resolved — `_process_filing` in `src/universe/universe_builder.py` gates `classify_first_time_issuer` on `filing.form_type in DEFAULT_FORM_TYPES_S1F1`; non-applicable filings land with `is_first_time_issuer=NULL` and `fti_method="not_applicable"`. Mirror of the existing SPAC-SGML gate at line 163. Covered by `tests/unit/universe/test_universe_builder.py::test_10k_filing_has_null_first_time_issuer`. Commit `366d9dd`
-- **2026-04-19**: Issue #41 code landed — `--navbar-height: 48px` CSS custom property in `src/web/static/css/review.css` unifies sticky offsets; `.navbar.sticky-top` padding-y compacted to 0.25rem; `.review-pill-row` flex-wrap class on the `unified_review.html:58` stat-pill row. Separately, `accepted`, `rejected`, and `img reviewed` badges dropped to reduce horizontal load; badge font-size shrunk to 0.7rem; sticky-header vertical padding trimmed to absorb container `mt-4`. Browser verification still pending. Commit `366d9dd`
+- **2026-04-19**: Issue #41 resolved — `--navbar-height: 48px` CSS custom property in `src/web/static/css/review.css` unifies sticky offsets; `.navbar.sticky-top` padding-y compacted to 0.25rem; `.review-pill-row` flex-wrap class on the `unified_review.html:58` stat-pill row. Separately, `accepted`, `rejected`, and `img reviewed` badges dropped to reduce horizontal load; badge font-size shrunk to 0.7rem; sticky-header vertical padding trimmed to absorb container `mt-4`. Deployed Render build verified visually. Commit `366d9dd`
