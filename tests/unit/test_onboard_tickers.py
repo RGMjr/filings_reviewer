@@ -334,6 +334,34 @@ def test_prompt_reviewed_filing_other_input_is_no(cli):
 
 
 # ---------------------------------------------------------------------------
+# --exclude-amendments (C1)
+# ---------------------------------------------------------------------------
+
+
+def test_exclude_amendments_filters_slash_a_forms(cli):
+    """With --exclude-amendments, s1f1 bundle narrows to S-1 + F-1 only."""
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        ["discover", "--industry", "software", "--year", "2015",
+         "--form-type", "s1f1", "--exclude-amendments"]
+    )
+    assert args.exclude_amendments is True
+
+    form_types = cli.resolve_form_types(args.form_type)
+    if args.exclude_amendments:
+        form_types = [ft for ft in form_types if not ft.endswith("/A")]
+    assert set(form_types) == {"S-1", "F-1"}
+
+
+def test_exclude_amendments_default_false(cli):
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        ["discover", "--industry", "software", "--year", "2015"]
+    )
+    assert args.exclude_amendments is False
+
+
+# ---------------------------------------------------------------------------
 # document_date threading — regression test for A1 (was silently dropping
 # chart-fact-bridge for every onboarded filing)
 # ---------------------------------------------------------------------------

@@ -1,25 +1,27 @@
 # Industry SIC code mappings for scripts/onboard_tickers.py.
 #
 # Maps everyday industry names to SEC Standard Industrial Classification (SIC) codes.
-# SIC reference: https://www.sec.gov/info/edgar/siccodes.htm
+# SIC reference (live): https://www.sec.gov/corpfin/division-of-corporation-finance-standard-industrial-classification-sic-code-list
+# Codes verified against SEC's published list on 2026-04-19.
 #
 # Codes are stored as strings to match companies.industry_code (TEXT) in
 # sql/01_create_schema.sql. Every code must be a 4-digit numeric string.
 #
 # To add an industry: append under `industries:` with a description and list of
 # 4-digit SIC codes. Add common alternate names under `aliases:`.
+# Only codes that appear in SEC's published list should be added — other codes
+# are never assigned to `companies.industry_code` by the pipeline.
 
 industries:
   software:
     description: "Prepackaged software and computer services"
     sic_codes:
-      - "7370"  # Services-Computer Services
-      - "7371"  # Services-Computer Programming, Data Processing
-      - "7372"  # Services-Prepackaged Software
-      - "7373"  # Services-Computer Integrated Systems Design
-      - "7374"  # Services-Computer Processing & Data Preparation
-      - "7377"  # Services-Computer Rental and Leasing
-      - "7379"  # Services-Computer Services, NEC
+      - "7370"  # SERVICES-COMPUTER PROGRAMMING, DATA PROCESSING, ETC.
+      - "7371"  # SERVICES-COMPUTER PROGRAMMING SERVICES
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE
+      - "7373"  # SERVICES-COMPUTER INTEGRATED SYSTEMS DESIGN
+      - "7374"  # SERVICES-COMPUTER PROCESSING & DATA PREPARATION
+      - "7377"  # SERVICES-COMPUTER RENTAL & LEASING
 
 aliases:
   saas: software
