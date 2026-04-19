@@ -367,6 +367,62 @@ class TestBuildUniverseFormTypes:
         assert filing_args["form_type"] == "10-K"
         assert filing_args["is_in_scope_phase1"] is False
 
+    def test_10k_filing_has_null_first_time_issuer(self, mock_db):
+        """10-K filings land with is_first_time_issuer=None, not True.
+
+        Regression guard for KNOWN_ISSUES.md #37: the classifier's "no prior
+        S-1 in DB → True" heuristic is nonsensical for 10-Ks, so the call is
+        gated to S-1/F-1 form types and non-applicable cases are recorded as
+        NULL instead of the misleading TRUE value.
+        """
+        tenk_filing = FilingMetadata(
+            cik="0009999999",
+            company_name="Widget Co.",
+            form_type="10-K",
+            filing_date="2022-03-01",
+            accession_number="0009999999-22-000001",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/9999999/tenk.htm",
+            ticker="WDGT",
+        )
+        sec_client = MockSECClient(mock_filings=[tenk_filing])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        builder.build_universe("2022-01-01", "2022-12-31", form_types=["10-K"])
+
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args["form_type"] == "10-K"
+        assert filing_args["is_first_time_issuer"] is None
+        # get_first_ipo_filing_date should not be called for non-S-1/F-1 forms
+        mock_db.get_first_ipo_filing_date.assert_not_called()
+
+    def test_limit_stops_after_n_in_scope_upserts(self, mock_db):
+        """build_universe(limit=N) breaks the loop after N in-scope upserts.
+
+        Regression guard for KNOWN_ISSUES.md #36: `populate --form-type 10k`
+        without a brake can trigger a ~15-minute SEC traffic run.
+        """
+        filings = [
+            FilingMetadata(
+                cik=f"000{i:07d}",
+                company_name=f"InScope Co {i}",
+                form_type="S-1",
+                filing_date="2020-04-01",
+                accession_number=f"000{i:07d}-20-000001",
+                primary_doc_url=f"https://www.sec.gov/Archives/edgar/data/{i}/s1.htm",
+                ticker=f"IS{i}",
+            )
+            for i in range(5)
+        ]
+        sec_client = MockSECClient(mock_filings=filings)
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        count = builder.build_universe(
+            "2020-01-01", "2020-12-31", limit=2
+        )
+
+        assert count == 2
+        assert mock_db.upsert_filing.call_count == 2
+
     def test_s1_filing_still_performs_sgml_recheck(self, mock_db):
         """Regression: S-1 filings must still trigger the SGML re-check."""
         from unittest.mock import patch

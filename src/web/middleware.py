@@ -92,6 +92,7 @@ def insert_audit_log_entry(
     """
     from src.web.app import get_db
 
+    testing = bool(current_app.config.get("TESTING"))
     try:
         response_time_ms = None
         if hasattr(g, "request_start_time"):
@@ -111,6 +112,9 @@ def insert_audit_log_entry(
             response_time_ms=response_time_ms,
         )
     except Exception as e:
-        logger.error(f"Failed to insert audit log: {e}")
+        if testing:
+            logger.debug(f"Failed to insert audit log: {e}")
+        else:
+            logger.error(f"Failed to insert audit log: {e}")
 
     return response
