@@ -74,6 +74,7 @@ MIGRATIONS = [
     # sql/33_fix_identity_index.sql is registered separately (applied to Neon
     # in the prior rollout batch).
     "34_dedup_v2_image_assets.sql",
+    "35_drop_v2_image_assets_segment_id.sql",
 ]
 
 BOOTSTRAP_DDL = """
