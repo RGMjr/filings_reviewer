@@ -181,6 +181,17 @@ def _make_chart_asset(
 class TestImageDownloading:
     """Tests for OCRExtractionStage._download_missing_images."""
 
+    @pytest.fixture(autouse=True)
+    def _isolate_image_cache(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        from src.infra.paths import image_cache_dir
+
+        monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
+        image_cache_dir.cache_clear()
+        yield
+        image_cache_dir.cache_clear()
+
     def test_downloads_images_without_file_path(self, tmp_path: Path) -> None:
         """Images that passed triage but lack file_path get downloaded."""
         mock_sec = MockSECClient(image_data={"chart1.jpg": b"\xff\xd8\xff\xe0fake_jpeg_data"})
@@ -205,6 +216,8 @@ class TestImageDownloading:
         assert downloaded == 1
         assert asset.file_path is not None
         assert Path(asset.file_path).exists()
+        expected_dir = tmp_path / "pipeline" / "1234567" / "0001234567-24-000001"
+        assert Path(asset.file_path).parent == expected_dir
         assert mock_sec.fetch_calls == [("1234567", "0001234567-24-000001", "chart1.jpg")]
 
     def test_skips_images_with_existing_file_path(self) -> None:
