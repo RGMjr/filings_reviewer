@@ -74,10 +74,12 @@ jobs:
 
       - name: Run Playwright tests
         working-directory: tests/ui
-        run: npx playwright test
-        env:
-          # webServer command invokes python3 directly — ensure it sees the uv-managed interpreter
-          PATH: ${{ github.workspace }}/.venv/bin:${{ env.PATH }}
+        shell: bash
+        # webServer command in playwright.config.js invokes `python3 test_server.py`
+        # directly; prepend the uv-managed venv to PATH so it finds Flask et al.
+        run: |
+          export PATH="${{ github.workspace }}/.venv/bin:$PATH"
+          npx playwright test
 
       - name: Upload Playwright report on failure
         if: failure()
