@@ -41,6 +41,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -477,14 +478,16 @@ def cmd_onboard(args: argparse.Namespace, db: DatabaseAdapter) -> int:
             continue
 
         try:
+            doc_date = date.fromisoformat(c.filing_date) if c.filing_date else None
             result = process_filing(
                 html_path=content.html_path,
                 filing_id=c.filing_id,
                 cik=c.cik,
                 accession_number=c.accession_number,
+                document_date=doc_date,
             )
             persistence.persist_pipeline_result(
-                result, c.filing_id, ticker=c.ticker, force=force
+                result, c.filing_id, ticker=c.ticker, document_date=doc_date, force=force
             )
             succeeded += 1
             logger.info(
