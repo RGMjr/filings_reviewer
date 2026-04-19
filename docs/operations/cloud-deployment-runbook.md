@@ -1,7 +1,7 @@
 # Cloud Deployment Runbook
 
 **Infrastructure:** Render (web service) + Neon (PostgreSQL)
-**Last updated:** 2026-04-10
+**Last updated:** 2026-04-18
 
 ---
 
@@ -201,7 +201,7 @@ Do NOT deploy code that depends on a new schema before the migration runs.
 
 Migrations and follow-ups that have landed on `main` but **not yet applied to Neon prod**. Clear from this list once applied.
 
-_No pending rollouts._ Last cleared 2026-04-18 after applying `sql/31_drop_v1_review_tables.sql`, `sql/32_add_detected_keywords_to_v2_image_assets.sql`, and `sql/33_fix_identity_index.sql` to unblock the Review page (the missing `detected_keywords` column was causing `undefined_column` exceptions in `review_unified.review_filing`, triggering the bare-`except` redirect to the filing list). V1 review data archived to `data/archive/review_{decisions,candidates}_pre_drop_2026-04-18.sql`.
+_No pending rollouts._ Last cleared 2026-04-18 after applying `sql/34_dedup_v2_image_assets.sql` to Neon (collapsed 1140 duplicate rows down to 917 distinct `(doc_id, filename)` groups; 2 redundant HOOD decisions cascade-deleted — both semantically identical to the kept decision; archived to `data/archive/v2_image_review_decisions_pre_sql34_2026-04-18.json`). Prior clear on the same date applied `sql/31_drop_v1_review_tables.sql`, `sql/32_add_detected_keywords_to_v2_image_assets.sql`, and `sql/33_fix_identity_index.sql` to unblock the Review page. V1 review data archived to `data/archive/review_{decisions,candidates}_pre_drop_2026-04-18.sql`._
 
 Optional follow-up: `python3 scripts/backfill_image_keywords.py` to populate `detected_keywords` for historical rows so the "Detected Keywords" badges show values instead of "None detected".
 

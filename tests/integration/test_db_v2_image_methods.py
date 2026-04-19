@@ -302,3 +302,151 @@ class TestGetNextPendingImageCandidateV2:
         _insert_v2_image(clean_db, filing_id, "a.jpg", review_status="reviewed")
 
         assert clean_db.get_next_pending_image_candidate_v2(filing_id) is None
+
+
+class TestPersistImagesStableImgId:
+    """Regression coverage for sql/34 + the persistence upsert preserving img_id.
+
+    Before the fix, re-extracting a filing produced duplicate v2_image_assets rows
+    (random img_id per run, ON CONFLICT (img_id) never fired). Decisions stayed
+    attached to the original row; new duplicates defaulted to review_status='pending'
+    and inflated the progress counter (Maplebear S-1: 220 pending but the review UI
+    showed every image as already reviewed).
+    """
+
+    def _make_asset(self, filename: str, img_id: str | None = None):
+        from src.extraction_v2.models import (
+            ImageAsset,
+            ImageClassification,
+            SectionType,
+        )
+
+        kwargs: dict = {
+            "filename": filename,
+            "dom_locator": f"body > img[src='{filename}']",
+            "width": 600,
+            "height": 400,
+            "nearby_text": "cohort retention",
+            "classification": ImageClassification.CHART,
+            "relevance_score": 0.8,
+            "section_type": SectionType.MDA,
+        }
+        if img_id is not None:
+            kwargs["img_id"] = img_id
+        return ImageAsset(**kwargs)
+
+    def test_reextraction_preserves_img_id_and_does_not_duplicate(self, clean_db):
+        from src.extraction_v2.persistence import V2PersistenceAdapter
+
+        _, filing_id = create_test_company_and_filing(clean_db)
+        adapter = V2PersistenceAdapter(clean_db)
+
+        # First run: persist a single image. Record its DB-assigned img_id.
+        original = self._make_asset("chart1.jpg")
+        adapter.persist_images([original], filing_id)
+        rows = clean_db.query(
+            "SELECT img_id FROM v2_image_assets WHERE doc_id=%(d)s AND filename=%(f)s",
+            {"d": filing_id, "f": "chart1.jpg"},
+        )
+        assert len(rows) == 1
+        stable_img_id = str(rows[0]["img_id"])
+
+        # Reviewer decides on the image.
+        clean_db.insert_image_review_decision_v2(
+            img_id=stable_img_id, decision="relevant", chart_type="cohort_table",
+        )
+
+        # Second run: same filename, fresh random img_id (simulating re-extraction).
+        refreshed = self._make_asset("chart1.jpg")
+        assert refreshed.img_id != stable_img_id
+        adapter.persist_images([refreshed], filing_id)
+
+        # Row count unchanged; img_id is still the original; decision survives.
+        rows_after = clean_db.query(
+            "SELECT img_id FROM v2_image_assets WHERE doc_id=%(d)s AND filename=%(f)s",
+            {"d": filing_id, "f": "chart1.jpg"},
+        )
+        assert len(rows_after) == 1
+        assert str(rows_after[0]["img_id"]) == stable_img_id
+
+        candidate = clean_db.get_image_review_candidate_v2(stable_img_id)
+        assert candidate is not None
+        assert candidate["decision"] == "relevant"
+
+        progress = clean_db.get_image_review_progress_v2(filing_id=filing_id)
+        assert progress["pending_count"] == 0
+        assert progress["reviewed_count"] == 1
+
+    def test_unique_constraint_rejects_manual_duplicate(self, clean_db):
+        """sql/34 guards against any future code path inserting a duplicate directly."""
+        from psycopg.errors import UniqueViolation
+
+        _, filing_id = create_test_company_and_filing(clean_db)
+        _insert_v2_image(clean_db, filing_id, "dup.jpg")
+
+        with pytest.raises(UniqueViolation):
+            _insert_v2_image(clean_db, filing_id, "dup.jpg")
+
+    def test_source_locator_img_id_remapped_in_persist_pipeline_result(self, clean_db):
+        """After persist_pipeline_result, facts reference the stable DB img_id,
+        not the fresh in-memory uuid4 from this extraction run."""
+        from src.extraction_v2.models import (
+            Document,
+            MetricFact,
+            Scope,
+            SourceLocator,
+            SourceType,
+            Unit,
+        )
+        from src.extraction_v2.persistence import V2PersistenceAdapter
+        from src.extraction_v2.pipeline import PipelineResult
+
+        _, filing_id = create_test_company_and_filing(clean_db)
+        adapter = V2PersistenceAdapter(clean_db)
+
+        # Seed: an image already exists at (doc_id, filename=chart2.jpg) with
+        # its own stable img_id (simulates a prior extraction run).
+        seed = self._make_asset("chart2.jpg")
+        adapter.persist_images([seed], filing_id)
+        stable_img_id = str(
+            clean_db.query(
+                "SELECT img_id FROM v2_image_assets WHERE doc_id=%(d)s AND filename=%(f)s",
+                {"d": filing_id, "f": "chart2.jpg"},
+            )[0]["img_id"]
+        )
+
+        # Build a fresh PipelineResult as if re-extraction just ran: the new
+        # in-memory ImageAsset has a random img_id, and one fact references it.
+        refreshed = self._make_asset("chart2.jpg")
+        assert refreshed.img_id != stable_img_id
+        fact = MetricFact(
+            canonical_metric_id="cm_revenue_by_cohort",
+            value=1000.0,
+            value_raw="$1,000",
+            unit=Unit.CURRENCY,
+            currency="USD",
+            scope=Scope.COMPANY,
+            source_type=SourceType.CHART,
+            source_locator=SourceLocator(
+                img_id=refreshed.img_id,
+                dom_locator=refreshed.dom_locator,
+            ),
+            confidence=0.9,
+        )
+        result = PipelineResult(
+            document=Document(),
+            facts=[fact],
+            tables=[],
+            images=[refreshed],
+            segments=[],
+            stage_results=[],
+            total_duration_ms=0,
+            success=True,
+        )
+
+        adapter.persist_pipeline_result(result, filing_id, force=True)
+
+        # In-memory fact was remapped to the stable DB img_id.
+        assert fact.source_locator.img_id == stable_img_id
+        # In-memory image was remapped too (defensive).
+        assert refreshed.img_id == stable_img_id

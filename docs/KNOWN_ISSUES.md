@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-18
+**Last Updated**: 2026-04-19
 
 ---
 
@@ -204,6 +204,11 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Farfetch LTV/CAC dedup collision (Issue #14) | Resolved (2026-04-18) | — | — | cm_ltv_to_cac_ratio 33%→100%; cm_ltv_to_cac_ratio_by_cohort 17%→50%; Farfetch F1 +10.3pp |
 | Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Resolved (2026-04-18) | — | — | Classifier+parser gates relaxed for customer-type/year-in-point.x shape; 0% → 100% F1 on Farfetch; Tier 1 overall +5.4pp |
+| `v2_image_assets` duplicates + pending-count discrepancy — Maplebear S-1 (Issue #21) | Resolved (2026-04-18) | — | — | sql/34 dedup migration + stable img_id upsert (ON CONFLICT (doc_id, filename)) + in-memory fact source_locator remap |
+| No reviewed-filing guard on image re-extraction (Issue #22) | Open | Low | Low | Decisions survive post-#21; hidden-decision risk on re-classification only |
+| `v2_image_assets.segment_id` dead column (Issue #23) | Open | Trivial | Trivial | Never written/read; V1 source_segments dropped in sql/31 |
+| `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | New facts consistent post-#21; historical orphans likely remain |
+| `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Open | Trivial | Trivial | Script only touches gold-standard JSON, not production DB |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
 | CAC payback "six months" not bound (Issue #17) | Resolved (2026-04-18) | — | — | Added `WORD_NUMBER_TIME_PATTERN` gated to time-valued metrics; cm_cac_payback_period 0% → 100% F1 |
 | Migration checksum mismatch — `sql/01_create_schema.sql` (Issue #18) | Resolved (2026-04-18) | — | — | Self-healed via V1 retirement merge |
@@ -595,6 +600,102 @@ All 164 `test_v2_validator.py` tests pass (was 158 before these additions).
 
 ---
 
+## 21. `v2_image_assets` Duplicates + Pending-Count Discrepancy (Maplebear S-1)
+
+**Status**: ✅ Resolved (2026-04-18) — dedup migration + stable-img_id upsert + in-memory fact remap
+**Severity**: Medium (UI showed 220 pending images; all appeared already-reviewed when clicked)
+**Discovered**: 2026-04-18
+**Resolved**: 2026-04-18
+
+### Problem
+
+The Maplebear S-1 review UI displayed 220 pending images in the progress counter, but every image opened as already-reviewed. Zero images appeared in the review queue despite the non-zero pending count.
+
+### Root Cause
+
+Two coupled defects:
+
+1. **Random UUID on every re-extraction.** `ImageAsset.img_id` is generated via `uuid.uuid4()` per pipeline run. The upsert in `_persist_images_in_tx` used `ON CONFLICT (img_id)` — a conflict that never fires because each run produces a new UUID. Every re-extraction inserts a fresh row with `review_status='pending'`, leaving the original (decided) row orphaned in the table.
+
+2. **Asymmetric deduplication.** `get_image_review_progress_v2` (`src/infra/db.py`) counts `review_status='pending'` rows without deduping by `(doc_id, filename)`, so it counts all duplicate rows. The review-list query uses `DISTINCT ON (filename)` to surface only one row per image — which happens to be the row with a decision. Result: counter = 220, queue = 0.
+
+### Resolution
+
+1. **`sql/34_dedup_v2_image_assets.sql`** — collapses duplicate `(doc_id, filename)` groups: preserves the decided row (or highest `review_status` rank), consolidates `review_status` / `predicted_relevance` / `detected_keywords`, then adds `UNIQUE (doc_id, filename)` constraint.
+2. **`src/extraction_v2/persistence.py:_persist_images_in_tx`** — changes `ON CONFLICT (img_id)` to `ON CONFLICT (doc_id, filename) DO UPDATE`, preserves the existing `img_id` on conflict, and returns an old→stable `img_id` map.
+3. **`src/extraction_v2/persistence.py:persist_pipeline_result`** — uses the map to rewrite `source_locator.img_id` in-memory before fact persistence, keeping metric-fact provenance consistent with the stable DB row.
+4. **`scripts/apply_migrations.py` and `scripts/apply_all_migrations.py`** — `sql/34_dedup_v2_image_assets.sql` registered in `MIGRATIONS` / `MIGRATION_ORDER`.
+
+### Remaining
+
+None — the four related out-of-scope issues are tracked separately in Issues #22–#25 below.
+
+---
+
+## 22. No Reviewed-Filing Guard on Image Re-Extraction
+
+**Status**: Open
+**Severity**: Low (no data loss; decisions survive re-extraction via stable img_ids post-Issue #21)
+**Discovered**: 2026-04-18
+
+### Problem
+
+The fact-side `ReviewedFilingError` (raised in `src/extraction_v2/persistence.py:_persist_facts_in_tx`, defined in `src/extraction_v2/exceptions.py`) does not cover image assets. After the sql/34 fix, existing review decisions survive re-extraction because img_ids are stable. However, if re-classification changes an image from `chart` to `decorative`, the review UI filters it out (`classification NOT IN ('decorative','logo','signature')` in `src/infra/db.py:1631`) — the decision becomes hidden rather than invalidated. There is no warning to the reviewer.
+
+### Suggested Fix
+
+Extend the reviewed-filing guard to check for existing `v2_image_review_decisions` rows before overwriting image classification. Emit a structured warning (or raise `ReviewedFilingError` if `force=False`) when re-classification would hide a previously decided image.
+
+---
+
+## 23. `v2_image_assets.segment_id` Is a Dead Column
+
+**Status**: Open
+**Severity**: Trivial (cosmetic)
+**Discovered**: 2026-04-18
+
+### Problem
+
+`src/extraction_v2/persistence.py:620` sets `segment_id` to NULL with the comment "FKs to V1 source_segments; not used in V2". The V1 `source_segments` table was dropped in `sql/31_drop_v1_review_tables.sql`. The column is never read or written with a meaningful value.
+
+### Suggested Fix
+
+Drop the column in a new migration (e.g., `sql/35_drop_image_assets_segment_id.sql`). Pure DDL; no application code change required.
+
+---
+
+## 24. `v2_metric_facts.source_locator.img_id` Has No Referential Integrity
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-18
+
+### Problem
+
+`img_id` is stored as a value inside a JSONB `source_locator` column (`sql/09_v2_schema.sql:420`), not as a foreign key. After the sql/34 fix, new facts written by `persist_pipeline_result` use the stable DB img_id. However, historical facts written before the fix likely contain orphaned img_ids pointing to rows that were collapsed by the dedup migration.
+
+### Suggested Fix
+
+Add a scheduled integrity-check script, or promote `img_id` to a dedicated FK column on `v2_metric_facts`. The latter is the more robust fix but requires a migration and application-layer changes.
+
+---
+
+## 25. `scripts/migrate_image_ids_to_deterministic.py` Scope Is Confusing
+
+**Status**: Open
+**Severity**: Trivial
+**Discovered**: 2026-04-18
+
+### Problem
+
+The script name implies a production DB migration, but it only rewrites `data/presentation_gold_standard/_image_*.json` files — it never touches the database. Readers discovering it during DB image-identity investigations will be misled.
+
+### Suggested Fix
+
+Either move the script to `scripts/archive/` (only if that directory already exists; do not create it) or add a module-level docstring clarifying: "This script only modifies local gold-standard JSON files in `data/presentation_gold_standard/`. It does not modify the production database."
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
@@ -666,3 +767,6 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: V2 baseline refreshed post-#17/#19 (P=64.6% R=45.9% F1=53.7%; Tier 1 F1 unchanged at 55.6%)
 - **2026-04-18**: Issue #14 resolved — added `cohort_hint` field to `BoundValue`; `_bind_prose_cell` prefers `detect_respectively_pattern` at min_confidence≥0.8 when "respectively" is present; `_bind_respectively_pattern` sets `cohort_hint` (and empties `period_hint`) when cell text mentions "cohort(s)"; `_construct_fact` prefers `bv.cohort_hint` over evidence scan; defensive 80-char prose guard in `_extract_cohort_def`. Farfetch: `cm_ltv_to_cac_ratio` R 33%→100%; `cm_ltv_to_cac_ratio_by_cohort` R 17%→50% (text); Farfetch F1 +10.3pp. Overall F1 +1.0pp; Tier 1 F1 55.6%→57.3%; no regressions
 - **2026-04-18**: Issue #20 resolved — diagnosed via DB inspection: OCR for FTCH `g607688g09d00.jpg` returned valid 9-value chart data at confidence 0.9 but with empty title/axes; classifier + CohortParser both relied on signals the OCR output lacked. Fix (all in `src/extraction_v2/chart/`): `metric_classifier._cohort_gate` accepts ≥2 distinct years in `points[].x` + customer-type series names; `_metric_gate(cm_gross_margin_by_cohort)` fallback for empty y_axis (requires margin/contribution keyword + `%` signal); `_score_metric` nearby_text title fallback + +5.5 raw structural bonus (%/years/customer-type trio); `cohort_parser._parse_customer_type_regime` for year-in-point.x + customer-type-in-series.name shape. `cm_gross_margin_by_cohort` Farfetch 0% → 100% F1 (9/9 rows). Overall F1 53.7%→56.9% (+3.2pp); Tier 1 F1 55.6%→61.0% (+5.4pp); no regressions
+- **2026-04-18**: Added Issue #21 — `v2_image_assets` duplicate rows on re-extraction (random UUID upsert key) + asymmetric dedup in progress counter vs. review-list query caused 220 pending / 0 queue discrepancy on Maplebear S-1
+- **2026-04-18**: Issue #21 resolved — `sql/34_dedup_v2_image_assets.sql` collapses duplicates + adds UNIQUE (doc_id, filename); `_persist_images_in_tx` upserts on (doc_id, filename) preserving stable img_id; `persist_pipeline_result` remaps in-memory fact source_locator.img_id before fact insert
+- **2026-04-18**: Added Issues #22–#25 — out-of-scope follow-ups surfaced during Issue #21 investigation: image re-extraction guard gap, dead segment_id column, img_id referential integrity, migrate_image_ids script scope confusion
