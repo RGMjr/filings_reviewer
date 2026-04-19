@@ -119,6 +119,80 @@ class TestUniverseBuilderIntegration:
         assert len(filings) == 3
 
 
+class TestBuildUniverseFormTypes:
+    """Integration tests for form_types parameter (Issue #7)."""
+
+    def test_build_universe_10k_end_to_end(self, clean_db):
+        """A 10-K filing flows through build_universe and lands with
+        form_type='10-K' and is_in_scope_phase1=FALSE.
+        """
+        from src.infra.sec_client import FilingMetadata, MockSECClient
+
+        tenk_filing = FilingMetadata(
+            cik="0001234567",
+            company_name="Acme Software Corp.",
+            form_type="10-K",
+            filing_date="2020-02-15",
+            accession_number="0001234567-20-000005",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/tenk.htm",
+            txt_url=None,
+            ticker="ACME",
+        )
+        sec_client = MockSECClient(mock_filings=[tenk_filing])
+        builder = UniverseBuilder(sec_client=sec_client, db=clean_db)
+
+        in_scope_count = builder.build_universe(
+            "2020-01-01", "2020-12-31", form_types=["10-K", "10-K/A"]
+        )
+
+        # 10-K is not Phase 1 by design
+        assert in_scope_count == 0
+
+        filings = clean_db.query(
+            "SELECT * FROM filings WHERE accession_number = %(acc)s",
+            {"acc": "0001234567-20-000005"},
+        )
+        assert len(filings) == 1
+        row = filings[0]
+        assert row["form_type"] == "10-K"
+        assert row["is_in_scope_phase1"] is False
+
+    def test_build_universe_preserves_s1f1_default(self, clean_db):
+        """No form_types arg → default S-1/F-1 behavior unchanged."""
+        from src.infra.sec_client import FilingMetadata, MockSECClient
+
+        s1_filing = FilingMetadata(
+            cik="0007777777",
+            company_name="Default Bundle Co.",
+            form_type="S-1",
+            filing_date="2020-03-01",
+            accession_number="0007777777-20-000001",
+            primary_doc_url="https://www.sec.gov/x.htm",
+            txt_url=None,
+            ticker="DFLT",
+        )
+        # Also inject a 10-K that SHOULD be filtered out by the default
+        tenk = FilingMetadata(
+            cik="0008888888",
+            company_name="Should Be Ignored",
+            form_type="10-K",
+            filing_date="2020-03-02",
+            accession_number="0008888888-20-000001",
+            primary_doc_url="https://www.sec.gov/y.htm",
+            txt_url=None,
+            ticker="IGNR",
+        )
+        sec_client = MockSECClient(mock_filings=[s1_filing, tenk])
+        builder = UniverseBuilder(sec_client=sec_client, db=clean_db)
+
+        builder.build_universe("2020-01-01", "2020-12-31")
+
+        filings = clean_db.query("SELECT accession_number, form_type FROM filings ORDER BY accession_number")
+        # Only the S-1 should land — the 10-K is filtered out by form_types default.
+        assert len(filings) == 1
+        assert filings[0]["form_type"] == "S-1"
+
+
 class TestIndividualFixtures:
     """Test each fixture individually to validate classification."""
 

@@ -66,11 +66,19 @@ DEFAULT_YAML_PATH = PROJECT_ROOT / "config" / "industry_sic_codes.yaml"
 
 FORM_TYPE_BUNDLES: dict[str, list[str]] = {
     "s1f1": ["S-1", "S-1/A", "F-1", "F-1/A"],
+    "10k": ["10-K", "10-K/A"],
     "S-1": ["S-1"],
     "S-1/A": ["S-1/A"],
     "F-1": ["F-1"],
     "F-1/A": ["F-1/A"],
+    "10-K": ["10-K"],
+    "10-K/A": ["10-K/A"],
 }
+
+# Form types where is_in_scope_phase1 is meaningful as a filter. For other
+# form types (10-K, etc.) the Phase 1 gate is not applied — see runbook
+# "10-K onboarding semantics".
+S1F1_FORMS = {"S-1", "S-1/A", "F-1", "F-1/A"}
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +163,7 @@ class Candidate:
     extracted_at: str | None
 
 
-DISCOVERY_SQL = """
+_DISCOVERY_SQL_BASE = """
 SELECT
     f.filing_id,
     c.cik,
@@ -175,9 +183,25 @@ LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
 WHERE f.form_type = ANY(%(form_types)s)
   AND EXTRACT(YEAR FROM f.filing_date) BETWEEN %(year_min)s AND %(year_max)s
   AND c.industry_code = ANY(%(sic_codes)s)
-  AND f.is_in_scope_phase1 = TRUE
-ORDER BY f.filing_date, c.company_name
 """
+
+_PHASE1_GATE = "  AND f.is_in_scope_phase1 = TRUE\n"
+
+_DISCOVERY_ORDER = "ORDER BY f.filing_date, c.company_name\n"
+
+# Exposed for tests and backward compatibility. Equivalent to the original
+# S-1/F-1-gated query (Phase-1 filter included).
+DISCOVERY_SQL = _DISCOVERY_SQL_BASE + _PHASE1_GATE + _DISCOVERY_ORDER
+
+
+def _build_discovery_sql(form_types: list[str]) -> str:
+    """Include the Phase-1 gate only when at least one S-1/F-1 form is requested.
+
+    For 10-K-only (or other non-S-1/F-1) queries, Phase-1 filter doesn't apply:
+    those filings intentionally land with is_in_scope_phase1=FALSE.
+    """
+    include_phase1 = bool(S1F1_FORMS & set(form_types))
+    return _DISCOVERY_SQL_BASE + (_PHASE1_GATE if include_phase1 else "") + _DISCOVERY_ORDER
 
 
 def discover_candidates(
@@ -188,7 +212,7 @@ def discover_candidates(
     sic_codes: list[str],
 ) -> list[Candidate]:
     rows = db.query(
-        DISCOVERY_SQL,
+        _build_discovery_sql(form_types),
         {
             "form_types": form_types,
             "year_min": year_min,
@@ -373,13 +397,19 @@ def cmd_populate(args: argparse.Namespace, db: DatabaseAdapter) -> int:
     if "-" in args.year:
         raise SystemExit("populate takes a single year (YYYY); use discover/onboard for ranges")
     year = int(args.year)
+    form_types = resolve_form_types(args.form_type)
     sec_client = SECClient(user_agent=args.user_agent)
     builder = UniverseBuilder(sec_client=sec_client, db=db)
     start = f"{year}-01-01"
     end = f"{year}-12-31"
-    logger.info("Populating universe for %s to %s …", start, end)
-    count = builder.build_universe(start, end)
-    logger.info("Done. In-scope filings: %d", count)
+    logger.info(
+        "Populating universe for %s to %s (form_types=%s) …",
+        start,
+        end,
+        form_types,
+    )
+    count = builder.build_universe(start, end, form_types=form_types)
+    logger.info("Done. In-scope filings (Phase 1 only): %d", count)
     return 0
 
 
@@ -566,6 +596,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     pop = sub.add_parser("populate", help="Run UniverseBuilder for a single year")
     pop.add_argument("--year", required=True, help="Single year YYYY")
+    pop.add_argument(
+        "--form-type",
+        default="s1f1",
+        choices=sorted(FORM_TYPE_BUNDLES.keys()),
+        help="Form-type bundle to populate (default: s1f1). Use '10k' for "
+        "10-K/10-K/A filings.",
+    )
 
     o = sub.add_parser("onboard", help="Fetch + extract NEW (and optionally re-extract)")
     _add_filter_args(o)

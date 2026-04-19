@@ -229,29 +229,60 @@ matches reality:
   filing; supports `--filing-id N` and `--force-reextract`.
 - `scripts/run_v2_extraction.py` — single-filing runner with `--force-reextract`.
 
+## 10-K onboarding semantics
+
+`populate --year YYYY --form-type 10k` runs `UniverseBuilder` over all
+10-K / 10-K/A filings in the daily-index for the year. These filings land
+in the `filings` table with **`is_in_scope_phase1=FALSE`** — that is
+correct, not a bug. Phase 1 = S-1/F-1 first-time issuers, and the existing
+`is_in_scope_phase1(form_type, ...)` gate returns `False` for 10-K by
+design (`src/universe/classifiers.py:832-834`). Preserving that semantic
+keeps the Phase 1 calibration intact for the gold-standard validator.
+
+Discovery is form-aware: `discover` / `onboard` with `--form-type 10k`
+omit the `is_in_scope_phase1 = TRUE` filter in the SQL, so 10-K rows
+surface correctly. With `--form-type s1f1` (default) the filter applies as
+before. A mixed bundle (e.g. `S-1` + `10-K` explicitly) keeps the filter
+conservatively — only requests that are exclusively non-S-1/F-1 drop it.
+
+Practical notes:
+
+- A year's worth of 10-Ks is ~5–10k filings (every public US company files
+  one annually). `populate` has no `--limit`; plan for ~15 minutes at SEC's
+  10 req/s rate limit for metadata + per-CIK SIC lookups.
+- 10-K/A amendments are distinct fiscal-year filings — the
+  `mark_superseded_filings()` logic only scopes to S-1/S-1/A/F-1/F-1/A, so
+  10-K rows are preserved independently.
+- The IPO-era SGML SPAC re-check (which fetches `txt_url` to look for
+  "BLANK CHECKS [6770]" in the SGML header) is skipped for non-S-1/F-1
+  forms — it's a per-filing HTTP call that adds no signal for 10-Ks.
+  Verified by `test_process_filing_10k_skips_sgml_recheck` in
+  `tests/unit/universe/test_universe_builder.py`.
+
 ## Extending
 
-- **New form type** (e.g. `10-K`): add to `FORM_TYPE_BUNDLES` in
-  `scripts/onboard_tickers.py`. The discovery SQL already parameterizes
-  `form_type`. Check `sql/01_create_schema.sql` line 79 for the `CHECK`
-  constraint (10-K is already allowed). Note that `UniverseBuilder.build_universe`
-  currently hardcodes S-1/F-1; extending to 10-K requires a separate path
-  (see "Known limitations" below).
+- **New form type** (e.g. `8-K`): add to `FORM_TYPE_BUNDLES` in
+  `scripts/onboard_tickers.py` (10-K is already shipped — use `--form-type 10k`).
+  `build_universe(form_types=[...])` accepts arbitrary form-type lists;
+  `SECClient.search_filings` filters daily-index files per-form. Check
+  `sql/01_create_schema.sql` line 79 and `sql/16_add_8k_form_type.sql` for
+  the `CHECK` constraint (S-1/F-1/10-K/10-K/A/8-K/earnings_call/
+  investor_presentation are allowed). If the new form's Phase-1 semantics
+  differ from S-1/F-1, update `S1F1_FORMS` in `scripts/onboard_tickers.py`
+  and/or `is_in_scope_phase1` in `src/universe/classifiers.py` accordingly.
+  **8-K note:** `scripts/ingest_presentations.py` owns 8-K investor
+  presentations via a different code path; don't duplicate.
 - **New industry**: append under `industries:` in the YAML.
 - **Ticker → CIK fast path**: deferred. When the operator knows the CIK up
   front, add `build_universe_for_ciks` to `UniverseBuilder`.
 
 ## Known limitations
 
-- **`populate` is S-1/F-1 only.** `UniverseBuilder.build_universe`
-  (`src/universe/universe_builder.py:73`) hardcodes
-  `form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]`. Running
-  `populate --year YYYY` will not discover 8-K, 10-K, or other form types on
-  EDGAR. `discover` and `onboard` accept arbitrary form-type values, but will
-  only return rows that were previously populated. Extending to other forms
-  requires threading a form-type list through `build_universe` plus new
-  classification logic (the SPAC / first-time-issuer / offering-type rules
-  don't apply to 10-K or 8-K). Tracked as follow-up; separate workstream.
+- **`populate` supports `--form-type s1f1` (default) and `--form-type 10k`.**
+  8-K / earnings-call / investor-presentation ingestion is handled by
+  `scripts/ingest_presentations.py` (different architecture — per-ticker
+  EDGAR submissions lookup, not daily-index sweep). See "10-K onboarding
+  semantics" below for the Phase 1 interaction.
 - **Hardcoded column widths in the discover table.** Long company names get
   truncated at 30 characters; no terminal-size detection. Cosmetic only;
   does not affect correctness.
