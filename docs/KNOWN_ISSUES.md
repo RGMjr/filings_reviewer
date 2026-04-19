@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 Phase 1 resolved — `image_cache_dir()` helper under `data/image_cache/` with collision-safe `pipeline/<cik>/<accession>/<filename>` layout; prod persistence still pending, #35 unblocked on local dev pending prod persistence, #36–#40 opened from Issue #7 10-K parameterization follow-ups, #41 review-UI sticky-header offset mismatch + narrow-width pill overlap opened, #42 opened for pipeline duplicate-write of image bytes)
+**Last Updated**: 2026-04-19 (Issue #13 resolved — prod verified 9-col; #31 fully resolved — sync middleware path now matches async TESTING guard; #36 resolved — `populate --limit N` + `build_universe(limit=)`; #37 resolved — FTI classifier gated to S-1/F-1; #41 code landed — `--navbar-height` CSS var + compact navbar + pill flex-wrap + three badges dropped; browser verification pending)
 
 ---
 
@@ -200,7 +200,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
 | `test_candidate_generation_finds_active_consumers` (Issue #10) | Resolved (2026-04-19) | — | — | Resolved-by-deletion in commit `03a8a20` (V1 retirement); test module retired |
 | `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
-| V2 metric facts identity index drift (Issue #13) | Status inconsistent across docs (2026-04-19) | Low | Low | Local test DB verified 9-col; `apply_migrations.py` comment says prod already applied; this doc still said "pending" — needs prod `pg_indexes` query to settle |
+| V2 metric facts identity index drift (Issue #13) | Resolved (2026-04-19) | — | — | Prod `pg_indexes` read confirms 9-col (including `source_type`); local + prod now agree; `apply_migrations.py:68-74` comment remains accurate |
 | Farfetch LTV/CAC dedup collision (Issue #14) | Resolved (2026-04-18) | — | — | cm_ltv_to_cac_ratio 33%→100%; cm_ltv_to_cac_ratio_by_cohort 17%→50%; Farfetch F1 +10.3pp |
 | Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Resolved (2026-04-18) | — | — | Classifier+parser gates relaxed for customer-type/year-in-point.x shape; 0% → 100% F1 on Farfetch; Tier 1 overall +5.4pp |
@@ -216,15 +216,15 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | FN diagnostic classification gaps (Issue #19) | Resolved (2026-04-18) | — | — | Added `dedup_collision` + `no_matching_binding` categories; `wrong_period` restricted to post-dedup |
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved (2026-04-19) | Low | Low | 1 test fixed via `img_id` mock update; 2 stale assertions `test.skip`-ed with TODOs; CI green |
 | Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
-| Async audit log DNS error in tests (Issue #31) | Partially resolved (2026-04-19) | Low | Low | `review_unified.py` async path now `DEBUG` under `TESTING=True`; related `middleware.py:114` path still `ERROR` (flagged in #31 body) |
+| Audit log DNS error in tests (Issue #31) | Resolved (2026-04-19) | — | — | Both async (`review_unified.py`) and sync (`middleware.py`) paths log DEBUG under `TESTING=True`; commit `366d9dd` closes the sync-path gap |
 | Image cache rooted in TMPDIR (Issue #34) | Phase 1 resolved (2026-04-19); Phase 3 pending | Medium | Low | `image_cache_dir()` helper + `data/image_cache/pipeline/<cik>/<accession>/<filename>` layout; prod persistence (Render disk vs. re-fetch-on-miss) is the remaining decision |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Unblocked on local (2026-04-19) | Medium | Medium | `batch_v2_extraction.py --force-reextract` now viable on local dev; prod waits on Issue #34 Phase 3 |
-| `populate` has no `--limit` (Issue #36) | Open | Low | Low | Year-scale 10-K sweep (~15 min SEC traffic) can be triggered accidentally; ~20 LOC fix |
-| `classify_first_time_issuer=True` for 10-K filers (Issue #37) | Open | Low | Low | `filings.is_first_time_issuer` stores misleading values for non-S-1/F-1 forms; no runtime bug |
+| `populate` has no `--limit` (Issue #36) | Resolved (2026-04-19) | — | — | `build_universe(limit=)` + `populate --limit N` land in commit `366d9dd`; regression-guarded |
+| `classify_first_time_issuer=True` for 10-K filers (Issue #37) | Resolved (2026-04-19) | — | — | `_process_filing` gates the classifier to S-1/F-1; non-applicable filings land with `is_first_time_issuer=NULL`; commit `366d9dd` |
 | `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
 | `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Low | Medium | Column name implies "in active universe" but means "Phase 1 IPO candidate"; confusing with 10-Ks present; needs rename or form-aware companion column |
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
-| Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Open | Low | Low | `.sticky-top-below-nav` at 70px vs new `.review-sticky-header` at 56px; ~14px misalignment; 1024px pill wrapping not verified |
+| Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Code landed 2026-04-19 (commit `366d9dd`); browser verification pending | Low | Low | `--navbar-height: 48px`, compact navbar, `.review-pill-row` flex-wrap; three badges dropped to free horizontal space; deployed build awaiting visual calibration |
 | `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
 
 ---
@@ -258,10 +258,10 @@ the fixture instead of calling `_make_test_png(data_dir, ...)` directly. Verifie
 
 ## 13. V2 Metric Facts Identity Index Drift
 
-**Status**: Local test DB verified 9-col on 2026-04-19; prod status inconsistent in docs — needs verification
+**Status**: ✅ Resolved (2026-04-19) — prod verified 9-col
 **Severity**: Low (application-layer dedup in `MetricFact.identity_tuple()` still distinguishes `source_type`; no observed duplicate-row incidents)
 **Discovered**: 2026-04-18
-**Updated**: 2026-04-19
+**Resolved**: 2026-04-19
 
 ### Problem
 
@@ -302,20 +302,18 @@ Secondary finding: `_persist_facts_in_tx` in `src/extraction_v2/persistence.py` 
 
 ### Status reconciliation (2026-04-19)
 
-The status above is inconsistent across the repo:
-
-1. **Local test DB** (`$TEST_DATABASE_URL` → `localhost:5433/filings_analysis_test`) — verified 9-column on 2026-04-19; `source_type` present. No drift locally.
-2. **`scripts/apply_migrations.py`** (lines 68–74, comment on `MIGRATIONS`) — asserts `sql/33_fix_identity_index.sql` was "already applied to Neon prod out-of-band"; deliberately unregistered so `--test` doesn't re-run it on fresh test DBs.
-3. **This document** — still reads "pending prod apply".
-
-(2) and (3) cannot both be true. To settle this, an operator should run:
+Settled 2026-04-19 via direct prod read:
 
 ```bash
 source .env && psql "$DATABASE_URL" -c \
   "SELECT indexdef FROM pg_indexes WHERE indexname='idx_v2_metric_facts_identity_unique'"
+# CREATE UNIQUE INDEX ... (doc_id, canonical_metric_id,
+#   COALESCE(period_start,'1900-01-01'), COALESCE(period_end,'1900-01-01'),
+#   unit, scope, COALESCE(cohort_def,''), COALESCE(customer_type,''),
+#   source_type)  — 9 columns, source_type present.
 ```
 
-on Neon prod and update this document accordingly. If prod is 9-col, mark this issue resolved and keep the note in `apply_migrations.py`. If prod is still 8-col, the `apply_migrations.py` comment is stale and sql/33 still needs a prod apply.
+Prod is healed: the 9-column index includes `source_type`. The `scripts/apply_migrations.py:68-74` comment is accurate (sql/33 was applied out-of-band) and stays in place so `--test` runs don't re-apply it on fresh test DBs. Local test DB and prod now agree.
 
 ### References
 
@@ -940,24 +938,27 @@ ORDER BY f.filing_id;
 
 ---
 
-## 31. Async Audit Log Spams DNS Error in Test / Dev
+## 31. Audit Log Spams DNS Error in Test / Dev
 
-**Status**: ✅ Resolved (2026-04-19) for `review_unified.py` path; related `middleware.py` path noted below
+**Status**: ✅ Resolved (2026-04-19) — both async and sync paths covered
 **Severity**: Low (cosmetic — tests pass, UI works, log noise only)
 **Discovered**: 2026-04-19 (observed during Issue #26 test-suite runs)
 **Resolved**: 2026-04-19
 
 ### Problem
 
-`src/web/routes/review_unified.py:102` (`_write` inside the audit-log thread) logged `ERROR Async audit log write failed: [Errno 8] nodename nor servname provided, or not known` on every request when `DATABASE_URL` is a testing sentinel like `postgresql://test` (used by `tests/unit/web/*`). The error was swallowed — response unaffected — but polluted pytest output and could mask real audit-log failures.
+Two audit-log paths logged `ERROR` on every test-suite request when `DATABASE_URL` was a testing sentinel like `postgresql://test`:
+- `src/web/routes/review_unified.py:102` (async, thread-closure path).
+- `src/web/middleware.py:114` (synchronous, `insert_audit_log_entry`).
+
+Errors were swallowed — responses unaffected — but the noise polluted pytest output and could mask real audit-log failures.
 
 ### Resolution
 
-`src/web/routes/review_unified.py:97-109` — captured `testing = bool(current_app.config.get("TESTING"))` into the worker-thread closure alongside `database_url`/`pool` and downgraded the log to `DEBUG` when `testing` is true; preserved `ERROR` otherwise so real audit-log failures remain visible in production.
+Both paths now capture `testing = bool(current_app.config.get("TESTING"))` and downgrade the `except` log to `DEBUG` when `testing` is true; `ERROR` preserved otherwise so real failures remain visible in production.
 
-### Related — not in scope here
-
-`src/web/middleware.py:114` has a separate synchronous audit-log path (`insert_audit_log_entry`) that logs `ERROR Failed to insert audit log: ...` with the same test-DSN-failure pattern. This path accounts for most of the current pytest-output noise. It was intentionally not touched because Issue #31 explicitly named only the async `review_unified.py` path; fixing it is a trivial follow-up (same `TESTING` branch).
+- `src/web/routes/review_unified.py:97-109` — async path (landed 2026-04-19).
+- `src/web/middleware.py:87-120` — sync path (commit `366d9dd`, 2026-04-19); covered by `tests/unit/web/test_middleware.py::TestAuditLogFailureLogging` (DEBUG-under-TESTING + ERROR-otherwise).
 
 ---
 
@@ -1079,9 +1080,14 @@ Prod count is unknown — run the diagnostic against Neon before sizing the back
 
 ## 36. `onboard_tickers.py populate` Has No `--limit`
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-19, commit `366d9dd`)
 **Severity**: Low — safety / operator footgun
 **Discovered**: 2026-04-19 (during Issue #7 implementation)
+**Resolved**: 2026-04-19
+
+### Resolution
+
+`UniverseBuilder.build_universe` gained an optional `limit: int | None = None` kwarg; the filing loop breaks once `limit` in-scope upserts are recorded. `scripts/onboard_tickers.py::cmd_populate` threads a new `--limit N` argparse flag into the kwarg. Default `None` preserves unbounded behaviour. Covered by `tests/unit/universe/test_universe_builder.py::test_limit_stops_after_n_in_scope_upserts`.
 
 ### Problem
 
@@ -1114,9 +1120,14 @@ Estimated ~20 LOC + 1 test. Independent of all other open issues.
 
 ## 37. `classify_first_time_issuer` Reports `True` for Non-S-1/F-1 Filers
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-19, commit `366d9dd`)
 **Severity**: Low — misleading DB values, no functional impact today
 **Discovered**: 2026-04-19 (during Issue #7 implementation)
+**Resolved**: 2026-04-19
+
+### Resolution
+
+Option 1 from the suggested fix menu: `_process_filing` in `src/universe/universe_builder.py:176-189` now gates the `classify_first_time_issuer` call on `filing.form_type in DEFAULT_FORM_TYPES_S1F1`. Non-S-1/F-1 filings land with `is_first_time_issuer=NULL` and `fti_method="not_applicable"`; the classifier module itself is unchanged. Covered by `tests/unit/universe/test_universe_builder.py::test_10k_filing_has_null_first_time_issuer`.
 
 ### Problem
 
@@ -1298,9 +1309,18 @@ Lightweight either way — <30 LOC + tests + doc line.
 
 ## 41. Review-UI Sticky Header Offset Mismatch + Narrow-Width Overlap Unverified
 
-**Status**: Open
+**Status**: Code landed 2026-04-19 (commit `366d9dd`); browser verification pending
 **Severity**: Low — cosmetic
 **Discovered**: 2026-04-19 (during review-UI sticky-header work, commit `ba35424`)
+**Updated**: 2026-04-19
+
+### Resolution (code portion)
+
+Shared `--navbar-height` CSS custom property introduced in `:root` (`src/web/static/css/review.css`) and applied to both `.sticky-top-below-nav` and `.review-sticky-header`. Compact-navbar styling (`.navbar.sticky-top` padding-y 0.25rem, `--navbar-height: 48px`) and a `.review-pill-row` flex-wrap class keep stat-pill badges from colliding with the "Next filing F" button at narrow widths. `unified_review.html:58` stat-pill row now uses `.review-pill-row`; `accepted`, `rejected`, and `img reviewed` badges removed to reduce horizontal load. Sticky-header vertical padding trimmed to absorb `container.mt-4` for a tighter gap under the navbar.
+
+### Remaining
+
+Browser verification at default width and ~1024px viewport to confirm flex-wrap + navbar-height calibration behave as intended on the deployed build. Close this issue once confirmed.
 
 ### Problem
 
@@ -1462,3 +1482,8 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Added Issue #35 — 38 filings have chart images but zero `source_type='chart'` facts, consistent with pre-2026-04-17 chart-OCR JSON failures. Backfill via `batch_v2_extraction.py --force-reextract` pending Issue #34 fix
 - **2026-04-19**: Added Issue #41 — review-UI sticky-header offset mismatch (`.sticky-top-below-nav` at 70px vs new `.review-sticky-header` at 56px) + narrow-width pill overlap with "Next filing F" button unverified. Opened during review-UI sticky compact top-matter work, commit `ba35424`
 - **2026-04-19**: Issue #34 Phase 1 resolved — `src/infra/paths.py::image_cache_dir()` helper introduced (honors `IMAGE_CACHE_DIR` env override, defaults under `data/image_cache/`); `src/extraction_v2/stages/ocr_extraction.py` swapped from `tempfile.gettempdir()` to the helper with a collision-safe `pipeline/<cik>/<accession>/<filename>` layout; `data/image_cache/` added to `.gitignore`; tests in `tests/unit/infra/test_paths.py` + class-scoped autouse fixture in `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading` fence `IMAGE_CACHE_DIR` to `tmp_path`. Phase 3 (Render persistent disk vs. re-fetch-on-miss) is a separate decision; prod remains ephemeral until chosen. Full suite: 3591 pass, 67 skip. Issue #35 is now unblocked on local dev
+- **2026-04-19**: Issue #13 resolved — prod `pg_indexes` read confirms `idx_v2_metric_facts_identity_unique` has all 9 columns (including `source_type`). Local test DB and prod now agree; `scripts/apply_migrations.py:68-74` comment was accurate and stays in place
+- **2026-04-19**: Issue #31 fully resolved — `src/web/middleware.py:87-120` synchronous audit-log path now mirrors the async pattern (captures `TESTING`, downgrades except-clause log to DEBUG when true). New `tests/unit/web/test_middleware.py::TestAuditLogFailureLogging` covers both cases. Commit `366d9dd`
+- **2026-04-19**: Issue #36 resolved — `UniverseBuilder.build_universe` gained optional `limit: int | None` kwarg; `scripts/onboard_tickers.py populate --limit N` threads through. Default `None` preserves unbounded behaviour; regression test at `tests/unit/universe/test_universe_builder.py::test_limit_stops_after_n_in_scope_upserts`. Commit `366d9dd`
+- **2026-04-19**: Issue #37 resolved — `_process_filing` in `src/universe/universe_builder.py` gates `classify_first_time_issuer` on `filing.form_type in DEFAULT_FORM_TYPES_S1F1`; non-applicable filings land with `is_first_time_issuer=NULL` and `fti_method="not_applicable"`. Mirror of the existing SPAC-SGML gate at line 163. Covered by `tests/unit/universe/test_universe_builder.py::test_10k_filing_has_null_first_time_issuer`. Commit `366d9dd`
+- **2026-04-19**: Issue #41 code landed — `--navbar-height: 48px` CSS custom property in `src/web/static/css/review.css` unifies sticky offsets; `.navbar.sticky-top` padding-y compacted to 0.25rem; `.review-pill-row` flex-wrap class on the `unified_review.html:58` stat-pill row. Separately, `accepted`, `rejected`, and `img reviewed` badges dropped to reduce horizontal load; badge font-size shrunk to 0.7rem; sticky-header vertical padding trimmed to absorb container `mt-4`. Browser verification still pending. Commit `366d9dd`
