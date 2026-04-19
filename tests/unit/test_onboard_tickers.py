@@ -229,3 +229,81 @@ def test_discovery_query_params(cli):
 
 def test_form_type_bundles_include_s1f1(cli):
     assert set(cli.FORM_TYPE_BUNDLES["s1f1"]) == {"S-1", "S-1/A", "F-1", "F-1/A"}
+
+
+# ---------------------------------------------------------------------------
+# document_date threading — regression test for A1 (was silently dropping
+# chart-fact-bridge for every onboarded filing)
+# ---------------------------------------------------------------------------
+
+
+def test_cmd_onboard_threads_document_date_to_process_filing(cli, tmp_path):
+    """`cmd_onboard` must pass `document_date` (derived from filing_date) to `process_filing`.
+
+    Regression: without this, `ChartFactBridgeStage` silently skips chart-fact
+    emission — losing cohort facts from any filing with charts.
+    """
+    from datetime import date as _date
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    # Seed a single NEW candidate; discover returns it unchanged.
+    candidate = cli.Candidate(
+        filing_id=9999,
+        cik="0000000001",
+        ticker=None,
+        company_name="Test Co",
+        form_type="S-1",
+        filing_date="2015-01-09",
+        industry_code="7372",
+        accession_number="acc-test",
+        primary_doc_url="http://example/primary.htm",
+        txt_url=None,
+        already_extracted=False,
+        extracted_at=None,
+    )
+
+    fake_html = tmp_path / "primary.htm"
+    fake_html.write_text("<html></html>")
+
+    # Minimal FilingContent-shaped object
+    fake_content = SimpleNamespace(html_path=fake_html)
+
+    mock_fetcher = MagicMock()
+    mock_fetcher.fetch_filing.return_value = fake_content
+
+    mock_result = MagicMock()
+    mock_result.fact_count = 0
+
+    mock_persistence = MagicMock()
+
+    with (
+        patch.object(cli, "discover_candidates", return_value=[candidate]),
+        patch.object(cli, "FilingFetcher", return_value=mock_fetcher),
+        patch.object(cli, "SECClient"),
+        patch.object(cli, "V2PersistenceAdapter", return_value=mock_persistence),
+        patch.object(cli, "process_filing", return_value=mock_result) as mock_proc,
+    ):
+        args = SimpleNamespace(
+            industry="software",
+            year="2015",
+            form_type="S-1",
+            limit=None,
+            storage_root=str(tmp_path),
+            skip_txt=False,
+            include_already_extracted=False,
+            yes=False,
+            dry_run=False,
+            user_agent="test/1.0",
+        )
+        rc = cli.cmd_onboard(args, db=MagicMock())
+
+    assert rc == 0
+    assert mock_proc.called, "process_filing must be invoked"
+    _, kwargs = mock_proc.call_args
+    assert kwargs["document_date"] == _date(2015, 1, 9), (
+        "document_date must be the filing_date parsed from the candidate"
+    )
+    # Sanity: also propagated to persistence
+    _, persist_kwargs = mock_persistence.persist_pipeline_result.call_args
+    assert persist_kwargs["document_date"] == _date(2015, 1, 9)
