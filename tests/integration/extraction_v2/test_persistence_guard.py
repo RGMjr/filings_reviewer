@@ -21,6 +21,8 @@ from src.extraction_v2.models import (
     Document,
     EvidencePack,
     ExtractionMethod,
+    ImageAsset,
+    ImageClassification,
     MetricFact,
     PeriodType,
     ReviewStatus,
@@ -101,6 +103,18 @@ def _cleanup(db_adapter: DatabaseAdapter, test_filing_id: int):
                     (test_filing_id,),
                 )
                 cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+                # v2_image_review_decisions CASCADEs off v2_image_assets.img_id,
+                # but purge explicitly in case DELETEs run out of order.
+                cur.execute(
+                    """
+                    DELETE FROM v2_image_review_decisions
+                     WHERE img_id IN (
+                        SELECT img_id FROM v2_image_assets WHERE doc_id = %s
+                     )
+                    """,
+                    (test_filing_id,),
+                )
+                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _purge()
@@ -281,6 +295,181 @@ class TestGuardOnPipelineResult:
 
 
 # ---------------------------------------------------------------------------
+# Image guard helpers and tests
+# ---------------------------------------------------------------------------
+
+
+def _make_image(
+    filename: str = "chart_1.png",
+    classification: ImageClassification = ImageClassification.CHART,
+) -> ImageAsset:
+    """Build an ImageAsset suitable for _persist_images_in_tx."""
+    return ImageAsset(
+        filename=filename,
+        file_path=f"/tmp/{filename}",
+        width=800,
+        height=600,
+        dom_locator=f"/img[{filename}]",
+        nearby_text="test caption",
+        classification=classification,
+        relevance_score=0.8,
+        processed=True,
+        confidence=0.9,
+    )
+
+
+def _insert_image_decision(
+    db_adapter: DatabaseAdapter,
+    img_id: str,
+    decision: str = "relevant",
+) -> None:
+    # CHECK constraints in sql/29: relevant => chart_type NOT NULL;
+    # not_relevant => rejection_reason NOT NULL.
+    chart_type = "other_chart" if decision == "relevant" else None
+    rejection_reason = "other" if decision == "not_relevant" else None
+    with db_adapter.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO v2_image_review_decisions
+                    (img_id, decision, chart_type, rejection_reason)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (img_id, decision, chart_type, rejection_reason),
+            )
+
+
+def _img_id_for(db_adapter: DatabaseAdapter, filing_id: int, filename: str) -> str:
+    with db_adapter.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT img_id FROM v2_image_assets WHERE doc_id = %s AND filename = %s",
+                (filing_id, filename),
+            )
+            row = cur.fetchone()
+            assert row is not None, f"no v2_image_assets row for filename={filename}"
+            return str(row["img_id"] if isinstance(row, dict) else row[0])
+
+
+def _classification_for(db_adapter: DatabaseAdapter, filing_id: int, filename: str) -> str:
+    with db_adapter.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT classification FROM v2_image_assets WHERE doc_id = %s AND filename = %s",
+                (filing_id, filename),
+            )
+            row = cur.fetchone()
+            assert row is not None
+            return str(row["classification"] if isinstance(row, dict) else row[0])
+
+
+class TestGuardOnPersistImages:
+    def test_reclassification_to_hidden_raises_without_force(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        persistence_adapter.persist_images(
+            [_make_image("chart_1.png", ImageClassification.CHART)], test_filing_id
+        )
+        img_id = _img_id_for(db_adapter, test_filing_id, "chart_1.png")
+        _insert_image_decision(db_adapter, img_id)
+
+        with pytest.raises(ReviewedFilingError) as excinfo:
+            persistence_adapter.persist_images(
+                [_make_image("chart_1.png", ImageClassification.DECORATIVE)],
+                test_filing_id,
+            )
+        assert excinfo.value.filing_id == test_filing_id
+        assert excinfo.value.decision_count == 1
+        assert excinfo.value.context == "image classifications"
+        # Classification preserved on DB; decision still bound
+        assert _classification_for(db_adapter, test_filing_id, "chart_1.png") == "chart"
+
+    def test_reclassification_to_hidden_force_warns_and_proceeds(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        persistence_adapter.persist_images(
+            [_make_image("chart_2.png", ImageClassification.CHART)], test_filing_id
+        )
+        img_id = _img_id_for(db_adapter, test_filing_id, "chart_2.png")
+        _insert_image_decision(db_adapter, img_id)
+
+        # persist_images does not expose force; exercise the pipeline path which does.
+        result = _make_pipeline_result_with_images(
+            images=[_make_image("chart_2.png", ImageClassification.DECORATIVE)]
+        )
+        with caplog.at_level(logging.WARNING, logger="src.extraction_v2.persistence"):
+            persist_result = persistence_adapter.persist_pipeline_result(
+                result, test_filing_id, force=True
+            )
+        assert persist_result.success
+        assert _classification_for(db_adapter, test_filing_id, "chart_2.png") == "decorative"
+        assert any(
+            "force-reextract hiding reviewed images" in rec.message
+            and "chart_2.png" in rec.message
+            and "hidden_image_count=1" in rec.message
+            for rec in caplog.records
+        )
+
+    def test_same_classification_passes(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        persistence_adapter.persist_images(
+            [_make_image("chart_3.png", ImageClassification.CHART)], test_filing_id
+        )
+        img_id = _img_id_for(db_adapter, test_filing_id, "chart_3.png")
+        _insert_image_decision(db_adapter, img_id)
+        # Re-persist with same classification — must not raise.
+        persistence_adapter.persist_images(
+            [_make_image("chart_3.png", ImageClassification.CHART)], test_filing_id
+        )
+        assert _classification_for(db_adapter, test_filing_id, "chart_3.png") == "chart"
+
+    def test_unreviewed_image_passes(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Seed visible image but no decision — re-classify to hidden is allowed.
+        persistence_adapter.persist_images(
+            [_make_image("chart_4.png", ImageClassification.CHART)], test_filing_id
+        )
+        persistence_adapter.persist_images(
+            [_make_image("chart_4.png", ImageClassification.DECORATIVE)], test_filing_id
+        )
+        assert _classification_for(db_adapter, test_filing_id, "chart_4.png") == "decorative"
+
+    def test_already_hidden_reclassification_passes(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # A decided image that is already in the hidden set stays hidden — the
+        # guard's job is to prevent NEW hiding, not rewrite history.
+        persistence_adapter.persist_images(
+            [_make_image("logo_1.png", ImageClassification.LOGO)], test_filing_id
+        )
+        img_id = _img_id_for(db_adapter, test_filing_id, "logo_1.png")
+        _insert_image_decision(db_adapter, img_id, decision="not_relevant")
+        # Re-classify logo -> decorative (still hidden) — must not raise.
+        persistence_adapter.persist_images(
+            [_make_image("logo_1.png", ImageClassification.DECORATIVE)], test_filing_id
+        )
+        assert _classification_for(db_adapter, test_filing_id, "logo_1.png") == "decorative"
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -309,6 +498,37 @@ def _make_pipeline_result(facts: list[MetricFact]) -> PipelineResult:
                 duration_ms=1,
                 items_processed=len(facts),
                 items_output=len(facts),
+            )
+        ],
+        total_duration_ms=1,
+        success=True,
+    )
+
+
+def _make_pipeline_result_with_images(images: list[ImageAsset]) -> PipelineResult:
+    """Minimal PipelineResult carrying images (no facts)."""
+    doc_id = str(uuid.uuid4())
+    doc = Document(
+        doc_id=doc_id,
+        accession="9999999998-99-999998",
+        cik="9999999998",
+        company="Guard Test Company",
+        parse_version="2.0.0",
+    )
+    return PipelineResult(
+        document=doc,
+        segments=[],
+        tables=[],
+        images=images,
+        facts=[],
+        definitions=[],
+        stage_results=[
+            StageResult(
+                stage=PipelineStage.IMAGE_TRIAGE,
+                success=True,
+                duration_ms=1,
+                items_processed=len(images),
+                items_output=len(images),
             )
         ],
         total_duration_ms=1,

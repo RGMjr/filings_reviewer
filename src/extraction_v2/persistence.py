@@ -341,7 +341,7 @@ class V2PersistenceAdapter:
                     # per run) differ from the stable DB value, so we must
                     # remap before persisting facts.
                     img_count, img_id_map = self._persist_images_in_tx(
-                        cur, result.images, filing_id
+                        cur, result.images, filing_id, force=force
                     )
 
                     if img_id_map:
@@ -585,11 +585,20 @@ class V2PersistenceAdapter:
         cur.executemany(cell_sql, cell_params_list)
         return len(table_params_list), len(cell_params_list)
 
+    # Classifications the review UI renders; see
+    # get_image_review_candidates_for_filing_v2 in src/infra/db.py.
+    _VISIBLE_IMAGE_CLASSIFICATIONS = frozenset({"chart", "table_image", "unknown"})
+    # Classifications the UI filters out (UI predicate:
+    # classification NOT IN ('decorative', 'logo', 'signature')).
+    _HIDDEN_IMAGE_CLASSIFICATIONS = frozenset({"decorative", "logo", "signature"})
+
     def _persist_images_in_tx(
         self,
         cur: Any,
         images: list[ImageAsset],
         filing_id: int,
+        *,
+        force: bool = False,
     ) -> tuple[int, dict[str, str]]:
         """Persist images within an existing transaction.
 
@@ -597,9 +606,68 @@ class V2PersistenceAdapter:
         ``ImageAsset.img_id`` whose row already existed in the DB to the stable
         ``img_id`` of the existing row. Entries are only present for rows
         resolved via ON CONFLICT — first-time inserts are omitted.
+
+        Guards against silently hiding human review decisions: if any incoming
+        image would re-classify a previously-decided image from a visible
+        classification (chart/table_image/unknown) into a hidden one
+        (decorative/logo/signature), raises ``ReviewedFilingError`` unless
+        ``force=True``. Unlike the fact guard, this does not delete anything —
+        the upsert preserves ``img_id`` and the decision row survives, but the
+        UI filter would drop the asset from the review queue.
         """
         if not images:
             return 0, {}
+
+        # Guard: refuse to re-classify decided images into hidden set without
+        # explicit opt-in. Check runs before the upsert loop so the transaction
+        # aborts cleanly before any write.
+        incoming_hidden_filenames = [
+            image.filename
+            for image in images
+            if image.classification.value in self._HIDDEN_IMAGE_CLASSIFICATIONS
+            and image.filename
+        ]
+        if incoming_hidden_filenames:
+            cur.execute(
+                """
+                SELECT v.filename, v.classification
+                  FROM v2_image_assets v
+                  JOIN v2_image_review_decisions rd ON rd.img_id = v.img_id
+                 WHERE v.doc_id = %(filing_id)s
+                   AND v.filename = ANY(%(filenames)s)
+                """,
+                {"filing_id": filing_id, "filenames": incoming_hidden_filenames},
+            )
+            existing_decided: dict[str, str] = {}
+            for row in cur.fetchall():
+                fname = row["filename"] if isinstance(row, dict) else row[0]
+                cls = row["classification"] if isinstance(row, dict) else row[1]
+                existing_decided[fname] = cls
+
+            hidden_transitions = [
+                image.filename
+                for image in images
+                if image.filename in existing_decided
+                and existing_decided[image.filename] in self._VISIBLE_IMAGE_CLASSIFICATIONS
+                and image.classification.value in self._HIDDEN_IMAGE_CLASSIFICATIONS
+            ]
+            if hidden_transitions:
+                if not force:
+                    # reviewer_count=0 because v2_image_review_decisions does
+                    # not track reviewer identity (see sql/29).
+                    raise ReviewedFilingError(
+                        filing_id=filing_id,
+                        decision_count=len(hidden_transitions),
+                        reviewer_count=0,
+                        context="image classifications",
+                    )
+                logger.warning(
+                    "force-reextract hiding reviewed images: "
+                    "filing_id=%s hidden_image_count=%s filenames=%s",
+                    filing_id,
+                    len(hidden_transitions),
+                    hidden_transitions,
+                )
 
         # Upsert on (doc_id, filename), NOT on img_id: ImageAsset.img_id is a
         # fresh random UUID per extraction run, so keying on img_id would

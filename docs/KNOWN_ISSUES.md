@@ -205,7 +205,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
 | `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Resolved (2026-04-18) | — | — | Classifier+parser gates relaxed for customer-type/year-in-point.x shape; 0% → 100% F1 on Farfetch; Tier 1 overall +5.4pp |
 | `v2_image_assets` duplicates + pending-count discrepancy — Maplebear S-1 (Issue #21) | Resolved (2026-04-18) | — | — | sql/34 dedup migration + stable img_id upsert (ON CONFLICT (doc_id, filename)) + in-memory fact source_locator remap |
-| No reviewed-filing guard on image re-extraction (Issue #22) | Open | Low | Low | Decisions survive post-#21; hidden-decision risk on re-classification only |
+| No reviewed-filing guard on image re-extraction (Issue #22) | Resolved (2026-04-18) | — | — | `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` on visible→hidden re-classification |
 | `v2_image_assets.segment_id` dead column (Issue #23) | Resolved (2026-04-18) | — | — | sql/35 drops column; persistence.py cleaned up |
 | `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | New facts consistent post-#21; historical orphans likely remain |
 | `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Open | Trivial | Trivial | Script only touches gold-standard JSON, not production DB |
@@ -634,17 +634,45 @@ None — the four related out-of-scope issues are tracked separately in Issues #
 
 ## 22. No Reviewed-Filing Guard on Image Re-Extraction
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-18)
 **Severity**: Low (no data loss; decisions survive re-extraction via stable img_ids post-Issue #21)
 **Discovered**: 2026-04-18
+**Resolved**: 2026-04-18
 
 ### Problem
 
-The fact-side `ReviewedFilingError` (raised in `src/extraction_v2/persistence.py:_persist_facts_in_tx`, defined in `src/extraction_v2/exceptions.py`) does not cover image assets. After the sql/34 fix, existing review decisions survive re-extraction because img_ids are stable. However, if re-classification changes an image from `chart` to `decorative`, the review UI filters it out (`classification NOT IN ('decorative','logo','signature')` in `src/infra/db.py:1631`) — the decision becomes hidden rather than invalidated. There is no warning to the reviewer.
+The fact-side `ReviewedFilingError` (raised in `src/extraction_v2/persistence.py:_persist_facts_in_tx`, defined in `src/extraction_v2/exceptions.py`) did not cover image assets. After the sql/34 fix, existing review decisions survive re-extraction because img_ids are stable. However, if re-classification changed an image from `chart` to `decorative`, the review UI filtered it out (`classification NOT IN ('decorative','logo','signature')` in `src/infra/db.py:1631`) — the decision became hidden rather than invalidated. There was no warning to the reviewer.
 
-### Suggested Fix
+### Resolution
 
-Extend the reviewed-filing guard to check for existing `v2_image_review_decisions` rows before overwriting image classification. Emit a structured warning (or raise `ReviewedFilingError` if `force=False`) when re-classification would hide a previously decided image.
+Narrow image-side guard added to `_persist_images_in_tx` in `src/extraction_v2/persistence.py`. Guard trigger: for each incoming `ImageAsset`, fires only when ALL of these hold:
+
+1. An existing `v2_image_assets` row with the same `(doc_id, filename)` exists.
+2. That row has a decision in `v2_image_review_decisions`.
+3. The existing `classification` is in `{'chart', 'table_image', 'unknown'}` (visible set).
+4. The incoming `classification` is in `{'decorative', 'logo', 'signature'}` (hidden set).
+
+Behaviour:
+
+- `force=False` (default): raises `ReviewedFilingError(context="image classifications")`. Transaction aborts before any write.
+- `force=True`: logs `force-reextract hiding reviewed images: filing_id=X hidden_image_count=N filenames=[…]` and proceeds.
+
+The `context` kwarg was added to `ReviewedFilingError` (default `"facts"` preserves the existing fact-guard message). Re-classifications within the visible set, or re-classifications of an already-hidden image, are not blocked (guard focuses exclusively on new hiding).
+
+### Tests
+
+5 new integration tests in `tests/integration/extraction_v2/test_persistence_guard.py::TestGuardOnPersistImages`:
+- `test_reclassification_to_hidden_raises_without_force`
+- `test_reclassification_to_hidden_force_warns_and_proceeds`
+- `test_same_classification_passes`
+- `test_unreviewed_image_passes`
+- `test_already_hidden_reclassification_passes`
+
+`_cleanup` fixture also extended to purge `v2_image_review_decisions` + `v2_image_assets` rows.
+
+### Follow-up (out of scope here)
+
+`scripts/ingest_presentations.py:327` calls `persist_pipeline_result` without threading `force`. With the new guard, that path will now raise on re-ingestion of a filing whose images would be re-classified into the hidden set. This is the intended behaviour (fail loudly rather than silently hide); adding a `--force-reextract` flag there is a separate task if an operator workflow needs it.
 
 ---
 
@@ -774,3 +802,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-18**: Issue #21 resolved — `sql/34_dedup_v2_image_assets.sql` collapses duplicates + adds UNIQUE (doc_id, filename); `_persist_images_in_tx` upserts on (doc_id, filename) preserving stable img_id; `persist_pipeline_result` remaps in-memory fact source_locator.img_id before fact insert
 - **2026-04-18**: Added Issues #22–#25 — out-of-scope follow-ups surfaced during Issue #21 investigation: image re-extraction guard gap, dead segment_id column, img_id referential integrity, migrate_image_ids script scope confusion
 - **2026-04-18**: Issue #23 resolved — `sql/35_drop_v2_image_assets_segment_id.sql` drops the dead column (applied to Neon prod + local test DB); `_persist_images_in_tx` in `src/extraction_v2/persistence.py` no longer references it; migration registered in `scripts/apply_migrations.py`
+- **2026-04-18**: Issue #22 resolved — `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` when a decided image would be re-classified from the visible set (`chart`/`table_image`/`unknown`) into the hidden set (`decorative`/`logo`/`signature`); `force=True` proceeds with a structured warning; `ReviewedFilingError.__init__` gained an optional `context` kwarg (default `"facts"` preserves prior message shape); 5 new tests in `TestGuardOnPersistImages`; `_persist_images_in_tx` signature gains keyword-only `force: bool = False` (backwards compatible; `persist_pipeline_result` threads through)
