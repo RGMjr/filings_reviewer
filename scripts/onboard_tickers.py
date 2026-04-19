@@ -220,9 +220,11 @@ SELECT COUNT(rd.decision_id) AS decision_count,
        COUNT(DISTINCT rd.reviewer_id) AS reviewer_count
 FROM v2_review_decisions rd
 JOIN v2_metric_facts f ON f.fact_id = rd.fact_id
-JOIN v2_documents d ON d.doc_id = f.doc_id
-WHERE d.filing_id = %(filing_id)s
+WHERE f.doc_id = %(filing_id)s
 """
+# Note: v2_metric_facts.doc_id is BIGINT referencing filings(filing_id) despite
+# the column name; v2_documents.doc_id is a separate UUID PK. Joining
+# v2_metric_facts.doc_id directly to filing_id is correct.
 
 
 def count_review_decisions(db: DatabaseAdapter, filing_id: int) -> tuple[int, int]:
@@ -336,6 +338,8 @@ def cmd_discover(args: argparse.Namespace, db: DatabaseAdapter) -> int:
     industry_map = load_industry_map()
     canonical, sic_codes = resolve_industry(args.industry, industry_map)
     form_types = resolve_form_types(args.form_type)
+    if getattr(args, "exclude_amendments", False):
+        form_types = [ft for ft in form_types if not ft.endswith("/A")]
     year_min, year_max = parse_year_arg(args.year)
 
     print(f"Industry {canonical!r} resolved to SIC codes: {', '.join(sic_codes)}")
@@ -383,6 +387,8 @@ def cmd_onboard(args: argparse.Namespace, db: DatabaseAdapter) -> int:
     industry_map = load_industry_map()
     canonical, sic_codes = resolve_industry(args.industry, industry_map)
     form_types = resolve_form_types(args.form_type)
+    if getattr(args, "exclude_amendments", False):
+        form_types = [ft for ft in form_types if not ft.endswith("/A")]
     year_min, year_max = parse_year_arg(args.year)
 
     print(f"Industry {canonical!r} resolved to SIC codes: {', '.join(sic_codes)}")
@@ -548,6 +554,12 @@ def build_parser() -> argparse.ArgumentParser:
             help="Form-type bundle (default: s1f1)",
         )
         sp.add_argument("--limit", type=int, help="Cap on NEW filings processed/shown")
+        sp.add_argument(
+            "--exclude-amendments",
+            action="store_true",
+            help="Drop S-1/A and F-1/A from the form-type set (keep only original S-1 / F-1). "
+            "Removes many shell filings that exist only as amendments.",
+        )
 
     d = sub.add_parser("discover", help="Read-only: print candidate table")
     _add_filter_args(d)
