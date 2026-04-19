@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-18T20:27:25.862364+00:00",
-  "description": "Issue #14: LTV/CAC dedup collision fix (respectively-parser priority + cohort_hint). Farfetch cm_ltv_to_cac_ratio: R 33%→100%. cm_ltv_to_cac_ratio_by_cohort text FNs cleared (R 17%→50%). Overall F1 +1.0pp; no Tier 1 regression.",
+  "baseline_date": "2026-04-19T01:45:24.250129+00:00",
+  "description": "Phase 3 chart bridge complete: precision guards (3A), cross-source confirmation (3B/3C), review UI image crop (3D), docs (3E). Includes Issues #14, #17, #19, #20 fixes. NOTE: CHART cross-source confirmation at 0/31 (0%) is a known-miscalibrated gate (per .claude/rules/v2-pipeline.md); chart-native cohort disclosures lack text counterparts by design. Gate recalibration filed as follow-up.",
   "overall": {
-    "precision": 0.6514522821576764,
-    "recall": 0.47147147147147145,
-    "f1": 0.5470383275261324
+    "precision": 0.664,
+    "recall": 0.4984984984984985,
+    "f1": 0.5694682675814752
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -18,9 +18,9 @@
       "f1": 0.45454545454545453
     },
     "Farfetch Limited": {
-      "precision": 0.5862068965517241,
-      "recall": 0.5666666666666667,
-      "f1": 0.576271186440678
+      "precision": 0.6842105263157895,
+      "recall": 0.8666666666666667,
+      "f1": 0.7647058823529413
     },
     "Flywire Corp": {
       "precision": 1.0,
