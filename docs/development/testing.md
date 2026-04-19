@@ -175,13 +175,16 @@ tests/
 ├── performance/                        # Benchmark tests (pytest-benchmark)
 │   └── conftest.py                     # benchmark_db, realistic_segments_100/500 fixtures
 │
-├── e2e/                                # Browser-level end-to-end tests
-│   └── test_metric_dropdown_search.py
-│
-└── ui/                                 # Local UI test servers (not collected by pytest)
-    ├── test_server.py
-    └── unified_test_server.py
+└── ui/                                 # Playwright browser tests (not collected by pytest)
+    ├── playwright.config.js            # testMatch: *.spec.js; port 5200; chrome channel
+    ├── test_server.py                  # Minimal Flask mock server for review templates
+    ├── smoke.spec.js                   # Fast template-render smoke checks (guards against mock/template drift)
+    └── review.spec.js                  # Unified review UI functional tests
 ```
+
+Run the Playwright suite locally with `npm run test:ui` (equivalent to
+`cd tests/ui && npx playwright test`). CI exercises it via the `ui-e2e`
+job in `.github/workflows/ci.yml`.
 
 ---
 

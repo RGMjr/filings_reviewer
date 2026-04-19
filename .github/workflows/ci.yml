@@ -37,6 +37,56 @@ jobs:
       - name: Run unit tests
         run: uv run pytest tests/unit/ -n auto -x -q --tb=short --cov=src --cov-fail-under=75
 
+  ui-e2e:
+    name: UI E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install Python dependencies
+        run: uv sync --extra dev
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chrome-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chrome
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chrome
+
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chrome
+
+      - name: Run Playwright tests
+        working-directory: tests/ui
+        run: npx playwright test
+        env:
+          # webServer command invokes python3 directly — ensure it sees the uv-managed interpreter
+          PATH: ${{ github.workspace }}/.venv/bin:${{ env.PATH }}
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/ui/playwright-report/
+          retention-days: 7
+
   vulnerability-scan:
     name: Vulnerability Scan
     runs-on: ubuntu-latest
@@ -80,6 +130,11 @@ jobs:
 
       - name: Apply migrations
         run: uv run python3 scripts/apply_migrations.py --test
+
+      - name: Link-integrity check
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: uv run python3 scripts/validate_database_urls.py --fail-on-errors
 
       - name: Run integration tests
         run: >-
