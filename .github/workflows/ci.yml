@@ -138,6 +138,11 @@ jobs:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: uv run python3 scripts/validate_database_urls.py --fail-on-errors
 
+      - name: Chart-image referential integrity
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: uv run python3 scripts/check_image_referential_integrity.py
+
       - name: Run integration tests
         run: >-
           uv run pytest tests/integration/ -x -q --tb=short --no-cov

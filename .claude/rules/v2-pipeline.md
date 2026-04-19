@@ -31,6 +31,8 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 
 `v2_image_assets` is unique on `(doc_id, filename)`; `img_id` is stable across re-extractions because `_persist_images_in_tx` upserts via `ON CONFLICT (doc_id, filename) DO UPDATE` and preserves the existing `img_id` on conflict. `persist_pipeline_result` uses the old→stable img_id map returned by `_persist_images_in_tx` to rewrite in-memory fact `source_locator.img_id` values before fact persistence, keeping metric-fact provenance consistent with the canonical DB row.
 
+**Chart-fact img_id invariant:** Every fact with `source_type='chart'` must carry a non-null `source_locator.img_id`. `ChartFactBridgeStage` enforces this at construction (always passes `img_id=image.img_id` into the `SourceLocator`), and `tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` locks the invariant at unit-test granularity. `scripts/check_image_referential_integrity.py` treats a violation as **blocking** and runs in CI under the *Chart-image referential integrity* step of the integration-tests job. The same script also warns on two non-blocking classes — orphaned `img_id` refs (no matching asset row) and assets whose `file_path` is outside `data/` or missing on disk. The review UI's "Chart Evidence" block (`src/web/templates/unified_review.html:337-405`) surfaces all three failure modes with targeted placeholder copy via `review_unified._resolve_chart_image_status`, so reviewers see why a preview is missing instead of a silent gap or broken-image icon.
+
 ## Reviewed-Filing Guard
 
 `V2PersistenceAdapter._persist_facts_in_tx` (`src/extraction_v2/persistence.py`)
