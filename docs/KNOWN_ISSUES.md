@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 TMPDIR image cache root opened, #35 pre-2026-04-17 chart-OCR backfill opened, #36–#40 opened from Issue #7 10-K parameterization follow-ups)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 TMPDIR image cache root opened, #35 pre-2026-04-17 chart-OCR backfill opened, #36–#40 opened from Issue #7 10-K parameterization follow-ups, #41 review-UI sticky-header offset mismatch + narrow-width pill overlap opened)
 
 ---
 
@@ -222,6 +222,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
 | `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Low | Medium | Column name implies "in active universe" but means "Phase 1 IPO candidate"; confusing with 10-Ks present; needs rename or form-aware companion column |
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
+| Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Open | Low | Low | `.sticky-top-below-nav` at 70px vs new `.review-sticky-header` at 56px; ~14px misalignment; 1024px pill wrapping not verified |
 
 ---
 
@@ -1277,6 +1278,60 @@ Lightweight either way — <30 LOC + tests + doc line.
 
 ---
 
+## 41. Review-UI Sticky Header Offset Mismatch + Narrow-Width Overlap Unverified
+
+**Status**: Open
+**Severity**: Low — cosmetic
+**Discovered**: 2026-04-19 (during review-UI sticky-header work, commit `ba35424`)
+
+### Problem
+
+Two related visual calibration items from the sticky review-UI landing:
+
+1. **Sticky offset mismatch between old and new patterns.** The existing
+   `.sticky-top-below-nav` class (`src/web/static/css/review.css:58-62`) —
+   used by `.image-thumbnail-sidebar` and `.image-context-panel` on the
+   images tab — uses `top: 70px`. The new `.review-sticky-header`
+   introduced in `ba35424` uses `top: 56px` (Bootstrap `navbar-expand-lg`
+   default). The navbar itself is now `sticky-top` as of `ba35424`. If
+   the navbar renders at ~56px, the old sticky children have a ~14px gap
+   between their top and the navbar bottom. If it renders at ~70px, the
+   new sticky-header overlaps the navbar bottom by ~14px. Only one offset
+   can be correct.
+
+2. **Narrow-width responsive behavior not tested.** At viewport widths
+   around 1024px, the stat-pill row in the review-page sticky header
+   (`unified_review.html:44-72`) may wrap such that pills collide with
+   the "Next filing F" button. Not verified in a browser; the user-chosen
+   "three tighter rows" mockup implicitly relied on pills wrapping
+   cleanly.
+
+### Suggested Fix
+
+Once the correct navbar rendered height is confirmed in production
+DevTools:
+
+1. Introduce a shared `--navbar-height` CSS custom property in `:root`
+   (`review.css:9-53`) set to the measured value.
+2. Update both `.sticky-top-below-nav` and `.review-sticky-header` to
+   reference `top: var(--navbar-height);` so they stay aligned.
+3. Resize the review page to ~1024px and adjust flex-wrap / pill styling
+   in `unified_review.html:44-72` (or hide non-essential pills below a
+   breakpoint) if pills overlap the "Next filing F" button.
+
+Lightweight — <20 LOC of CSS, no template restructure.
+
+### Cross-References
+
+- `src/web/static/css/review.css:58-62` — existing `.sticky-top-below-nav`
+- `src/web/static/css/review.css` (appended in `ba35424`) —
+  `.review-sticky-header`
+- `src/web/templates/base.html:21` — navbar `sticky-top`
+- `src/web/templates/unified_review.html:44-72` — stat-pill row
+- Commit `ba35424` — review-UI sticky compact top matter
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
@@ -1368,3 +1423,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Issue #24 extended — `scripts/check_image_referential_integrity.py` now reports three classes (null-img_id on chart facts [blocking], orphaned img_id refs [warn], file_path outside data/ or missing on disk [warn]) and runs in the integration-tests CI job. `tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` locks the Class (A) invariant. Commit `d1430d9`
 - **2026-04-19**: Added Issue #34 — `v2_image_assets.file_path` rooted in macOS TMPDIR on the local extraction host; 158/165 rows outside `data/`, 50/165 absent on disk. Dominant root cause behind the Box Inc S-1/A missing-Chart-Evidence case surfaced during the commit-`d1430d9` investigation
 - **2026-04-19**: Added Issue #35 — 38 filings have chart images but zero `source_type='chart'` facts, consistent with pre-2026-04-17 chart-OCR JSON failures. Backfill via `batch_v2_extraction.py --force-reextract` pending Issue #34 fix
+- **2026-04-19**: Added Issue #41 — review-UI sticky-header offset mismatch (`.sticky-top-below-nav` at 70px vs new `.review-sticky-header` at 56px) + narrow-width pill overlap with "Next filing F" button unverified. Opened during review-UI sticky compact top-matter work, commit `ba35424`
