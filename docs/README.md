@@ -66,6 +66,7 @@ Instructions for setting up, running, and maintaining the system.
 | **[cloud-deployment-runbook.md](operations/cloud-deployment-runbook.md)** ⭐ | **Render + Neon DB: start command, env vars, migrations, troubleshooting** | DevOps |
 | **[deployment-guide-pre-v2.md](archive/ops/deployment-guide-pre-v2.md)** | Legacy deployment guide (local/batch processing era, pre-V2) | Archive |
 | **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
+| **[TICKER_ONBOARDING.md](operations/TICKER_ONBOARDING.md)** | Onboard SEC filings filtered by industry / year / form-type via `scripts/onboard_tickers.py` | Developers, DevOps |
 | **[gold-standard-runbook.md](operations/gold-standard-runbook.md)** | Gold standard validation, baseline update, regression workflow | Developers |
 | **[image-model-training-runbook.md](operations/image-model-training-runbook.md)** | Image relevance model: export → train → score pipeline | Developers |
 

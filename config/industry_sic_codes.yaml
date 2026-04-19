@@ -1,0 +1,26 @@
+# Industry SIC code mappings for scripts/onboard_tickers.py.
+#
+# Maps everyday industry names to SEC Standard Industrial Classification (SIC) codes.
+# SIC reference: https://www.sec.gov/info/edgar/siccodes.htm
+#
+# Codes are stored as strings to match companies.industry_code (TEXT) in
+# sql/01_create_schema.sql. Every code must be a 4-digit numeric string.
+#
+# To add an industry: append under `industries:` with a description and list of
+# 4-digit SIC codes. Add common alternate names under `aliases:`.
+
+industries:
+  software:
+    description: "Prepackaged software and computer services"
+    sic_codes:
+      - "7370"  # Services-Computer Services
+      - "7371"  # Services-Computer Programming, Data Processing
+      - "7372"  # Services-Prepackaged Software
+      - "7373"  # Services-Computer Integrated Systems Design
+      - "7374"  # Services-Computer Processing & Data Preparation
+      - "7377"  # Services-Computer Rental and Leasing
+      - "7379"  # Services-Computer Services, NEC
+
+aliases:
+  saas: software
+  "computer services": software
