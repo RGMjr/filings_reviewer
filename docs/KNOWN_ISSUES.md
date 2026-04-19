@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 TMPDIR image cache root opened, #35 pre-2026-04-17 chart-OCR backfill opened)
 
 ---
 
@@ -715,6 +715,16 @@ Add a scheduled integrity-check script, or promote `img_id` to a dedicated FK co
 
 `scripts/check_image_referential_integrity.py` scans for orphan `img_id` values and exits non-zero when any are found. Baseline against the local dev DB on 2026-04-19: **9 orphan facts across 4 docs** (doc_id=1546: 4, doc_id=1545: 2, doc_id=1551: 2, doc_id=1539: 1). These are historical facts predating the `sql/34` dedup migration. Prod has not been scanned yet. Cleanup strategy (delete orphan facts vs. rewrite `source_locator.img_id` to NULL vs. leave as-is) is still open.
 
+### Extended to Three Classes (2026-04-19, commit `d1430d9`)
+
+The script now reports three classes and is wired into the integration-tests CI job (`.github/workflows/ci.yml`):
+
+- **Class (A)** — `source_type='chart'` facts with null `source_locator.img_id`. **Blocking** (exit 1); baseline 0; protects the `ChartFactBridgeStage` invariant.
+- **Class (B)** — orphaned `img_id` refs (this issue). Warning-only.
+- **Class (C)** — asset rows with `file_path` outside `data/` or missing on disk. Warning-only; tracked under Issue #34.
+
+`tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` locks the Class (A) invariant at unit-test level.
+
 ---
 
 ## 25. `scripts/migrate_image_ids_to_deterministic.py` Scope Is Confusing
@@ -987,6 +997,62 @@ After `html_segmenter.py` is covered (Issue #32), raise `fail_under` from 75 to 
 
 ---
 
+## 34. `v2_image_assets.file_path` Rooted in TMPDIR (Purged by OS)
+
+**Status**: Open
+**Severity**: Medium — breaks Chart Evidence preview on ~30% of image rows (50 / 165 local; prod unscanned)
+**Discovered**: 2026-04-19 (Phase 1 of the "missing Chart Evidence" investigation, commit `d1430d9`)
+
+### Problem
+
+`v2_image_assets.file_path` is being written as `/var/folders/.../T/filings_image_cache/pipeline/<filename>.jpg` — macOS's TMPDIR. 158 of 165 asset rows on the local dev DB live outside `<repo>/data/` entirely (the remaining 7 are a separate, presentation-pipeline root). The TMPDIR is purged by the OS on reboot and after long periods of inactivity, so `image_crop` (`src/web/routes/review_unified.py:521-581`) returns 404 for the majority of rows even when the asset row and the extracted chart fact are intact.
+
+The endpoint's `resolved.relative_to(data_dir)` security check also rejects TMPDIR paths outright as a path-traversal precaution, so the 404 fires even when the file happens to still be present. Either way, the reviewer sees no chart preview.
+
+This is the dominant root cause behind the Box Inc S-1/A `cm_revenue_by_cohort = $2.8M` case in the commit-`d1430d9` investigation. Template placeholders added in `d1430d9` now surface the failure explicitly, but do not resolve it — the file is still missing.
+
+### Diagnostics
+
+`scripts/check_image_referential_integrity.py` (Issue #24) now reports Class (C) "asset rows with file_path outside data/ or missing on disk" alongside the Class (B) orphan check. Local baseline 2026-04-19: 158 / 165 rows (96%) outside `data/`, 50 / 165 absent on disk. Class (C) is **warning-only** in CI; flip to blocking once the underlying cache root is fixed and any remaining TMPDIR rows are rewritten or reprocessed.
+
+### Suggested Fix
+
+Locate the image-cache root used by `_persist_images_in_tx` / OCR extraction stages (likely a `tempfile.gettempdir()` or similar default) and redirect to a persistent path under `data/` (e.g. `data/image_cache/pipeline/`). Every subsequent re-extraction will heal its own filing; a one-shot migration can rewrite existing `file_path` values to the new root for filings whose source HTML is still available to re-download the images.
+
+### Cross-References
+
+- Issue #24 — JSONB img_id has no FK (the orphan class is a separate failure mode; this one is about the file system root)
+- Issue #22 — reviewed-filing guard on image re-extraction (must be honoured by any backfill script)
+
+---
+
+## 35. Pre-2026-04-17 Filings Missing Chart-Sourced Facts
+
+**Status**: Open
+**Severity**: Medium — Tier-1 recall gap on chart-native metrics (38 filings affected)
+**Discovered**: 2026-04-19 (Phase 1 of the "missing Chart Evidence" investigation, commit `d1430d9`)
+
+### Problem
+
+The 2026-04-17 chart-OCR fix (`VisionClient.analyze_image()` now forces `response_format={"type": "json_object"}` and `_parse_chart_json` has a truncation-repair fallback — see `.claude/rules/v2-pipeline.md`) resolved malformed-JSON responses from gpt-4o going forward. Filings extracted before that fix can retain chart images (`v2_image_assets` rows with `classification='chart'`) but zero `source_type='chart'` facts, because the chart bridge silently dropped the malformed OCR output.
+
+`scripts/diagnostic_chart_evidence_coverage.py` Class (E) reports **38 affected filings** on the local dev DB, with chart-image counts ranging from 14 to 22 per filing. Tier-1 chart-native metrics (`cm_revenue_by_cohort`, `cm_balance_by_cohort`, `cm_gross_margin_by_cohort`) take the brunt of the recall hit since those values typically live only in charts.
+
+### Suggested Fix
+
+Once Issue #34 is addressed (image cache lives under `data/`), queue the 38 filings for re-extraction with `scripts/batch_v2_extraction.py --force-reextract` in a backfill window. The reviewed-filing guard (`V2PersistenceAdapter._persist_facts_in_tx`) must be honoured; any filings with prior reviewer decisions need explicit handling before re-extraction wipes `v2_review_decisions` via CASCADE.
+
+Prod count is unknown — run the diagnostic against Neon before sizing the backfill.
+
+### Cross-References
+
+- `.claude/rules/v2-pipeline.md` — chart-OCR fix dated 2026-04-17 (the inflection point)
+- Issue #34 — backfill is wasted effort unless the image cache is moved out of TMPDIR first
+- Issue #24 — any backfill must also clear the 9 Class (B) orphan refs
+- CLAUDE.md Core Design Principle #6 — reviewed-filing guard on re-extraction
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
@@ -1075,3 +1141,6 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Issue #27 partial resolution — `review.spec.js:965` passes after `img_id` added to `MOCK_IMAGE_CANDIDATE_PENDING` / `MOCK_IMAGE_CANDIDATE_REVIEWED` in `tests/ui/test_server.py`; `review.spec.js:1037` (`.keyword-badge`) and `review.spec.js:1054` ("Image 1 of 2") are stale assertions (no matching template elements) and now `test.skip` with TODO(KNOWN_ISSUES #27). Full Playwright suite 142 pass / 2 skip / 0 fail locally
 - **2026-04-19**: Issue #13 docs reconciled — local test DB verified 9-col (includes `source_type`); `scripts/apply_migrations.py` comment asserts prod already applied out-of-band; this doc previously said "pending prod apply". Prod `pg_indexes` query still needed to settle the contradiction
 - **2026-04-19**: Issue #29 resolved — root cause was NOT candidate-level (yaml exclusion didn't help: chart combined_text was just `'2015 Cohort 2016 Cohort 2017 Cohort'`, no customer-type keywords). The mis-classification entered via `_scan_chart`'s nearby_text second pass (Farfetch prose legitimately mentions "new Marketplace consumers" near the LTV/CAC chart); value binding then attached the chart point.label `2.71x` to the candidate. Fix: added `_rule_ratio_suffix_on_count_metric` in `false_positive_filter.py` mirroring the existing `_rule_revenue_concentration_ratio_suffix`, rejecting `N.NNx`/`N.NN×` raw values bound to count/currency/rate/time metrics (whitelists `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort` implicitly). 6 new unit tests. Farfetch GS confirms the `2.71x` FP is eliminated; total Farfetch FP count unchanged at 12 because a pre-existing sibling FP (`54%` percent-on-count with `unit=COUNT`) was previously tiebroken-away by `2.71x` and now surfaces — separate, pre-existing issue, not fixed here
+- **2026-04-19**: Issue #24 extended — `scripts/check_image_referential_integrity.py` now reports three classes (null-img_id on chart facts [blocking], orphaned img_id refs [warn], file_path outside data/ or missing on disk [warn]) and runs in the integration-tests CI job. `tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` locks the Class (A) invariant. Commit `d1430d9`
+- **2026-04-19**: Added Issue #34 — `v2_image_assets.file_path` rooted in macOS TMPDIR on the local extraction host; 158/165 rows outside `data/`, 50/165 absent on disk. Dominant root cause behind the Box Inc S-1/A missing-Chart-Evidence case surfaced during the commit-`d1430d9` investigation
+- **2026-04-19**: Added Issue #35 — 38 filings have chart images but zero `source_type='chart'` facts, consistent with pre-2026-04-17 chart-OCR JSON failures. Backfill via `batch_v2_extraction.py --force-reextract` pending Issue #34 fix
