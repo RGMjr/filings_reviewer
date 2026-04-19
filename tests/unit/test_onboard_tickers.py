@@ -232,6 +232,108 @@ def test_form_type_bundles_include_s1f1(cli):
 
 
 # ---------------------------------------------------------------------------
+# --year required (B1)
+# ---------------------------------------------------------------------------
+
+
+def test_year_required_on_discover(cli, capsys):
+    import pytest as _pytest
+
+    parser = cli.build_parser()
+    with _pytest.raises(SystemExit):
+        parser.parse_args(["discover", "--industry", "software"])
+    err = capsys.readouterr().err
+    assert "--year" in err
+
+
+def test_year_required_on_onboard(cli, capsys):
+    import pytest as _pytest
+
+    parser = cli.build_parser()
+    with _pytest.raises(SystemExit):
+        parser.parse_args(["onboard", "--industry", "software"])
+    err = capsys.readouterr().err
+    assert "--year" in err
+
+
+def test_year_not_required_on_populate(cli):
+    # populate requires --year but NOT --industry; regression sanity
+    parser = cli.build_parser()
+    args = parser.parse_args(["populate", "--year", "2015"])
+    assert args.year == "2015"
+    assert args.command == "populate"
+
+
+# ---------------------------------------------------------------------------
+# Reviewed-filing second guard (B2)
+# ---------------------------------------------------------------------------
+
+
+def test_count_review_decisions_empty(cli):
+    class _EmptyDB:
+        def query(self, sql, params=None):
+            return [{"decision_count": 0, "reviewer_count": 0}]
+
+    assert cli.count_review_decisions(_EmptyDB(), 123) == (0, 0)
+
+
+def test_count_review_decisions_with_rows(cli):
+    class _DB:
+        def query(self, sql, params=None):
+            return [{"decision_count": 5, "reviewer_count": 2}]
+
+    assert cli.count_review_decisions(_DB(), 123) == (5, 2)
+
+
+def test_count_review_decisions_null_counts(cli):
+    """Postgres COUNT() never returns NULL, but defensive None handling kept for safety."""
+
+    class _DB:
+        def query(self, sql, params=None):
+            return [{"decision_count": None, "reviewer_count": None}]
+
+    assert cli.count_review_decisions(_DB(), 123) == (0, 0)
+
+
+def _reviewed_candidate(cli):
+    return cli.Candidate(
+        filing_id=42,
+        cik="0000000042",
+        ticker="FOO",
+        company_name="Reviewed Co",
+        form_type="S-1",
+        filing_date="2015-01-09",
+        industry_code="7372",
+        accession_number="acc-42",
+        primary_doc_url="http://x",
+        txt_url=None,
+        already_extracted=True,
+        extracted_at="2026-03-01",
+    )
+
+
+def test_prompt_reviewed_filing_yes(cli):
+    with patch("builtins.input", return_value="y"):
+        assert cli.prompt_reviewed_filing(_reviewed_candidate(cli), 3, 2) is True
+
+
+def test_prompt_reviewed_filing_default_no(cli):
+    with patch("builtins.input", return_value=""):
+        assert cli.prompt_reviewed_filing(_reviewed_candidate(cli), 3, 2) is False
+
+
+def test_prompt_reviewed_filing_explicit_N(cli):
+    with patch("builtins.input", return_value="N"):
+        assert cli.prompt_reviewed_filing(_reviewed_candidate(cli), 3, 2) is False
+
+
+def test_prompt_reviewed_filing_other_input_is_no(cli):
+    """Only literal 'y' proceeds; anything else is a skip."""
+    with patch("builtins.input", return_value="yes"):  # not 'y'
+        assert cli.prompt_reviewed_filing(_reviewed_candidate(cli), 3, 2) is False
+
+
+# ---------------------------------------------------------------------------
 # document_date threading — regression test for A1 (was silently dropping
 # chart-fact-bridge for every onboarded filing)
 # ---------------------------------------------------------------------------

@@ -336,7 +336,7 @@ def cmd_discover(args: argparse.Namespace, db: DatabaseAdapter) -> int:
     industry_map = load_industry_map()
     canonical, sic_codes = resolve_industry(args.industry, industry_map)
     form_types = resolve_form_types(args.form_type)
-    year_min, year_max = parse_year_arg(args.year) if args.year else (1994, 9999)
+    year_min, year_max = parse_year_arg(args.year)
 
     print(f"Industry {canonical!r} resolved to SIC codes: {', '.join(sic_codes)}")
     print(f"Form types: {', '.join(form_types)}")
@@ -383,7 +383,7 @@ def cmd_onboard(args: argparse.Namespace, db: DatabaseAdapter) -> int:
     industry_map = load_industry_map()
     canonical, sic_codes = resolve_industry(args.industry, industry_map)
     form_types = resolve_form_types(args.form_type)
-    year_min, year_max = parse_year_arg(args.year) if args.year else (1994, 9999)
+    year_min, year_max = parse_year_arg(args.year)
 
     print(f"Industry {canonical!r} resolved to SIC codes: {', '.join(sic_codes)}")
     print(f"Form types: {', '.join(form_types)}")
@@ -536,7 +536,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     def _add_filter_args(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("--industry", required=True, help="Industry name (e.g. 'software')")
-        sp.add_argument("--year", help="YYYY or YYYY-YYYY (default: all years)")
+        sp.add_argument(
+            "--year",
+            required=True,
+            help="YYYY or YYYY-YYYY. Required to prevent unbounded onboards.",
+        )
         sp.add_argument(
             "--form-type",
             default="s1f1",
