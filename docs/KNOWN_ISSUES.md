@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 scope clarified, #10 resolved-by-deletion, #24 diagnostic script added, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #24 diagnostic baseline, #26 review-UI link breakage resolved, #27–#28 opened on Playwright consolidation, #29 filed)
 
 ---
 
@@ -207,7 +207,8 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `v2_image_assets` duplicates + pending-count discrepancy — Maplebear S-1 (Issue #21) | Resolved (2026-04-18) | — | — | sql/34 dedup migration + stable img_id upsert (ON CONFLICT (doc_id, filename)) + in-memory fact source_locator remap |
 | No reviewed-filing guard on image re-extraction (Issue #22) | Resolved (2026-04-18) | — | — | `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` on visible→hidden re-classification |
 | `v2_image_assets.segment_id` dead column (Issue #23) | Resolved (2026-04-18) | — | — | sql/35 drops column; persistence.py cleaned up |
-| `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | New facts consistent post-#21; historical orphans likely remain |
+| `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | Diagnostic script added 2026-04-19; 9 orphan facts in local DB across 4 docs; cleanup + FK promotion still open |
+| `cm_new_customers_acquired` 2.71x chart FP on Farfetch LTV/CAC (Issue #29) | Open | Low | Low | 1 FP per Farfetch baseline; mis-classified chart value from `g607688g54x53.jpg` |
 | `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Resolved (2026-04-18) | — | — | Docstring expanded to clarify JSON-only scope |
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
 | CAC payback "six months" not bound (Issue #17) | Resolved (2026-04-18) | — | — | Added `WORD_NUMBER_TIME_PATTERN` gated to time-valued metrics; cm_cac_payback_period 0% → 100% F1 |
@@ -690,6 +691,10 @@ The `context` kwarg was added to `ReviewedFilingError` (default `"facts"` preser
 
 Add a scheduled integrity-check script, or promote `img_id` to a dedicated FK column on `v2_metric_facts`. The latter is the more robust fix but requires a migration and application-layer changes.
 
+### Diagnostic Script (2026-04-19)
+
+`scripts/check_image_referential_integrity.py` scans for orphan `img_id` values and exits non-zero when any are found. Baseline against the local dev DB on 2026-04-19: **9 orphan facts across 4 docs** (doc_id=1546: 4, doc_id=1545: 2, doc_id=1551: 2, doc_id=1539: 1). These are historical facts predating the `sql/34` dedup migration. Prod has not been scanned yet. Cleanup strategy (delete orphan facts vs. rewrite `source_locator.img_id` to NULL vs. leave as-is) is still open.
+
 ---
 
 ## 25. `scripts/migrate_image_ids_to_deterministic.py` Scope Is Confusing
@@ -810,6 +815,24 @@ Not urgent. Revisit if the smoke spec starts missing real breakages or if the mo
 
 ---
 
+## 29. `cm_new_customers_acquired` Receives `2.71x` Chart Fact From Farfetch LTV/CAC Chart
+
+**Status**: Open
+**Severity**: Low (1 Farfetch FP; does not block recall)
+**Discovered**: 2026-04-18 (flagged in Issue #20 "Out of scope"); filed as its own issue 2026-04-19
+
+### Problem
+
+FTCH's LTV/CAC tenure chart `g607688g54x53.jpg` emits a chart fact with value `2.71` (raw `"2.71x"`) that is mis-classified into `cm_new_customers_acquired`. Surfaces as a `NO_MATCH` FP on the Farfetch gold-standard run (1 of 12 FPs on 2026-04-19 baseline). The correct home for this value is `cm_ltv_to_cac_ratio_by_cohort` (or the tenure-bucket variant); chart bridge routing picks the wrong metric gate.
+
+### Next Steps
+
+- Trace the chart-fact-bridge flow for this image in `src/extraction_v2/chart/metric_classifier.py` — likely a gate that over-accepts `x`-suffixed numeric labels under `cm_new_customers_acquired`.
+- Consider adding an exclusion similar to the one used for percent-prefixed `new/existing consumers` annotations (see `.claude/rules/v2-pipeline.md` "Chart classifier mis-tag (fixed 2026-04-17)").
+- Low priority — does not affect Tier 1 recall and only surfaces on the FTCH tenure chart.
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
@@ -892,3 +915,5 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Issue #24 diagnostic script added — `scripts/check_image_referential_integrity.py` scans `v2_metric_facts.source_locator.img_id` against `v2_image_assets`, reports orphans, exits non-zero when any found (suitable for nightly cron). Does not promote `img_id` to a FK column — that remains open
 - **2026-04-19**: Added Issue #27 — 3 Images Tab assertions in `tests/ui/review.spec.js` fail pre-existing against the current mock server; latent since the suite never ran in CI. Commit `413b386` added a `ui-e2e` CI job that will now surface them on every PR
 - **2026-04-19**: Added Issue #28 — Playwright mock server duplicates production template context; Apr 17 breakage (commit `3e398fd`) was the symptom class. Commit `413b386` added `tests/ui/smoke.spec.js` as a fast pre-flight to catch render-time failures, but the underlying duplicated-contract coupling remains
+- **2026-04-19**: Issue #24 diagnostic baseline recorded — `scripts/check_image_referential_integrity.py` against the local dev DB reports 9 orphan facts across 4 docs (1546: 4, 1545: 2, 1551: 2, 1539: 1). Historical facts predating the `sql/34` dedup migration. Prod not yet scanned; cleanup strategy still open
+- **2026-04-19**: Added Issue #29 — `cm_new_customers_acquired` receives `2.71x` chart fact from Farfetch LTV/CAC tenure chart `g607688g54x53.jpg`; 1 FP per Farfetch baseline. Filed as its own issue after originally being noted in Issue #20 "Out of scope"
