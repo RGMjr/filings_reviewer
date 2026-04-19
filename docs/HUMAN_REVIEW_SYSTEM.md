@@ -187,7 +187,10 @@ python scripts/export_review_decisions.py
 - Same-sentence deduplication preference
 
 ### Review Interface
-- Keyboard shortcuts: A=Accept, F=Confirm automated suggestion, R=Reject, C=Reclassify, N=Next, P=Previous, S=Skip, Enter=Confirm rejection, Esc=Cancel, ?/H=Toggle hints
+- Keyboard shortcuts:
+  - Shared: `F`=Next filing, `Esc`=Cancel form
+  - Text tab: `A`=Accept, `R`=Reject, `C`=Correct, `N`/`→`=Next fact, `P`/`←`=Previous fact, `Enter`=Submit reject/correct form
+  - Images tab: `Y`=Relevant (chart type picker), `N`=Not relevant (reason picker), `S`=Skip, `U`=Undo, `←`/`→`=Prev/next image, `1`–`7`=Quick-select in open picker, `?`/`H`=Toggle hints
 - Confidence score badges (color-coded)
 - Filtering by status, metric type, confidence level
 - Sorting by document order, confidence, value
