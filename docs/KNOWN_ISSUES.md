@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 Phase 1 resolved — `image_cache_dir()` helper under `data/image_cache/` with collision-safe `pipeline/<cik>/<accession>/<filename>` layout; prod persistence still pending, #35 unblocked on local dev pending prod persistence, #36–#40 opened from Issue #7 10-K parameterization follow-ups, #41 review-UI sticky-header offset mismatch + narrow-width pill overlap opened)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 Phase 1 resolved — `image_cache_dir()` helper under `data/image_cache/` with collision-safe `pipeline/<cik>/<accession>/<filename>` layout; prod persistence still pending, #35 unblocked on local dev pending prod persistence, #36–#40 opened from Issue #7 10-K parameterization follow-ups, #41 review-UI sticky-header offset mismatch + narrow-width pill overlap opened, #42 opened for pipeline duplicate-write of image bytes)
 
 ---
 
@@ -225,6 +225,7 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Low | Medium | Column name implies "in active universe" but means "Phase 1 IPO candidate"; confusing with 10-Ks present; needs rename or form-aware companion column |
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
 | Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Open | Low | Low | `.sticky-top-below-nav` at 70px vs new `.review-sticky-header` at 56px; ~14px misalignment; 1024px pill wrapping not verified |
+| `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
 
 ---
 
@@ -1346,6 +1347,25 @@ Lightweight — <20 LOC of CSS, no template restructure.
 - `src/web/templates/base.html:21` — navbar `sticky-top`
 - `src/web/templates/unified_review.html:44-72` — stat-pill row
 - Commit `ba35424` — review-UI sticky compact top matter
+
+---
+
+## 42. `_download_missing_images` Writes Image Bytes Twice
+
+**Status**: Open
+**Severity**: Low — tech debt, not user-visible
+**Discovered**: 2026-04-19 (noted while fixing Issue #34)
+
+### Problem
+
+`OCRExtractionStage._download_missing_images` (`src/extraction_v2/stages/ocr_extraction.py:199-263`) calls `SECClient.fetch_image()`, which already writes the bytes to `<image_cache_dir>/<cik_stripped>/<accession_no_dashes>/<filename>` via `SECClient._get_image_cache_path` (`src/infra/sec_client.py:880-889`). The pipeline then writes a second copy to `<image_cache_dir>/pipeline/<cik>/<accession>/<filename>` and stores that path on `asset.file_path`. Two on-disk copies per image, two path layouts, and the only reason `asset.file_path` doesn't point at SECClient's cache is historical — the flat `pipeline/<filename>` layout pre-dated SECClient caching and was never consolidated.
+
+### Next Steps
+
+1. Update `_download_missing_images` to call `self._sec_client._get_image_cache_path(cik, accession, filename)` (or a public equivalent) and assign the result to `asset.file_path` directly, skipping the pipeline `write_bytes` call.
+2. Delete the now-unused `cache_dir = image_cache_dir() / "pipeline" / ...` construction.
+3. Update `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading` to assert `asset.file_path` is under the SECClient cache layout.
+4. `image_cache_dir()` continues to be the single canonical root; just one layout underneath.
 
 ---
 
