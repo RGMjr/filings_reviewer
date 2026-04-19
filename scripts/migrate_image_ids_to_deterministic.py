@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""One-time migration: rewrite image IDs in _image_candidates.json and
-_image_decisions.json files from random uuid4 to deterministic uuid5.
+"""One-time transformation of local gold-standard JSON files.
 
-The new ID formula matches _serialize_images() in preannotate_presentations.py:
+Scope: rewrites `data/presentation_gold_standard/_image_candidates.json`
+and `_image_decisions.json` only. Does NOT modify the production database
+or any `v2_image_assets` rows — the word "migration" in the filename refers
+to a JSON-format upgrade, not a DB schema migration.
+
+Effect: replaces random uuid4 image IDs with deterministic uuid5 IDs so
+downstream comparisons line up with `_serialize_images()` in
+`preannotate_presentations.py`:
     uuid.uuid5(uuid.NAMESPACE_URL, f"{cik}:{accession_number}:{seed}")
 where seed = dom_locator if dom_locator else filename.
 
-CIK and accession_number are parsed from data/presentation_gold_standard/_url_index.json.
+CIK and accession_number are parsed from
+`data/presentation_gold_standard/_url_index.json`.
 """
 
 import argparse
