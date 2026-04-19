@@ -55,14 +55,11 @@
             {% endif %}
           </small>
         </div>
-        <div class="text-end">
+        <div class="text-end review-pill-row">
           <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
           <span class="badge bg-warning text-dark">{{ pending_count }} pending</span>
-          <span class="badge bg-success">{{ accepted_count }} accepted</span>
-          <span class="badge bg-danger">{{ rejected_count }} rejected</span>
           {% if image_pending is defined %}
           <span class="badge bg-info text-dark ms-2">{{ image_pending }} img pending</span>
-          <span class="badge bg-secondary">{{ image_reviewed }} img reviewed</span>
           {% if image_auto_rejected is defined and image_auto_rejected > 0 %}
           <span class="badge bg-warning text-dark">{{ image_auto_rejected }} auto-rejected</span>
           {% endif %}

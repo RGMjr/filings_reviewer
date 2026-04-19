@@ -58,6 +58,7 @@ class UniverseBuilder:
         start_date: str,
         end_date: str,
         form_types: list[str] | None = None,
+        limit: int | None = None,
     ) -> int:
         """
         Discover and upsert companies and filings for the given date range.
@@ -70,6 +71,11 @@ class UniverseBuilder:
                 ``["10-K", "10-K/A"]`` to populate 10-K filings. Non-S-1/F-1
                 forms skip the IPO-era SGML SPAC re-check and land with
                 ``is_in_scope_phase1=FALSE`` (by design — Phase 1 = IPOs).
+            limit: Optional upper bound on in-scope upserts. Breaks the
+                filing loop once ``limit`` in-scope filings have been
+                recorded, so operators can cap a year-scale 10-K sweep
+                before committing to a 15-minute SEC traffic run. Default
+                ``None`` preserves unbounded behaviour.
 
         Returns:
             Number of filings marked as in-scope for Phase 1
@@ -85,10 +91,11 @@ class UniverseBuilder:
         if form_types is None:
             form_types = list(DEFAULT_FORM_TYPES_S1F1)
         logger.info(
-            "Building universe for %s to %s (form_types=%s)",
+            "Building universe for %s to %s (form_types=%s, limit=%s)",
             start_date,
             end_date,
             form_types,
+            limit,
         )
 
         filings = self.sec_client.search_filings(start_date, end_date, form_types)
@@ -104,6 +111,12 @@ class UniverseBuilder:
                 is_in_scope = self._process_filing(filing)
                 if is_in_scope:
                     in_scope_count += 1
+                    if limit is not None and in_scope_count >= limit:
+                        logger.info(
+                            "Reached --limit=%d in-scope filings; stopping early",
+                            limit,
+                        )
+                        break
 
             except Exception as e:
                 logger.error(
@@ -173,13 +186,19 @@ class UniverseBuilder:
                         sic_code=sic_code,
                     )
 
-        # 4. Classify first-time issuer
-        previous_ipo_date = self.db.get_first_ipo_filing_date(filing.cik)
-        is_first_time, fti_method = classify_first_time_issuer(
-            cik=filing.cik,
-            filing_date=filing.filing_date,
-            previous_ipo_date=previous_ipo_date,
-        )
+        # 4. Classify first-time issuer (S-1/F-1 only — the concept is not
+        # applicable to 10-K filings, and the naive "no prior S-1 in DB" check
+        # would mark every 10-K `is_first_time_issuer=TRUE`. See
+        # KNOWN_ISSUES.md #37.
+        if filing.form_type in DEFAULT_FORM_TYPES_S1F1:
+            previous_ipo_date = self.db.get_first_ipo_filing_date(filing.cik)
+            is_first_time, fti_method = classify_first_time_issuer(
+                cik=filing.cik,
+                filing_date=filing.filing_date,
+                previous_ipo_date=previous_ipo_date,
+            )
+        else:
+            is_first_time, fti_method = None, "not_applicable"
 
         # 5. Classify offering type
         # For v0.1, we don't have filing text yet, so this will be uncertain

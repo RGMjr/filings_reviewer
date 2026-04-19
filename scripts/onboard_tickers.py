@@ -402,13 +402,15 @@ def cmd_populate(args: argparse.Namespace, db: DatabaseAdapter) -> int:
     builder = UniverseBuilder(sec_client=sec_client, db=db)
     start = f"{year}-01-01"
     end = f"{year}-12-31"
+    limit = getattr(args, "limit", None)
     logger.info(
-        "Populating universe for %s to %s (form_types=%s) …",
+        "Populating universe for %s to %s (form_types=%s, limit=%s) …",
         start,
         end,
         form_types,
+        limit,
     )
-    count = builder.build_universe(start, end, form_types=form_types)
+    count = builder.build_universe(start, end, form_types=form_types, limit=limit)
     logger.info("Done. In-scope filings (Phase 1 only): %d", count)
     return 0
 
@@ -602,6 +604,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(FORM_TYPE_BUNDLES.keys()),
         help="Form-type bundle to populate (default: s1f1). Use '10k' for "
         "10-K/10-K/A filings.",
+    )
+    pop.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Cap on in-scope filings processed. Useful for test runs; a full "
+        "year of 10-K filings is ~5-10k documents and ~15 minutes of SEC "
+        "traffic without this brake.",
     )
 
     o = sub.add_parser("onboard", help="Fetch + extract NEW (and optionally re-extract)")
