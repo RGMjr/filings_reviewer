@@ -233,3 +233,72 @@ def test_cmd_onboard_include_already_extracted_yes_path(clean_db, tmp_path, cli)
         "Already-extracted filing with --yes must reach persist_pipeline_result "
         "with force=True"
     )
+
+
+def test_cmd_onboard_10k_bypasses_phase1_filter(clean_db, tmp_path, cli):
+    """A 10-K filing with is_in_scope_phase1=FALSE is still discoverable
+    via --form-type 10k. Phase-1 gate correctly drops when non-S-1/F-1
+    forms are requested exclusively.
+    """
+    cik = "0000999010"
+    accession = "0000999010-20-000010"
+
+    # Seed a 10-K filing with is_in_scope_phase1=FALSE (correct for 10-K).
+    company_id = clean_db.upsert_company(
+        cik=cik,
+        company_name="Tenk Co",
+        ticker=None,
+        industry_code="7372",
+    )
+    filing_id = clean_db.upsert_filing(
+        company_id=company_id,
+        cik=cik,
+        accession_number=accession,
+        form_type="10-K",
+        filing_date="2020-02-15",
+        sec_html_url=f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession.replace('-', '')}/primary.htm",
+        is_in_scope_phase1=False,  # 10-K is never Phase 1
+        is_first_time_issuer=False,
+        is_spac=False,
+        is_post_combination=False,
+        is_investment_vehicle=False,
+        is_resource_extraction=False,
+    )
+    _prewrite_cached_html(tmp_path, cik, accession)
+
+    mock_pipeline_result = MagicMock()
+    mock_pipeline_result.fact_count = 0
+
+    with (
+        patch.object(cli, "process_filing", return_value=mock_pipeline_result) as mock_proc,
+        patch.object(cli, "V2PersistenceAdapter") as mock_persist_cls,
+        patch.object(cli, "SECClient"),
+    ):
+        mock_persist_cls.return_value = MagicMock()
+
+        args = SimpleNamespace(
+            industry="software",
+            year="2020",
+            form_type="10k",  # triggers Phase-1 filter drop
+            limit=None,
+            storage_root=str(tmp_path),
+            skip_txt=True,
+            include_already_extracted=False,
+            yes=False,
+            dry_run=False,
+            user_agent="integration-test/1.0",
+            exclude_amendments=False,
+        )
+        rc = cli.cmd_onboard(args, clean_db)
+
+    assert rc == 0
+    assert mock_proc.call_count == 1, (
+        "10-K filing with is_in_scope_phase1=FALSE must still be picked up "
+        "when --form-type 10k drops the Phase-1 filter"
+    )
+    _, kwargs = mock_proc.call_args
+    assert kwargs["filing_id"] == filing_id
+    # document_date still threaded for 10-K too
+    from datetime import date
+
+    assert kwargs["document_date"] == date(2020, 2, 15)

@@ -362,6 +362,53 @@ def test_exclude_amendments_default_false(cli):
 
 
 # ---------------------------------------------------------------------------
+# 10-K bundle + conditional Phase-1 filter (Issue #7)
+# ---------------------------------------------------------------------------
+
+
+def test_10k_bundle_resolves(cli):
+    assert cli.resolve_form_types("10k") == ["10-K", "10-K/A"]
+
+
+def test_10k_single_form_bundle(cli):
+    assert cli.resolve_form_types("10-K") == ["10-K"]
+
+
+def test_populate_accepts_form_type_flag(cli):
+    parser = cli.build_parser()
+    args = parser.parse_args(["populate", "--year", "2020", "--form-type", "10k"])
+    assert args.form_type == "10k"
+
+
+def test_populate_default_form_type_s1f1(cli):
+    parser = cli.build_parser()
+    args = parser.parse_args(["populate", "--year", "2020"])
+    assert args.form_type == "s1f1"
+
+
+def test_build_discovery_sql_includes_phase1_for_s1f1(cli):
+    """S-1/F-1 requests retain the is_in_scope_phase1 = TRUE filter."""
+    sql = cli._build_discovery_sql(["S-1", "S-1/A", "F-1", "F-1/A"])
+    assert "is_in_scope_phase1 = TRUE" in sql
+
+
+def test_build_discovery_sql_drops_phase1_for_10k(cli):
+    """10-K requests omit the Phase-1 gate (10-K is not Phase 1 by design)."""
+    sql = cli._build_discovery_sql(["10-K", "10-K/A"])
+    assert "is_in_scope_phase1" not in sql
+
+
+def test_build_discovery_sql_keeps_phase1_for_mixed_bundle(cli):
+    """A bundle that includes any S-1/F-1 form keeps the Phase-1 filter.
+
+    Rationale: the filter is conservative — only drop it when the operator
+    is explicitly asking for non-Phase-1 forms only.
+    """
+    sql = cli._build_discovery_sql(["S-1", "10-K"])
+    assert "is_in_scope_phase1 = TRUE" in sql
+
+
+# ---------------------------------------------------------------------------
 # document_date threading — regression test for A1 (was silently dropping
 # chart-fact-bridge for every onboarded filing)
 # ---------------------------------------------------------------------------

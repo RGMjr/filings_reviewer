@@ -23,6 +23,11 @@ from src.universe.classifiers import (
 
 logger = logging.getLogger(__name__)
 
+# Default form-type set for build_universe — the Phase 1 IPO registration family.
+# Exported as a module constant so callers (e.g. scripts/onboard_tickers.py)
+# share a single source of truth.
+DEFAULT_FORM_TYPES_S1F1 = ["S-1", "S-1/A", "F-1", "F-1/A"]
+
 
 class UniverseBuilder:
     """
@@ -48,29 +53,44 @@ class UniverseBuilder:
         self.sec_client = sec_client
         self.db = db
 
-    def build_universe(self, start_date: str, end_date: str) -> int:
+    def build_universe(
+        self,
+        start_date: str,
+        end_date: str,
+        form_types: list[str] | None = None,
+    ) -> int:
         """
         Discover and upsert companies and filings for the given date range.
 
         Args:
             start_date: ISO date string, inclusive (e.g., "2015-01-01")
             end_date: ISO date string, inclusive (e.g., "2025-12-31")
+            form_types: Optional SEC form-type list. Default
+                ``DEFAULT_FORM_TYPES_S1F1`` = S-1/S-1/A/F-1/F-1/A. Pass e.g.
+                ``["10-K", "10-K/A"]`` to populate 10-K filings. Non-S-1/F-1
+                forms skip the IPO-era SGML SPAC re-check and land with
+                ``is_in_scope_phase1=FALSE`` (by design — Phase 1 = IPOs).
 
         Returns:
             Number of filings marked as in-scope for Phase 1
 
         Process:
-            1. Query SEC for S-1/F-1 filings in date range
+            1. Query SEC for matching filings in date range
             2. For each filing:
                 a. Upsert company
                 b. Classify (SPAC, first-time issuer, offering type)
                 c. Upsert filing with classification flags
             3. Return count of in-scope filings
         """
-        logger.info(f"Building universe for {start_date} to {end_date}")
+        if form_types is None:
+            form_types = list(DEFAULT_FORM_TYPES_S1F1)
+        logger.info(
+            "Building universe for %s to %s (form_types=%s)",
+            start_date,
+            end_date,
+            form_types,
+        )
 
-        # Query SEC for S-1 and F-1 filings
-        form_types = ["S-1", "S-1/A", "F-1", "F-1/A"]
         filings = self.sec_client.search_filings(start_date, end_date, form_types)
 
         logger.info(f"Found {len(filings)} filings from EDGAR")
@@ -133,10 +153,14 @@ class UniverseBuilder:
         # 3. Classify SPAC (name patterns + SIC 6770)
         is_spac, spac_method = classify_spac(filing.company_name, sic_code=sic_code)
 
-        # 3a. If not yet flagged, fetch a text sample and recheck.
-        # Necessary for SPACs whose EDGAR record has been updated post-merger
-        # (SIC no longer 6770) and whose name doesn't match heuristic patterns.
-        if not is_spac:
+        # 3a. SPAC SGML text-sample re-check. Scoped to S-1/F-1: the SGML
+        # header convention ("BLANK CHECKS [6770]") is an IPO-era artifact
+        # that doesn't exist in 10-K filings, and the re-check costs a
+        # per-filing HTTP call that adds up over a year's worth of 10-Ks.
+        # For S-1/F-1: necessary for SPACs whose EDGAR record has been
+        # updated post-merger (SIC no longer 6770) and whose name doesn't
+        # match heuristic patterns.
+        if not is_spac and filing.form_type in DEFAULT_FORM_TYPES_S1F1:
             # Prefer txt_url: its SGML header contains the historic SIC at time of
             # filing ("BLANK CHECKS [6770]"), preserved even after post-merger updates.
             doc_url = filing.txt_url or filing.primary_doc_url

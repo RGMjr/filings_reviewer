@@ -295,6 +295,103 @@ class TestUniverseBuilderMultipleFilings:
         assert mock_db.upsert_filing.call_count == 2
 
 
+class TestBuildUniverseFormTypes:
+    """Tests for the form_types parameter on build_universe (Issue #7)."""
+
+    def test_default_preserves_s1f1(self, mock_db):
+        """No form_types arg → search_filings sees the S-1/F-1 family."""
+        from unittest.mock import patch
+
+        from src.universe.universe_builder import DEFAULT_FORM_TYPES_S1F1
+
+        sec_client = MockSECClient(mock_filings=[])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        with patch.object(
+            sec_client, "search_filings", wraps=sec_client.search_filings
+        ) as spy:
+            builder.build_universe("2015-01-01", "2015-12-31")
+
+        spy.assert_called_once_with(
+            "2015-01-01", "2015-12-31", DEFAULT_FORM_TYPES_S1F1
+        )
+
+    def test_custom_form_types_passed_to_sec_client(self, mock_db):
+        """Passing form_types=['10-K', '10-K/A'] forwards to search_filings."""
+        from unittest.mock import patch
+
+        sec_client = MockSECClient(mock_filings=[])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        with patch.object(
+            sec_client, "search_filings", wraps=sec_client.search_filings
+        ) as spy:
+            builder.build_universe(
+                "2020-01-01", "2020-12-31", form_types=["10-K", "10-K/A"]
+            )
+
+        spy.assert_called_once_with("2020-01-01", "2020-12-31", ["10-K", "10-K/A"])
+
+    def test_10k_filing_skips_sgml_recheck(self, mock_db):
+        """For 10-K filings, the SPAC SGML text-sample re-check is skipped.
+
+        Regression guard: the re-check fetches txt_url once per filing.
+        Running it on thousands of 10-Ks wastes SEC rate-limit without
+        providing any signal (SGML 'BLANK CHECKS [6770]' is S-1-only).
+        """
+        from unittest.mock import patch
+
+        tenk_filing = FilingMetadata(
+            cik="0001234567",
+            company_name="Acme Corp.",
+            form_type="10-K",
+            filing_date="2020-02-15",
+            accession_number="0001234567-20-000005",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/tenk.htm",
+            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/tenk.txt",
+            ticker="ACME",
+        )
+        sec_client = MockSECClient(mock_filings=[tenk_filing])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        with patch.object(
+            sec_client, "fetch_filing_text_sample"
+        ) as text_spy:
+            builder.build_universe(
+                "2020-01-01", "2020-12-31", form_types=["10-K"]
+            )
+
+        text_spy.assert_not_called()
+        # Filing still lands with is_in_scope_phase1=False (correct: 10-K not Phase 1)
+        filing_args = mock_db.upsert_filing.call_args[1]
+        assert filing_args["form_type"] == "10-K"
+        assert filing_args["is_in_scope_phase1"] is False
+
+    def test_s1_filing_still_performs_sgml_recheck(self, mock_db):
+        """Regression: S-1 filings must still trigger the SGML re-check."""
+        from unittest.mock import patch
+
+        s1_filing = FilingMetadata(
+            cik="0001234567",
+            company_name="Ambiguous Name Corp.",
+            form_type="S-1",
+            filing_date="2019-01-18",
+            accession_number="0001234567-19-000001",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/s1.htm",
+            txt_url="https://www.sec.gov/Archives/edgar/data/1234567/s1.txt",
+            ticker=None,
+        )
+        sec_client = MockSECClient(mock_filings=[s1_filing])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        with patch.object(
+            sec_client, "fetch_filing_text_sample", return_value=""
+        ) as text_spy:
+            builder.build_universe("2019-01-01", "2019-12-31")
+
+        text_spy.assert_called_once()
+
+
 class TestUniverseBuilderCoverageStats:
     """Tests for coverage statistics."""
 
