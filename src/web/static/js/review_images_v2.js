@@ -135,6 +135,10 @@
                 event.preventDefault();
                 toggleHelp();
                 break;
+            case 'f':
+                event.preventDefault();
+                if (window.NEXT_FILING_URL) window.location.href = window.NEXT_FILING_URL;
+                break;
         }
     }
 
@@ -227,10 +231,7 @@
                 if (data.next_candidate) {
                     window.location.href = data.next_candidate.url;
                 } else {
-                    showToast('All candidates reviewed!', 'info');
-                    setTimeout(() => {
-                        window.location.href = '/v2/review/';
-                    }, 1500);
+                    navigateAfterQueueEmpty();
                 }
             } else {
                 showToast(data.message || 'Error saving decision', 'danger');
@@ -241,6 +242,20 @@
         } finally {
             state.submitting = false;
         }
+    }
+
+    function navigateAfterQueueEmpty() {
+        // No more pending images in this filing. If text facts are still
+        // pending, hand off to the text tab (mirrors text→images handoff);
+        // otherwise advance to the next filing in the reviewer's sort order.
+        if (window.TEXT_PENDING && window.TEXT_PENDING > 0) {
+            window.location.href = `/v2/review/${state.filingId}?tab=text`;
+            return;
+        }
+        showToast('All candidates reviewed!', 'info');
+        setTimeout(() => {
+            window.location.href = window.NEXT_FILING_URL || '/v2/review/';
+        }, 1500);
     }
 
     async function submitSkip() {
@@ -259,10 +274,7 @@
                 if (data.next_candidate) {
                     window.location.href = data.next_candidate.url;
                 } else {
-                    showToast('All candidates reviewed!', 'info');
-                    setTimeout(() => {
-                        window.location.href = '/v2/review/';
-                    }, 1500);
+                    navigateAfterQueueEmpty();
                 }
             } else {
                 showToast(data.message || 'Error skipping candidate', 'danger');
@@ -388,7 +400,9 @@
     function scrollActiveThumbnailIntoView() {
         const activeThumbnail = document.querySelector('.thumbnail-item.active');
         if (activeThumbnail) {
-            activeThumbnail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // 'nearest' is a no-op when already in view; otherwise scrolls the
+            // minimum needed. Avoids the re-center jump on every decision.
+            activeThumbnail.scrollIntoView({ block: 'nearest' });
         }
     }
 

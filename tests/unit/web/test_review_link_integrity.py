@@ -214,7 +214,7 @@ def test_review_page_renders_well_formed_links(client, document_type):
     mock_db.get_v2_facts_for_filing.return_value = []
     mock_db.count_v2_facts_for_filing.return_value = 0
     mock_db.get_image_review_candidates_for_filing_v2.return_value = [image_candidate]
-    mock_db.get_next_filing_with_pending_facts.return_value = None
+    mock_db.get_next_filing_with_pending_work.return_value = None
 
     with (
         patch("src.web.routes.review_unified.get_db", return_value=mock_db),

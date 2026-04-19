@@ -480,7 +480,7 @@ def next_filing():
         document_type = raw_doc_type if raw_doc_type in VALID_DOCUMENT_TYPES else None
         hide_completed = request.args.get("list_hide_completed", "0") == "1"
 
-        next_id = db.get_next_filing_with_pending_facts(
+        next_id = db.get_next_filing_with_pending_work(
             current_filing_id=current_filing_id,
             document_type=document_type,
             hide_completed=hide_completed,
