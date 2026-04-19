@@ -209,8 +209,7 @@ class OCRExtractionStage:
         Returns:
             Number of images successfully downloaded
         """
-        import tempfile
-        from pathlib import Path
+        from src.infra.paths import image_cache_dir
 
         if not context.cik or not context.accession_number:
             return 0
@@ -219,12 +218,10 @@ class OCRExtractionStage:
         if self._sec_client is None:
             from src.infra.sec_client import SECClient
 
-            self._sec_client = SECClient(
-                image_cache_dir=Path(tempfile.gettempdir()) / "filings_image_cache"
-            )
+            self._sec_client = SECClient(image_cache_dir=image_cache_dir())
 
         downloaded = 0
-        cache_dir = Path(tempfile.gettempdir()) / "filings_image_cache" / "pipeline"
+        cache_dir = image_cache_dir() / "pipeline" / context.cik / context.accession_number
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         for asset in context.images:

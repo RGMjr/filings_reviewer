@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 TMPDIR image cache root opened, #35 pre-2026-04-17 chart-OCR backfill opened, #36–#40 opened from Issue #7 10-K parameterization follow-ups, #41 review-UI sticky-header offset mismatch + narrow-width pill overlap opened)
+**Last Updated**: 2026-04-19 (Issues #9 clarified, #10 resolved-by-deletion, #13 status reconciled — local verified 9-col, prod status inconsistent across docs, #24 diagnostic baseline + extended to 3 classes wired into CI, #26 review-UI link breakage resolved, #27 partially resolved — 1 assertion fixed via `img_id` mock, 2 stale assertions skipped, #28 opened on Playwright consolidation, #29 filed, #30–#31 opened from Issue #26 out-of-scope follow-ups, #31 audit-log ERROR→DEBUG guard under `TESTING=True`, #32 opened for html_segmenter coverage deferred work, #33 opened for post-#32 coverage-threshold raise, #34 Phase 1 resolved — `image_cache_dir()` helper under `data/image_cache/` with collision-safe `pipeline/<cik>/<accession>/<filename>` layout; prod persistence still pending, #35 unblocked on local dev pending prod persistence, #36–#40 opened from Issue #7 10-K parameterization follow-ups, #41 review-UI sticky-header offset mismatch + narrow-width pill overlap opened)
 
 ---
 
@@ -217,6 +217,8 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved (2026-04-19) | Low | Low | 1 test fixed via `img_id` mock update; 2 stale assertions `test.skip`-ed with TODOs; CI green |
 | Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
 | Async audit log DNS error in tests (Issue #31) | Partially resolved (2026-04-19) | Low | Low | `review_unified.py` async path now `DEBUG` under `TESTING=True`; related `middleware.py:114` path still `ERROR` (flagged in #31 body) |
+| Image cache rooted in TMPDIR (Issue #34) | Phase 1 resolved (2026-04-19); Phase 3 pending | Medium | Low | `image_cache_dir()` helper + `data/image_cache/pipeline/<cik>/<accession>/<filename>` layout; prod persistence (Render disk vs. re-fetch-on-miss) is the remaining decision |
+| Pre-2026-04-17 filings missing chart facts (Issue #35) | Unblocked on local (2026-04-19) | Medium | Medium | `batch_v2_extraction.py --force-reextract` now viable on local dev; prod waits on Issue #34 Phase 3 |
 | `populate` has no `--limit` (Issue #36) | Open | Low | Low | Year-scale 10-K sweep (~15 min SEC traffic) can be triggered accidentally; ~20 LOC fix |
 | `classify_first_time_issuer=True` for 10-K filers (Issue #37) | Open | Low | Low | `filings.is_first_time_issuer` stores misleading values for non-S-1/F-1 forms; no runtime bug |
 | `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
@@ -1005,30 +1007,43 @@ After `html_segmenter.py` is covered (Issue #32), raise `fail_under` from 75 to 
 
 ## 34. `v2_image_assets.file_path` Rooted in TMPDIR (Purged by OS)
 
-**Status**: Open
-**Severity**: Medium — breaks Chart Evidence preview on ~30% of image rows (50 / 165 local; prod unscanned)
+**Status**: ✅ Resolved locally (2026-04-19) — prod persistence still pending (Phase 3 decision)
+**Severity**: Medium — was breaking Chart Evidence preview on ~30% of image rows (50 / 165 local; prod unscanned)
 **Discovered**: 2026-04-19 (Phase 1 of the "missing Chart Evidence" investigation, commit `d1430d9`)
+**Resolved**: 2026-04-19
 
 ### Problem
 
-`v2_image_assets.file_path` is being written as `/var/folders/.../T/filings_image_cache/pipeline/<filename>.jpg` — macOS's TMPDIR. 158 of 165 asset rows on the local dev DB live outside `<repo>/data/` entirely (the remaining 7 are a separate, presentation-pipeline root). The TMPDIR is purged by the OS on reboot and after long periods of inactivity, so `image_crop` (`src/web/routes/review_unified.py:521-581`) returns 404 for the majority of rows even when the asset row and the extracted chart fact are intact.
+`v2_image_assets.file_path` was being written as `/var/folders/.../T/filings_image_cache/pipeline/<filename>.jpg` — macOS's TMPDIR. 158 of 165 asset rows on the local dev DB lived outside `<repo>/data/` entirely (the remaining 7 are a separate, presentation-pipeline root). The TMPDIR is purged by the OS on reboot and after long periods of inactivity, so `image_crop` (`src/web/routes/review_unified.py:521-581`) returned 404 for the majority of rows even when the asset row and the extracted chart fact were intact.
 
-The endpoint's `resolved.relative_to(data_dir)` security check also rejects TMPDIR paths outright as a path-traversal precaution, so the 404 fires even when the file happens to still be present. Either way, the reviewer sees no chart preview.
+The endpoint's `resolved.relative_to(data_dir)` security check also rejects TMPDIR paths outright as a path-traversal precaution, so the 404 fires even when the file happens to still be present. Either way, the reviewer saw no chart preview.
 
-This is the dominant root cause behind the Box Inc S-1/A `cm_revenue_by_cohort = $2.8M` case in the commit-`d1430d9` investigation. Template placeholders added in `d1430d9` now surface the failure explicitly, but do not resolve it — the file is still missing.
+This was the dominant root cause behind the Box Inc S-1/A `cm_revenue_by_cohort = $2.8M` case in the commit-`d1430d9` investigation. Template placeholders added in `d1430d9` surfaced the failure explicitly.
 
 ### Diagnostics
 
-`scripts/check_image_referential_integrity.py` (Issue #24) now reports Class (C) "asset rows with file_path outside data/ or missing on disk" alongside the Class (B) orphan check. Local baseline 2026-04-19: 158 / 165 rows (96%) outside `data/`, 50 / 165 absent on disk. Class (C) is **warning-only** in CI; flip to blocking once the underlying cache root is fixed and any remaining TMPDIR rows are rewritten or reprocessed.
+`scripts/check_image_referential_integrity.py` (Issue #24) reports Class (C) "asset rows with file_path outside data/ or missing on disk" alongside the Class (B) orphan check. Local baseline 2026-04-19: 158 / 165 rows (96%) outside `data/`, 50 / 165 absent on disk. Class (C) remains **warning-only** in CI; flip to blocking once any remaining TMPDIR rows are rewritten or reprocessed.
 
-### Suggested Fix
+### Resolution (2026-04-19)
 
-Locate the image-cache root used by `_persist_images_in_tx` / OCR extraction stages (likely a `tempfile.gettempdir()` or similar default) and redirect to a persistent path under `data/` (e.g. `data/image_cache/pipeline/`). Every subsequent re-extraction will heal its own filing; a one-shot migration can rewrite existing `file_path` values to the new root for filings whose source HTML is still available to re-download the images.
+`src/extraction_v2/stages/ocr_extraction.py:199-227` was rooted in `tempfile.gettempdir()`. The fix introduces `src/infra/paths.py::image_cache_dir()`, an `lru_cache`'d helper that honors an `IMAGE_CACHE_DIR` env var and defaults to `<repo>/data/image_cache/`. The pipeline subdirectory was also restructured from a flat `pipeline/<filename>` to a collision-safe `pipeline/<cik>/<accession>/<filename>` layout — the flat layout would have become permanent cross-filing corruption under `batch_v2_extraction.py --workers N` once the cache was persistent (latent in TMPDIR because OS purges masked it).
+
+`data/image_cache/` was added to `.gitignore`. Unit tests at `tests/unit/infra/test_paths.py` and the `TestImageDownloading` fixture in `tests/unit/extraction_v2/test_image_pipeline_integration.py` fence `IMAGE_CACHE_DIR` to `tmp_path` via a class-scoped autouse fixture, preventing test-time pollution of the real `data/image_cache/` tree.
+
+Every subsequent re-extraction heals its own filing's rows; no one-shot migration is required. Historical rows surface via `d1430d9`'s Chart Evidence placeholder until their filing is re-extracted.
+
+### Pending — prod persistence (Phase 3)
+
+Phase 1 fixes local dev. Render's `render.yaml` defines no disk mount, so `data/image_cache/` is still ephemeral in prod (wiped on every redeploy). Two options:
+
+- **Option A (Render disk):** Add a `disk:` block to both `filings-reviewer` web + `filings-extraction` cron services mounting `data/image_cache/` as persistent storage. Requires Render paid tier.
+- **Option B (re-fetch on miss):** Extend `image_crop` to call `SECClient.fetch_image()` on `FileNotFoundError`, re-caching under `image_cache_dir()`. No paid-tier cost; accepts 100ms SEC rate-limit on first reviewer click per image.
 
 ### Cross-References
 
 - Issue #24 — JSONB img_id has no FK (the orphan class is a separate failure mode; this one is about the file system root)
 - Issue #22 — reviewed-filing guard on image re-extraction (must be honoured by any backfill script)
+- Issue #35 — unblocks the 38-filing chart-fact backfill once Phase 3 is settled
 
 ---
 
@@ -1046,14 +1061,16 @@ The 2026-04-17 chart-OCR fix (`VisionClient.analyze_image()` now forces `respons
 
 ### Suggested Fix
 
-Once Issue #34 is addressed (image cache lives under `data/`), queue the 38 filings for re-extraction with `scripts/batch_v2_extraction.py --force-reextract` in a backfill window. The reviewed-filing guard (`V2PersistenceAdapter._persist_facts_in_tx`) must be honoured; any filings with prior reviewer decisions need explicit handling before re-extraction wipes `v2_review_decisions` via CASCADE.
+Issue #34 Phase 1 (image cache under `data/`) landed on 2026-04-19 — this backfill is now viable on **local dev**. Queue the 38 filings for re-extraction with `scripts/batch_v2_extraction.py --force-reextract` in a backfill window. The reviewed-filing guard (`V2PersistenceAdapter._persist_facts_in_tx`) must be honoured; any filings with prior reviewer decisions need explicit handling before re-extraction wipes `v2_review_decisions` via CASCADE.
+
+For **prod**, wait until Issue #34 Phase 3 is settled (either Render persistent disk or re-fetch-on-miss in `image_crop`) — otherwise `data/image_cache/` is wiped on the next deploy and the backfill is wasted.
 
 Prod count is unknown — run the diagnostic against Neon before sizing the backfill.
 
 ### Cross-References
 
 - `.claude/rules/v2-pipeline.md` — chart-OCR fix dated 2026-04-17 (the inflection point)
-- Issue #34 — backfill is wasted effort unless the image cache is moved out of TMPDIR first
+- Issue #34 — Phase 1 resolved 2026-04-19; Phase 3 (prod persistence) still pending
 - Issue #24 — any backfill must also clear the 9 Class (B) orphan refs
 - CLAUDE.md Core Design Principle #6 — reviewed-filing guard on re-extraction
 
@@ -1424,3 +1441,4 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Added Issue #34 — `v2_image_assets.file_path` rooted in macOS TMPDIR on the local extraction host; 158/165 rows outside `data/`, 50/165 absent on disk. Dominant root cause behind the Box Inc S-1/A missing-Chart-Evidence case surfaced during the commit-`d1430d9` investigation
 - **2026-04-19**: Added Issue #35 — 38 filings have chart images but zero `source_type='chart'` facts, consistent with pre-2026-04-17 chart-OCR JSON failures. Backfill via `batch_v2_extraction.py --force-reextract` pending Issue #34 fix
 - **2026-04-19**: Added Issue #41 — review-UI sticky-header offset mismatch (`.sticky-top-below-nav` at 70px vs new `.review-sticky-header` at 56px) + narrow-width pill overlap with "Next filing F" button unverified. Opened during review-UI sticky compact top-matter work, commit `ba35424`
+- **2026-04-19**: Issue #34 Phase 1 resolved — `src/infra/paths.py::image_cache_dir()` helper introduced (honors `IMAGE_CACHE_DIR` env override, defaults under `data/image_cache/`); `src/extraction_v2/stages/ocr_extraction.py` swapped from `tempfile.gettempdir()` to the helper with a collision-safe `pipeline/<cik>/<accession>/<filename>` layout; `data/image_cache/` added to `.gitignore`; tests in `tests/unit/infra/test_paths.py` + class-scoped autouse fixture in `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading` fence `IMAGE_CACHE_DIR` to `tmp_path`. Phase 3 (Render persistent disk vs. re-fetch-on-miss) is a separate decision; prod remains ephemeral until chosen. Full suite: 3591 pass, 67 skip. Issue #35 is now unblocked on local dev
