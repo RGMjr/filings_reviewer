@@ -40,15 +40,12 @@ import argparse
 import logging
 import os
 import sys
-from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
 
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import yaml  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
 from src.extraction_v2.exceptions import ReviewedFilingError  # noqa: E402
@@ -58,205 +55,22 @@ from src.filing_fetcher.filing_fetcher import FilingFetcher  # noqa: E402
 from src.infra.db import DatabaseAdapter  # noqa: E402
 from src.infra.logging_config import configure_logging  # noqa: E402
 from src.infra.sec_client import FilingMetadata, SECClient  # noqa: E402
+from src.universe.onboarding import (  # noqa: E402
+    FORM_TYPE_BUNDLES,
+    Candidate,
+    _build_discovery_sql,  # noqa: F401 — accessed by tests as cli._build_discovery_sql
+    count_review_decisions,
+    discover_candidates,
+    load_industry_map,
+    parse_year_arg,
+    resolve_form_types,
+    resolve_industry,
+)
 from src.universe.universe_builder import UniverseBuilder  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_YAML_PATH = PROJECT_ROOT / "config" / "industry_sic_codes.yaml"
-
-FORM_TYPE_BUNDLES: dict[str, list[str]] = {
-    "s1f1": ["S-1", "S-1/A", "F-1", "F-1/A"],
-    "10k": ["10-K", "10-K/A"],
-    "S-1": ["S-1"],
-    "S-1/A": ["S-1/A"],
-    "F-1": ["F-1"],
-    "F-1/A": ["F-1/A"],
-    "10-K": ["10-K"],
-    "10-K/A": ["10-K/A"],
-}
-
-# Form types where is_in_scope_phase1 is meaningful as a filter. For other
-# form types (10-K, etc.) the Phase 1 gate is not applied — see runbook
-# "10-K onboarding semantics".
-S1F1_FORMS = {"S-1", "S-1/A", "F-1", "F-1/A"}
-
-
-# ---------------------------------------------------------------------------
-# Industry map
-# ---------------------------------------------------------------------------
-
-
-def load_industry_map(yaml_path: Path = DEFAULT_YAML_PATH) -> dict[str, Any]:
-    with open(yaml_path) as f:
-        data = yaml.safe_load(f) or {}
-    industries = data.get("industries") or {}
-    aliases = data.get("aliases") or {}
-    for name, entry in industries.items():
-        codes = entry.get("sic_codes") or []
-        for code in codes:
-            if not (isinstance(code, str) and len(code) == 4 and code.isdigit()):
-                raise ValueError(
-                    f"Invalid SIC code {code!r} under industry {name!r} in {yaml_path}: "
-                    "must be a 4-digit numeric string"
-                )
-    return {"industries": industries, "aliases": aliases}
-
-
-def resolve_industry(name: str, industry_map: dict[str, Any]) -> tuple[str, list[str]]:
-    """Resolve an industry name (including aliases) to (canonical, sic_codes)."""
-    key = name.lower().strip()
-    aliases: dict[str, str] = industry_map["aliases"]
-    industries: dict[str, Any] = industry_map["industries"]
-    canonical = aliases.get(key, key)
-    if canonical not in industries:
-        known = sorted(list(industries.keys()) + list(aliases.keys()))
-        raise ValueError(
-            f"Unknown industry {name!r}. Known: {', '.join(known)}. "
-            f"Add mappings in {DEFAULT_YAML_PATH}."
-        )
-    return canonical, list(industries[canonical]["sic_codes"])
-
-
-# ---------------------------------------------------------------------------
-# Arg parsing helpers
-# ---------------------------------------------------------------------------
-
-
-def parse_year_arg(raw: str) -> tuple[int, int]:
-    """Accept 'YYYY' or 'YYYY-YYYY'. Returns (min, max) inclusive."""
-    if "-" in raw:
-        lo, hi = raw.split("-", 1)
-        y_lo, y_hi = int(lo), int(hi)
-        if y_lo > y_hi:
-            raise argparse.ArgumentTypeError(f"Year range {raw}: min > max")
-        return y_lo, y_hi
-    y = int(raw)
-    return y, y
-
-
-def resolve_form_types(raw: str) -> list[str]:
-    if raw not in FORM_TYPE_BUNDLES:
-        raise argparse.ArgumentTypeError(
-            f"Unknown form type {raw!r}. Known: {', '.join(FORM_TYPE_BUNDLES)}"
-        )
-    return FORM_TYPE_BUNDLES[raw]
-
-
-# ---------------------------------------------------------------------------
-# Discovery
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class Candidate:
-    filing_id: int
-    cik: str
-    ticker: str | None
-    company_name: str
-    form_type: str
-    filing_date: str
-    industry_code: str | None
-    accession_number: str
-    primary_doc_url: str
-    txt_url: str | None
-    already_extracted: bool
-    extracted_at: str | None
-
-
-_DISCOVERY_SQL_BASE = """
-SELECT
-    f.filing_id,
-    c.cik,
-    c.ticker,
-    c.company_name,
-    f.form_type,
-    f.filing_date,
-    c.industry_code,
-    f.accession_number,
-    f.sec_html_url AS primary_doc_url,
-    f.sec_txt_url AS txt_url,
-    (v.doc_id IS NOT NULL) AS already_extracted,
-    v.created_at AS extracted_at
-FROM filings f
-JOIN companies c ON c.company_id = f.company_id
-LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
-WHERE f.form_type = ANY(%(form_types)s)
-  AND EXTRACT(YEAR FROM f.filing_date) BETWEEN %(year_min)s AND %(year_max)s
-  AND c.industry_code = ANY(%(sic_codes)s)
-"""
-
-_PHASE1_GATE = "  AND f.is_in_scope_phase1 = TRUE\n"
-
-_DISCOVERY_ORDER = "ORDER BY f.filing_date, c.company_name\n"
-
-# Exposed for tests and backward compatibility. Equivalent to the original
-# S-1/F-1-gated query (Phase-1 filter included).
-DISCOVERY_SQL = _DISCOVERY_SQL_BASE + _PHASE1_GATE + _DISCOVERY_ORDER
-
-
-def _build_discovery_sql(form_types: list[str]) -> str:
-    """Include the Phase-1 gate only when at least one S-1/F-1 form is requested.
-
-    For 10-K-only (or other non-S-1/F-1) queries, Phase-1 filter doesn't apply:
-    those filings intentionally land with is_in_scope_phase1=FALSE.
-    """
-    include_phase1 = bool(S1F1_FORMS & set(form_types))
-    return _DISCOVERY_SQL_BASE + (_PHASE1_GATE if include_phase1 else "") + _DISCOVERY_ORDER
-
-
-def discover_candidates(
-    db: DatabaseAdapter,
-    form_types: list[str],
-    year_min: int,
-    year_max: int,
-    sic_codes: list[str],
-) -> list[Candidate]:
-    rows = db.query(
-        _build_discovery_sql(form_types),
-        {
-            "form_types": form_types,
-            "year_min": year_min,
-            "year_max": year_max,
-            "sic_codes": sic_codes,
-        },
-    )
-    return [
-        Candidate(
-            filing_id=r["filing_id"],
-            cik=r["cik"],
-            ticker=r.get("ticker"),
-            company_name=r["company_name"],
-            form_type=r["form_type"],
-            filing_date=str(r["filing_date"]),
-            industry_code=r.get("industry_code"),
-            accession_number=r["accession_number"],
-            primary_doc_url=r["primary_doc_url"],
-            txt_url=r.get("txt_url"),
-            already_extracted=bool(r["already_extracted"]),
-            extracted_at=str(r["extracted_at"]) if r.get("extracted_at") else None,
-        )
-        for r in rows
-    ]
-
-
-REVIEW_DECISIONS_SQL = """
-SELECT COUNT(rd.decision_id) AS decision_count,
-       COUNT(DISTINCT rd.reviewer_id) AS reviewer_count
-FROM v2_review_decisions rd
-JOIN v2_metric_facts f ON f.fact_id = rd.fact_id
-WHERE f.doc_id = %(filing_id)s
-"""
-# Note: v2_metric_facts.doc_id is BIGINT referencing filings(filing_id) despite
-# the column name; v2_documents.doc_id is a separate UUID PK. Joining
-# v2_metric_facts.doc_id directly to filing_id is correct.
-
-
-def count_review_decisions(db: DatabaseAdapter, filing_id: int) -> tuple[int, int]:
-    rows = db.query(REVIEW_DECISIONS_SQL, {"filing_id": filing_id})
-    if not rows:
-        return 0, 0
-    r = rows[0]
-    return int(r["decision_count"] or 0), int(r["reviewer_count"] or 0)
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +93,9 @@ def _fmt_row(c: Candidate, extra_col: bool = False) -> str:
 def print_bucket(title: str, rows: list[Candidate], show_extracted_at: bool = False) -> None:
     if not rows:
         return
-    header_cols = "  filing_id cik          ticker  company_name                   form     filed       "
+    header_cols = (
+        "  filing_id cik          ticker  company_name                   form     filed       "
+    )
     if show_extracted_at:
         header_cols += "extracted_at"
     print()
@@ -337,18 +153,14 @@ def prompt_already_extracted(
     return decisions
 
 
-def prompt_reviewed_filing(
-    candidate: Candidate, decision_count: int, reviewer_count: int
-) -> bool:
+def prompt_reviewed_filing(candidate: Candidate, decision_count: int, reviewer_count: int) -> bool:
     """Second guard: confirm purging review decisions before force-reextracting."""
     print()
     print(
         f"  WARNING: Filing {candidate.filing_id} ({candidate.company_name}) has "
         f"{decision_count} review decision(s) from {reviewer_count} reviewer(s)."
     )
-    print(
-        "  Re-extracting will PURGE these decisions (no archive; recovery requires DB backup)."
-    )
+    print("  Re-extracting will PURGE these decisions (no archive; recovery requires DB backup).")
     ans = input("  Purge and re-extract? [y/N]: ").strip().lower()
     return ans == "y"
 
@@ -376,8 +188,7 @@ def cmd_discover(args: argparse.Namespace, db: DatabaseAdapter) -> int:
 
     print()
     print(
-        f"Discovered {len(candidates)} filing(s): "
-        f"{len(new)} NEW, {len(already)} ALREADY EXTRACTED."
+        f"Discovered {len(candidates)} filing(s): {len(new)} NEW, {len(already)} ALREADY EXTRACTED."
     )
 
     if args.limit and len(new) > args.limit:
@@ -487,9 +298,7 @@ def cmd_onboard(args: argparse.Namespace, db: DatabaseAdapter) -> int:
         if force:
             dec_n, rev_n = count_review_decisions(db, c.filing_id)
             if dec_n > 0 and not prompt_reviewed_filing(c, dec_n, rev_n):
-                logger.warning(
-                    "Skipping filing_id=%d (reviewer-work guard declined)", c.filing_id
-                )
+                logger.warning("Skipping filing_id=%d (reviewer-work guard declined)", c.filing_id)
                 skipped_reviewed += 1
                 continue
 
@@ -602,8 +411,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--form-type",
         default="s1f1",
         choices=sorted(FORM_TYPE_BUNDLES.keys()),
-        help="Form-type bundle to populate (default: s1f1). Use '10k' for "
-        "10-K/10-K/A filings.",
+        help="Form-type bundle to populate (default: s1f1). Use '10k' for 10-K/10-K/A filings.",
     )
     pop.add_argument(
         "--limit",
