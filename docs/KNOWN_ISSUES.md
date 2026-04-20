@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issue #13 resolved — prod verified 9-col; #31 fully resolved — sync middleware path now matches async TESTING guard; #36 resolved — `populate --limit N` + `build_universe(limit=)`; #37 resolved — FTI classifier gated to S-1/F-1; #41 code landed — `--navbar-height` CSS var + compact navbar + pill flex-wrap + three badges dropped; browser verification pending)
+**Last Updated**: 2026-04-20 (#43 opened for 8-K document selection only fetching primary doc; #44 opened for 8-K section classifier missing earnings-exhibit patterns; #45 opened for `detect_universe_gaps` ignoring SIC filter)
 
 ---
 
@@ -226,6 +226,9 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
 | Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Code landed 2026-04-19 (commit `366d9dd`); browser verification pending | Low | Low | `--navbar-height: 48px`, compact navbar, `.review-pill-row` flex-wrap; three badges dropped to free horizontal space; deployed build awaiting visual calibration |
 | `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
+| 8-K fetcher ignores Exhibit 99.1 (Issue #43) | Open | Medium | Medium | Primary doc is often a cover sheet; earnings content lives in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
+| 8-K section classifier missing earnings-exhibit patterns (Issue #44) | Open | Low | Low | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS. Facts still bind; section-aware logic degrades |
+| `detect_universe_gaps` ignores SIC filter (Issue #45) | Open | Low | Low | Reports gaps based on `(year, form_type)` only; can trigger needless populate runs when filings exist but not for the queried SIC |
 
 ---
 
@@ -1386,6 +1389,62 @@ Lightweight — <20 LOC of CSS, no template restructure.
 2. Delete the now-unused `cache_dir = image_cache_dir() / "pipeline" / ...` construction.
 3. Update `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading` to assert `asset.file_path` is under the SECClient cache layout.
 4. `image_cache_dir()` continues to be the single canonical root; just one layout underneath.
+
+---
+
+## 43. 8-K Fetcher Returns Only Primary Doc; Earnings Content Lives in Exhibit 99.1
+
+**Status**: Open
+**Severity**: Medium — blocks 8-K recall in batch-ingest UI rollout
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
+
+### Problem
+
+`FilingFetcher.fetch_filing` (`src/filing_fetcher/filing_fetcher.py:263-365`) downloads only `primary.htm` resolved from the accession's directory URL. For many 8-K filings the primary doc is a ~10 KB cover page that points at Exhibit 99.1 (the actual press release / financial-highlights HTML). Pipeline ran cleanly on 4/5 Phase 0 candidates but Samsara (2025-08-21) produced 0 facts — the primary doc was 9,336 bytes of boilerplate; all customer-metric content sat in `exhibit991-2025x08x21.htm` which was never fetched.
+
+### Next Steps
+
+1. In `fetch_filing`, after downloading `primary.htm`, parse the index for `99.1` (or regex-matched variants like `ex-99-1`) and download the exhibit alongside the primary doc.
+2. Decide whether the pipeline consumes only the exhibit, both docs concatenated, or runs twice and merges facts — prefer "concat with a section break" for the MVP to avoid invalidating `filing_id` uniqueness.
+3. Add an integration test using the Samsara 8-K (or a fixture mirroring its structure) asserting >0 customer-metric facts.
+4. Gate on this before enabling 8-K in the batch-ingest UI form-type selector.
+
+---
+
+## 44. 8-K Section Classifier Produces Only `COVER` / `FINANCIALS` Labels
+
+**Status**: Open
+**Severity**: Low — extraction still works; section-aware FP rules and UI navigation degrade
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
+
+### Problem
+
+`SectionClassificationStage.SECTION_PATTERNS` (`src/extraction_v2/stages/section_classification.py:104-138`) only knows S-1/10-K structural headings (`Item 1A`, `Item 7`, `Item 8`, etc.). 8-K earnings exhibits use narrative patterns like "Financial Highlights", "Key Business Metrics", "Q4 Highlights", "Results of Operations" that none of the existing patterns match. Phase 0 run: every segment on Chewy / DoorDash / Robinhood / Snowflake 8-Ks was classified as `COVER` or `FINANCIALS`. Candidate generation and value binding still produced correct facts, but sections-aware downstream logic (FP rules keyed on `section_type`, reviewer UI navigation, section-scoped metric scoring) is blind on 8-Ks.
+
+### Next Steps
+
+1. Add a new `SectionType` variant — e.g. `EARNINGS_HIGHLIGHTS` — or piggyback on `BUSINESS` if the existing type taxonomy already carries the right semantics.
+2. Add pattern list entries for common 8-K headings: `Financial Highlights`, `Key Business Metrics`, `Q[1-4]\s*\d{4}\s*Highlights`, `Results of Operations`, `Business Highlights`.
+3. Validate against the Phase 0 candidate set (Chewy, DoorDash, Robinhood, Snowflake 8-Ks) — expect >=30% of segments to land on non-COVER sections.
+4. Audit existing FP rules for section-gated behavior that might fire differently once 8-K segments are correctly typed.
+
+---
+
+## 45. `detect_universe_gaps` Ignores SIC Filter When Reporting Populate Gaps
+
+**Status**: Open
+**Severity**: Low — correctness-neutral, efficiency issue
+**Discovered**: 2026-04-20 (Phase 1 review of `src/universe/onboarding.py`)
+
+### Problem
+
+`src/universe/onboarding.py::detect_universe_gaps` reports a `(year, form_type)` gap whenever the `filings` table has zero rows for that combination in the query's year range, regardless of the query's SIC code set. A reviewer filtering the UI to e.g. grocery retail 8-Ks will see a "populate 2023" prompt even if 2023 already has thousands of non-grocery 8-K filings in `filings` — the SIC intersection with those is empty, but the year/form coverage exists. The populate run that follows will re-fetch an entire year of 8-K metadata unnecessarily.
+
+### Next Steps
+
+1. Change the gap query from `filings.form_type + filing_date` to `filings JOIN companies ON company_id` with `industry_code = ANY(%(sic_codes)s)` (or the equivalent once the companies.industry_code field is populated — check that first).
+2. Alternatively, accept the over-populate behavior and document the trade-off in `src/universe/onboarding.py` at the function docstring — populate is idempotent, just bandwidth-wasteful.
+3. Add a unit test covering the "filings exist but not for our SIC" case.
 
 ---
 
