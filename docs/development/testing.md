@@ -13,7 +13,7 @@ The test suite enforces correctness across the extraction pipeline, review syste
 2. Integration tests require a real PostgreSQL test database (`TEST_DATABASE_URL`). They validate database upsert idempotency, full pipeline runs on cached HTML fixtures, and API transaction integrity.
 3. Gold standard regression tests guard against precision/recall regressions on a curated set of known-good filings.
 
-**Coverage requirement:** 75% minimum, enforced by `pytest-cov` (`fail_under = 75` in `pyproject.toml`). The `src/extraction/` (V1, retired) directory is excluded from coverage measurement.
+**Coverage requirement:** 80% minimum, enforced by `pytest-cov` (`fail_under = 80` in `pyproject.toml`). The `src/extraction/` (V1, retired) directory is excluded from coverage measurement.
 
 **Type safety:** `src/review/` passes `mypy --strict`. Other modules use permissive mypy settings.
 
@@ -338,7 +338,7 @@ def test_db_upsert_is_idempotent(clean_db): ...
 
 ## Coverage Dashboard
 
-Run `pytest --cov=src --cov-report=term-missing` to get current numbers. The global minimum is 75% (`fail_under = 75`). `src/extraction/` (V1, retired) is excluded from measurement via `omit` in `pyproject.toml`.
+Run `pytest --cov=src --cov-report=term-missing` to get current numbers. The global minimum is 80% (`fail_under = 80`). `src/extraction/` (V1, retired) is excluded from measurement via `omit` in `pyproject.toml`.
 
 | Module | Notes |
 |--------|-------|

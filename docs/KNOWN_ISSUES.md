@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path + facts==0 short-circuit; `repair_filing_url_mismatch.py::_eligible_rows` warns on `B_coordinated` rows; 7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py`; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`. Earlier today: #48 resolved — `image_crop` now guarded by `@require_api_key`; new `_verify_api_key` helper + view decorator in `src/web/middleware.py`; 5 new auth test cases in `tests/unit/web/test_image_crop.py`; #49 opened for integration test DB flakiness under full-suite `pytest -x`; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
+**Last Updated**: 2026-04-20 (#32 resolved — `src/shared/html_segmenter.py` deleted as dead V1 code after verifying zero production callers; #33 resolved — `pyproject.toml` `fail_under` raised 75 → 80 in same change; #44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path + facts==0 short-circuit; `repair_filing_url_mismatch.py::_eligible_rows` warns on `B_coordinated` rows; 7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py`; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`; #48 resolved — `image_crop` now guarded by `@require_api_key`; new `_verify_api_key` helper + view decorator in `src/web/middleware.py`; 5 new auth test cases in `tests/unit/web/test_image_crop.py`; #49 opened for integration test DB flakiness under full-suite `pytest -x`; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
 
 ---
 
@@ -275,6 +275,8 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved (2026-04-19) | Low | Low | 1 test fixed via `img_id` mock update; 2 stale assertions `test.skip`-ed with TODOs; CI green |
 | Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
 | Audit log DNS error in tests (Issue #31) | Resolved (2026-04-19) | — | — | Both async (`review_unified.py`) and sync (`middleware.py`) paths log DEBUG under `TESTING=True`; commit `366d9dd` closes the sync-path gap |
+| `html_segmenter.py` 0% coverage (Issue #32) | Resolved (2026-04-20) | — | — | Verified zero production callers; module deleted (2032 LOC) along with smoke test. Coverage 81.44% → 83.5%. Successor: `src/extraction_v2/stages/ingestion.py` |
+| Raise coverage threshold to 80% (Issue #33) | Resolved (2026-04-20) | — | — | `pyproject.toml` `fail_under` 75 → 80 in same change as #32; `.claude/rules/testing.md` updated to match |
 | Image cache rooted in TMPDIR (Issue #34) | Resolved (Phases 1 + 3, 2026-04-19) | Medium | — | `ImageStorage` abstraction + Cloudflare R2 backend; `v2_image_assets.file_path` stores opaque storage keys; validated via `validate_key()`; 7 call sites migrated |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Unblocked (2026-04-19) | Medium | Medium | `batch_v2_extraction.py --force-reextract` now viable on both dev and prod; 38 filings to queue |
 | `populate` has no `--limit` (Issue #36) | Resolved (2026-04-19) | — | — | `build_universe(limit=)` + `populate --limit N` land in commit `366d9dd`; regression-guarded |
@@ -1033,46 +1035,41 @@ Both paths now capture `testing = bool(current_app.config.get("TESTING"))` and d
 
 ## 32. `src/shared/html_segmenter.py` Has 0% Test Coverage (761 LOC)
 
-**Status**: Open
-**Severity**: Medium — blocks CI coverage gate (current coverage 74–75% hovers at the 75% threshold; any regression tips it back red)
-**Discovered**: 2026-04-19 (surfaced while fixing the CI coverage failure — see Issue #30's neighbour)
+**Status**: ✅ Resolved (2026-04-20) — module deleted as dead code
+**Severity**: Medium (was) — blocked CI coverage gate at 75% threshold
+**Discovered**: 2026-04-19
+**Resolved**: 2026-04-20
 
-### Problem
+### Resolution
 
-`src/shared/html_segmenter.py` is 761 lines of live V2 code (imported by `src/extraction_v2/stages/ingestion.py`) with **zero test coverage**. It is by far the single largest contributor to CI coverage being parked near the 75% threshold. Small companion modules (`src/shared/extraction_exceptions.py`, `src/shared/models.py`, `src/shared/segment_validators.py`) have been covered as part of this fix-wave, which is enough to get CI green — but only by a narrow margin.
+Verified 2026-04-20 that the module had **zero production callers**. Original ticket asserted it was "imported by `src/extraction_v2/stages/ingestion.py`" — that was inaccurate; the only Python import was the smoke test (`tests/unit/shared/test_html_segmenter_smoke.py`). The V2 ingestion stage (`src/extraction_v2/stages/ingestion.py`) reimplements the table/paragraph detection logic in-tree using `lxml`; the V1 segmenter has been functionally retired since the V2 cutover and survived the V1 retirement sweep (commit `03a8a20`) only because it lived under `src/shared/` rather than `src/extraction/`.
 
-### Why it was deferred
+Resolution: delete `src/shared/html_segmenter.py` (2032 LOC) and `tests/unit/shared/test_html_segmenter_smoke.py`. Strip stale docstring/README references that now point at a non-existent module. Pre-delete coverage: 81.44%. Post-delete coverage cleared the way for the #33 floor bump.
 
-The cheap wins (delete `src/web/table_html_extractor.py` + `src/web/utils.py`, cover the three small `src/shared/*` files) were executed in commits addressing the original red-CI incident. Testing `html_segmenter.py` requires:
+### Pre-delete state vs. ticket claims
 
-- A representative minimal SEC HTML fixture under `tests/fixtures/html/` (doesn't exist yet — existing integration tests use `data/sec_html/` which is gitignored).
-- Understanding of the segmenter's public API (`SECHTMLSegmenter` class, primary parse entrypoint) to decide which paths are worth pinning down first.
-- Decisions about which internal helpers (table-truncation, encoding fallback, context-prefix detection) deserve direct tests vs. end-to-end coverage via the main entrypoint.
+| Ticket claim | Reality (verified 2026-04-20) |
+|---|---|
+| "0% test coverage" | Smoke test covered ~46% (15 tests) |
+| "761 LOC" | 2032 LOC (the 761 was a stmt-count, not LOC) |
+| "imported by `src/extraction_v2/stages/ingestion.py`" | Comment-only reference; `lxml`-based V2 ingestion is self-contained |
 
-Rough sizing: a single happy-path test that parses a trimmed 10-K excerpt and asserts segment count + types would cover 20–30% of the module (150–230 LOC), pushing total coverage to ~76–77% and giving headroom.
+### References
 
-### Plan when taken up
-
-1. Capture a minimal SEC HTML fixture (~5–10 KB) by trimming `data/sec_html/<filing>.htm` to one section containing prose + a table + a footnote. Commit to `tests/fixtures/html/`.
-2. Write `tests/unit/shared/test_html_segmenter.py` with:
-   - One happy-path test calling the primary entrypoint on the fixture; assert returned `SourceSegment` list is non-empty and has expected `segment_type` values.
-   - One test per error branch: malformed HTML → `HTMLParsingError`; bad encoding → `EncodingError`; invalid filing_id → `ValidationError`.
-   - One test for table-truncation behaviour with an oversized inline table.
-3. Target 30%+ coverage of `html_segmenter.py` in the first pass. Not 100% — the SEC-specific quirks (broken encodings, nested CDATA, etc.) are better covered by integration tests against real filings.
-
-### Prevent another coverage crisis
-
-Once `html_segmenter.py` is meaningfully covered, consider raising `fail_under` from 75 to 80 in `pyproject.toml` so future dead/untested code can't re-park CI at the threshold. Track under a separate follow-up — see Issue #33.
+- Module deletion + cleanup commit: see `git log -- src/shared/html_segmenter.py`
+- Successor: `src/extraction_v2/stages/ingestion.py`
+- Issue #33 (coverage floor bump) closed in the same change.
 
 ---
 
 ## 33. Raise Coverage Threshold to 80% After Issue #32
 
-**Status**: Open (blocked on #32)
+**Status**: ✅ Resolved (2026-04-20)
 **Severity**: Low — prevention
-**Discovered**: 2026-04-19 (follow-up from the CI red-state drift incident)
+**Discovered**: 2026-04-19
+**Resolved**: 2026-04-20
 
-After `html_segmenter.py` is covered (Issue #32), raise `fail_under` from 75 to 80 in `pyproject.toml` `[tool.coverage.report]`. The 75% floor is where the original incident parked — any new 0%-coverage module dropped the total back under the gate. A higher floor forces the fix at contribution time rather than letting dead code accumulate. Trivial edit (one number) once #32 lands.
+`fail_under` raised from 75 → 80 in `pyproject.toml` `[tool.coverage.report]` in the same change as Issue #32. Post-delete coverage measured at 83.5%, leaving ~3.5 points of headroom. Companion mention in `.claude/rules/testing.md` updated to match.
 
 ---
 

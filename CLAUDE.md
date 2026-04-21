@@ -31,7 +31,7 @@ Image bytes live in Cloudflare R2 (prod) / local filesystem (dev) via `src/infra
 
 ## Testing Standards
 
-- **Coverage**: 75% minimum (enforced)
+- **Coverage**: 80% minimum (enforced)
 - **Type safety**: `src/review/` passes `mypy --strict`
 - **Before committing**: Run `pytest -x -q` when staged changes include code files (`src/`, `tests/`, `scripts/`, `config/`, `sql/`, `pyproject.toml`, `requirements.txt`). Docs-only and `.claude/`-only commits may skip lint and tests. If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
 - **Pre-existing failures**: When a test fails during implementation, check whether it was already failing before your changes (`git stash && pytest <failing_test> -x -q && git stash pop`). Do not spend time debugging failures that predate the current work — note them and move on.

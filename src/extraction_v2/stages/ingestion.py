@@ -465,7 +465,7 @@ class IngestionStage:
         """
         Extract table segments from HTML tree (internal method with elements).
 
-        Ports table detection logic from V1 html_segmenter.py:
+        Table detection:
         - Find <table> elements
         - Skip tables nested in divs that will be handled by div processing
         - Extract table text (markers will be added in AC-7)
@@ -552,7 +552,7 @@ class IngestionStage:
         """
         Extract paragraph segments from HTML tree (internal method with elements).
 
-        Ports paragraph detection logic from V1 html_segmenter.py:
+        Paragraph detection:
         - Find text elements (p, div, blockquote, pre, figure)
         - Extract and normalize text content
         - Filter by min/max length (50-10000 chars)
