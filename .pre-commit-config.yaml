@@ -27,3 +27,13 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
+
+      # Pre-commit: block Tier-1 gold-standard regressions and unapproved
+      # docs/ folders before they land in a PR. Script inspects staged files
+      # itself, so pass_filenames is false.
+      - id: extraction-guard
+        name: extraction/docs guard (Tier-1 regression + docs folder allowlist)
+        entry: bash scripts/pre-commit-extraction-guard.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]

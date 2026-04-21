@@ -2,7 +2,66 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21 (#35 partially resolved — `chart_only` mode landed via PR #50; 3-filing Neon smoke validated mechanism safety; full 8-filing backfill deferred pending investigation of #53/#54. #53 opened for chart call limit truncation; #54 opened for chart-bridge low-confidence misbinds; #55 opened for 28 stuck 8-K filings from form-filter bypass. #56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports; README gains pipeline-stage class mentions + coverage line matching the sync script's regex. #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. #56+#57 unblock PR #50 and every future PR. Previously on 2026-04-20: #32 resolved — `src/shared/html_segmenter.py` deleted as dead V1 code; #33 resolved — `pyproject.toml` `fail_under` raised 75 → 80; #44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`; #48 resolved — `image_crop` guarded by `@require_api_key`; #49 opened for integration test DB flakiness; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; #51 opened for brittle source-string assertions in `test_persistence_sql.py`; #52 opened for `pg_dump` version-mismatch silent failure)
+**Last Updated**: 2026-04-21, #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+
+---
+
+## Summary
+
+### Open — High Severity
+
+_(none currently)_
+
+### Open — Medium Severity
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Low Farfetch Recall (Issue #2) | Re-diagnosed umbrella | P=50% R=37% F1=42% on 2026-04-18; superseded by sub-issues #14–#19 |
+| Secret-leak guard on mis-named env duplicates (Issue #65) | Open | `.gitignore` only matches `.env` exactly; a file named `" "` containing full env was untracked but not ignore-protected |
+| Migrations not auto-applied on Render deploy (Issue #66) | Open | PR #48 merged `sql/39` but Render didn't run `apply_migrations.py`; worker crashed with `UndefinedTable` until manual apply |
+
+### Open — Low Severity
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Farfetch precision drag — table-scale + period (Issue #16) | Open | 9 FPs across Active Consumers + Purchase Transactions; doesn't block recall |
+| `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | 9 orphan facts in local DB; cleanup + FK promotion still open |
+| Mock-server / template-contract coupling (Issue #28) | Open | Smoke spec catches the symptom class; root coupling remains |
+| `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | BIGINT referencing `filings.filing_id` despite name; rename needs migration + caller sweep |
+| `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Column name implies "in active universe" but means "Phase 1 IPO candidate" |
+| 10-K/A supersession semantics undefined (Issue #40) | Open | Stakeholder decision needed before first bulk 10-K onboard |
+| Spectrum Brands co-registrant filings still have Uber HTML cached (Issue #43) | Open | Latent — no facts extracted yet; hazard only on re-extraction |
+| Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Undermines pre-commit gate; reproduces on clean main |
+| Chart call limit (10) truncates OCR on high-chart filings (Issue #53) | Open | Tier 1 charts in positions 11+ invisible to the bridge |
+| 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Out-of-scope 8-Ks reached `v2_image_assets`; inflates Issue #35 baseline |
+| 8-K fetcher ignores Exhibit 99.1 (Issue #58) | Open | Primary doc often a cover sheet; earnings content in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
+| 8-K section classifier missing earnings patterns (Issue #59) | Open | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS |
+| `detect_universe_gaps` ignores SIC filter (Issue #60) | Open | Reports gaps on `(year, form_type)` only; can trigger needless populate runs |
+| `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
+| Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
+| Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
+| Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
+
+### Partially Resolved
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Snap Filing (ID 32/33) — Mislabeled Data (Issue #9) | Partially resolved | Snap not yet in gold standard; validation DB no longer required |
+| Images Tab Playwright assertions fail (Issue #27) | Partially resolved | 1 test fixed; 2 stale assertions `test.skip`-ed with TODOs |
+| Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved | `chart_only` mode landed (PR #50); full 8-filing backfill deferred (#53, #54) |
+
+### Known Limitations
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Spelled-Out Number Limits (Issue #4) | Known limitation | Complex compound numbers not supported; edge case in SEC filings |
+| Revenue Synonym Gating (Issue #5) | Working as designed | GMV/TCV/ACV/Bookings/Billings require cohort context to generate candidates |
+
+### Cross-Referenced (keep body until dependents close)
+
+| Issue | Notes |
+|-------|-------|
+| Image cache / R2 backend (Issue #34) | Cross-referenced by #24, #35, #42; body retained until those close |
 
 ---
 
@@ -52,41 +111,6 @@ to prevent accidentally committing production database dumps.
 
 - Corrected stale comment in `gi3_richness_analysis.py` FILING_MAP
 - Added inline note on Snap CIK pending fix
-
----
-
-## 11. Gold Standard Coverage Tests — Partially Resolved
-
-**Status**: Partially resolved
-**Severity**: Low (1 test remaining)
-**Discovered**: 2026-03-19
-**Updated**: 2026-03-31
-
-### Original Problem
-
-Two tests in `tests/integration/test_gold_standard_coverage.py` were failing:
-- `test_candidate_generation_finds_active_consumers`
-- `test_candidate_generation_finds_number_of_orders`
-
-### Resolution (2026-03-31)
-
-Diagnosed and fixed. The failures had two root causes unrelated to the Farfetch re-fetch:
-
-1. **Wrong metric ID** — Test expected `cm_transactions_by_cohort` for "Number of Orders", but extraction
-   maps this to `cm_purchase_transactions_overall`. Fixed in test assertions (lines 62, 67, 267).
-
-2. **Broken import in `TestKeywordPatterns`** — Tests accessed `MetricClassifier.METRIC_KEYWORDS` which
-   does not exist (only `GENERAL_METRIC_KEYWORDS` is on the class). Fixed to import
-   `METRIC_KEYWORDS` from `src.review.keyword_matching`.
-
-After fix: 11/12 tests in `test_gold_standard_coverage.py` pass.
-
-### Remaining (Issue #10)
-
-`test_candidate_generation_finds_active_consumers` still fails due to CMS-1 cross-metric suppression.
-The "Active Consumers" keyword matches both `cm_active_customers_total` and `cm_customers_period_end`;
-the CMS-1 tie-breaker assigns it to `cm_customers_period_end`. The gold standard expects
-`cm_active_customers_total`. Resolving this requires an extraction logic decision — see Issue #10 below.
 
 ---
 
@@ -188,316 +212,6 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 ---
 
-## 46. `scripts/apply_all_migrations.py` Stale — Stops at Migration 31
-
-**Status**: ✅ Resolved (2026-04-20)
-**Severity**: Low
-**Discovered**: 2026-04-20
-**Resolved**: 2026-04-20
-
-### Resolution (2026-04-20)
-
-`MIGRATION_ORDER` in `scripts/apply_all_migrations.py` extended with the seven entries that were missing: `32_add_detected_keywords_to_v2_image_assets.sql`, `33_fix_identity_index.sql`, `34_dedup_v2_image_assets.sql`, `35_drop_v2_image_assets_segment_id.sql`, `36_backfill_presentation_urls.sql`, `37_create_analytics_role.sql`, `38_create_analytics_views.sql`. `--dry-run` now reports 44 migrations and the `check_unregistered_migrations` guard no longer aborts.
-
-Sync rather than delete: `apply_all_migrations.py` is referenced from `docs/operations/setup-guide.md`, `docs/operations/cloud-deployment-runbook.md`, `docs/operations/sql31-migration-runbook.md`, `docs/architecture/v1-table-deprecation-plan.md`, `docs/README.md`, `.claude/rules/scripts.md`, and `.claude/commands/project-tutorial.md`. Deletion would expand scope into 7 doc files; sync is a 7-line `MIGRATION_ORDER` append.
-
-`33_fix_identity_index.sql` is included even though `apply_migrations.py` skips it (because Neon prod was healed out-of-band, see `apply_migrations.py:68-74`); the migration is explicitly idempotent (`-- Idempotent: running this migration twice drops and rebuilds the same index` — `DROP INDEX IF EXISTS` + recreate), so re-applying through `apply_all_migrations.py`'s separate ledger is a no-op DDL.
-
-### Problem
-
-`scripts/apply_all_migrations.py` maintains its own `MIGRATION_ORDER` list that
-ends at `31_drop_v1_review_tables.sql`. It also runs a
-`check_unregistered_migrations` guard that aborts with an error if any `sql/*.sql`
-file is missing from the list. That means anyone invoking this variant today
-will hit a confusing failure because files 32–38 are unregistered there, while
-the canonical runner (`scripts/apply_migrations.py`) handles them correctly.
-
-### Next Steps
-
-- Either bring `apply_all_migrations.py` into sync with `apply_migrations.py`
-  and keep both in lockstep, or
-- Delete `apply_all_migrations.py` entirely if the canonical runner is
-  sufficient. The two scripts overlap substantially in behavior.
-
----
-
-## 47. `data/audit/` Not Gitignored
-
-**Status**: ✅ Resolved (2026-04-20)
-**Severity**: Low
-**Discovered**: 2026-04-20
-**Resolved**: 2026-04-20
-
-### Resolution (2026-04-20)
-
-`data/audit/` added to `.gitignore` (line 46), grouped with the other runtime `data/*` subpaths (`data/filings/`, `data/image_cache/`, `data/llm_cache.db`). Verified via `git check-ignore -v data/audit/example.jsonl` → `.gitignore:46:data/audit/`. No historical contents needed versioning.
-
-### Problem
-
-Runtime audit output (e.g. `data/audit/issue_30_applied_*.jsonl`) accumulates
-in the working tree as untracked files. Other runtime subpaths under `data/`
-are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
-`data/llm_cache.db`, etc.), but `data/audit/` was missed.
-
-### Next Steps
-
-- Add `data/audit/` to `.gitignore` alongside the existing `data/*` entries.
-- Confirm no historical `data/audit/` contents are expected to be versioned.
-
----
-
-## Summary
-
-| Issue | Status | Priority | Effort | Impact |
-|-------|--------|----------|--------|--------|
-| Low Farfetch Recall (Issue #2) | Re-diagnosed umbrella | Medium | — | Superseded by sub-issues #14–#19; P=50% R=37% F1=42% on 2026-04-18 |
-| Gold Standard Methodology | Resolved | — | — | Spec doc created |
-| Spelled-Out Number Limits | Open | Low | High | Edge case coverage |
-| Revenue Synonym Gating | Monitor | N/A | N/A | Working as designed |
-| Gold Standard Coverage Tests (Issue #11) | Partially resolved | Low | Medium | 11/12 pass; 1 remaining (now linked to Issue #10 re-scope) |
-| Snap Filing Mislabeled (Issue #9) | Partially resolved | Low | Low | Snap not in gold standard; validation DB no longer required |
-| `test_candidate_generation_finds_active_consumers` (Issue #10) | Resolved (2026-04-19) | — | — | Resolved-by-deletion in commit `03a8a20` (V1 retirement); test module retired |
-| `test_image_crop.py` pollutes `data/` (Issue #12) | Resolved (2026-04-18) | — | — | `make_png_in_data_dir` fixture cleans up on teardown |
-| V2 metric facts identity index drift (Issue #13) | Resolved (2026-04-19) | — | — | Prod `pg_indexes` read confirms 9-col (including `source_type`); local + prod now agree; `apply_migrations.py:68-74` comment remains accurate |
-| Farfetch LTV/CAC dedup collision (Issue #14) | Resolved (2026-04-18) | — | — | cm_ltv_to_cac_ratio 33%→100%; cm_ltv_to_cac_ratio_by_cohort 17%→50%; Farfetch F1 +10.3pp |
-| Chart pipeline env bootstrap (Issue #15) | Resolved (2026-04-18) | — | — | `load_dotenv()` added to validator's `__main__` |
-| `cm_gross_margin_by_cohort` still 0% despite chart pipeline (Issue #20) | Resolved (2026-04-18) | — | — | Classifier+parser gates relaxed for customer-type/year-in-point.x shape; 0% → 100% F1 on Farfetch; Tier 1 overall +5.4pp |
-| `v2_image_assets` duplicates + pending-count discrepancy — Maplebear S-1 (Issue #21) | Resolved (2026-04-18) | — | — | sql/34 dedup migration + stable img_id upsert (ON CONFLICT (doc_id, filename)) + in-memory fact source_locator remap |
-| No reviewed-filing guard on image re-extraction (Issue #22) | Resolved (2026-04-18) | — | — | `_persist_images_in_tx` raises `ReviewedFilingError(context="image classifications")` on visible→hidden re-classification |
-| `v2_image_assets.segment_id` dead column (Issue #23) | Resolved (2026-04-18) | — | — | sql/35 drops column; persistence.py cleaned up |
-| `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | Low | Medium | Diagnostic script added 2026-04-19; 9 orphan facts in local DB across 4 docs; cleanup + FK promotion still open |
-| `cm_new_customers_acquired` 2.71x chart FP on Farfetch LTV/CAC (Issue #29) | Resolved (2026-04-19) | Low | Low | New `_rule_ratio_suffix_on_count_metric` in FP filter; 6 regression tests; Farfetch GS confirms `2.71x` FP eliminated |
-| `scripts/migrate_image_ids_to_deterministic.py` scope confusion (Issue #25) | Resolved (2026-04-18) | — | — | Docstring expanded to clarify JSON-only scope |
-| Farfetch precision drag — table-scale + period (Issue #16) | Open | Low | Medium | 9 FPs across Active Consumers + Purchase Transactions (doesn't block recall) |
-| CAC payback "six months" not bound (Issue #17) | Resolved (2026-04-18) | — | — | Added `WORD_NUMBER_TIME_PATTERN` gated to time-valued metrics; cm_cac_payback_period 0% → 100% F1 |
-| Migration checksum mismatch — `sql/01_create_schema.sql` (Issue #18) | Resolved (2026-04-18) | — | — | Self-healed via V1 retirement merge |
-| FN diagnostic classification gaps (Issue #19) | Resolved (2026-04-18) | — | — | Added `dedup_collision` + `no_matching_binding` categories; `wrong_period` restricted to post-dedup |
-| Images Tab Playwright assertions fail (Issue #27) | Partially resolved (2026-04-19) | Low | Low | 1 test fixed via `img_id` mock update; 2 stale assertions `test.skip`-ed with TODOs; CI green |
-| Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
-| Audit log DNS error in tests (Issue #31) | Resolved (2026-04-19) | — | — | Both async (`review_unified.py`) and sync (`middleware.py`) paths log DEBUG under `TESTING=True`; commit `366d9dd` closes the sync-path gap |
-| `html_segmenter.py` 0% coverage (Issue #32) | Resolved (2026-04-20) | — | — | Verified zero production callers; module deleted (2032 LOC) along with smoke test. Coverage 81.44% → 83.5%. Successor: `src/extraction_v2/stages/ingestion.py` |
-| Raise coverage threshold to 80% (Issue #33) | Resolved (2026-04-20) | — | — | `pyproject.toml` `fail_under` 75 → 80 in same change as #32; `.claude/rules/testing.md` updated to match |
-| Image cache rooted in TMPDIR (Issue #34) | Resolved (Phases 1 + 3, 2026-04-19) | Medium | — | `ImageStorage` abstraction + Cloudflare R2 backend; `v2_image_assets.file_path` stores opaque storage keys; validated via `validate_key()`; 7 call sites migrated |
-| Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved (2026-04-21) | Low | Low | `chart_only` mode landed (PR #50) — surgical backfill available without destroying reviewer work; 3-filing smoke on Neon confirms mechanism safe. Recall gain is marginal: 38-filing Class (E) baseline overstates the real Tier 1 gap because most in-scope filings' charts aren't cohort/NRR structures. Full 8-filing backfill deferred pending chart-bridge recall investigation (Issues #53, #54) |
-| `populate` has no `--limit` (Issue #36) | Resolved (2026-04-19) | — | — | `build_universe(limit=)` + `populate --limit N` land in commit `366d9dd`; regression-guarded |
-| `classify_first_time_issuer=True` for 10-K filers (Issue #37) | Resolved (2026-04-19) | — | — | `_process_filing` gates the classifier to S-1/F-1; non-applicable filings land with `is_first_time_issuer=NULL`; commit `366d9dd` |
-| `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
-| `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Low | Medium | Column name implies "in active universe" but means "Phase 1 IPO candidate"; confusing with 10-Ks present; needs rename or form-aware companion column |
-| 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
-| Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Resolved (2026-04-19) | — | — | `--navbar-height: 48px`, compact navbar, `.review-pill-row` flex-wrap; three badges dropped; deployed Render build verified visually |
-| `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
-| `audit_filing_url_mismatch.py` over-rotates to Path C (Issue #44) | Resolved (2026-04-20) | — | — | `_classify_path` decision tree refined: `facts==0` short-circuits to Path A (Spectrum Brands pattern); `facts>0` + collision → new `B_coordinated` sub-path. `repair_filing_url_mismatch.py` warns on `B_coordinated` rows. 7 unit tests |
-| `validate_database_urls.py` missing `load_dotenv()` (Issue #45) | Resolved (2026-04-20) | — | — | `load_dotenv()` added before `DATABASE_URL` read; mirrors `apply_migrations.py` pattern |
-| `apply_all_migrations.py` stale (Issue #46) | Resolved (2026-04-20) | — | — | MIGRATION_ORDER extended with 32-38; `--dry-run` no longer aborts on unregistered files. Sync rather than delete (script still referenced from 7 docs) |
-| `data/audit/` not gitignored (Issue #47) | Resolved (2026-04-20) | — | — | `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores |
-| `image_crop` unauthenticated (Issue #48) | Resolved (2026-04-20) | — | — | `@require_api_key` decorator added in `src/web/middleware.py` (extracts the existing `_check_api_key` body into `_verify_api_key`); applied to `image_crop` in `review_unified.py`; 5 auth tests cover missing / wrong / correct key, same-origin bypass, and misconfig 500 |
-| Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Low | Medium | First integration test to hit the pool fails with `AdminShutdown` / `the connection is lost` / `deadlock detected`; specific test varies run-to-run; reproduces on clean main. Undermines the `pytest -x -q` pre-commit gate |
-| No 401-path test coverage for `api_unified_bp` (Issue #50) | Open | Low | Low | `register_api_auth(api_unified_bp)` has no auth-rejected test; silent regression of `_verify_api_key` on the V2 API path would not be caught. Mirror `TestImageCropAuth` shape for the V2 API blueprint |
-| Brittle source-string assertions in `test_persistence_sql.py` (Issue #51) | Open | Low | Low | Exact-substring assertions break whenever `black` reformats adjacent code; `# fmt: skip` workaround applied during Issue #35 Option A'; convert to behavioral assertions against a mock cursor |
-| `pg_dump` version-mismatch silent failure (Issue #52) | Open | Low | Low | Default `/opt/homebrew/bin/pg_dump` is PG14; Neon is PG15; mismatch writes 0-byte snapshot with exit 0, error only on stderr. Pin a PG16 client path or add a pre-flight check |
-| Chart call limit (10) truncates OCR on high-chart filings (Issue #53) | Open | Low | Low | Chewy smoke only OCR'd 10 of 20 queued images; Tier 1 charts in positions 11+ invisible to the bridge. Raise the cap or expose as CLI flag |
-| Chart-bridge low-confidence misbinds (Issue #54) | Open | Low | Low | `cm_customer_acquisition_cost=$3` emitted at confidence 0.508 from a non-CAC chart on Chewy; auto-filtered by review threshold but dilutes backfill signal-to-noise. Tighten `chart_metric_min_confidence` |
-| 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Low | Low | Out-of-scope 8-Ks reached `v2_image_assets` via form-filter bypass during ingestion; inflates Issue #35 baseline. Either delete or reclassify to `out_of_scope` and narrow diagnostic to S-1/F-1 |
-| `check_docs_sync.py --ci` fails CI on transitive-import warnings (Issue #56) | Resolved (2026-04-21) | — | — | `import_to_pkg` dict extended for `dateutil`, `botocore`, `PIL`; README updated with pipeline-stage class names + coverage line matching `(\d+)%\s*overall` regex. Unblocks every PR |
-| `unified_review.html` missing breadcrumb + count badges broke 7 Playwright tests (Issue #57) | Resolved (2026-04-21) | — | — | Template gained Bootstrap breadcrumb + accepted/rejected count badges; 2 test selectors updated to match compact-UI refactor (`.fact-metric-id` + `.fs-5.fw-bold`). All 151 UI tests pass |
-
----
-
-## 12. `test_image_crop.py` Pollutes Working Tree with Test PNGs
-
-**Status**: ✅ Resolved (2026-04-18)
-**Severity**: Low (test hygiene; no runtime impact)
-**Discovered**: 2026-04-17
-
-### Problem
-
-`tests/unit/web/test_image_crop.py` wrote `data/test_chart.png`, `data/test_chart2.png`, and
-`data/test_chart3.png` into the real project `data/` directory on every run, leaving them
-untracked in the working tree after the suite finished.
-
-### Root Cause
-
-The `/v2/review/image_crop/` endpoint has a security guard that resolves image paths relative to
-`<project_root>/data/`. To satisfy that guard the tests wrote their fixture PNGs to the real
-`data/` dir (not `tmp_path`), and there was no teardown.
-
-### Resolution
-
-Added a `make_png_in_data_dir` fixture in `tests/unit/web/test_image_crop.py` that writes the
-PNG, tracks the path, and deletes it on teardown. The three `TestImageCropSuccess` tests now use
-the fixture instead of calling `_make_test_png(data_dir, ...)` directly. Verified: after
-`pytest tests/unit/web/test_image_crop.py` the working tree is clean.
-
----
-
-## 13. V2 Metric Facts Identity Index Drift
-
-**Status**: ✅ Resolved (2026-04-19) — prod verified 9-col
-**Severity**: Low (application-layer dedup in `MetricFact.identity_tuple()` still distinguishes `source_type`; no observed duplicate-row incidents)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-19
-
-### Problem
-
-`sql/23_chart_source_dedup.sql` drops and recreates `idx_v2_metric_facts_identity_unique` as a 9-column partial UNIQUE index including `source_type`. The live database index has only 8 columns (no `source_type`). `MetricFact.identity_tuple()` in `src/extraction_v2/models.py` returns a 9-tuple with `source_type` at position 9.
-
-`23_chart_source_dedup.sql` is recorded in `schema_migrations`, so the migration ran at least once — but the live DDL does not reflect the 9-column shape.
-
-### Verified evidence (2026-04-18)
-
-```bash
-source .env && psql "$DATABASE_URL" -c \
-  "SELECT indexdef FROM pg_indexes WHERE indexname='idx_v2_metric_facts_identity_unique'"
-# Returns: CREATE UNIQUE INDEX ... (doc_id, canonical_metric_id,
-#   COALESCE(period_start,'1900-01-01'), COALESCE(period_end,'1900-01-01'),
-#   unit, scope, COALESCE(cohort_def,''), COALESCE(customer_type,''))
-# — 8 columns, source_type absent.
-
-source .env && psql "$DATABASE_URL" -c \
-  "SELECT id FROM schema_migrations WHERE id='23_chart_source_dedup.sql'"
-# Returns 1 row — migration is recorded as applied.
-```
-
-### Impact
-
-- **DB layer:** a chart-sourced fact and a text-sourced fact for the same `(doc_id, metric, period, cohort, customer_type, unit, scope)` slot would be treated as conflicting rows by the 8-column index, even though the application treats them as distinct via `source_type`.
-- **Application layer:** `MetricFact.identity_tuple()` includes `source_type`, so in-memory deduplication preserves CHART + TEXT/TABLE as separate facts. Persistence upserts via `ON CONFLICT DO UPDATE` against the 8-column index — a CHART fact may therefore overwrite a prior TEXT fact (or vice versa) on the same slot.
-- **Observed incidents:** none to date.
-
-### Root Cause (2026-04-18)
-
-Migration 23 ran at least once (recorded in `schema_migrations`), but the live DB index reverted to 8 columns. Best hypothesis: the DB was recreated from a pg_dump schema snapshot that predated sql/23, so the `schema_migrations` ledger recorded the migration as applied while the actual DDL was replaced with the older snapshot shape. Because `schema_migrations` tracks applied/checksum per file rather than inspecting live DDL, the drift went undetected.
-
-Secondary finding: `_persist_facts_in_tx` in `src/extraction_v2/persistence.py` (lines 706–722) uses a delete-then-insert pattern (not `ON CONFLICT`), so no live silent-overwrite occurs per pipeline run. However, the Python-side in-memory dedup key (lines 710–719) also omits `source_type`, meaning two facts differing only by `source_type` could silently collapse within a single run. This is a separate issue not addressed here.
-
-### Resolution
-
-`sql/33_fix_identity_index.sql` idempotently drops `idx_v2_metric_facts_identity_unique` and recreates it with all 9 columns including `source_type`. Pure DDL; no code deploy required. See `docs/operations/cloud-deployment-runbook.md` Pending Production Rollouts for apply instructions.
-
-### Status reconciliation (2026-04-19)
-
-Settled 2026-04-19 via direct prod read:
-
-```bash
-source .env && psql "$DATABASE_URL" -c \
-  "SELECT indexdef FROM pg_indexes WHERE indexname='idx_v2_metric_facts_identity_unique'"
-# CREATE UNIQUE INDEX ... (doc_id, canonical_metric_id,
-#   COALESCE(period_start,'1900-01-01'), COALESCE(period_end,'1900-01-01'),
-#   unit, scope, COALESCE(cohort_def,''), COALESCE(customer_type,''),
-#   source_type)  — 9 columns, source_type present.
-```
-
-Prod is healed: the 9-column index includes `source_type`. The `scripts/apply_migrations.py:68-74` comment is accurate (sql/33 was applied out-of-band) and stays in place so `--test` runs don't re-apply it on fresh test DBs. Local test DB and prod now agree.
-
-### References
-
-- `sql/33_fix_identity_index.sql` — fix migration
-- `scripts/apply_migrations.py:68-74` — registration comment claiming prod already applied
-- `docs/architecture/data-model.md` — "Known Discrepancies" section
-- `sql/23_chart_source_dedup.sql` — original 9-column DDL intent
-- `src/extraction_v2/models.py::MetricFact.identity_tuple` — 9-element tuple
-- `src/extraction_v2/persistence.py` — delete-then-insert persistence (lines 663–726)
-
----
-
-## 10. `test_candidate_generation_finds_active_consumers` — Root Cause Unclear
-
-**Status**: ✅ Resolved-by-deletion (2026-04-19)
-**Severity**: Low
-**Discovered**: 2026-03-26
-
-### Resolution
-
-`tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The failing test no longer exists — the entire candidate-generation coverage module was retired alongside the V1 review tables. Pipeline-level recall for `cm_active_customers_total` remains 100% on Farfetch, so no replacement test is needed at this time.
-
-If candidate-generation coverage is later reintroduced (e.g., for V2-native candidate paths), any new test should assert against `src/gold_standard/v2_validator.py` output rather than the retired V1 candidate-generation module.
-
----
-
-## 14. Farfetch LTV/CAC Dedup Collision on Layout Tables
-
-**Status**: ✅ Resolved (2026-04-18) — respectively-parser priority + `cohort_hint` plumbing
-**Severity**: Medium (was 4 Tier 1 FNs on Farfetch)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem (historical)
-
-Farfetch's LTV/CAC cohort values (1.42, 1.53, 1.77) were all correctly extracted pre-dedup but collapsed to a single surviving fact (1.77) per metric, producing 4 Tier 1 FNs on `cm_ltv_to_cac_ratio` + `cm_ltv_to_cac_ratio_by_cohort`. Pre-fix GS numbers on Farfetch:
-- `cm_ltv_to_cac_ratio`: P=100%, R=33.3%, F1=50.0% (2 FNs: 1.42, 1.53)
-- `cm_ltv_to_cac_ratio_by_cohort`: P=100%, R=16.7%, F1=28.6% (2 text FNs + 4 chart FNs)
-
-### Root Cause Chain
-
-1. The filing has a bullet-point rendered via HTML `<TABLE>` used purely for layout (indent + `&#149;` + prose `<TD>`). No semantic data table.
-2. `table_reconstruction` classifies this layout table as a data table; extracts "1.42, 1.53, 1.77" as three cells; uses the whole prose sentence "Six month LTV/CAC ratio for the years ended December 31, 2015, 2016 and 2017 cohorts was 1.42, 1.53 and 1.77, respectively" as `header_path`.
-3. `fact_construction.py:441 _extract_cohort_def` parses the prose as an "acquisition" cohort label (matches year pattern) → assigns the **entire sentence** as `cohort_def` for all 3 facts.
-4. All 3 facts share an identical 9-column identity tuple (metric + period=2015-12-31 + unit + scope + same cohort_def + customer_type + source_type). Value is NOT part of identity.
-5. `deduplication.py:375 _collapse_post_transfer_collisions` enforces the DB unique index (`sql/23_chart_source_dedup.sql`). Drops 2 of 3; keeps 1.77 (highest value_raw tie-break).
-
-Confirmed 2026-04-18 via `/tmp/diag_farfetch_ltvcac.py`: pre-dedup has 6 LTV/CAC facts; post-dedup has 2. FN diagnostic (post-#19) correctly classifies all 4 as `dedup_collision`.
-
-### Partial Infrastructure Already in Place
-
-A `respectively_parser` module (`src/review/respectively_parser.py`) exists and **correctly parses the Farfetch LTV/CAC prose** — verified 2026-04-18 by calling `detect_respectively_pattern()` directly on the text, which returns the correct associations `[(1.42, 2015), (1.53, 2016), (1.77, 2017)]` with confidence 0.9.
-
-However, the parser is **only invoked as a fallback** (`value_binding.py:787` and `:1119`) when no other bindings exist for the candidate. For Farfetch LTV/CAC, the layout-table-as-data-table extraction already produces 3 bindings, so the respectively-parser fallback never fires — the parser's per-cohort associations are never applied.
-
-### Resolution (2026-04-18)
-
-Combined options (b) + (c) from the original fix menu:
-
-1. **Respectively-parser priority in `_bind_prose_cell`** (`src/extraction_v2/stages/value_binding.py`). When the prose cell contains "respectively" AND `detect_respectively_pattern(text, min_confidence=0.8)` returns a match, Strategy 6 now routes bindings through `_bind_respectively_pattern` directly instead of letting `_find_numbers_in_proximity` win.
-2. **Cohort-intent detection in `_bind_respectively_pattern`**. If the cell text contains `\bcohorts?\b`, the year strings returned by the parser are surfaced as `BoundValue.cohort_hint` (e.g. `"2015 cohort"`) and `period_hint` is left empty. Otherwise the existing `period_hint` behaviour is retained.
-3. **`cohort_hint` field on `BoundValue`** (`src/extraction_v2/models.py`). New dataclass field mirroring `period_hint`; default `""`.
-4. **Fact construction prefers `bv.cohort_hint`** over `_extract_cohort_def(evidence)` in `_construct_fact` (`src/extraction_v2/stages/fact_construction.py:223`).
-5. **Defensive prose-length guard in `_extract_cohort_def`**. Skips header/stub labels longer than 80 chars to prevent prose sentences (which `.search()` can partially match) from becoming cohort_def.
-
-### Post-fix GS Results
-
-Farfetch (2026-04-18 baseline refresh):
-- `cm_ltv_to_cac_ratio`: R 33.3% → **100%** (all 3 text rows TP).
-- `cm_ltv_to_cac_ratio_by_cohort`: R 16.7% → **50.0%** (text FNs cleared; 3 chart FNs remain under Issue #20).
-- Farfetch overall: F1 47.3% → **57.6%** (+10.3pp).
-- Full gold standard: F1 +1.0pp; Tier 1 F1 55.6% → 57.3%. `--fail-on-regression` gate passes.
-
-### Tests
-
-6 new tests covering the fix:
-- `tests/unit/extraction_v2/test_value_binding.py::TestProseRespectivelyPriority` (4 cases: cohort sentence routes through parser; cohort_hint populated; period sentence keeps period_hint; confidence-gate fallthrough to proximity).
-- `tests/unit/extraction_v2/test_fact_construction.py::test_cohort_hint_on_bv_overrides_extract_cohort_def` + `::test_prose_length_guard_skips_long_header_label`.
-- Updated `test_bind_respectively_pattern_ltv_cac` to assert the new cohort_hint semantics on the Farfetch sentence.
-
-### Follow-ups (not in this fix)
-
-- Apply the same cohort-intent detection to `_bind_text_candidate` respectively fallback (`value_binding.py:1117-1144`) — no observed GS bug in the text path today.
-- Option (d) (add `value` to DB unique index + relax dedup logic) remains available if similar collisions arise from other root causes.
-
----
-
-## 15. Chart Pipeline Env Bootstrap
-
-**Status**: ✅ Resolved (2026-04-18) — validator now auto-loads `.env`
-**Severity**: Medium (was blocking local re-measurement)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-Running `python3 -m src.gold_standard.v2_validator` without exported `OPENAI_API_KEY` caused Stages 4 and 5 to be disabled silently (warning printed but easy to miss). `source .env` alone wasn't sufficient because shell variables aren't exported to Python by default. Affected metrics (when key was absent): `cm_gross_margin_by_cohort`, `cm_revenue_by_cohort` (chart gold rows), and other chart-sourced Tier 1 metrics.
-
-### Resolution
-
-Added `load_dotenv()` to `src/gold_standard/v2_validator.py` `__main__` block (line 1908). Mirrors existing pattern in `tests/integration/conftest.py:327` and `tests/performance/conftest.py:17`. `load_dotenv()` defaults to NOT overriding existing env, so shell-set values still take precedence — safe addition.
-
-Chart stages now run automatically when `.env` contains `OPENAI_API_KEY`. Verified via fresh baseline refresh: 23 chart facts produced, 0 "API key not set" warnings in output.
-
-### Follow-Up
-
-See Issue #20 for remaining chart-pipeline gaps uncovered by the now-functioning chart stages (specifically `cm_gross_margin_by_cohort` still at 0% on Farfetch despite chart extraction running).
-
----
-
 ## 16. Farfetch Precision Drag — Table-Scale + Period Attribution
 
 **Status**: Open (not blocking recall)
@@ -522,259 +236,6 @@ For each period (e.g., 2015, 2016, 2017 + H1), the system extracts ONE correct v
 - Investigate whether period-attribution logic can be tightened to prefer the nearest-period match when multiple extracted values share a metric.
 - Consider dedup-collapsing same-metric near-matches that share source-locator ancestors.
 - Low priority; doesn't affect recall or Tier 1.
-
----
-
-## 17. CAC Payback "Six Months" — Bare Word-Number Not Bound
-
-**Status**: ✅ Resolved (2026-04-18)
-**Severity**: Low (was 1 Farfetch T2 FN; likely also affected other filings)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-Farfetch gold expects `cm_cac_payback_period = 6` (unit: months) from the prose "the payback period on CAC has been consistently less than six months." The pipeline generated the correct candidate but produced **0 value bindings** because `WORD_NUMBER_PATTERN` required a scale suffix (million/billion/etc.) and didn't handle time-unit followers.
-
-### Resolution
-
-Added a narrow gated parser for word-number + time-unit:
-
-1. **`src/extraction_v2/stages/value_binding.py`** — new `WORD_NUMBER_TIME_PATTERN` regex matching `(one|...|twelve)\s+(days?|weeks?|months?|years?|quarters?)` with word-boundary anchors. Gated via `TIME_UNIT_VALUED_METRICS = {"cm_cac_payback_period"}` so bare word-numbers in other filings (e.g., "the past six months" as period reference) don't bind to unrelated candidates. `_find_numbers_in_proximity` takes an optional `metric_id` kwarg; callers pass `candidate.metric_id`.
-2. **`src/extraction_v2/stages/false_positive_filter.py`** — added `_V1_SPELLED_OUT_OVERRIDE_METRICS = {"cm_cac_payback_period"}` to bypass the V1 `spelled_out_no_magnitude` rule (which would otherwise reject the binding) for time-valued metrics only.
-3. **Tests** — 6 new unit tests in `tests/unit/extraction_v2/test_value_binding.py::TestWordNumberTimeUnitParsing` covering: binding for time-valued metric, skip for non-time metric, skip without metric_id (backwards compat), "twelve weeks" parses to 12, bare "six" alone does not match, and "sixth" word-boundary check.
-
-### Result
-
-`cm_cac_payback_period` on Farfetch: **0% → 100% F1** in the 2026-04-18 post-fix baseline run. No Tier 1 regression (validator confirmed F1 +0.4pp).
-
----
-
-## 18. Migration Checksum Mismatch on `sql/01_create_schema.sql`
-
-**Status**: ✅ Resolved (2026-04-18) — self-healed via V1 retirement merge
-**Severity**: Low (blocks pytest-based gold standard; v2_validator module path works)
-**Discovered**: 2026-04-18
-
-### Problem
-
-Running `pytest -m gold_standard --gold-standard-mode=fresh` errors during session fixture setup:
-
-```
-RuntimeError: Checksum mismatch for 01_create_schema.sql: expected 38c41050…, got 01538bd6….
-Migration file was modified after it was applied.
-```
-
-The `schema_migrations` ledger in the local test DB has a stale checksum for `01_create_schema.sql`. All 14 gold-standard-tagged pytest tests error out at setup.
-
-### Workaround (used 2026-04-18)
-
-Use `python3 -m src.gold_standard.v2_validator` directly. This bypasses pytest fixtures entirely and does not require the test DB. Also aligns with the updated `.claude/rules/gold-standard.md` which now recommends the v2_validator module.
-
-### Next Steps
-
-- Reconcile the local test DB's `schema_migrations` row for `01_create_schema.sql` (either re-apply or update the recorded checksum).
-- Verify no actual schema drift between the checksum-recorded version and the current file.
-- Consider adding a helper script (e.g., `scripts/sync_test_db_checksums.py --dry-run`) for this recurring scenario.
-
----
-
-## 20. `cm_gross_margin_by_cohort` Still 0% on Farfetch Despite Chart Pipeline Active
-
-**Status**: ✅ Resolved (2026-04-18)
-**Severity**: Medium (was 10 Tier 1 FNs on Farfetch)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-With `OPENAI_API_KEY` loaded and chart/vision stages running end-to-end, `cm_gross_margin_by_cohort` remained **P=0%, R=0%, F1=0%** on Farfetch's 9 chart-sourced gold rows. The 2026-04-17 vision JSON-mode + truncation-repair fix did not lift this metric.
-
-### Root Cause (diagnosed 2026-04-18 via DB inspection of persisted chart_data)
-
-The vision pipeline for `g607688g09d00.jpg` ("Marketplace Order Contribution Margin") DID extract the correct 9 values at `confidence=0.9`, but with a specific output shape the classifier couldn't handle:
-
-```json
-{
-  "title": "", "x_axis_label": "", "y_axis_label": "",
-  "series": [
-    {"name": "Existing Consumers",      "points": [{"x": "2015", "y": 45.0, "label": "45%"}, ...]},
-    {"name": "All Consumers - Blended", "points": [{"x": "2015", "y": 33.0, "label": "33%"}, ...]},
-    {"name": "New Consumers",           "points": [{"x": "2015", "y": 23.0, "label": "23%"}, ...]}
-  ]
-}
-```
-
-Three independent gates in `src/extraction_v2/chart/metric_classifier.py` + `src/extraction_v2/chart/cohort_parser.py` all relied on signals absent from this shape:
-
-1. **`_cohort_gate`** only scanned series `name` for year markers and title/axes for "cohort"/"vintage" — none present. Year info was in `points[].x`, not checked.
-2. **`_metric_gate` for `cm_gross_margin_by_cohort`** only scanned `y_axis_label` for `%|margin|contribution\s+margin` — empty. `%` signal was in `points[].label`, not checked.
-3. **`_score_metric`** only scored title/axes/annotations/nearby_text for YAML patterns; with all four signals empty or out of window, the FTCH chart scored 0.36, below the 0.6 threshold.
-4. **`CohortParser._parse_series_year_regime`** required a year in `series.name`; the Farfetch chart has customer-type segmentation (year lives in `points[].x` instead).
-
-Chart-fact-bridge silently skipped the image at `chart_fact_bridge.py:101` (`metric_id is None or score < 0.6`). No log, no counter increment.
-
-### Resolution
-
-Four targeted changes (all within `src/extraction_v2/chart/`):
-
-1. **`metric_classifier.py::_cohort_gate`** — accept charts where ≥2 distinct years live in `points[].x` AND at least one series name matches a customer-type descriptor (new/existing/blended/etc. + consumer/customer/member/subscriber/user/buyer/account/client).
-2. **`metric_classifier.py::_metric_gate(cm_gross_margin_by_cohort)`** — fallback when `y_axis_label` is empty: require margin/contribution keyword in title/axes/series-names/nearby_text AND a `%` signal in axis or point labels.
-3. **`metric_classifier.py::_score_metric`** — (a) when `chart.title` is empty, use `nearby_text[:200]` as effective title for specific+patterns scoring; (b) structural bonus of +5.5 raw for `cm_gross_margin_by_cohort` when all three signals present (% point labels + ≥2 distinct years in point.x + customer-type series names). The bonus alone clears the 0.6 threshold since this shape is distinctive.
-4. **`cohort_parser.py::_parse_customer_type_regime`** — new regime invoked after series-year and elapsed-period regimes. Fires when `series.name` has no year AND matches customer-type keywords AND `point.x` contains a year within filing-date ±20/+2 years. Returns `CohortPeriod` with `cohort_def = series.name`, `period_start/end` from the year in `point.x`, `confidence=0.65`, `requires_review=True`.
-
-Classifier signature change: `_metric_gate` gained an optional `nearby_text` parameter, threaded from `ChartMetricClassifier.classify`. All five `_SUPPORTED_METRICS` metric gates are backward-compatible (parameter defaults to `""`).
-
-### Results
-
-**Farfetch** (`--companies "Farfetch Limited"`):
-- `cm_gross_margin_by_cohort`: **0% → 100% F1** (9/9 gold rows recovered)
-- Tier 1 F1: **55.6% → 86.5%** (+30.9pp on Farfetch)
-
-**Full V2 baseline**:
-- Overall F1: **53.7% → 56.9%** (+3.2pp; validator reports "F1 +2.2pp — no regression")
-- Tier 1 F1: **55.6% → 61.0%** (+5.4pp)
-- No Tier 1 regression on any metric vs. baseline
-
-### Tests
-
-- `tests/extraction_v2/chart/test_chart_metric_classifier.py::test_empty_axes_cohort_margin_chart_classifies_via_point_years` — regression test using the real OCR shape (empty title/axes, real-shape nearby_text without pattern match); asserts `cm_gross_margin_by_cohort` classification with score ≥ 0.6.
-- `tests/extraction_v2/chart/test_chart_metric_classifier.py::test_non_cohort_empty_axes_chart_still_rejected` — regional revenue chart with empty axes + years in x but non-customer-type series returns `None`.
-- `tests/extraction_v2/chart/test_cohort_parser.py` — 4 new tests for `_parse_customer_type_regime` (FTCH shape, "Blended" series, regional rejection, year-in-name rejection, out-of-range year rejection).
-
-### Out of scope (flagged during diagnosis, not fixed here)
-
-- `cm_new_customers_acquired` receives a chart fact `"2.71 x"` from the FTCH LTV/CAC chart `g607688g54x53.jpg` — a separate classifier mis-tag. 1 FP per Farfetch baseline.
-- The Farfetch Order Contribution Margin OCR output has empty title/axes. Upstream OCR prompt hardening could populate these labels directly, making the classifier fallback unnecessary; out of scope for this session.
-
----
-
-## 19. FN Diagnostic Classification Gaps
-
-**Status**: ✅ Resolved (2026-04-18)
-**Severity**: Low (misleads investigation but doesn't affect production)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-The FN root-cause analysis in `src/gold_standard/v2_validator.py` (lines 900–1040) classified two Farfetch FNs into misleading categories during 2026-04-18 diagnosis:
-
-1. **`cm_ltv_to_cac_ratio` classified as `wrong_period`**. Actual root cause: dedup collision from shared `cohort_def` (Issue #14). The category fired because `wrong_period`'s value-match check used `all_metric_facts = context_facts ∪ metric_facts`, which included pre-dedup facts — so it matched a fact that was later collapsed by dedup.
-2. **`cm_revenue_by_cohort` classified as `fp_filtered`**. Actual root cause: the 2 removed bindings were date fragments (`31`, `2017`) from a different candidate; the expected 44.4%/55.6% values were never bound to any candidate at all (chart-sourced, blocked by API key). The `fp_filtered` rule fired on any removed binding without checking whether its value matched the gold expectation.
-
-### Resolution
-
-`src/gold_standard/v2_validator.py`:
-
-1. **`wrong_period` → `dedup_collision`** (new category). Added Step 5b that emits `dedup_collision` when a value-matching fact existed pre-dedup but no value-matching fact survived in `deduplicated_facts`. Distinct from `dedup_removed` (whole-metric wipe) — `dedup_collision` catches sibling-value collapse (e.g., LTV/CAC 1.42/1.53/1.77 collapsed to 1.77).
-2. **`wrong_period` restricted to post-dedup facts**. Step 7's value-match check now uses only `deduplicated_facts`, not the pre-dedup union. Pre-dedup value matches that were later collapsed are caught by `dedup_collision` above.
-3. **`fp_filtered` → `no_matching_binding`** (new category). The `fp_filtered` classification now requires at least one FP-removed binding to have value matching the gold expected value. If removed bindings existed but none matched (date fragments, scale components, etc.), the new `no_matching_binding` category is emitted instead.
-
-### Tests
-
-4 new unit tests in `tests/unit/gold_standard/test_v2_validator.py::TestDiagnosefalseNegative`:
-- `test_no_matching_binding` — FP-removed bindings with non-matching values
-- `test_dedup_collision` — value-matching fact collapsed into sibling post-dedup
-- `test_wrong_period_uses_dedup_facts_only` — regression test ensuring wrong_period requires a post-dedup value match
-- Existing `test_fp_filtered` updated to set a matching value on the binding (its original assertion was value-ambiguous under the old rule).
-
-All 164 `test_v2_validator.py` tests pass (was 158 before these additions).
-
----
-
-## 21. `v2_image_assets` Duplicates + Pending-Count Discrepancy (Maplebear S-1)
-
-**Status**: ✅ Resolved (2026-04-18) — dedup migration + stable-img_id upsert + in-memory fact remap
-**Severity**: Medium (UI showed 220 pending images; all appeared already-reviewed when clicked)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-The Maplebear S-1 review UI displayed 220 pending images in the progress counter, but every image opened as already-reviewed. Zero images appeared in the review queue despite the non-zero pending count.
-
-### Root Cause
-
-Two coupled defects:
-
-1. **Random UUID on every re-extraction.** `ImageAsset.img_id` is generated via `uuid.uuid4()` per pipeline run. The upsert in `_persist_images_in_tx` used `ON CONFLICT (img_id)` — a conflict that never fires because each run produces a new UUID. Every re-extraction inserts a fresh row with `review_status='pending'`, leaving the original (decided) row orphaned in the table.
-
-2. **Asymmetric deduplication.** `get_image_review_progress_v2` (`src/infra/db.py`) counts `review_status='pending'` rows without deduping by `(doc_id, filename)`, so it counts all duplicate rows. The review-list query uses `DISTINCT ON (filename)` to surface only one row per image — which happens to be the row with a decision. Result: counter = 220, queue = 0.
-
-### Resolution
-
-1. **`sql/34_dedup_v2_image_assets.sql`** — collapses duplicate `(doc_id, filename)` groups: preserves the decided row (or highest `review_status` rank), consolidates `review_status` / `predicted_relevance` / `detected_keywords`, then adds `UNIQUE (doc_id, filename)` constraint.
-2. **`src/extraction_v2/persistence.py:_persist_images_in_tx`** — changes `ON CONFLICT (img_id)` to `ON CONFLICT (doc_id, filename) DO UPDATE`, preserves the existing `img_id` on conflict, and returns an old→stable `img_id` map.
-3. **`src/extraction_v2/persistence.py:persist_pipeline_result`** — uses the map to rewrite `source_locator.img_id` in-memory before fact persistence, keeping metric-fact provenance consistent with the stable DB row.
-4. **`scripts/apply_migrations.py` and `scripts/apply_all_migrations.py`** — `sql/34_dedup_v2_image_assets.sql` registered in `MIGRATIONS` / `MIGRATION_ORDER`.
-
-### Remaining
-
-None — the four related out-of-scope issues are tracked separately in Issues #22–#25 below.
-
----
-
-## 22. No Reviewed-Filing Guard on Image Re-Extraction
-
-**Status**: ✅ Resolved (2026-04-18)
-**Severity**: Low (no data loss; decisions survive re-extraction via stable img_ids post-Issue #21)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-The fact-side `ReviewedFilingError` (raised in `src/extraction_v2/persistence.py:_persist_facts_in_tx`, defined in `src/extraction_v2/exceptions.py`) did not cover image assets. After the sql/34 fix, existing review decisions survive re-extraction because img_ids are stable. However, if re-classification changed an image from `chart` to `decorative`, the review UI filtered it out (`classification NOT IN ('decorative','logo','signature')` in `src/infra/db.py:1631`) — the decision became hidden rather than invalidated. There was no warning to the reviewer.
-
-### Resolution
-
-Narrow image-side guard added to `_persist_images_in_tx` in `src/extraction_v2/persistence.py`. Guard trigger: for each incoming `ImageAsset`, fires only when ALL of these hold:
-
-1. An existing `v2_image_assets` row with the same `(doc_id, filename)` exists.
-2. That row has a decision in `v2_image_review_decisions`.
-3. The existing `classification` is in `{'chart', 'table_image', 'unknown'}` (visible set).
-4. The incoming `classification` is in `{'decorative', 'logo', 'signature'}` (hidden set).
-
-Behaviour:
-
-- `force=False` (default): raises `ReviewedFilingError(context="image classifications")`. Transaction aborts before any write.
-- `force=True`: logs `force-reextract hiding reviewed images: filing_id=X hidden_image_count=N filenames=[…]` and proceeds.
-
-The `context` kwarg was added to `ReviewedFilingError` (default `"facts"` preserves the existing fact-guard message). Re-classifications within the visible set, or re-classifications of an already-hidden image, are not blocked (guard focuses exclusively on new hiding).
-
-### Tests
-
-5 new integration tests in `tests/integration/extraction_v2/test_persistence_guard.py::TestGuardOnPersistImages`:
-- `test_reclassification_to_hidden_raises_without_force`
-- `test_reclassification_to_hidden_force_warns_and_proceeds`
-- `test_same_classification_passes`
-- `test_unreviewed_image_passes`
-- `test_already_hidden_reclassification_passes`
-
-`_cleanup` fixture also extended to purge `v2_image_review_decisions` + `v2_image_assets` rows.
-
-### Follow-up (out of scope here)
-
-`scripts/ingest_presentations.py:327` calls `persist_pipeline_result` without threading `force`. With the new guard, that path will now raise on re-ingestion of a filing whose images would be re-classified into the hidden set. This is the intended behaviour (fail loudly rather than silently hide); adding a `--force-reextract` flag there is a separate task if an operator workflow needs it.
-
----
-
-## 23. `v2_image_assets.segment_id` Is a Dead Column
-
-**Status**: ✅ Resolved (2026-04-18)
-**Severity**: Trivial (cosmetic)
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-`src/extraction_v2/persistence.py` set `segment_id` to NULL with the comment "FKs to V1 source_segments; not used in V2". The V1 `source_segments` table was dropped in `sql/31_drop_v1_review_tables.sql`. The column was never read or written with a meaningful value.
-
-### Resolution
-
-1. **`sql/35_drop_v2_image_assets_segment_id.sql`** — idempotent `ALTER TABLE v2_image_assets DROP COLUMN IF EXISTS segment_id`. FK was already dropped in sql/31; no explicit DROP CONSTRAINT needed. Applied to Neon prod + local test DB 2026-04-18.
-2. **`src/extraction_v2/persistence.py`** — removed `segment_id` from INSERT column list, VALUES, DO UPDATE SET, and params dict in `_persist_images_in_tx`.
-3. **`scripts/apply_migrations.py`** — registered sql/35 in `MIGRATIONS` list.
 
 ---
 
@@ -805,58 +266,6 @@ The script now reports three classes and is wired into the integration-tests CI 
 - **Class (C)** — asset rows with `file_path` outside `data/` or missing on disk. Warning-only; tracked under Issue #34.
 
 `tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` locks the Class (A) invariant at unit-test level.
-
----
-
-## 25. `scripts/migrate_image_ids_to_deterministic.py` Scope Is Confusing
-
-**Status**: ✅ Resolved (2026-04-18)
-**Severity**: Trivial
-**Discovered**: 2026-04-18
-**Resolved**: 2026-04-18
-
-### Problem
-
-The script name implied a production DB migration, but it only rewrites `data/presentation_gold_standard/_image_*.json` files — it never touches the database. Readers discovering it during DB image-identity investigations could be misled.
-
-### Resolution
-
-Expanded the module-level docstring in `scripts/migrate_image_ids_to_deterministic.py` to open with explicit scope: "One-time transformation of local gold-standard JSON files. Scope: … Does NOT modify the production database or any `v2_image_assets` rows — the word 'migration' in the filename refers to a JSON-format upgrade, not a DB schema migration." `scripts/archive/` does not exist on disk; per the original suggestion, the docstring-only fix is applied instead of a move.
-
----
-
-## 26. Review UI — Lost SEC + Image Links for Investor Presentations
-
-**Status**: ✅ Resolved (2026-04-19)
-**Severity**: Medium — all 166 investor-presentation filings rendered with no "View source" anchor and 404-ing image thumbnails (507 image assets affected)
-**Discovered**: 2026-04-19
-
-### Problem
-
-`scripts/ingest_presentations.py:_upsert_presentation_filing` inserted filings rows without `cik` or `sec_html_url`, encoding the SEC location inside `accession_number` as `presentation:<cik>/<accession>/<filename>`. The review UI consumed this in two places:
-
-- `src/web/routes/review_unified.py:335-342` set `sec_filing_url = filing["sec_html_url"]` (NULL) then fell back to `_build_sec_directory_url(filing["cik"], ...)` only if `filing["cik"]` was truthy (NULL). Template guard `{% if sec_filing_url %}` dropped the anchor.
-- `src/infra/db.py:_V2_IMAGE_CANDIDATE_SELECT` built `/images/cache/<cik>/<REPLACE(accession,'-','')>/<filename>`. For encoded accessions this produced a four-segment path that did not match the three-segment Flask route.
-
-Eighth link breakage in four months — the recurrence driver is that URL construction was duplicated across routes, templates, SQL projections, and ingest scripts, so every new filing shape required patching all of them.
-
-### Resolution
-
-Seven-part fix centralising URL construction and closing the detection gap:
-
-- `sql/36_backfill_presentation_urls.sql` — one-time `UPDATE` backfill for the 166 rows (idempotent; format verified 166/166 rows match).
-- `scripts/ingest_presentations.py:_upsert_presentation_filing` — writes `cik` and `sec_html_url` on INSERT/UPDATE and raises `ValueError` inside the transaction if the returned row still has either as NULL.
-- `src/infra/db.py:_V2_IMAGE_CANDIDATE_SELECT` — `CASE` expression strips the `presentation:<cik>/` prefix and trailing `/<filename>` from `accession_number` before building image URLs (defence in depth).
-- `src/web/url_builders.py` (new) — single `resolve_sec_filing_url()` / `build_image_cache_url()` / `build_sec_directory_url()` helpers used by all route code.
-- `src/web/routes/review_unified.py` — inline URL logic replaced with helper calls; `_build_sec_directory_url` local helper deleted.
-- `tests/unit/web/test_review_link_integrity.py` (new) — real Flask `test_client` renders `/v2/review/<id>` for each document_type and asserts `<a>` and `<img src>` HTML matches the route regex. Closes the gap where `tests/unit/web/test_review_v2_routes.py` mocks `render_template`.
-- `tests/unit/web/test_url_for_resolves.py` (new) — smoke test that every route name referenced by the unified templates resolves via `url_for` (catches the typo class historically responsible for one of the eight incidents).
-- `scripts/validate_database_urls.py` — gained `--fail-on-errors` / `--document-type`; wired into CI `integration-tests` job as a post-migration link-integrity gate.
-- `.claude/rules/web.md` — codified "URL construction goes through `src/web/url_builders.py`" to keep future filing shapes landing in one place.
-
-### Related — not patched in this resolution
-
-`scripts/ingest_specific_presentations.py:100-133` has the same INSERT pattern without `cik` or `sec_html_url`. Not in scope for this fix, but will be caught by the post-ingest invariant as soon as it's updated to match `ingest_presentations.py`, and the CI link-integrity gate will flag any rows it produces.
 
 ---
 
@@ -937,152 +346,9 @@ Not urgent. Revisit if the smoke spec starts missing real breakages or if the mo
 
 ---
 
-## 29. `cm_new_customers_acquired` Receives `2.71x` Chart Fact From Farfetch LTV/CAC Chart
-
-**Status**: ✅ Resolved (2026-04-19) — value-level FP rule; confirmed via Farfetch GS
-**Severity**: Low (1 Farfetch FP; does not block recall)
-**Discovered**: 2026-04-18 (flagged in Issue #20 "Out of scope"); filed as its own issue 2026-04-19
-**Resolved**: 2026-04-19
-
-### Problem
-
-FTCH's LTV/CAC tenure chart `g607688g54x53.jpg` emits chart point labels `"2.71x"`, `"1.81x"`, `"2.04x"` that get bound to `cm_new_customers_acquired` (a count metric). Surfaces as a `NO_MATCH` FP on the Farfetch gold-standard run (1 of 12 FPs on 2026-04-19 baseline). The correct home for these values is `cm_ltv_to_cac_ratio_by_cohort`.
-
-### Root Cause (diagnosed 2026-04-19 via DIAG print in `_scan_chart`)
-
-The chart_data for `g54x53` is:
-
-```
-title=''  y_axis=''  x_axis=''  annotations=[]
-series=[
-  ('2015 Cohort', [('LTV / CAC after 6 months',  1.42, '1.42 x'),
-                    ('LTV / CAC after 12 months', 1.53, '1.53 x'),
-                    ('LTV / CAC after 24 months', 1.77, '1.77 x')]),
-  ('2016 Cohort', [..., ('LTV / CAC after 24 months', 2.04, '2.04 x')]),
-  ('2017 Cohort', [('LTV / CAC after 24 months', 2.71, '2.71x')])
-]
-```
-
-`combined_text` (built from title/axes/series.name/annotation.text) is just `'2015 Cohort 2016 Cohort 2017 Cohort'` — no customer-type keywords. A yaml-level exclusion on chart combined_text would not help here.
-
-The mis-classification enters via `_scan_chart`'s **second pass** against `nearby_text` (`candidate_generation.py:459-485`). Farfetch's prose around this image reads: *"as we have managed to lower our CAC and increase our LTV of acquired consumers over time. This has allowed us to increase total consumer acquisition spend, and as a result, increase our number of new Marketplace consumers."* → legitimately matches `\bnew\s+consumers?\b` / `\bconsumers?\s+acquired\b` for `cm_new_customers_acquired`. A candidate is created; value binding then attaches the chart point.label `2.71` to it. Similar paths exist for `cm_customer_acquisition_cost` (currency), `cm_lifetime_value_per_customer` (currency), etc.
-
-### Resolution
-
-Added `_rule_ratio_suffix_on_count_metric` to `src/extraction_v2/stages/false_positive_filter.py`, mirroring the existing `_rule_revenue_concentration_ratio_suffix`. Whitelists ratio metrics (`cm_ltv_to_cac_ratio`, `cm_ltv_to_cac_ratio_by_cohort`) implicitly by not listing them; rejects any `N.NNx` / `N.NN×` raw value bound to count / currency / rate / time metrics in `_RATIO_SUFFIX_COUNT_METRICS` (18 metrics). Registered in `_FP_RULES` immediately after `revenue_concentration_ratio_suffix`.
-
-### Validation
-
-- 6 new unit tests in `tests/unit/extraction_v2/test_false_positive_filter_stage.py::TestRatioSuffixOnCountMetric` covering: `2.71x` blocked on `cm_new_customers_acquired`; `1.81x` blocked on `cm_active_customers_total`; unicode `×` variant; legitimate `500` count not blocked; `2.71x` allowed on `cm_ltv_to_cac_ratio_by_cohort`; `2.71x` allowed on `cm_ltv_to_cac_ratio`.
-- Full unit-test run: **2233 pass, 11 skip, 0 fail** (`pytest tests/unit/review/ tests/unit/extraction_v2/ tests/extraction_v2/chart/`).
-- Farfetch GS validator (`python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited"`): the `2.71x` `NO_MATCH` FP on `cm_new_customers_acquired` is **eliminated**. Total Farfetch FP count unchanged at 12 — see note below.
-
-### Note on observed dedup-displacement side effect
-
-Removing the `2.71x` binding unmasks a pre-existing sibling FP: `cm_new_customers_acquired: 54.0 (raw='54%')` now appears in the Farfetch `NO_MATCH` slot. This is a **separate, pre-existing** candidate previously tiebroken-away by `2.71x` during dedup. Root cause: a percent value from elsewhere in the filing binding to `cm_new_customers_acquired` with `unit=COUNT` (so `_rule_percent_on_count_metric` skips it — that rule requires `unit=PERCENT`). **Not fixed here** per CLAUDE.md scope discipline; should be filed as its own issue if it persists after broader percent-on-count hardening.
-
----
-
-## 30. 15 Filings With CIK / sec_html_url Mismatch
-
-**Status**: ✅ Resolved (2026-04-19) — reviewer-facing URL column corrected on all 15 rows. Latent cached-HTML residue logged as Issue #43.
-**Severity**: Medium — the review UI's "View source" link on these 15 filings pointed to the wrong SEC document; reviewers could attribute facts to the wrong filing
-**Discovered**: 2026-04-19 (surfaced by new `scripts/validate_database_urls.py --fail-on-errors` gate while resolving Issue #26)
-**Resolved**: 2026-04-19
-
-### Problem
-
-15 filings in the production DB had a `sec_html_url` that pointed at CIK `0001725792` / `d745640ds1a.htm` (the Uber S-1/A path) while their own `filings.cik` held a different value. Fallout from pre-Issue-#6 FilingFetcher exhibit-pattern-matching incidents (Dec 2025): the fetcher saved one filing's content across many rows, and the URL never got corrected.
-
-### Root Cause (discovered during audit)
-
-The 15 rows are **not** 15 independent corruptions. They are **one SEC filing co-registered by 15 affiliated entities** — Spectrum Brands + 14 subsidiaries (accession `0001193125-19-149408`, a 2019 S-1/A for debt securities). SEC archives the same primary document at 15 distinct CIK-keyed paths (one per co-registrant), which is normal for multi-entity registrations. The pre-#6 fetcher saved the wrong HTML once at `data/filings/0001725792/000119312519149408/primary.htm` (Uber CIK dir, Spectrum accession) and every co-registrant row ended up pointing at that stale URL + shared storage file.
-
-Affected `filing_id`s: 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 913, 914, 915, 916, 919 (earlier estimate "904–912 + 5 more" was inexact).
-
-### Resolution
-
-**Audit → Path A fix → verify**, per plan at `.claude/plans/let-s-tackle-known-issue-agile-pearl.md`.
-
-1. `scripts/audit_filing_url_mismatch.py` enumerated affected rows, resolved the correct per-CIK URL via `SECClient.resolve_primary_document_url(cik, accession)`, sniffed on-disk + `html_content` column for Uber fingerprints, and counted `v2_metric_facts` / `v2_review_decisions` / `v2_image_review_decisions` per row. All 15 returned `facts=0, reviews=0, img_reviews=0`.
-2. `scripts/repair_filing_url_mismatch.py --path A --include-path-c --apply` executed per-row `UPDATE filings SET sec_html_url = <per-CIK URL>` statements, optimistic-locked on `(filing_id, old_url)`. 15 applied, 0 skipped. Apply log preserved at `data/audit/issue_30_applied_20260419T210109Z.jsonl`.
-3. Re-ran audit: 0 affected rows. Reviewer-facing "View source" links now open each co-registrant's own SEC URL (same underlying document, different CIK in the path).
-
-The audit did NOT refetch the cached HTML file, which still contains Uber content at the shared `html_storage_path`. Since `facts=0` and no extraction has run, this is a latent (not active) issue — filed as **Issue #43** so a future re-fetch is explicit rather than implicit.
-
-### Classifier note
-
-The audit's path-classifier pessimistically downgraded all 15 to Path C because `accession_collides_in_scope=True` and `html_storage_path_shared_with≠[]` — guards designed to prevent double-writes in `FilingFetcher._update_database` (which filters by `WHERE accession_number`). In this case the collision is legitimate SEC multi-entity co-registration, not corruption. Added `--include-path-c` flag to the repair script for cases where a human has confirmed safety (requires `facts=0 AND reviews=0 AND img_reviews=0`, re-asserted as a backstop in `_eligible_rows`). Classifier refinement filed as **Issue #44**.
-
----
-
-## 31. Audit Log Spams DNS Error in Test / Dev
-
-**Status**: ✅ Resolved (2026-04-19) — both async and sync paths covered
-**Severity**: Low (cosmetic — tests pass, UI works, log noise only)
-**Discovered**: 2026-04-19 (observed during Issue #26 test-suite runs)
-**Resolved**: 2026-04-19
-
-### Problem
-
-Two audit-log paths logged `ERROR` on every test-suite request when `DATABASE_URL` was a testing sentinel like `postgresql://test`:
-- `src/web/routes/review_unified.py:102` (async, thread-closure path).
-- `src/web/middleware.py:114` (synchronous, `insert_audit_log_entry`).
-
-Errors were swallowed — responses unaffected — but the noise polluted pytest output and could mask real audit-log failures.
-
-### Resolution
-
-Both paths now capture `testing = bool(current_app.config.get("TESTING"))` and downgrade the `except` log to `DEBUG` when `testing` is true; `ERROR` preserved otherwise so real failures remain visible in production.
-
-- `src/web/routes/review_unified.py:97-109` — async path (landed 2026-04-19).
-- `src/web/middleware.py:87-120` — sync path (commit `366d9dd`, 2026-04-19); covered by `tests/unit/web/test_middleware.py::TestAuditLogFailureLogging` (DEBUG-under-TESTING + ERROR-otherwise).
-
----
-
-## 32. `src/shared/html_segmenter.py` Has 0% Test Coverage (761 LOC)
-
-**Status**: ✅ Resolved (2026-04-20) — module deleted as dead code
-**Severity**: Medium (was) — blocked CI coverage gate at 75% threshold
-**Discovered**: 2026-04-19
-**Resolved**: 2026-04-20
-
-### Resolution
-
-Verified 2026-04-20 that the module had **zero production callers**. Original ticket asserted it was "imported by `src/extraction_v2/stages/ingestion.py`" — that was inaccurate; the only Python import was the smoke test (`tests/unit/shared/test_html_segmenter_smoke.py`). The V2 ingestion stage (`src/extraction_v2/stages/ingestion.py`) reimplements the table/paragraph detection logic in-tree using `lxml`; the V1 segmenter has been functionally retired since the V2 cutover and survived the V1 retirement sweep (commit `03a8a20`) only because it lived under `src/shared/` rather than `src/extraction/`.
-
-Resolution: delete `src/shared/html_segmenter.py` (2032 LOC) and `tests/unit/shared/test_html_segmenter_smoke.py`. Strip stale docstring/README references that now point at a non-existent module. Pre-delete coverage: 81.44%. Post-delete coverage cleared the way for the #33 floor bump.
-
-### Pre-delete state vs. ticket claims
-
-| Ticket claim | Reality (verified 2026-04-20) |
-|---|---|
-| "0% test coverage" | Smoke test covered ~46% (15 tests) |
-| "761 LOC" | 2032 LOC (the 761 was a stmt-count, not LOC) |
-| "imported by `src/extraction_v2/stages/ingestion.py`" | Comment-only reference; `lxml`-based V2 ingestion is self-contained |
-
-### References
-
-- Module deletion + cleanup commit: see `git log -- src/shared/html_segmenter.py`
-- Successor: `src/extraction_v2/stages/ingestion.py`
-- Issue #33 (coverage floor bump) closed in the same change.
-
----
-
-## 33. Raise Coverage Threshold to 80% After Issue #32
-
-**Status**: ✅ Resolved (2026-04-20)
-**Severity**: Low — prevention
-**Discovered**: 2026-04-19
-**Resolved**: 2026-04-20
-
-`fail_under` raised from 75 → 80 in `pyproject.toml` `[tool.coverage.report]` in the same change as Issue #32. Post-delete coverage measured at 83.5%, leaving ~3.5 points of headroom. Companion mention in `.claude/rules/testing.md` updated to match.
-
----
-
 ## 34. `v2_image_assets.file_path` Rooted in TMPDIR (Purged by OS)
 
-**Status**: ✅ Resolved (Phase 1: 2026-04-19, Phase 3: 2026-04-20)
+**Status**: Resolved (Phase 1: 2026-04-19, Phase 3: 2026-04-20)
 **Severity**: Medium — was breaking Chart Evidence preview on ~30% of image rows (50 / 165 local; prod unscanned)
 **Discovered**: 2026-04-19 (Phase 1 of the "missing Chart Evidence" investigation, commit `d1430d9`)
 **Resolved**: 2026-04-19
@@ -1146,8 +412,8 @@ Neon-prod quantification on 2026-04-21 revised the problem size sharply:
 
 Three smokes on Neon (1547 Samsara, 1541 Flywire, 1146 Chewy) confirmed:
 
-- ✅ Mechanism is safe: reviewer decisions fully preserved across all three runs; text/html_table facts untouched.
-- ⚠️ Recall gain is sparse: only 1 chart fact produced across 3 filings (Chewy), and that fact was a low-confidence (0.508) misbind of `cm_customer_acquisition_cost`=$3 — a reviewer-gated false positive.
+- Mechanism is safe: reviewer decisions fully preserved across all three runs; text/html_table facts untouched.
+- Recall gain is sparse: only 1 chart fact produced across 3 filings (Chewy), and that fact was a low-confidence (0.508) misbind of `cm_customer_acquisition_cost`=$3 — a reviewer-gated false positive.
 
 Root cause of the sparse gain: the original 38-filing Class (E) baseline conflates (a) filings where pre-fix OCR dropped Tier 1 cohort/NRR chart data with (b) filings whose charts aren't Tier 1 metrics at all (market-size, process diagrams, photos). Only (a) recovers under re-extraction; most of the 38-filing set is (b).
 
@@ -1167,94 +433,6 @@ Root cause of the sparse gain: the original 38-filing Class (E) baseline conflat
 - Issue #55 — 28 stuck 8-K filings in Class (E) (form-filter bypass during ingestion)
 - PR #50 — `feat(persistence): add chart_only mode for surgical Issue #35 backfills`
 - Session artifacts: `data/audit/issue_35_presmoke_snapshot.sql`, `data/audit/issue_35_presmoke_gs.txt`, `logs/issue_35_prod_smoke{,2,3}.log`
-
----
-
-## 36. `onboard_tickers.py populate` Has No `--limit`
-
-**Status**: ✅ Resolved (2026-04-19, commit `366d9dd`)
-**Severity**: Low — safety / operator footgun
-**Discovered**: 2026-04-19 (during Issue #7 implementation)
-**Resolved**: 2026-04-19
-
-### Resolution
-
-`UniverseBuilder.build_universe` gained an optional `limit: int | None = None` kwarg; the filing loop breaks once `limit` in-scope upserts are recorded. `scripts/onboard_tickers.py::cmd_populate` threads a new `--limit N` argparse flag into the kwarg. Default `None` preserves unbounded behaviour. Covered by `tests/unit/universe/test_universe_builder.py::test_limit_stops_after_n_in_scope_upserts`.
-
-### Problem
-
-`scripts/onboard_tickers.py populate --year YYYY [--form-type 10k]` wraps
-`UniverseBuilder.build_universe` over every matching filing in the SEC
-daily index for the year. With `--form-type 10k`, a single year is ~5–10k
-filings at ~100ms per CIK (`get_company_info` submissions-API lookup) plus
-daily-index reads — ~15 minutes of SEC traffic. There is no `--limit`
-flag to cap the sweep.
-
-An operator experimenting with onboarding can accidentally trigger a full
-year-scale run; the only brake is Ctrl+C.
-
-### Suggested Fix
-
-Add `--limit N` to `cmd_populate` and thread an optional `limit: int | None`
-kwarg into `UniverseBuilder.build_universe` (break out of the `for filing in
-filings` loop after N in-scope upserts). Non-default parameter; default
-preserves existing unbounded behavior.
-
-Estimated ~20 LOC + 1 test. Independent of all other open issues.
-
-### Cross-References
-
-- `src/universe/universe_builder.py:51-108` (`build_universe`)
-- `scripts/onboard_tickers.py::cmd_populate`
-- Issue #7 — landed `--form-type` parameterization without `--limit` coverage
-
----
-
-## 37. `classify_first_time_issuer` Reports `True` for Non-S-1/F-1 Filers
-
-**Status**: ✅ Resolved (2026-04-19, commit `366d9dd`)
-**Severity**: Low — misleading DB values, no functional impact today
-**Discovered**: 2026-04-19 (during Issue #7 implementation)
-**Resolved**: 2026-04-19
-
-### Resolution
-
-Option 1 from the suggested fix menu: `_process_filing` in `src/universe/universe_builder.py:176-189` now gates the `classify_first_time_issuer` call on `filing.form_type in DEFAULT_FORM_TYPES_S1F1`. Non-S-1/F-1 filings land with `is_first_time_issuer=NULL` and `fti_method="not_applicable"`; the classifier module itself is unchanged. Covered by `tests/unit/universe/test_universe_builder.py::test_10k_filing_has_null_first_time_issuer`.
-
-### Problem
-
-`classify_first_time_issuer(cik, filing_date, previous_ipo_date)` in
-`src/universe/classifiers.py:92-128` is form-agnostic in its code: it
-returns `(True, 'heuristic')` whenever `previous_ipo_date is None`, and
-`get_first_ipo_filing_date(cik)` returns `None` for any CIK without a
-prior S-1 in the DB — which is almost always the case when populating
-10-Ks via `populate --form-type 10k`. Result: `filings.is_first_time_issuer`
-is set to `TRUE` for 10-Ks where the concept is nonsensical.
-
-Harmless at runtime because `is_in_scope_phase1(form_type=...)` gates on
-form type first (classifiers.py:832-834) and returns `False` for 10-K
-regardless of FTI. But the column has misleading data that would confuse
-any downstream analytic query joining on `is_first_time_issuer`.
-
-### Suggested Fix
-
-Two options, in order of preference:
-
-1. **Gate the call in `_process_filing`:** only invoke
-   `classify_first_time_issuer` for `form_type in DEFAULT_FORM_TYPES_S1F1`;
-   set `is_first_time_issuer=None` otherwise. Preserves classifier
-   function's signature. ~10 LOC.
-2. **Widen the classifier:** accept `form_type` and return `(None,
-   'not_applicable')` for non-S-1/F-1 forms. Touches every caller.
-
-Either approach: add a unit test asserting `filings.is_first_time_issuer
-IS NULL` after a 10-K upsert.
-
-### Cross-References
-
-- `src/universe/classifiers.py:92-128` — `classify_first_time_issuer`
-- `src/universe/universe_builder.py:165-173` — call site in `_process_filing`
-- Issue #7 — introduced 10-K populate path that surfaces this
 
 ---
 
@@ -1399,86 +577,6 @@ Lightweight either way — <30 LOC + tests + doc line.
 
 ---
 
-## 41. Review-UI Sticky Header Offset Mismatch + Narrow-Width Overlap Unverified
-
-**Status**: ✅ Resolved (2026-04-19) — verified on deployed Render build
-**Severity**: Low — cosmetic
-**Discovered**: 2026-04-19 (during review-UI sticky-header work, commit `ba35424`)
-**Resolved**: 2026-04-19
-
-### Resolution
-
-Shared `--navbar-height` CSS custom property introduced in `:root` (`src/web/static/css/review.css`) and applied to both `.sticky-top-below-nav` and `.review-sticky-header`. Compact-navbar styling (`.navbar.sticky-top` padding-y 0.25rem, `--navbar-height: 48px`) and a `.review-pill-row` flex-wrap class keep stat-pill badges from colliding with the "Next filing F" button at narrow widths. `unified_review.html:58` stat-pill row now uses `.review-pill-row`; `accepted`, `rejected`, and `img reviewed` badges removed to reduce horizontal load. Sticky-header vertical padding trimmed to absorb `container.mt-4` for a tighter gap under the navbar. Badge font size shrunk to 0.7rem.
-
-Deployed Render build verified visually 2026-04-19 — sticky-header, pill-wrap, and navbar calibration land as intended. Code in commit `366d9dd`.
-
-### Problem
-
-Two related visual calibration items from the sticky review-UI landing:
-
-1. **Sticky offset mismatch between old and new patterns.** The existing
-   `.sticky-top-below-nav` class (`src/web/static/css/review.css:58-62`) —
-   used by `.image-thumbnail-sidebar` and `.image-context-panel` on the
-   images tab — uses `top: 70px`. The new `.review-sticky-header`
-   introduced in `ba35424` uses `top: 56px` (Bootstrap `navbar-expand-lg`
-   default). The navbar itself is now `sticky-top` as of `ba35424`. If
-   the navbar renders at ~56px, the old sticky children have a ~14px gap
-   between their top and the navbar bottom. If it renders at ~70px, the
-   new sticky-header overlaps the navbar bottom by ~14px. Only one offset
-   can be correct.
-
-2. **Narrow-width responsive behavior not tested.** At viewport widths
-   around 1024px, the stat-pill row in the review-page sticky header
-   (`unified_review.html:44-72`) may wrap such that pills collide with
-   the "Next filing F" button. Not verified in a browser; the user-chosen
-   "three tighter rows" mockup implicitly relied on pills wrapping
-   cleanly.
-
-### Suggested Fix
-
-Once the correct navbar rendered height is confirmed in production
-DevTools:
-
-1. Introduce a shared `--navbar-height` CSS custom property in `:root`
-   (`review.css:9-53`) set to the measured value.
-2. Update both `.sticky-top-below-nav` and `.review-sticky-header` to
-   reference `top: var(--navbar-height);` so they stay aligned.
-3. Resize the review page to ~1024px and adjust flex-wrap / pill styling
-   in `unified_review.html:44-72` (or hide non-essential pills below a
-   breakpoint) if pills overlap the "Next filing F" button.
-
-Lightweight — <20 LOC of CSS, no template restructure.
-
-### Cross-References
-
-- `src/web/static/css/review.css:58-62` — existing `.sticky-top-below-nav`
-- `src/web/static/css/review.css` (appended in `ba35424`) —
-  `.review-sticky-header`
-- `src/web/templates/base.html:21` — navbar `sticky-top`
-- `src/web/templates/unified_review.html:44-72` — stat-pill row
-- Commit `ba35424` — review-UI sticky compact top matter
-
----
-
-## 42. `_download_missing_images` Writes Image Bytes Twice
-
-**Status**: Open
-**Severity**: Low — tech debt, not user-visible
-**Discovered**: 2026-04-19 (noted while fixing Issue #34)
-
-### Problem
-
-`OCRExtractionStage._download_missing_images` (`src/extraction_v2/stages/ocr_extraction.py:199-263`) calls `SECClient.fetch_image()`, which already writes the bytes to `<image_cache_dir>/<cik_stripped>/<accession_no_dashes>/<filename>` via `SECClient._get_image_cache_path` (`src/infra/sec_client.py:880-889`). The pipeline then writes a second copy to `<image_cache_dir>/pipeline/<cik>/<accession>/<filename>` and stores that path on `asset.file_path`. Two on-disk copies per image, two path layouts, and the only reason `asset.file_path` doesn't point at SECClient's cache is historical — the flat `pipeline/<filename>` layout pre-dated SECClient caching and was never consolidated.
-
-### Next Steps
-
-1. Update `_download_missing_images` to call `self._sec_client._get_image_cache_path(cik, accession, filename)` (or a public equivalent) and assign the result to `asset.file_path` directly, skipping the pipeline `write_bytes` call.
-2. Delete the now-unused `cache_dir = image_cache_dir() / "pipeline" / ...` construction.
-3. Update `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading` to assert `asset.file_path` is under the SECClient cache layout.
-4. `image_cache_dir()` continues to be the single canonical root; just one layout underneath.
-
----
-
 ## 43. Spectrum Brands Co-Registrant Filings Still Have Uber HTML Cached on Disk
 
 **Status**: Open
@@ -1503,121 +601,7 @@ Pick one:
 
 ### Context
 
-See Issue #30 resolution notes for full audit trail. Apply log at `data/audit/issue_30_applied_20260419T210109Z.jsonl`.
-
----
-
-## 44. `audit_filing_url_mismatch.py` Classifier Over-Rotates on Legitimate Co-Registrant Sharing
-
-**Status**: ✅ Resolved (2026-04-20)
-**Severity**: Low — cosmetic/ergonomic; a human-in-the-loop confirms the override via `--include-path-c`
-**Discovered**: 2026-04-19 (audit for Issue #30 classified all 15 rows as Path C when Path A was safe)
-**Resolved**: 2026-04-20
-
-### Resolution (2026-04-20)
-
-`_classify_path` (`scripts/audit_filing_url_mismatch.py:146`) now implements the four-outcome decision tree from the original "Next Steps":
-
-- `html_content_is_uber=False` → `"A"` (URL-only).
-- `reviews>0` / `img_reviews>0` / `in_gold_standard` → `"C"`.
-- `facts==0` (regardless of accession/storage collision) → `"A"` — this is the Spectrum Brands pattern from Issue #30, now correctly classified without `--include-path-c`.
-- `facts>0` and `accession_collides_in_scope` or `html_storage_path_shared_with` → `"B_coordinated"` (new sub-path; coordinated refetch handler not yet implemented — see guardrail).
-- Else (`facts>0`, no collision) → `"B"`.
-
-`scripts/repair_filing_url_mismatch.py::_eligible_rows` was updated to emit a single `logger.warning(...)` listing affected `filing_id`s when the audit report contains any `B_coordinated` rows, so they aren't silently dropped from existing A/B runs. Adding `B_coordinated` to the CLI `choices` (and implementing the coordinated-refetch handler) is deferred — the audit-side classification was the user-facing fix.
-
-7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py::TestClassifyPath` cover every branch (uber-false short-circuit; reviews/img-reviews/gold-standard → C; facts==0 + collision → A; facts>0 + collision → B_coordinated; facts>0 clean → B). Tests load `_classify_path` via `importlib.util.spec_from_file_location` so no `scripts/__init__.py` is required.
-
-### Original Problem
-
-`scripts/audit_filing_url_mismatch.py::_classify_path` treats `accession_collides_in_scope=True` OR `html_storage_path_shared_with≠[]` as a Path-C trigger. The logic was defensive: `FilingFetcher._update_database` filters `WHERE accession_number = %s`, so two rows sharing an accession would double-update during Path B refetch. That's correct for Path B.
-
-But Path A is a per-row `UPDATE sec_html_url ... WHERE filing_id=%s` — collision-safe. And legitimate SEC multi-entity co-registrations (one filing, N co-registrants, N filings rows with identical accession_number) are the normal case, not corruption. The classifier's blanket downgrade to C pushes humans into using `--include-path-c` for a pattern that should just be Path A by default.
-
-### Next Steps
-
-Refine the classifier's decision tree:
-
-```
-if html_content_is_uber == False:
-    return "A"                       # URL-only is sufficient
-if reviews > 0 or img_reviews > 0 or in_gold_standard:
-    return "C"                       # reviewer work at risk
-if facts == 0 and no reviews:
-    return "A"                       # URL-only safe; cached-HTML residue is latent — log follow-up
-# else: facts > 0 and reviews == 0
-if accession_collides or storage_shared:
-    return "B_coordinated"           # one refetch, N row updates — new sub-path
-return "B"                           # force-reextract in place
-```
-
-The `B_coordinated` sub-path is the correct design for the Spectrum Brands pattern *when* facts exist and need regeneration. For Issue #30 it wasn't needed because `facts=0`, but the classifier should know about it.
-
-### Acceptance
-
-- Rerunning the Issue #30 audit post-fix would classify the 15 rows as Path A automatically, without `--include-path-c`.
-- A synthetic test case with `facts>0` AND shared accession/storage would classify as `B_coordinated`, not C.
-
----
-
-## 45. `scripts/validate_database_urls.py` Missing `load_dotenv()`
-
-**Status**: ✅ Resolved (2026-04-20)
-**Severity**: Low — cosmetic (confusing UX); the script has a working connection path when the shell already exports `DATABASE_URL`
-**Discovered**: 2026-04-19 (attempted verification run during Issue #30 resolution fell back to `localhost:5432` / non-existent `filings_analysis` DB)
-**Resolved**: 2026-04-20
-
-### Resolution (2026-04-20)
-
-`from dotenv import load_dotenv` import added to the top of `scripts/validate_database_urls.py`; `load_dotenv()` invoked immediately before the `db_url = os.getenv("DATABASE_URL", ...)` read. Mirrors the pattern at `scripts/apply_migrations.py:21`. The existing fallback / error path remains intact for the case where `.env` has no `DATABASE_URL`.
-
-### Problem
-
-`scripts/validate_database_urls.py` does not call `load_dotenv()` before reading `DATABASE_URL`. Running it via `python3 scripts/validate_database_urls.py` in a shell that hasn't pre-exported `DATABASE_URL` (common during ad-hoc ops work) fails with a confusing `psycopg.OperationalError: connection to server at "127.0.0.1", port 5432 failed: FATAL: database "filings_analysis" does not exist` — psycopg's default-connect-without-DSN behavior.
-
-Other scripts in the project (`batch_v2_extraction.py:48-53`, the new `audit_filing_url_mismatch.py`, `repair_filing_url_mismatch.py`) load the project's `.env` automatically.
-
-### Fix
-
-Add `from dotenv import load_dotenv` import and `load_dotenv()` call before the `DatabaseAdapter(db_url)` construction. ~3 lines.
-
-Keep the error message when `DATABASE_URL` is still unset after `load_dotenv()` — that branch exists and is correct; this fix just populates the var first when a `.env` is present.
-
----
-
-## 48. `image_crop` Endpoint Is Unauthenticated
-
-**Status**: ✅ Resolved (2026-04-20)
-**Severity**: Medium — reviewer workflow exposure; not a data-security issue (SEC filings are public)
-**Discovered**: 2026-04-20 (explicitly flagged as out-of-scope follow-up during Issue #34 Phase 3 R2 migration)
-**Resolved**: 2026-04-20
-
-### Problem
-
-`src/web/routes/review_unified.py::image_crop` had no auth guard. Anyone on the internet who knew (or guessed) a filing's `img_id` UUID could fetch the extracted chart from Render. The underlying SEC source images are public anyway, but the endpoint effectively exposed a live inventory of which charts the pipeline has extracted and which filings are currently in review — workflow context that should not leak outside the reviewer pool.
-
-`_check_api_key` middleware already guarded the V2 API blueprint (see `.claude/rules/web.md`), but `review_unified_bp` (the blueprint that owns `image_crop`) did not use it.
-
-### Resolution (2026-04-20)
-
-API-key guard applied at the route level rather than the blueprint level, because `review_unified_bp` also serves the browser-facing HTML review pages that reviewers reach via bookmark/typed URL (no `Origin` or `Referer` — would otherwise hit 401 and regress UX).
-
-- `src/web/middleware.py` — the auth check body was lifted out of `register_api_auth`'s nested `_check_api_key` into a module-level `_verify_api_key()` helper (returns `None` to pass, or a Flask response tuple to reject). `register_api_auth` is now a thin wrapper; existing V2 API blueprint behaviour is unchanged.
-- A new `require_api_key` per-view decorator wraps any view in a call to `_verify_api_key()`.
-- `src/web/routes/review_unified.py::image_crop` — decorated with `@require_api_key` (route decorator remains outermost). The same-origin `Origin`/`Referer` bypass in `_verify_api_key` allows embedded `<img src="/v2/review/image_crop/...">` loads from rendered review pages to pass without a header; external direct fetches require `X-API-Key` or `?api_key=`.
-- `tests/unit/web/test_image_crop.py::TestImageCropAuth` — five new cases covering 401 missing key, 401 wrong key, 200 correct key, 200 same-origin Referer bypass, 500 `API_KEY_REQUIRED=True` with unset `API_KEY`.
-
-### Verification
-
-- `pytest tests/unit/web/test_image_crop.py` → 13/13 pass (8 existing + 5 new auth).
-- `pytest tests/unit/web/` → 88/88 pass (no V2 API regression from the middleware refactor).
-- Full unit suite `pytest tests/unit` → 3369/3369 pass.
-
-### Cross-References
-
-- `.claude/rules/web.md` — now documents `require_api_key` as the per-route alternative for mixed blueprints.
-- `docs/architecture/image-storage.md` — Security section rewritten to reflect the guard.
-- Issue #34 — R2 migration plan explicitly listed this as out of scope; now closed.
+See Issue #30 resolution notes (now in archive) for full audit trail. Apply log at `data/audit/issue_30_applied_20260419T210109Z.jsonl`.
 
 ---
 
@@ -1662,70 +646,6 @@ pre-commit check.
 
 ---
 
-## 50. No 401-Path Test Coverage for `api_unified_bp`
-
-**Status**: Open
-**Severity**: Low
-**Discovered**: 2026-04-20 (surfaced during #48 Explore sweep)
-
-### Problem
-
-`src/web/routes/api_unified.py:28` installs `register_api_auth(api_unified_bp)`,
-but no test in `tests/` exercises the 401 path — a grep for `_check_api_key`
-across the test tree returns zero matches. Issue #48 added a
-`TestImageCropAuth` class in `tests/unit/web/test_image_crop.py` that covers
-the new `@require_api_key` decorator on `review_unified_bp.image_crop`, but
-the symmetric coverage for the V2 API blueprint's blueprint-wide guard is
-still missing. A regression that silently removes `register_api_auth(bp)`
-or weakens `_verify_api_key` in a way that only affects the V2 API path
-would not be caught.
-
-### Next Steps
-
-- Add a test module (e.g. `tests/unit/web/test_api_unified_auth.py`) that
-  instantiates an app with `API_KEY_REQUIRED=True` + `API_KEY="test-key"`
-  and exercises one V2 API endpoint with: missing key → 401, wrong key →
-  401, correct key → 200, same-origin Referer → 200, `API_KEY` unset →
-  500. Mirror the shape of `TestImageCropAuth` in
-  `tests/unit/web/test_image_crop.py` after #48.
-
----
-
-## 51. Brittle Source-String Assertions in `test_persistence_sql.py`
-
-**Status**: Open
-**Severity**: Low
-**Discovered**: 2026-04-20 (surfaced while implementing Issue #35 Option A' — `chart_only` persistence mode)
-
-### Problem
-
-`tests/unit/extraction_v2/test_persistence_sql.py::TestImagePersistSQL::test_empty_matches_persist_as_null` (line 211) asserts the exact one-line substring `") or None,"` inside `_persist_images_in_tx`. Running `black` on `persistence.py` for any reason can reformat that expression across two lines and break the test. This bit during the Option A' change — worked around with `# fmt: skip` on the affected block, but the test's intent (verify that empty matcher results collapse to `None` / SQL `NULL`) should be testable in a formatting-agnostic way. Other assertions in the same file (`test_detected_keywords_in_insert_columns`, `test_detected_keywords_in_on_conflict_update`, `test_matcher_invoked_for_each_image`) are similarly grep-the-source checks and carry the same risk.
-
-### Next Steps
-
-- Replace source-substring assertions with behavioral assertions: build a minimal `ImageAsset` fixture with empty `nearby_text`/`ocr_text`, call `_persist_images_in_tx` (or the helper that produces `params_list`) against a mock cursor, and assert the `detected_keywords` value in the captured `execute` params is `None`.
-- Remove the `# fmt: skip` comment in `persistence.py` once the test no longer depends on the single-line form.
-
----
-
-## 52. `pg_dump` Version-Mismatch Silent Failure
-
-**Status**: Open
-**Severity**: Low
-**Discovered**: 2026-04-20 (surfaced while taking a pre-smoke snapshot for Issue #35)
-
-### Problem
-
-`/opt/homebrew/bin/pg_dump` resolves to the `postgresql@14` install (14.20 on this machine); Neon prod runs PostgreSQL 15.16. Running `pg_dump "$DATABASE_URL" --data-only > snapshot.sql` exits 0 but writes a 0-byte file — the actual error (`server version: 15.16; pg_dump version: 14.20 — aborting because of server version mismatch`) goes to stderr. Redirecting only stdout silently loses the snapshot. Worked around by invoking `/opt/homebrew/Cellar/postgresql@16/16.11/bin/pg_dump` directly.
-
-### Next Steps
-
-- Add a pre-flight helper (maybe `scripts/dev/snapshot_prod.sh` or a short `scripts/check_pg_client_version.py`) that resolves to a client ≥ server version or fails loudly.
-- Document the requirement in `.claude/rules/infrastructure.md` under the Neon/Render section: "pg_dump must be ≥ 15; prefer `brew install postgresql@16` and invoke via explicit path or a pinned symlink."
-- Optional: add a `brew services`-style doctor step that validates `pg_dump --version` against `SELECT version()` from `DATABASE_URL`.
-
----
-
 ## 53. Chart Call Limit (10) Truncates OCR on High-Chart Filings
 
 **Status**: Open
@@ -1747,31 +667,6 @@ Filings with lots of charts (Chewy has 16 chart-classified images; Snowflake has
 - Locate the limit in `src/extraction_v2/stages/ocr_extraction.py` (likely a module-level constant or `PipelineConfig` field) and either raise the default, convert to a per-filing override, or expose via CLI flag on `batch_v2_extraction.py`.
 - Re-run the Chewy smoke with the cap raised to quantify the missed-recall impact.
 - Consider prioritization: OCR charts in likely-Tier-1 sections first (MDA, financials) rather than HTML order.
-
----
-
-## 54. Chart-Bridge Emits Low-Confidence Misbinds on Non-Tier-1 Charts
-
-**Status**: Open
-**Severity**: Low — adds reviewer noise; auto-filtered by confidence threshold
-**Discovered**: 2026-04-21 (Issue #35 smoke on Chewy — `cm_customer_acquisition_cost` = $3 from a bar chart with "3" in it)
-
-### Problem
-
-`ChartFactBridgeStage` + `ChartMetricClassifier` emitted a fact `cm_customer_acquisition_cost = 3` with confidence 0.508 from a Chewy chart that is almost certainly not a CAC chart. The number "3" (probably a cohort count or year marker in the chart) got bound to CAC because the chart loosely matched keyword/context heuristics.
-
-Confidence 0.508 is below both the auto-accept (0.90) and review (0.80) thresholds, so the fact lands as `requires_review=True` — a reviewer would see and reject it. Not data-corrupting, but:
-
-1. Adds reviewer workload with predictably-bad candidates.
-2. In aggregate across a backfill of many filings, these misbinds dilute the signal-to-noise of the chart-native recall gain claimed by Issue #35.
-
-The smoke's Chewy fact was rolled back manually (`DELETE FROM v2_metric_facts WHERE doc_id=1146 AND source_type='chart'`) after the 2026-04-21 investigation decided the backfill's recall gain didn't justify the reviewer overhead until this is understood.
-
-### Next Steps
-
-- Audit `ChartMetricClassifier` scoring: when no metric crosses a reasonable confidence floor (e.g. 0.7), emit NO fact rather than picking the highest-scoring weak match.
-- Add a unit test with a fixture chart that has only structural numbers (years, indexes) and assert no chart fact is produced.
-- Consider tightening `chart_image_min_confidence` or introducing a separate `chart_metric_min_confidence` threshold with a stricter default (e.g. 0.70).
 
 ---
 
@@ -1797,67 +692,186 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ---
 
-## 56. `check_docs_sync.py --ci` Fails CI on Transitive-Import Warnings
+## 58. 8-K Fetcher Returns Only Primary Doc; Earnings Content Lives in Exhibit 99.1
 
-**Status**: ✅ Resolved (2026-04-21)
-**Severity**: Low
-**Discovered**: 2026-04-21 (while trying to merge PR #50)
+**Status**: Open
+**Severity**: Medium — blocks 8-K recall in batch-ingest UI rollout
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
 
 ### Problem
 
-The `Documentation Freshness` workflow runs `scripts/check_docs_sync.py --ci`, which exits 1 on any warning (line 323-324). The script's `import_to_pkg` dict didn't cover three imports that show up in the `src/` tree but resolve via transitive deps or case-sensitive name mismatches:
+`FilingFetcher.fetch_filing` (`src/filing_fetcher/filing_fetcher.py:263-365`) downloads only `primary.htm` resolved from the accession's directory URL. For many 8-K filings the primary doc is a ~10 KB cover page that points at Exhibit 99.1 (the actual press release / financial-highlights HTML). Pipeline ran cleanly on 4/5 Phase 0 candidates but Samsara (2025-08-21) produced 0 facts — the primary doc was 9,336 bytes of boilerplate; all customer-metric content sat in `exhibit991-2025x08x21.htm` which was never fetched.
 
-- `dateutil` — ships transitively via `boto3 → botocore → python-dateutil` (botocore's `Requires-Dist` explicitly lists `python-dateutil>=2.1`). Not a direct dep, but the script doesn't see that.
-- `botocore` — direct dep of `boto3`; naming scheme differs.
-- `PIL` — imported case-sensitively (`PIL`); the script compared lowercase, but the original dict entries were all lowercase, so no match triggered.
+### Next Steps
 
-Combined with README drift (3 pipeline-stage class names absent, coverage line missing the `N% overall` phrasing the script greps for), every PR to main — including the chart_only persistence PR (#50 on GitHub) — hit `mergeStateStatus=BLOCKED` with 5 warnings.
-
-### Resolution
-
-`scripts/check_docs_sync.py` `import_to_pkg` dict extended with:
-
-```python
-"dateutil": "boto3",            # python-dateutil ships transitively via boto3 → botocore
-"botocore": "boto3",            # direct boto3 dependency
-"PIL": "pillow",                # Pillow package exposes PIL (case-sensitive import name)
-```
-
-`README.md` updated:
-- Added pipeline-stages line mentioning `CandidateGenerationStage`, `ValueBindingStage`, `DefinitionExtractionStage` alongside the other stage names.
-- Changed "80% minimum" → "80% overall minimum" so the `(\d+)%\s*overall` regex matches.
-
-Verified: `python3 scripts/check_docs_sync.py --ci` now exits 0.
+1. In `fetch_filing`, after downloading `primary.htm`, parse the index for `99.1` (or regex-matched variants like `ex-99-1`) and download the exhibit alongside the primary doc.
+2. Decide whether the pipeline consumes only the exhibit, both docs concatenated, or runs twice and merges facts — prefer "concat with a section break" for the MVP to avoid invalidating `filing_id` uniqueness.
+3. Add an integration test using the Samsara 8-K (or a fixture mirroring its structure) asserting >0 customer-metric facts.
+4. Gate on this before enabling 8-K in the batch-ingest UI form-type selector.
 
 ---
 
-## 57. `unified_review.html` Missing Breadcrumb + Count Badges Broke 7 Playwright Tests
+## 59. 8-K Section Classifier Produces Only `COVER` / `FINANCIALS` Labels
 
-**Status**: ✅ Resolved (2026-04-21)
-**Severity**: Low
-**Discovered**: 2026-04-21 (while trying to merge PR #50)
+**Status**: Open
+**Severity**: Low — extraction still works; section-aware FP rules and UI navigation degrade
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
 
 ### Problem
 
-The compact-UI refactor that replaced `v2_review.html` with `unified_review.html` dropped two DOM structures that Playwright tests assert against, and changed two selectors. Result: 7 of 151 UI tests failed on every PR:
+`SectionClassificationStage.SECTION_PATTERNS` (`src/extraction_v2/stages/section_classification.py:104-138`) only knows S-1/10-K structural headings (`Item 1A`, `Item 7`, `Item 8`, etc.). 8-K earnings exhibits use narrative patterns like "Financial Highlights", "Key Business Metrics", "Q4 Highlights", "Results of Operations" that none of the existing patterns match. Phase 0 run: every segment on Chewy / DoorDash / Robinhood / Snowflake 8-Ks was classified as `COVER` or `FINANCIALS`. Candidate generation and value binding still produced correct facts, but sections-aware downstream logic (FP rules keyed on `section_type`, reviewer UI navigation, section-scoped metric scoring) is blind on 8-Ks.
 
-- **Missing** — `.breadcrumb` nav (2 tests): `v2_review.html:49-54` had a Bootstrap breadcrumb; the new template lacked one entirely.
-- **Missing** — `.badge.bg-success` / `.badge.bg-danger` for accepted/rejected counts in the filing header (2 tests): `tests/ui/test_server.py:289-290` injects `accepted_count` / `rejected_count` context vars, but the template never rendered them.
-- **Selector drift** — metric-ID heading moved from `<h5>` to `<span class="fact-metric-id">` (1 test, line 229).
-- **Selector drift** — value_raw prominent display moved from `.fs-4.fw-bold` to `.fs-5.fw-bold` (1 test, line 253).
-- **Collateral damage** — `Enter in correct notes submits the correction` (line 560) failed because the upstream page-load bugs prevented focus management from working; self-fixed once the template rendered clean.
+### Next Steps
 
-### Resolution
+1. Add a new `SectionType` variant — e.g. `EARNINGS_HIGHLIGHTS` — or piggyback on `BUSINESS` if the existing type taxonomy already carries the right semantics.
+2. Add pattern list entries for common 8-K headings: `Financial Highlights`, `Key Business Metrics`, `Q[1-4]\s*\d{4}\s*Highlights`, `Results of Operations`, `Business Highlights`.
+3. Validate against the Phase 0 candidate set (Chewy, DoorDash, Robinhood, Snowflake 8-Ks) — expect >=30% of segments to land on non-COVER sections.
+4. Audit existing FP rules for section-gated behavior that might fire differently once 8-K segments are correctly typed.
 
-`src/web/templates/unified_review.html`:
-- Added Bootstrap breadcrumb nav above `.review-sticky-header` linking back to `/` with the company name as the active item.
-- Added `badge bg-success` / `badge bg-danger` spans inside `.review-pill-row` showing `{{ accepted_count|default(0) }} accepted` and `{{ rejected_count|default(0) }} rejected`. The `bg-success` span lands at line ~60, well before the unrelated `bg-success` "Reviewed" badge at line 700 — so `page.locator('.badge.bg-success').first()` resolves to the header badge.
+---
 
-`tests/ui/review.spec.js`:
-- Updated line 229 selector from `#fact-detail h5` to `#fact-detail .fact-metric-id` (matches the compact-UI span).
-- Updated line 253 selector from `.fs-4.fw-bold` to `.fs-5.fw-bold` (matches the compact-UI sizing choice).
+## 60. `detect_universe_gaps` Ignores SIC Filter When Reporting Populate Gaps
 
-Verified: all 151 UI tests pass locally (`npm run test:ui`).
+**Status**: Open
+**Severity**: Low — correctness-neutral, efficiency issue
+**Discovered**: 2026-04-20 (Phase 1 review of `src/universe/onboarding.py`)
+
+### Problem
+
+`src/universe/onboarding.py::detect_universe_gaps` reports a `(year, form_type)` gap whenever the `filings` table has zero rows for that combination in the query's year range, regardless of the query's SIC code set. A reviewer filtering the UI to e.g. grocery retail 8-Ks will see a "populate 2023" prompt even if 2023 already has thousands of non-grocery 8-K filings in `filings` — the SIC intersection with those is empty, but the year/form coverage exists. The populate run that follows will re-fetch an entire year of 8-K metadata unnecessarily.
+
+### Next Steps
+
+1. Change the gap query from `filings.form_type + filing_date` to `filings JOIN companies ON company_id` with `industry_code = ANY(%(sic_codes)s)` (or the equivalent once the companies.industry_code field is populated — check that first).
+2. Alternatively, accept the over-populate behavior and document the trade-off in `src/universe/onboarding.py` at the function docstring — populate is idempotent, just bandwidth-wasteful.
+3. Add a unit test covering the "filings exist but not for our SIC" case.
+
+---
+
+## 61. `/ingest/preview` Has No Integration-Test Coverage
+
+**Status**: Open
+**Severity**: Low — unit tests exist for the form-parsing layer; the end-to-end path is untested
+**Discovered**: 2026-04-20 (Wave B Phase 4 review)
+
+### Problem
+
+`tests/integration/web/test_ingest_flow.py` covers `GET /ingest/`, `POST /ingest/start`, `GET /api/v2/ingest/batches/<id>/status`, `POST /cancel`, and auth. `POST /ingest/preview` — the middle step that runs `resolve_criteria` + `discover` + `classify_volume` + `count_reviewer_work` and renders the three-bucket candidate table — is only covered by unit tests on the form-parser helpers. No end-to-end assertion that a valid criteria submission renders a preview page with the correct bucket split + volume banner.
+
+### Next Steps
+
+1. Add an integration test that seeds two filings (one in `v2_documents`, one not) + a reviewed fact on the extracted one, POSTs `/ingest/preview` with criteria that match both, and asserts the three buckets render correctly.
+2. Assert the volume banner class (`alert-success` / `alert-warning` / `alert-danger`) for each band.
+3. Assert hidden-field snapshot survives re-render — `filing_id` hidden inputs must be present and match the discovered IDs.
+
+---
+
+## 62. Local-Dev Stuck-Batch Recovery Is Manual
+
+**Status**: Open
+**Severity**: Low — operational; no data loss, just operator inconvenience
+**Discovered**: 2026-04-20 (Wave B Phase 3 review)
+
+### Problem
+
+On Render (Phase 7), a worker service with `--watch` mode will re-claim a batch whose `run_lock_until` has expired. On local dev there is no watcher — if the `onboarding_runner` subprocess dies mid-batch (kernel OOM, user kills the Flask server, etc.), the batch stays in `status='running'` forever. Currently recovery requires a hand-crafted `UPDATE v2_ingest_batches SET status='failed' WHERE batch_id=...` plus a cleanup of partially-processed `v2_ingest_batch_filings` rows.
+
+### Next Steps
+
+1. Document the manual recovery SQL in `docs/operations/TICKER_ONBOARDING.md` (or a new batch-ingest runbook) when that file lands in Phase 7.
+2. Consider a `python3 -m src.universe.onboarding_runner --cleanup-stuck` admin flag that scans for batches with `run_lock_until < NOW() - INTERVAL '1 hour'` still in `running` state and either marks them failed or re-claims them.
+3. Add a CLI log line to the runner on SIGTERM that tells the operator "batch <id> interrupted — run `... --cleanup-stuck` to recover".
+
+---
+
+## 63. Cancel-During-Populate Not Exercised by Integration Test
+
+**Status**: Open
+**Severity**: Low — behaviour is documented + the conditional SQL is unit-tested
+**Discovered**: 2026-04-20 (Wave C / Phase 6 review)
+
+### Problem
+
+Wave C documents the cancel-during-populate flow (cancel flips `status='cancelled'`; runner respects it on natural completion via the new `WHERE status='running'` predicate on `_BATCH_COMPLETE_SQL`). The conditional SQL is unit-tested via string assertion (`tests/unit/universe/test_onboarding_runner.py::TestBatchCompleteConditional`), but no integration test simulates a runner mid-`build_universe` while cancel fires concurrently.
+
+### Next Steps
+
+1. Add an integration test in `tests/integration/universe/test_onboarding_runner_integration.py::TestPopulateCancellation` that: inserts a populate batch, monkey-patches `UniverseBuilder.build_universe` to flip the batch status to `cancelled` mid-run, calls `_run_populate`, asserts final status stays `cancelled` (not `complete`) and `finished_at IS NOT NULL`.
+2. Optionally extend Phase 5's JS to render a "Cancellation pending — batch will stop after current operation completes" banner when `status='cancelled' AND finished_at IS NULL` (today the JS shows the cancelled banner immediately).
+
+---
+
+## 64. Chart Classifier Tier 1 Boundary Sensitivity
+
+**Status**: Open
+**Severity**: Low — monitoring / silent-regression risk
+**Discovered**: 2026-04-21 (during Issue #54 implementation)
+
+### Problem
+
+`ChartMetricClassifier.classify` returns a score of **0.6024** for the `cm_balance_by_cohort` fixture used in `tests/extraction_v2/chart/test_chart_fact_bridge_stage.py::test_emits_facts_for_classified_chart` — a HOOD-style "Cumulative Net Deposits by Cohort" chart that is a legitimate Tier 1 match. That score is **0.0024 above the 0.6 classification gate**. Any small scoring shift (new keyword, weight rebalance, corpus tuning) could push this and similar Tier 1 matches below the gate and silently regress recall.
+
+Discovered while implementing Issue #54: the issue's suggested default (`chart_metric_min_confidence = 0.70`) would have suppressed this fact. The landed fix set the default to 0.60 (no-op) and left 0.70 as an operator knob.
+
+### Next Steps
+
+- Measure the full distribution of classifier scores across current gold standard Tier 1 chart matches (Farfetch, HOOD, Flywire). Identify how many are within 0.05 of the 0.6 gate.
+- If multiple Tier 1 matches sit at ~0.6, add a unit test that asserts "score floor - classification gate > 0.02" on the fixture set, so any future classifier change that narrows the margin fails loudly.
+- Alternative: widen the classifier scoring function so legitimate Tier 1 matches comfortably exceed the gate, then raise the gate to 0.65+ without regression.
+
+### Cross-References
+
+- Issue #54 — landed `chart_metric_min_confidence` knob; forced to default 0.60 by this sensitivity.
+- `src/extraction_v2/chart/metric_classifier.py::ChartMetricClassifier.classify`
+- `tests/extraction_v2/chart/test_chart_fact_bridge_stage.py::test_emits_facts_for_classified_chart`
+
+---
+
+## 65. Secret-Leak Guard for Mis-Named Env File Duplicates
+
+**Status**: Open
+**Severity**: Medium
+**Discovered**: 2026-04-21 (surfaced during branch-cleanup session)
+
+### Problem
+
+`.gitignore` matches `.env` by exact name only. During cleanup today a file literally named `" "` (single space) was found in the repo root — a 19-line subset of `.env` containing real production secrets (OpenAI key, Neon DB URL with creds, GitHub PAT, Brave/Gemini keys, `SECRET_KEY`, `FILINGS_API_KEY`). The file was untracked and never committed, but **`git check-ignore` confirms `.gitignore` does NOT protect it** — a `git add .` or `git add -A` would have caught it. Likely origin: a shell redirect typo like `cp .env " "`. No pre-commit hook scans staged blobs for secret patterns either.
+
+### Next Steps
+
+- Broaden `.gitignore` to cover env-variant filenames: add `.env*` and consider `!.env.template` / `!.env.example` allowlists.
+- Add a `detect-private-key`-style pre-commit hook that scans staged content for known secret patterns: `sk-proj-*`, `github_pat_*`, `postgresql://*neon.tech`, `OPENAI_API_KEY=`, `SECRET_KEY=`, `FILINGS_API_KEY=`, R2 endpoint URLs.
+- Evaluate `gitleaks` or `detect-secrets` as a belt-and-suspenders scan at commit-time and in CI.
+- Audit `git log --all -S 'OPENAI_API_KEY='` / `sk-proj-` / `github_pat_` to confirm no secret was ever committed historically.
+
+### Cross-References
+
+- `.gitignore` line 2 (current `.env` entry)
+- `.pre-commit-config.yaml` (hook location)
+
+---
+
+## 66. Migrations Not Auto-Applied on Render Deploy
+
+**Status**: Open
+**Severity**: Medium
+**Discovered**: 2026-04-21 (during `filings-onboarding-runner` recovery)
+
+### Problem
+
+`scripts/apply_migrations.py` is idempotent (via the `schema_migrations` ledger) and keeps a registered list through `sql/39_v2_ingest_batches.sql`, but Render's blueprint-driven deploys do not invoke it. When PR #48 merged with `sql/39_v2_ingest_batches.sql`, Render auto-deployed `filings-onboarding-runner` without running the migration, and the worker then crashed every ~5 minutes with `psycopg.errors.UndefinedTable: relation "v2_ingest_batches" does not exist` until an operator manually ran `python3 scripts/apply_migrations.py` against Neon. Every future schema-change PR has the same failure mode.
+
+### Next Steps
+
+- Add a Render pre-deploy command on `filings-reviewer` (the web service with the longest deploy budget) that runs `python3 scripts/apply_migrations.py` before the container starts. The ledger makes it safe on every deploy.
+- Alternative: a dedicated one-shot Render Job that runs the migration runner on every merge to main, blocking service redeploys until it exits 0.
+- Document the chosen path in `.claude/rules/infrastructure.md` so future schema-change PRs don't repeat this.
+
+### Cross-References
+
+- `scripts/apply_migrations.py` — migration runner (idempotent via `schema_migrations` ledger)
+- `sql/39_v2_ingest_batches.sql` — the migration that triggered this discovery
+- `render.yaml` — pre-deploy hook would attach to the web service entry
 
 ---
 
@@ -1865,19 +879,19 @@ Verified: all 151 UI tests pass locally (`npm run test:ui`).
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
 
-**Status**: ✅ Resolved (2026-03-16)
+**Status**: Resolved (2026-03-16)
 
 Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system taxonomy in `config/metric_keywords.yaml`. No remaining ID mismatches. See git log (2026-03-16) for full resolution details.
 
 ### Issue #6: FilingFetcher Downloads Directory Index Instead of Primary Document
 
-**Status**: ✅ Resolved (2026-03-16)
+**Status**: Resolved (2026-03-16)
 
 `FilingFetcher` defaulted `sec_client` to `None` and guarded URL resolution behind `if self.sec_client:`, causing directory-index pages to be saved instead of actual filings. Fixed in `src/filing_fetcher/filing_fetcher.py` (lines 81, 295). 78 cloud-fetched filings need re-fetching on Render. See git log (2026-03-16) for full details.
 
 ### Issues #7 and #8: Test Deadlock and Connection Pool Exhaustion
 
-**Status**: ✅ Resolved (2026-03-26)
+**Status**: Resolved (2026-03-26)
 
 Root cause: `DatabaseAdapter` had no `close()` method; test fixtures were session-scoped with no teardown and no connection pool, so every `get_connection()` call created a new TCP connection.
 
@@ -1888,9 +902,225 @@ Fixes applied:
 
 ### Issue #3: Gold Standard Methodology Questions
 
-**Status**: ✅ Resolved (2026-03-26)
+**Status**: Resolved (2026-03-26)
 
 Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, value normalization rules, chart vs text classification, period format, negative examples, and duplicate group handling.
+
+### Issue #10: `test_candidate_generation_finds_active_consumers` — Root Cause Unclear
+
+**Status**: Resolved-by-deletion (2026-04-19)
+
+`tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The failing test no longer exists; pipeline-level recall for `cm_active_customers_total` remains 100% on Farfetch. See commit `03a8a20`.
+
+### Issue #11: Gold Standard Coverage Tests
+
+**Status**: Resolved (2026-04-21) — resolved-by-deletion
+
+The "1 remaining" test tied to archived Issue #10 no longer exists; `tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The 11/12 → 12/12 finish line was reached implicitly. See archive entry for Issue #10.
+
+### Issue #12: `test_image_crop.py` Pollutes Working Tree with Test PNGs
+
+**Status**: Resolved (2026-04-18)
+
+`make_png_in_data_dir` fixture added to `tests/unit/web/test_image_crop.py`; fixture writes the PNG, tracks the path, and deletes it on teardown. Working tree clean after suite run. See git log (2026-04-18) for details.
+
+### Issue #13: V2 Metric Facts Identity Index Drift
+
+**Status**: Resolved (2026-04-19)
+
+`sql/33_fix_identity_index.sql` idempotently drops and recreates `idx_v2_metric_facts_identity_unique` with all 9 columns including `source_type`. Prod confirmed 9-col via direct `pg_indexes` read on 2026-04-19; local test DB and prod now agree. See `sql/33_fix_identity_index.sql` and `scripts/apply_migrations.py:68-74`.
+
+### Issue #14: Farfetch LTV/CAC Dedup Collision on Layout Tables
+
+**Status**: Resolved (2026-04-18)
+
+Respectively-parser priority introduced in `value_binding.py::_bind_prose_cell`; `cohort_hint` field added to `BoundValue`; defensive 80-char prose guard in `_extract_cohort_def`. `cm_ltv_to_cac_ratio` R 33%→100%; `cm_ltv_to_cac_ratio_by_cohort` R 17%→50% (text FNs); Farfetch F1 +10.3pp. 6 regression tests added. See git log (2026-04-18).
+
+### Issue #15: Chart Pipeline Env Bootstrap
+
+**Status**: Resolved (2026-04-18)
+
+`load_dotenv()` added to `src/gold_standard/v2_validator.py` `__main__` block. Chart stages now run automatically when `.env` contains `OPENAI_API_KEY`. See git log (2026-04-18).
+
+### Issue #17: CAC Payback "Six Months" — Bare Word-Number Not Bound
+
+**Status**: Resolved (2026-04-18)
+
+`WORD_NUMBER_TIME_PATTERN` regex added to `value_binding.py`, gated to `TIME_UNIT_VALUED_METRICS = {"cm_cac_payback_period"}`; `_V1_SPELLED_OUT_OVERRIDE_METRICS` bypass added to `false_positive_filter.py`. `cm_cac_payback_period` 0%→100% F1 on Farfetch. 6 unit tests added. See git log (2026-04-18).
+
+### Issue #18: Migration Checksum Mismatch on `sql/01_create_schema.sql`
+
+**Status**: Resolved (2026-04-18)
+
+Self-healed via V1 retirement merge (commit `03a8a20`); the gold-standard pytest fixtures that triggered the checksum guard were deleted along with the V1 review tables. No reconciliation action needed. See commit `03a8a20`.
+
+### Issue #19: FN Diagnostic Classification Gaps
+
+**Status**: Resolved (2026-04-18)
+
+`dedup_collision` and `no_matching_binding` categories added to `src/gold_standard/v2_validator.py`; `wrong_period` restricted to post-dedup facts. 4 new unit tests in `tests/unit/gold_standard/test_v2_validator.py::TestDiagnosefalseNegative`. See git log (2026-04-18).
+
+### Issue #20: `cm_gross_margin_by_cohort` Still 0% on Farfetch Despite Chart Pipeline Active
+
+**Status**: Resolved (2026-04-18)
+
+Four targeted changes in `src/extraction_v2/chart/`: `_cohort_gate` accepts ≥2 distinct years in `points[].x` + customer-type series names; `_metric_gate` fallback for empty `y_axis_label`; `_score_metric` nearby_text title fallback + structural bonus; `cohort_parser._parse_customer_type_regime` new regime. `cm_gross_margin_by_cohort` Farfetch 0%→100% F1 (9/9 rows); Tier 1 F1 +5.4pp overall. 7 regression tests added. See git log (2026-04-18).
+
+### Issue #21: `v2_image_assets` Duplicates + Pending-Count Discrepancy (Maplebear S-1)
+
+**Status**: Resolved (2026-04-18)
+
+`sql/34_dedup_v2_image_assets.sql` collapses duplicate `(doc_id, filename)` groups and adds `UNIQUE (doc_id, filename)` constraint; `_persist_images_in_tx` upserts on `(doc_id, filename)` preserving stable `img_id`; `persist_pipeline_result` remaps in-memory `source_locator.img_id` before fact persistence. See `sql/34_dedup_v2_image_assets.sql` and git log (2026-04-18).
+
+### Issue #22: No Reviewed-Filing Guard on Image Re-Extraction
+
+**Status**: Resolved (2026-04-18)
+
+Narrow image-side guard added to `_persist_images_in_tx` in `src/extraction_v2/persistence.py`: fires when a decided image would be re-classified from the visible set (`chart`/`table_image`/`unknown`) into the hidden set (`decorative`/`logo`/`signature`); `force=True` proceeds with structured warning. `ReviewedFilingError` gained optional `context` kwarg. 5 new tests in `tests/integration/extraction_v2/test_persistence_guard.py::TestGuardOnPersistImages`. See git log (2026-04-18).
+
+### Issue #23: `v2_image_assets.segment_id` Is a Dead Column
+
+**Status**: Resolved (2026-04-18)
+
+`sql/35_drop_v2_image_assets_segment_id.sql` idempotently drops the column; `_persist_images_in_tx` cleaned up. See `sql/35_drop_v2_image_assets_segment_id.sql` and git log (2026-04-18).
+
+### Issue #25: `scripts/migrate_image_ids_to_deterministic.py` Scope Is Confusing
+
+**Status**: Resolved (2026-04-18)
+
+Module-level docstring expanded to clarify the script only rewrites local gold-standard JSON files and does not modify the database. See git log (2026-04-18).
+
+### Issue #26: Review UI — Lost SEC + Image Links for Investor Presentations
+
+**Status**: Resolved (2026-04-19)
+
+`sql/36_backfill_presentation_urls.sql` corrected 166 rows; `src/web/url_builders.py` introduced as single source for URL construction; `scripts/validate_database_urls.py` gained `--fail-on-errors` / `--document-type` and wired into CI. See `sql/36_backfill_presentation_urls.sql`, `src/web/url_builders.py`, and git log (2026-04-19).
+
+### Issue #29: `cm_new_customers_acquired` Receives `2.71x` Chart Fact From Farfetch LTV/CAC Chart
+
+**Status**: Resolved (2026-04-19)
+
+`_rule_ratio_suffix_on_count_metric` added to `src/extraction_v2/stages/false_positive_filter.py`; rejects `N.NNx`/`N.NN×` raw values on count/currency/rate/time metrics. 6 unit tests. Farfetch GS confirms the `2.71x` FP eliminated. See git log (2026-04-19).
+
+### Issue #30: 15 Filings With CIK / sec_html_url Mismatch
+
+**Status**: Resolved (2026-04-19)
+
+`scripts/audit_filing_url_mismatch.py` enumerated affected rows; `scripts/repair_filing_url_mismatch.py --path A --apply` corrected all 15 `sec_html_url` values. Apply log at `data/audit/issue_30_applied_20260419T210109Z.jsonl`. Latent cached-HTML residue tracked as Issue #43. See git log (2026-04-19).
+
+### Issue #31: Audit Log Spams DNS Error in Test / Dev
+
+**Status**: Resolved (2026-04-19)
+
+Both async (`src/web/routes/review_unified.py:97-109`) and sync (`src/web/middleware.py:87-120`) audit-log paths downgrade `ERROR` to `DEBUG` when `TESTING=True`. Covered by `tests/unit/web/test_middleware.py::TestAuditLogFailureLogging`. See commit `366d9dd`.
+
+### Issue #32: `src/shared/html_segmenter.py` Has 0% Test Coverage
+
+**Status**: Resolved (2026-04-20)
+
+Module deleted (2032 LOC) as dead code — zero production callers verified; smoke test also deleted. Coverage rose from 81.44% to 83.5%, enabling the #33 floor bump. Successor: `src/extraction_v2/stages/ingestion.py`. See git log `-- src/shared/html_segmenter.py`.
+
+### Issue #33: Raise Coverage Threshold to 80% After Issue #32
+
+**Status**: Resolved (2026-04-20)
+
+`pyproject.toml` `[tool.coverage.report]` `fail_under` raised 75→80 in the same change as Issue #32; `.claude/rules/testing.md` updated to match. See git log (2026-04-20).
+
+### Issue #36: `onboard_tickers.py populate` Has No `--limit`
+
+**Status**: Resolved (2026-04-19)
+
+`UniverseBuilder.build_universe` gained `limit: int | None = None` kwarg; `scripts/onboard_tickers.py populate --limit N` threads through. Covered by `tests/unit/universe/test_universe_builder.py::test_limit_stops_after_n_in_scope_upserts`. See commit `366d9dd`.
+
+### Issue #37: `classify_first_time_issuer` Reports `True` for Non-S-1/F-1 Filers
+
+**Status**: Resolved (2026-04-19)
+
+`_process_filing` in `src/universe/universe_builder.py` gates `classify_first_time_issuer` on `filing.form_type in DEFAULT_FORM_TYPES_S1F1`; non-S-1/F-1 filings land with `is_first_time_issuer=NULL`. Covered by `tests/unit/universe/test_universe_builder.py::test_10k_filing_has_null_first_time_issuer`. See commit `366d9dd`.
+
+### Issue #41: Review-UI Sticky Header Offset Mismatch + Narrow-Width Overlap
+
+**Status**: Resolved (2026-04-19)
+
+`--navbar-height: 48px` CSS custom property unifies sticky offsets in `src/web/static/css/review.css`; `.review-pill-row` flex-wrap prevents narrow-width badge overlap. Deployed Render build verified visually. See commit `366d9dd`.
+
+### Issue #44: `audit_filing_url_mismatch.py` Classifier Over-Rotates on Legitimate Co-Registrant Sharing
+
+**Status**: Resolved (2026-04-20)
+
+`_classify_path` decision tree refined: `facts==0` short-circuits to Path A; `facts>0` + collision routes to new `B_coordinated` sub-path. `repair_filing_url_mismatch.py` warns on `B_coordinated` rows. 7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py`. See git log (2026-04-20).
+
+### Issue #45: `scripts/validate_database_urls.py` Missing `load_dotenv()`
+
+**Status**: Resolved (2026-04-20)
+
+`load_dotenv()` added before `DATABASE_URL` read; mirrors `scripts/apply_migrations.py:21` pattern. See git log (2026-04-20).
+
+### Issue #46: `scripts/apply_all_migrations.py` Stale — Stops at Migration 31
+
+**Status**: Resolved (2026-04-20)
+
+`MIGRATION_ORDER` extended with migrations 32–38; `--dry-run` now reports 44 migrations; `check_unregistered_migrations` no longer aborts. Sync chosen over deletion (script referenced from 7 docs). See git log (2026-04-20).
+
+### Issue #47: `data/audit/` Not Gitignored
+
+**Status**: Resolved (2026-04-20)
+
+`data/audit/` added to `.gitignore` (line 46) alongside peer `data/*` runtime entries. Verified via `git check-ignore -v`. See git log (2026-04-20).
+
+### Issue #48: `image_crop` Endpoint Is Unauthenticated
+
+**Status**: Resolved (2026-04-20)
+
+`@require_api_key` decorator added to `image_crop` in `src/web/routes/review_unified.py`; `_verify_api_key()` module-level helper extracted from `register_api_auth` in `src/web/middleware.py`. Same-origin `Origin`/`Referer` bypass preserves embedded `<img>` loads from review pages. 5 auth tests in `tests/unit/web/test_image_crop.py::TestImageCropAuth`. See git log (2026-04-20) and `docs/architecture/image-storage.md`.
+
+### Issue #56: `check_docs_sync.py --ci` Fails CI on Transitive-Import Warnings
+
+**Status**: Resolved (2026-04-21)
+
+`import_to_pkg` dict in `scripts/check_docs_sync.py` extended with `dateutil`, `botocore`, `PIL`; `README.md` updated with pipeline-stage class names and coverage line matching the `(\d+)%\s*overall` regex. `check_docs_sync.py --ci` now exits 0; PR #50 and all future PRs unblocked. See git log (2026-04-21).
+
+### Issue #57: `unified_review.html` Missing Breadcrumb + Count Badges Broke 7 Playwright Tests
+
+**Status**: Resolved (2026-04-21)
+
+Bootstrap breadcrumb nav and `badge bg-success`/`badge bg-danger` accepted/rejected count spans added to `src/web/templates/unified_review.html`; 2 test selectors updated in `tests/ui/review.spec.js` (`.fact-metric-id` + `.fs-5.fw-bold`). All 151 UI tests pass. See git log (2026-04-21).
+
+### Issue #42: `_download_missing_images` Writes Image Bytes Twice
+
+**Status**: Resolved (2026-04-21)
+
+`OCRExtractionStage._download_missing_images` no longer writes a second `pipeline/...` copy after `SECClient.fetch_image()` caches the bytes. New public `SECClient.get_image_cache_path` accessor; `asset.file_path` points at the SECClient cache key directly. `TestImageDownloading` updated. See commit `7848605`.
+
+### Issue #50: No 401-Path Test Coverage for `api_unified_bp`
+
+**Status**: Resolved (2026-04-21)
+
+New `tests/unit/web/test_api_unified_auth.py` — 6 cases covering missing/wrong/correct key, query-arg + same-origin Referer bypass, and `API_KEY_REQUIRED`-without-`API_KEY` misconfig. Mirrors `TestImageCropAuth` shape. Target endpoint: `DELETE /api/v2/decisions/<decision_id>` with mocked DB. See commit `7848605`.
+
+### Issue #51: Brittle Source-String Assertions in `test_persistence_sql.py`
+
+**Status**: Resolved (2026-04-21)
+
+4 grep-the-source tests in `test_persistence_sql.py` rewritten as behavioral mock-cursor assertions. `# fmt: skip` removed from `src/extraction_v2/persistence.py`; black reformatted the `or None` expression to its own line. Tests immune to future formatting changes. See commit `7848605`.
+
+### Issue #52: `pg_dump` Version-Mismatch Silent Failure
+
+**Status**: Resolved (2026-04-21)
+
+New `scripts/check_pg_client_version.py` pre-flight that compares `pg_dump` major version against server major version and errors loudly on mismatch. `.claude/rules/infrastructure.md` gains a `### pg_dump client version` subsection documenting the PG16+ client requirement for Neon (PG15). Script confirmed the 14→15 mismatch on the reference machine. See commit `7848605`.
+
+### Issue #54: Chart-Bridge Emits Low-Confidence Misbinds on Non-Tier-1 Charts
+
+**Status**: Resolved (2026-04-21)
+
+New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBridgeStage`). Default 0.60 matches the existing classification gate — no default behavior change — because Tier 1 `cm_balance_by_cohort` classifies at ~0.6024 and a 0.70 default would regress Tier 1 recall. Operators can tighten the knob during backfills to suppress weak top-match binds. 5 unit tests added as `TestGuard6MetricConfidenceFloor`. See commit `7848605` and companion Issue #64 for the boundary sensitivity follow-up.
+
+### Issue #67: `/cleanup` Skill Mode-Detection Returns False `remote` From ccw Worktrees
+
+**Status**: Resolved (2026-04-21)
+
+`.claude/commands/cleanup.md` step 1 replaced the CWD-relative `test -d .claude/worktrees` check with an `if`-expression anchored to the primary repo's git dir via `git rev-parse --git-common-dir`, with `$HOME/.claude-worktrees` as a fallback. Works from any linked worktree (agent-isolation or ccw) as well as the primary tree. Companion `ccw` PID-lockfile + `ccw-rm` merged-branch cleanup (both `~/.zshrc`) close the same accumulation vector from the session-creation side. `/commit` skill step 1 now appends `-HHMM` timestamp on branch-name collision.
 
 ---
 
@@ -1965,3 +1195,8 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-20**: Issue #45 resolved — `from dotenv import load_dotenv` + `load_dotenv()` added to `scripts/validate_database_urls.py` ahead of the `DATABASE_URL` read; mirrors `scripts/apply_migrations.py:21`. Existing fallback / error path retained for the case where `.env` has no `DATABASE_URL`
 - **2026-04-20**: Issue #46 resolved — `MIGRATION_ORDER` in `scripts/apply_all_migrations.py` extended with `32_add_detected_keywords_to_v2_image_assets.sql`, `33_fix_identity_index.sql`, `34_dedup_v2_image_assets.sql`, `35_drop_v2_image_assets_segment_id.sql`, `36_backfill_presentation_urls.sql`, `37_create_analytics_role.sql`, `38_create_analytics_views.sql`. `--dry-run` now reports 44 migrations (31 pre-existing + 7 new); `check_unregistered_migrations` no longer aborts. Sync rather than delete (script still referenced from 7 docs); sql/33 included for fresh-DB-from-scratch semantics — migration is explicitly idempotent
 - **2026-04-20**: Issue #47 resolved — `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores (`data/filings/`, `data/image_cache/`). Verified via `git check-ignore -v`
+- **2026-04-21**: Archive cleanup — collapsed 29 fully-resolved issues (#10, #12, #13, #14, #15, #17, #18, #19, #20, #21, #22, #23, #25, #26, #29, #30, #31, #32, #33, #36, #37, #41, #44, #45, #46, #47, #48, #56, #57) from main body into Archive section; rewrote Summary table to foreground open items; removed resolved rows from Summary table. Issue #11 cross-reference to #10 updated to point to archive entry.
+- **2026-04-21**: Five-issue follow-up bundle landed in commit `7848605` — resolved #42 (double image-write collapsed via public `SECClient.get_image_cache_path`), #50 (new `tests/unit/web/test_api_unified_auth.py`), #51 (behavioral mock-cursor rewrite; `# fmt: skip` removed), #52 (new `scripts/check_pg_client_version.py` pre-flight + infrastructure.md doc section), #54 (new `chart_metric_min_confidence` knob with default 0.60 to avoid Tier 1 regression). Archive entries added. #64 opened — chart classifier Tier 1 boundary sensitivity: HOOD `cm_balance_by_cohort` scores 0.6024 (0.0024 above gate); surfaced while forcing #54's default down from the originally-proposed 0.70. (Renumbered from an earlier working #58 after merge from origin/main revealed issues #58–#63 had been claimed by the Wave B/C/D batch-ingest-ui follow-ups.)
+- **2026-04-21**: Issue #11 archived — resolved-by-deletion. Remaining "1/12" test was in `tests/integration/test_gold_standard_coverage.py`, deleted in commit `03a8a20` during V1 retirement.
+- **2026-04-21**: Added Issue #67 — `/cleanup` skill step-1 mode-detection (`test -d .claude/worktrees`) is CWD-relative and returns `remote` when invoked from a ccw worktree, silently skipping the step-5 worktree sweep on local machines. Companion to the step-5 `-f -f` fix in commit for `.claude/commands/cleanup.md`.
+- **2026-04-21**: Issue #67 resolved — session-hygiene bundle: (a) `cleanup.md` step 1 re-anchored to `git rev-parse --git-common-dir` so local mode detects from any linked worktree; (b) `ccw` in `~/.zshrc` now writes a PID lockfile on entry and refuses silent second-session occupancy (self-healing via `kill -0`); (c) `ccw-rm` auto-deletes merged branches via `gh pr list --state merged` (offline-safe fallback); (d) `/commit` step 1 appends `-HHMM` timestamp on branch-name collision. Docs updated in `docs/development/claude-sessions-and-worktrees.md`. Summary row removed. Note: `~/.zshrc` edits (b, c) apply manually — patch in PR description.

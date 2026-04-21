@@ -129,12 +129,14 @@ PipelineConfig.for_presentation() # Images enabled, min_paragraph_chars=20
 
 ## Chart Fact Bridge Config
 
-Three `PipelineConfig` fields control hallucination guards in `ChartFactBridgeStage` (Phase 3):
+`PipelineConfig` fields controlling hallucination guards in `ChartFactBridgeStage` (Phase 3):
 
 ```python
-chart_image_min_confidence: float = 0.6   # Skip images below this vision confidence
-chart_fact_review_threshold: float = 0.80  # Flag facts for review below this confidence
-chart_axis_range_multiplier: float = 10.0  # Reject outlier points >N× labeled max
+chart_image_min_confidence: float = 0.6             # Guard 1 — skip images below this vision confidence
+chart_metric_classification_min_score: float = 0.6  # Skip charts where top-matched metric scores below this
+chart_metric_min_confidence: float = 0.60           # Guard 6 — operator knob; tighten (e.g. 0.70) to suppress weak top-match binds during backfills. Default matches the classification gate so Tier 1 matches that barely clear 0.60 are not regressed.
+chart_fact_review_threshold: float = 0.80           # Guard 5 — flag facts for review below this confidence
+chart_axis_range_multiplier: float = 10.0           # Guard 3 — reject outlier points >N× labeled max
 ```
 
 ## Key Files

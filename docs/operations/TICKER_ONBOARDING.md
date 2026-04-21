@@ -291,3 +291,82 @@ Practical notes:
   exists in `companies` without a SIC assignment, it will never appear under
   any `--industry` filter. Re-run `populate --year YYYY` to refresh via
   `get_company_info`.
+
+## Web UI
+
+The batch-ingest UI at `/ingest/` is an alternative to the CLI for operators
+who prefer a browser workflow. It drives the same underlying pipeline.
+
+### Workflow
+
+1. **Criteria form** (`/ingest/`) — enter industry, year(s), form type, and an
+   optional filing limit. Submit to preview.
+2. **Preview** (`/ingest/preview`) — shows the three filing buckets (see below)
+   and per-bucket counts. Opt-in checkboxes for ALREADY EXTRACTED filings.
+   Large batches trigger warnings or hard blocks before you can proceed.
+3. **Start** (`/ingest/start`) — enqueues a batch row in `v2_ingest_batches`
+   (`status='queued'`). Redirects immediately to the live-progress page.
+4. **Live progress** (`/ingest/batch/<id>`) — polls `/api/v2/ingest/batches/<id>/status`
+   every 3 seconds and renders per-filing status in real time.
+
+### Three filing buckets
+
+| Bucket | Default | Override |
+|--------|---------|----------|
+| **NEW** — no existing `v2_documents` row | Process | (always included) |
+| **ALREADY EXTRACTED, no review decisions** | Skip | Opt-in checkbox on preview page |
+| **ALREADY EXTRACTED + reviewed** | Skip | Per-row checkbox + confirm dialog |
+
+### Re-extraction semantics
+
+Re-extracting a filing with existing review decisions CASCADEs via
+`v2_review_decisions.fact_id ON DELETE CASCADE`, permanently purging those
+decisions. There is no archive. The confirm dialog names the affected filing
+and decision count before proceeding.
+
+See `.claude/rules/v2-pipeline.md` — "Reviewed-Filing Guard" — for the
+`ReviewedFilingError` that prevents silent purges if a consumer bypasses the
+UI prompt.
+
+### Volume thresholds
+
+| Range | Behaviour |
+|-------|-----------|
+| < 50 | OK — proceed immediately |
+| 50–199 | SOFT_WARN — info banner; proceed without extra step |
+| 200–499 | HARD_WARN — checkbox "I understand this is a large batch" required |
+| 500–999 | REFINE — batch rejected; refine filters before submitting |
+| ≥ 1 000 | BLOCK — batch rejected unconditionally |
+
+### Render deployment
+
+In production, the web dyno sets `INGEST_SPAWN_SUBPROCESS=false` (via
+`render.yaml`) so it never spawns a runner subprocess. Instead, the
+`filings-onboarding-runner` worker service picks up queued batches within
+~10 seconds:
+
+```yaml
+# render.yaml (excerpt)
+- type: worker
+  name: filings-onboarding-runner
+  runtime: docker
+  dockerCommand: python3 -m src.universe.onboarding_runner --watch --poll-interval 10
+```
+
+In local dev, `INGEST_SPAWN_SUBPROCESS` defaults to `true` (set in
+`src/web/app.py::Config`), so `/ingest/start` spawns the runner inline as a
+detached subprocess — no separate process needed.
+
+### Troubleshooting stuck batches
+
+If a batch is stuck in `status='running'` (e.g. after a web-dyno restart killed
+the subprocess mid-run — Issue #47), recover it manually:
+
+```sql
+UPDATE v2_ingest_batches
+SET status = 'failed', finished_at = NOW()
+WHERE batch_id = '<id>' AND status = 'running';
+```
+
+After this, re-submit from the preview page. A `--cleanup-stuck` admin flag
+(auto-resets timed-out running rows on worker startup) is a planned follow-up.

@@ -25,11 +25,26 @@
       "Bash(rm -rf /)*",
       "Bash(sudo*)",
       "Bash(curl*|*bash)",
-      "Bash(*> /etc/*)"
+      "Bash(*> /etc/*)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main:*)",
+      "Bash(git push -u origin main)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(gh pr merge*--admin*)"
     ]
   },
   "hooks": {
     "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cmd=\"${CLAUDE_TOOL_INPUT_command:-$1}\"; case \"$cmd\" in *\"git commit\"*) br=$(git -C \"$CLAUDE_PROJECT_DIR\" branch --show-current 2>/dev/null); if [ \"$br\" = \"main\" ] || [ \"$br\" = \"master\" ]; then echo \"BLOCKED: refusing to commit on $br. Use /commit (auto-branches) or git checkout -b <branch> first.\" >&2; exit 2; fi ;; esac' _ \"$CLAUDE_TOOL_INPUT_command\""
+          }
+        ]
+      },
       {
         "matcher": "Skill",
         "hooks": [
