@@ -281,6 +281,60 @@ def test_detect_gaps_single_year() -> None:
     assert gaps[0] == Gap(year=2022, form_type="8-K")
 
 
+def test_detects_gap_when_filings_exist_for_other_sic() -> None:
+    """Filings for SIC 7389 should NOT count when querying SIC 5411."""
+    # The fake DB returns no rows — simulating what the SQL would return
+    # when a SIC filter excludes all present rows (filings are under 7389,
+    # but the query filters to 5411).
+    db = _FakeDB(rows=[])
+    query = ResolvedQuery(
+        sic_codes=["5411"],
+        form_types=["S-1"],
+        year_min=2023,
+        year_max=2023,
+    )
+    gaps = detect_universe_gaps(db, query)
+    # Gap should be reported because no matching rows returned
+    assert gaps == [Gap(year=2023, form_type="S-1")]
+    # Verify sic_codes were passed through to the DB query
+    assert db.last_params is not None
+    assert db.last_params["sic_codes"] == ["5411"]
+
+
+def test_no_gap_when_matching_sic_present() -> None:
+    """When the DB returns a row for the queried SIC, no gap is reported."""
+    db = _FakeDB(rows=[{"yr": 2023, "form_type": "S-1"}])
+    query = ResolvedQuery(
+        sic_codes=["5411"],
+        form_types=["S-1"],
+        year_min=2023,
+        year_max=2023,
+    )
+    gaps = detect_universe_gaps(db, query)
+    assert gaps == []
+    # Verify sic_codes were passed through to the DB query
+    assert db.last_params is not None
+    assert db.last_params["sic_codes"] == ["5411"]
+
+
+def test_empty_sic_codes_preserves_old_behavior() -> None:
+    """Empty sic_codes list is passed through unchanged (ANY([]) short-circuits in SQL)."""
+    db = _FakeDB(rows=[])
+    query = ResolvedQuery(
+        sic_codes=[],
+        form_types=["S-1"],
+        year_min=2023,
+        year_max=2023,
+    )
+    gaps = detect_universe_gaps(db, query)
+    # With empty SIC list, SQL returns no rows → gap reported (same as pre-fix behavior
+    # where all years would appear as gaps when filings table is empty)
+    assert gaps == [Gap(year=2023, form_type="S-1")]
+    # sic_codes passed through as empty list (no special-casing)
+    assert db.last_params is not None
+    assert db.last_params["sic_codes"] == []
+
+
 # ---------------------------------------------------------------------------
 # count_reviewer_work
 # ---------------------------------------------------------------------------
