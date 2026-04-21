@@ -209,20 +209,20 @@ class OCRExtractionStage:
         Returns:
             Number of images successfully downloaded
         """
-        from src.infra.paths import image_cache_dir
+        from src.infra.image_storage import get_image_storage
 
         if not context.cik or not context.accession_number:
             return 0
 
-        # Lazy-load SECClient
+        # Lazy-load SECClient. image_cache_dir=None because R2/LocalFilesystemStorage
+        # is now the authoritative cache; SECClient's own file cache would be redundant.
         if self._sec_client is None:
             from src.infra.sec_client import SECClient
 
-            self._sec_client = SECClient(image_cache_dir=image_cache_dir())
+            self._sec_client = SECClient(image_cache_dir=None)
 
+        storage = get_image_storage()
         downloaded = 0
-        cache_dir = image_cache_dir() / "pipeline" / context.cik / context.accession_number
-        cache_dir.mkdir(parents=True, exist_ok=True)
 
         for asset in context.images:
             # Only download for images that would be processed but lack file_path
@@ -248,9 +248,9 @@ class OCRExtractionStage:
                     filename=asset.filename,
                 )
                 if image_bytes:
-                    image_path = cache_dir / asset.filename
-                    image_path.write_bytes(image_bytes)
-                    asset.file_path = str(image_path)
+                    key = f"pipeline/{context.cik}/{context.accession_number}/{asset.filename}"
+                    storage.put_bytes(key, image_bytes, content_type="image/jpeg")
+                    asset.file_path = key
                     downloaded += 1
                     logger.info(f"Downloaded image {asset.filename}: {len(image_bytes)} bytes")
                 else:
@@ -281,18 +281,17 @@ class OCRExtractionStage:
             FileNotFoundError: If image file doesn't exist
             ValueError: If API returns invalid response
         """
-        from pathlib import Path
+        from src.infra.image_storage import get_image_storage
 
         # Validate file path
         if not asset.file_path:
             raise ValueError(f"Image {asset.img_id} has no file_path")
 
-        image_path = Path(asset.file_path)
-        if not image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {asset.file_path}")
-
-        # Load image bytes
-        image_bytes = image_path.read_bytes()
+        storage = get_image_storage()
+        try:
+            image_bytes = storage.get_bytes(asset.file_path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
         # Call Vision API with table extraction prompt
         try:
@@ -609,20 +608,18 @@ time periods, or definitions that help interpret the chart's data.
             FileNotFoundError: If image file doesn't exist
             ValueError: If API returns invalid response
         """
-        from pathlib import Path
-
         from src.extraction_v2.models import ChartData, ChartSeries, ChartType, DataPoint
+        from src.infra.image_storage import get_image_storage
 
         # Validate file path
         if not asset.file_path:
             raise ValueError(f"Image {asset.img_id} has no file_path")
 
-        image_path = Path(asset.file_path)
-        if not image_path.exists():
-            raise FileNotFoundError(f"Image file not found: {asset.file_path}")
-
-        # Load image bytes
-        image_bytes = image_path.read_bytes()
+        storage = get_image_storage()
+        try:
+            image_bytes = storage.get_bytes(asset.file_path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
         # Call Vision API with chart extraction prompt (include nearby context)
         try:

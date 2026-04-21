@@ -31,6 +31,26 @@ from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.llm.vision_client import VisionResponse
 
 
+@pytest.fixture(autouse=True)
+def _route_image_cache_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Route LocalFilesystemStorage under tmp_path for all tests in this module.
+
+    Tests that write bytes to ``tmp_path / filename`` can then pass
+    ``file_path=filename`` (the storage key) to ImageAsset; downstream
+    ``storage.get_bytes(key)`` reads the correct file.
+    """
+    from src.infra.image_storage import get_image_storage
+    from src.infra.paths import image_cache_dir
+
+    monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+    yield
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+
+
 class MockVisionClient:
     """Mock vision client for testing that inherits from VisionClient."""
 
@@ -220,7 +240,7 @@ class TestTableImageOCR:
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.9,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_table_image(asset)
@@ -266,7 +286,7 @@ class TestTableImageOCR:
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.8,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_table_image(asset)
@@ -304,7 +324,7 @@ class TestTableImageOCR:
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.7,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_table_image(asset)
@@ -336,7 +356,7 @@ class TestTableImageOCR:
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.8,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_table_image(asset)
@@ -360,7 +380,7 @@ class TestTableImageOCR:
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.8,
             processed=False,
-            file_path="/nonexistent/path/image.png",
+            file_path="nonexistent-path/image.png",
         )
 
         with pytest.raises(FileNotFoundError):
@@ -421,7 +441,7 @@ class TestChartExtraction:
             classification=ImageClassification.CHART,
             relevance_score=0.9,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_chart(asset)
@@ -468,7 +488,7 @@ class TestChartExtraction:
             classification=ImageClassification.CHART,
             relevance_score=0.8,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_chart(asset)
@@ -501,7 +521,7 @@ class TestChartExtraction:
             classification=ImageClassification.CHART,
             relevance_score=0.8,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_chart(asset)
@@ -545,7 +565,7 @@ class TestChartExtraction:
             classification=ImageClassification.CHART,
             relevance_score=0.9,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_chart(asset)
@@ -581,7 +601,7 @@ class TestChartExtraction:
             classification=ImageClassification.CHART,
             relevance_score=0.9,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_chart(asset)
@@ -627,7 +647,7 @@ class TestChartExtraction:
             classification=ImageClassification.CHART,
             relevance_score=0.8,
             processed=False,
-            file_path=str(temp_image_file),
+            file_path=temp_image_file.name,
         )
 
         stage.process_chart(asset)
@@ -731,7 +751,7 @@ class TestPipelineIntegration:
                 classification=ImageClassification.TABLE_IMAGE,
                 relevance_score=0.9,
                 processed=False,
-                file_path=str(temp_image_file),
+                file_path=temp_image_file.name,
             ),
             ImageAsset(
                 img_id="chart_1",
@@ -742,7 +762,7 @@ class TestPipelineIntegration:
                 classification=ImageClassification.CHART,
                 relevance_score=0.85,
                 processed=False,
-                file_path=str(temp_image_file),
+                file_path=temp_image_file.name,
             ),
         ]
 
@@ -803,7 +823,7 @@ class TestPipelineIntegration:
                 classification=ImageClassification.TABLE_IMAGE,
                 relevance_score=0.9,
                 processed=False,
-                file_path=str(temp_image_file),
+                file_path=temp_image_file.name,
             )
             for i in range(OCRExtractionStage.MAX_OCR_CALLS_PER_DOCUMENT + 5)
         ]
@@ -856,7 +876,7 @@ class TestPipelineIntegration:
                 classification=ImageClassification.TABLE_IMAGE,
                 relevance_score=0.9,
                 processed=False,
-                file_path=str(temp_image_file),
+                file_path=temp_image_file.name,
             ),
             ImageAsset(
                 img_id="table_2",

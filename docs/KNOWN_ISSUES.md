@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored)
+**Last Updated**: 2026-04-20 (#46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
 
 ---
 
@@ -261,8 +261,8 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved (2026-04-19) | Low | Low | 1 test fixed via `img_id` mock update; 2 stale assertions `test.skip`-ed with TODOs; CI green |
 | Mock-server / template-contract coupling (Issue #28) | Open | Low | Medium | Smoke spec catches the symptom class; root coupling between `tests/ui/test_server.py` and production templates remains |
 | Audit log DNS error in tests (Issue #31) | Resolved (2026-04-19) | — | — | Both async (`review_unified.py`) and sync (`middleware.py`) paths log DEBUG under `TESTING=True`; commit `366d9dd` closes the sync-path gap |
-| Image cache rooted in TMPDIR (Issue #34) | Phase 1 resolved (2026-04-19); Phase 3 pending | Medium | Low | `image_cache_dir()` helper + `data/image_cache/pipeline/<cik>/<accession>/<filename>` layout; prod persistence (Render disk vs. re-fetch-on-miss) is the remaining decision |
-| Pre-2026-04-17 filings missing chart facts (Issue #35) | Unblocked on local (2026-04-19) | Medium | Medium | `batch_v2_extraction.py --force-reextract` now viable on local dev; prod waits on Issue #34 Phase 3 |
+| Image cache rooted in TMPDIR (Issue #34) | Resolved (Phases 1 + 3, 2026-04-19) | Medium | — | `ImageStorage` abstraction + Cloudflare R2 backend; `v2_image_assets.file_path` stores opaque storage keys; validated via `validate_key()`; 7 call sites migrated |
+| Pre-2026-04-17 filings missing chart facts (Issue #35) | Unblocked (2026-04-19) | Medium | Medium | `batch_v2_extraction.py --force-reextract` now viable on both dev and prod; 38 filings to queue |
 | `populate` has no `--limit` (Issue #36) | Resolved (2026-04-19) | — | — | `build_universe(limit=)` + `populate --limit N` land in commit `366d9dd`; regression-guarded |
 | `classify_first_time_issuer=True` for 10-K filers (Issue #37) | Resolved (2026-04-19) | — | — | `_process_filing` gates the classifier to S-1/F-1; non-applicable filings land with `is_first_time_issuer=NULL`; commit `366d9dd` |
 | `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
@@ -1059,7 +1059,7 @@ After `html_segmenter.py` is covered (Issue #32), raise `fail_under` from 75 to 
 
 ## 34. `v2_image_assets.file_path` Rooted in TMPDIR (Purged by OS)
 
-**Status**: ✅ Resolved locally (2026-04-19) — prod persistence still pending (Phase 3 decision)
+**Status**: ✅ Resolved (Phase 1: 2026-04-19, Phase 3: 2026-04-20)
 **Severity**: Medium — was breaking Chart Evidence preview on ~30% of image rows (50 / 165 local; prod unscanned)
 **Discovered**: 2026-04-19 (Phase 1 of the "missing Chart Evidence" investigation, commit `d1430d9`)
 **Resolved**: 2026-04-19
@@ -1084,18 +1084,24 @@ This was the dominant root cause behind the Box Inc S-1/A `cm_revenue_by_cohort 
 
 Every subsequent re-extraction heals its own filing's rows; no one-shot migration is required. Historical rows surface via `d1430d9`'s Chart Evidence placeholder until their filing is re-extracted.
 
-### Pending — prod persistence (Phase 3)
+### Resolution — Phase 3 (2026-04-20)
 
-Phase 1 fixes local dev. Render's `render.yaml` defines no disk mount, so `data/image_cache/` is still ephemeral in prod (wiped on every redeploy). Two options:
+**Option C adopted** (instead of A or B): introduced an `ImageStorage` abstraction with two backends — `LocalFilesystemStorage` (dev/test, defaults under `data/image_cache/`) and `R2Storage` (prod, backed by a private Cloudflare R2 bucket via `boto3`). Selected at runtime via the `R2_BUCKET` env var. `v2_image_assets.file_path` now stores an opaque storage key (e.g. `pipeline/<cik>/<accession>/<filename>`) rather than an absolute filesystem path; shape is validated by `src/infra/image_storage.py::validate_key`.
 
-- **Option A (Render disk):** Add a `disk:` block to both `filings-reviewer` web + `filings-extraction` cron services mounting `data/image_cache/` as persistent storage. Requires Render paid tier.
-- **Option B (re-fetch on miss):** Extend `image_crop` to call `SECClient.fetch_image()` on `FileNotFoundError`, re-caching under `image_cache_dir()`. No paid-tier cost; accepts 100ms SEC rate-limit on first reviewer click per image.
+Seven call sites were migrated off direct `Path(file_path)` dereferencing (write in `ocr_extraction._download_missing_images` and `ingestion._extract_image_assets`; reads in `process_table_image`, `process_chart_image`, `fact_construction` evidence-screenshot copy, `image_crop`, and `_resolve_chart_image_status`). `check_image_referential_integrity.py` Class (C) now validates via `storage.exists()` and shape-check instead of `Path.resolve() / relative_to(data_dir)`. `image_crop` gained a `Cache-Control: private, max-age=3600` header to keep repeat clicks off R2.
+
+Prod provisioning (user actions, completed 2026-04-19): Cloudflare R2 bucket `filings-reviewer-image-cache`, object-scoped API token, and four `R2_*` env vars on both Render web + cron services. Test-only dependency `moto[s3]>=5.0.0` (in `requirements-dev.txt`) mocks R2 for unit tests — no real R2 calls in CI.
+
+Chosen over Option A (Render persistent disk) because R2's free tier (10 GB + 1M write ops + zero egress) covers current volume without paid infra, and over Option B (re-fetch-on-miss) because R2 is architecturally the same thing with fewer per-request latency surprises and sets up for multi-reviewer concurrency without OneDrive-style sync hazards. See `docs/architecture/image-storage.md`.
+
+Legacy rows (pre-migration absolute paths) fail `validate_key` and return 404 via the review UI's placeholder path — identical user-facing behavior to the Phase 1 post-state. They heal naturally on re-extraction.
 
 ### Cross-References
 
 - Issue #24 — JSONB img_id has no FK (the orphan class is a separate failure mode; this one is about the file system root)
 - Issue #22 — reviewed-filing guard on image re-extraction (must be honoured by any backfill script)
-- Issue #35 — unblocks the 38-filing chart-fact backfill once Phase 3 is settled
+- Issue #35 — now fully unblocked; 38-filing chart-fact backfill can proceed on both dev and prod
+- `docs/architecture/image-storage.md` — detailed architecture reference
 
 ---
 
@@ -1113,16 +1119,14 @@ The 2026-04-17 chart-OCR fix (`VisionClient.analyze_image()` now forces `respons
 
 ### Suggested Fix
 
-Issue #34 Phase 1 (image cache under `data/`) landed on 2026-04-19 — this backfill is now viable on **local dev**. Queue the 38 filings for re-extraction with `scripts/batch_v2_extraction.py --force-reextract` in a backfill window. The reviewed-filing guard (`V2PersistenceAdapter._persist_facts_in_tx`) must be honoured; any filings with prior reviewer decisions need explicit handling before re-extraction wipes `v2_review_decisions` via CASCADE.
-
-For **prod**, wait until Issue #34 Phase 3 is settled (either Render persistent disk or re-fetch-on-miss in `image_crop`) — otherwise `data/image_cache/` is wiped on the next deploy and the backfill is wasted.
+Issue #34 Phase 3 (R2 backend) landed on 2026-04-19 — this backfill is now viable on both local dev and prod. Queue the 38 filings for re-extraction with `scripts/batch_v2_extraction.py --force-reextract` in a backfill window. The reviewed-filing guard (`V2PersistenceAdapter._persist_facts_in_tx`) must be honoured; any filings with prior reviewer decisions need explicit handling before re-extraction wipes `v2_review_decisions` via CASCADE.
 
 Prod count is unknown — run the diagnostic against Neon before sizing the backfill.
 
 ### Cross-References
 
 - `.claude/rules/v2-pipeline.md` — chart-OCR fix dated 2026-04-17 (the inflection point)
-- Issue #34 — Phase 1 resolved 2026-04-19; Phase 3 (prod persistence) still pending
+- Issue #34 — Phases 1 + 3 resolved 2026-04-19 (R2 backend live)
 - Issue #24 — any backfill must also clear the 9 Class (B) orphan refs
 - CLAUDE.md Core Design Principle #6 — reviewed-filing guard on re-extraction
 

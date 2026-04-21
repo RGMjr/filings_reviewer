@@ -948,12 +948,25 @@ class IngestionStage:
             logger.info(f"Extracting image assets from filing {context.filing_id}")
             image_assets = self._extract_image_assets(tree, context.filing_id)
 
-            # Resolve local image paths relative to the HTML file's directory
+            # Resolve local image paths relative to the HTML file's directory.
+            # When an image file exists alongside the HTML (gold-standard test fixtures,
+            # local snapshots), upload it to the storage backend so downstream readers
+            # can dereference asset.file_path uniformly as a storage key — independent
+            # of whether the original source was disk-local or SEC EDGAR.
+            from src.infra.image_storage import get_image_storage
+
+            storage = get_image_storage()
             for asset in image_assets:
                 if not asset.file_path:
                     local_path = context.html_path.parent / asset.filename
                     if local_path.exists():
-                        asset.file_path = str(local_path)
+                        key = f"ingestion/{context.filing_id}/{asset.filename}"
+                        storage.put_bytes(
+                            key,
+                            local_path.read_bytes(),
+                            content_type="image/jpeg",
+                        )
+                        asset.file_path = key
 
             # AC-10: Combine all segment types and sort by document order
             all_segments_with_elements = (

@@ -34,6 +34,26 @@ Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmo
 | `FILINGS_API_KEY` | Yes | API auth for web routes |
 | `TEST_DATABASE_URL` | Tests only | Separate test database |
 | `OPENAI_API_KEY` | LLM features | OpenAI for vision/LLM calls |
+| `R2_BUCKET` | Prod / persistent envs | Cloudflare R2 bucket for image cache. When set, overrides `IMAGE_CACHE_DIR` |
+| `R2_ACCESS_KEY_ID` | With `R2_BUCKET` | R2 API token access key |
+| `R2_SECRET_ACCESS_KEY` | With `R2_BUCKET` | R2 API token secret |
+| `R2_ENDPOINT_URL` | With `R2_BUCKET` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
+| `IMAGE_CACHE_DIR` | Dev only (optional) | Override local filesystem image-cache root. Ignored when `R2_BUCKET` is set |
+
+## Image Storage
+
+Image bytes (chart/table OCR cache + ingestion-local copies) persist via
+`src/infra/image_storage.py`. Two backends selected at runtime via `R2_BUCKET`:
+
+- **Local filesystem** (default, dev/test): `LocalFilesystemStorage` rooted at
+  `<repo>/data/image_cache/` (or `IMAGE_CACHE_DIR` override).
+- **Cloudflare R2** (prod): `R2Storage` wraps a `boto3` S3-compatible client.
+  Bucket is private; reads/writes stream through the application.
+
+`v2_image_assets.file_path` stores an opaque **storage key**
+(e.g. `pipeline/<cik>/<accession>/<filename>`), not a filesystem path. Key shape
+is validated by `validate_key()` — path-traversal sequences and absolute paths
+are rejected at every call site.
 
 ## SEC EDGAR Integration
 

@@ -9,7 +9,6 @@ import io
 import logging
 import threading
 import time
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
@@ -556,21 +555,18 @@ def image_crop(img_id: str) -> Response:
     if not file_path:
         abort(404)
 
-    # Security: resolve the path and confirm it lives under data/
-    resolved = Path(file_path).resolve()
-    project_root = Path(current_app.root_path).parent.parent.resolve()
-    data_dir = project_root / "data"
-    try:
-        resolved.relative_to(data_dir)
-    except ValueError:
-        logger.warning("image_crop: path traversal attempt for img_id=%s path=%s", img_id, file_path)
-        abort(404)
+    from src.infra.image_storage import InvalidStorageKeyError, get_image_storage
 
-    if not resolved.exists():
+    try:
+        image_bytes = get_image_storage().get_bytes(file_path)
+    except InvalidStorageKeyError:
+        logger.warning("image_crop: invalid storage key for img_id=%s key=%s", img_id, file_path)
+        abort(404)
+    except FileNotFoundError:
         abort(404)
 
     try:
-        img = Image.open(resolved)
+        img = Image.open(io.BytesIO(image_bytes))
         if w > 0 and h > 0:
             output = img.crop((x, y, x + w, y + h))
         else:
@@ -578,7 +574,9 @@ def image_crop(img_id: str) -> Response:
         buf = io.BytesIO()
         output.save(buf, format="PNG")
         buf.seek(0)
-        return Response(buf.read(), mimetype="image/png")
+        resp = Response(buf.read(), mimetype="image/png")
+        resp.headers["Cache-Control"] = "private, max-age=3600"
+        return resp
     except Exception as exc:
         logger.error("image_crop: failed to serve img_id=%s: %s", img_id, exc)
         abort(500)
@@ -632,15 +630,12 @@ def _resolve_chart_image_status(db: Any, fact: dict) -> dict | None:
     if not file_path:
         return {"status": "file_missing"}
 
-    resolved = Path(file_path).resolve()
-    project_root = Path(current_app.root_path).parent.parent.resolve()
-    data_dir = project_root / "data"
-    try:
-        resolved.relative_to(data_dir)
-    except ValueError:
-        return {"status": "file_missing"}
+    from src.infra.image_storage import InvalidStorageKeyError, get_image_storage
 
-    if not resolved.exists():
+    try:
+        if not get_image_storage().exists(file_path):
+            return {"status": "file_missing"}
+    except InvalidStorageKeyError:
         return {"status": "file_missing"}
 
     return {"status": "ok"}

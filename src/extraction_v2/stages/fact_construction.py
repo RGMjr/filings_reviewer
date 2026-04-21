@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import re
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -415,20 +414,21 @@ class FactConstructionStage:
                     context_before = asset.nearby_text[:200].strip()
                 # Copy screenshot if configured
                 if config.save_evidence_screenshots and asset.file_path:
-                    src_path = Path(asset.file_path)
-                    if src_path.exists():
-                        try:
-                            dest_dir = Path(config.evidence_screenshot_dir)
-                            dest_dir.mkdir(parents=True, exist_ok=True)
-                            ext = src_path.suffix or ".png"
-                            dest_name = f"{loc.img_id}_{bv.bound_value_id[:8]}{ext}"
-                            dest_path = dest_dir / dest_name
-                            shutil.copy2(src_path, dest_path)
-                            screenshot_path = str(dest_path)
-                        except Exception as copy_err:
-                            logger.warning(
-                                f"Failed to copy chart screenshot for {loc.img_id}: {copy_err}"
-                            )
+                    try:
+                        from src.infra.image_storage import get_image_storage
+
+                        image_bytes = get_image_storage().get_bytes(asset.file_path)
+                        dest_dir = Path(config.evidence_screenshot_dir)
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        ext = Path(asset.file_path).suffix or ".png"
+                        dest_name = f"{loc.img_id}_{bv.bound_value_id[:8]}{ext}"
+                        dest_path = dest_dir / dest_name
+                        dest_path.write_bytes(image_bytes)
+                        screenshot_path = str(dest_path)
+                    except Exception as copy_err:
+                        logger.warning(
+                            f"Failed to copy chart screenshot for {loc.img_id}: {copy_err}"
+                        )
 
         return EvidencePack(
             snippet_html=snippet_html,
