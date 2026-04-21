@@ -889,7 +889,7 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 
 ---
 
-## 67. Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
+## 68. Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
 
 **Status**: Open
 **Severity**: Low
@@ -906,7 +906,7 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 
 ---
 
-## 68. `Dockerfile.nightly-sweep` Installs `claude` + `gh` Unpinned
+## 69. `Dockerfile.nightly-sweep` Installs `claude` + `gh` Unpinned
 
 **Status**: Open
 **Severity**: Low
