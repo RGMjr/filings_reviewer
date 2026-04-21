@@ -18,9 +18,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from src.infra.db import DatabaseAdapter  # noqa: E402
+from src.universe.onboarding import VolumeBand  # noqa: E402
 from src.web.app import close_pool, create_app  # noqa: E402
+from src.web.routes.ingest import _volume_band_alert_class  # noqa: E402
 from tests.integration.conftest import (  # noqa: E402
     create_test_company_and_filing,
+    create_test_v2_decision,
+    create_test_v2_document,
+    create_test_v2_fact,
 )
 
 pytestmark = pytest.mark.integration
@@ -349,3 +354,140 @@ class TestPopulateFlow:
         assert "criteria" in body
         assert isinstance(body["criteria"], dict)
         assert body["populate_progress"] is None  # onboard batches always null
+
+
+# ---------------------------------------------------------------------------
+# TestIngestPreview — integration coverage for POST /ingest/preview (#61)
+# ---------------------------------------------------------------------------
+
+# SIC code and form type used throughout TestIngestPreview.
+# 10-K avoids the is_in_scope_phase1 gate; SIC 7372 is prepackaged software.
+_PREVIEW_SIC = "7372"
+_PREVIEW_FORM = "10-K"
+_PREVIEW_YEAR = "2024"
+
+# Base form data for /ingest/preview — uses sic_codes directly to bypass
+# industry-YAML resolution and keep tests self-contained.
+_PREVIEW_FORM_BASE = {
+    "reviewer_name": "previewbot",
+    "sic_codes": _PREVIEW_SIC,
+    "form_types": _PREVIEW_FORM,
+    "year": _PREVIEW_YEAR,
+}
+
+
+@pytest.fixture
+def two_seeded_filings(db_adapter: DatabaseAdapter):
+    """Seed two filings (distinct CIKs) and return (filing_id_a, filing_id_b).
+
+    Filing A: has a v2_documents row (already_extracted=True) plus a
+              v2_metric_facts row and v2_review_decisions row so it lands
+              in the ``already_reviewed`` bucket.
+    Filing B: no v2_documents row — lands in the ``new`` bucket.
+
+    Teardown removes all seeded rows in dependency order.
+    """
+    _, filing_id_a = create_test_company_and_filing(
+        db_adapter,
+        cik="0008881001",
+        accession_number="0008881001-24-000001",
+        form_type=_PREVIEW_FORM,
+        filing_date="2024-03-15",
+        company_name="Preview Corp A",
+        industry_code=_PREVIEW_SIC,
+    )
+    # Set is_in_scope_phase1 not required for 10-K, but update industry_code on
+    # the filing row just in case the discovery join uses companies.industry_code.
+    # (create_test_company_and_filing already sets it via create_test_company.)
+
+    _, filing_id_b = create_test_company_and_filing(
+        db_adapter,
+        cik="0008882002",
+        accession_number="0008882002-24-000001",
+        form_type=_PREVIEW_FORM,
+        filing_date="2024-06-20",
+        company_name="Preview Corp B",
+        industry_code=_PREVIEW_SIC,
+    )
+
+    # Make filing A "already extracted" with reviewer work.
+    doc_id = create_test_v2_document(db_adapter, filing_id=filing_id_a)
+    fact_id = create_test_v2_fact(db_adapter, filing_id=filing_id_a)
+    create_test_v2_decision(db_adapter, fact_id=fact_id, decision="accept")
+
+    yield filing_id_a, filing_id_b
+
+    # Teardown — innermost dependents first.
+    db_adapter.execute(
+        "DELETE FROM v2_review_decisions WHERE fact_id IN "
+        "(SELECT fact_id FROM v2_metric_facts WHERE doc_id = %(fid)s)",
+        {"fid": filing_id_a},
+    )
+    db_adapter.execute(
+        "DELETE FROM v2_metric_facts WHERE doc_id = %(fid)s",
+        {"fid": filing_id_a},
+    )
+    db_adapter.execute(
+        "DELETE FROM v2_documents WHERE doc_id = %(doc_id)s::uuid",
+        {"doc_id": doc_id},
+    )
+    db_adapter.execute(
+        "DELETE FROM filings WHERE filing_id IN (%(a)s, %(b)s)",
+        {"a": filing_id_a, "b": filing_id_b},
+    )
+    db_adapter.execute("DELETE FROM companies WHERE cik IN ('0008881001', '0008882002')")
+
+
+class TestIngestPreview:
+    def test_preview_renders_three_bucket_split(self, client, two_seeded_filings):
+        """POST /ingest/preview returns 200 and renders all three bucket sections."""
+        filing_id_a, filing_id_b = two_seeded_filings
+
+        r = client.post("/ingest/preview", data=_PREVIEW_FORM_BASE)
+
+        assert r.status_code == 200, r.data[:500]
+
+        html = r.data
+        # All three bucket headings must appear.
+        assert b"New Filings" in html
+        assert b"Already Extracted" in html
+        assert b"Has Review Decisions" in html
+
+        # Both filing IDs must appear somewhere in the rendered page.
+        assert str(filing_id_a).encode() in html
+        assert str(filing_id_b).encode() in html
+
+    def test_preview_volume_banner_alert_class(self, client, two_seeded_filings):
+        """Two filings → VolumeBand.OK → alert-success banner in rendered HTML.
+
+        The expected class is derived from _volume_band_alert_class so the
+        test fails loudly if the mapping changes.
+        """
+        expected_class = _volume_band_alert_class(VolumeBand.OK)
+        assert expected_class == "alert-success"  # sanity-check the mapping itself
+
+        r = client.post("/ingest/preview", data=_PREVIEW_FORM_BASE)
+
+        assert r.status_code == 200, r.data[:500]
+        assert expected_class.encode() in r.data
+
+    def test_preview_hidden_filing_ids_survive_render(self, client, two_seeded_filings):
+        """Hidden filing_id inputs must be present in the rendered start-form HTML."""
+        filing_id_a, filing_id_b = two_seeded_filings
+
+        r = client.post("/ingest/preview", data=_PREVIEW_FORM_BASE)
+
+        assert r.status_code == 200, r.data[:500]
+
+        html = r.data
+        # At least one hidden filing_id input must appear per discovered filing.
+        assert html.count(b'name="filing_id"') >= 2
+        # Each discovered filing's ID must appear as a hidden-field value.
+        assert (
+            f'name="filing_id" value="{filing_id_a}"'.encode() in html
+            or f'value="{filing_id_a}"'.encode() in html
+        )
+        assert (
+            f'name="filing_id" value="{filing_id_b}"'.encode() in html
+            or f'value="{filing_id_b}"'.encode() in html
+        )
