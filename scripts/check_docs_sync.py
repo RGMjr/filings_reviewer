@@ -141,7 +141,7 @@ class DocsChecker:
             "dataclasses", "datetime", "decimal", "difflib", "enum", "functools",
             "hashlib", "hmac", "html", "http", "io", "itertools", "json", "logging",
             "math", "os", "pathlib", "pickle", "random", "re", "secrets", "shutil",
-            "socket", "sqlite3", "statistics", "string", "subprocess", "sys",
+            "signal", "socket", "sqlite3", "statistics", "string", "subprocess", "sys",
             "calendar", "tempfile", "textwrap", "threading", "time", "traceback", "typing",
             "unittest", "urllib", "uuid", "warnings", "xml", "zipfile",
         }
