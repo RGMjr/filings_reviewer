@@ -30,6 +30,7 @@ from flask import (
 )
 
 from src.universe.onboarding import (
+    FORM_TYPE_BUNDLES,
     VolumeBand,
     classify_volume,
     count_reviewer_work,
@@ -389,6 +390,101 @@ def ingest_start():
 
 
 # ---------------------------------------------------------------------------
+# POST /ingest/populate
+# ---------------------------------------------------------------------------
+
+# Year range guard
+_POPULATE_YEAR_MIN = 1990
+_POPULATE_YEAR_MAX = 2030
+
+
+@ingest_bp.route("/populate", methods=["POST"])
+def populate():
+    """Create a kind='populate' batch and redirect to its progress page."""
+    reviewer_name = request.form.get("reviewer_name", "").strip()
+    year_raw = request.form.get("year", "").strip()
+    form_type = request.form.get("form_type", "").strip()
+
+    # Validate reviewer_name
+    if not reviewer_name:
+        flash("Reviewer name is required.", "danger")
+        return redirect(url_for("ingest.ingest_form")), 400
+
+    # Validate year
+    try:
+        year = int(year_raw)
+    except (ValueError, TypeError):
+        flash("Year must be a valid integer.", "danger")
+        return redirect(url_for("ingest.ingest_form")), 400
+
+    if not (_POPULATE_YEAR_MIN <= year <= _POPULATE_YEAR_MAX):
+        flash(f"Year must be between {_POPULATE_YEAR_MIN} and {_POPULATE_YEAR_MAX}.", "danger")
+        return redirect(url_for("ingest.ingest_form")), 400
+
+    # Validate form_type
+    if not form_type or form_type not in FORM_TYPE_BUNDLES:
+        flash(
+            f"Unknown form type {form_type!r}. Known: {', '.join(sorted(FORM_TYPE_BUNDLES))}.",
+            "danger",
+        )
+        return redirect(url_for("ingest.ingest_form")), 400
+
+    db = get_db()
+
+    # Create populate batch row (no v2_ingest_batch_filings rows)
+    batch_id: str | None = None
+    try:
+        with db.transaction() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO v2_ingest_batches
+                        (kind, reviewer_id, criteria, resolved_query, limits,
+                         total_filings, status)
+                    VALUES ('populate', %(reviewer)s, %(criteria)s::jsonb,
+                            '{}', '{}', NULL, 'queued')
+                    RETURNING batch_id
+                    """,
+                    {
+                        "reviewer": reviewer_name,
+                        "criteria": json.dumps({"year": year, "form_type": form_type}),
+                    },
+                )
+                row = cur.fetchone()
+                batch_id = str(row["batch_id"])
+    except Exception as exc:
+        logger.error("Failed to create populate batch: %s", exc, exc_info=True)
+        flash("Database error creating batch. Please try again.", "danger")
+        return redirect(url_for("ingest.ingest_form")), 500
+
+    # Spawn runner subprocess (guarded by config flag for tests)
+    if current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
+        log_dir = _PROJECT_ROOT / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_path = log_dir / f"ingest_runner_{batch_id}.log"
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "src.universe.onboarding_runner", "--batch-id", batch_id],
+                start_new_session=True,
+                stdout=open(log_path, "ab"),  # noqa: SIM115
+                stderr=subprocess.STDOUT,
+                cwd=str(_PROJECT_ROOT),
+            )
+            logger.info("Spawned onboarding_runner for populate batch_id=%s", batch_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to spawn runner for populate batch %s: %s", batch_id, exc)
+            flash(
+                "Batch created but runner could not be spawned. "
+                "Contact an administrator to start processing.",
+                "warning",
+            )
+
+    resp = redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+    resp.set_cookie("ingest_reviewer", reviewer_name, max_age=30 * 24 * 3600)
+    return resp
+
+
+# ---------------------------------------------------------------------------
 # GET /ingest/batch/<uuid>
 # ---------------------------------------------------------------------------
 
@@ -407,6 +503,7 @@ def ingest_batch(batch_id: str):
     batch_rows = db.query(
         """
         SELECT batch_id, kind, status, reviewer_id, total_filings,
+               criteria, limits,
                created_at, started_at, finished_at, cancelled_at, error
         FROM v2_ingest_batches
         WHERE batch_id = %(batch_id)s
@@ -418,6 +515,15 @@ def ingest_batch(batch_id: str):
         return redirect(url_for("ingest.ingest_form"))
 
     batch = dict(batch_rows[0])
+    # Deserialize JSONB fields if returned as strings
+    for field in ("criteria", "limits"):
+        if isinstance(batch.get(field), str):
+            try:
+                batch[field] = json.loads(batch[field])
+            except (ValueError, TypeError):
+                batch[field] = {}
+        elif batch.get(field) is None:
+            batch[field] = {}
 
     filing_rows = db.query(
         """

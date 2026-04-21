@@ -8,6 +8,7 @@ Routes:
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid as _uuid
 
@@ -55,6 +56,7 @@ def batch_status(batch_id: str):
         batch_rows = db.query(
             """
             SELECT batch_id, kind, status, reviewer_id, total_filings,
+                   criteria, limits,
                    created_at, started_at, finished_at, cancelled_at, error
             FROM v2_ingest_batches
             WHERE batch_id = %(batch_id)s
@@ -114,6 +116,23 @@ def batch_status(batch_id: str):
             }
         )
 
+    # criteria + limits arrive as dict (psycopg JSONB) or str (fallback) — normalise.
+    criteria = batch.get("criteria") or {}
+    if isinstance(criteria, str):
+        try:
+            criteria = json.loads(criteria)
+        except (json.JSONDecodeError, TypeError):
+            criteria = {}
+
+    limits = batch.get("limits") or {}
+    if isinstance(limits, str):
+        try:
+            limits = json.loads(limits)
+        except (json.JSONDecodeError, TypeError):
+            limits = {}
+
+    populate_progress = limits.get("populate_progress") if isinstance(limits, dict) else None
+
     payload = {
         "batch_id": str(batch["batch_id"]),
         "kind": batch["kind"],
@@ -121,6 +140,8 @@ def batch_status(batch_id: str):
         "reviewer_id": batch["reviewer_id"],
         "total_filings": batch["total_filings"],
         "counts": counts,
+        "criteria": criteria,
+        "populate_progress": populate_progress,
         "created_at": _format_ts(batch["created_at"]),
         "started_at": _format_ts(batch["started_at"]),
         "finished_at": _format_ts(batch["finished_at"]),

@@ -12,16 +12,24 @@
       <strong>Volume: {{ band.value.upper() }}</strong> — {{ band_message }}
     </div>
 
-    <!-- Gap banner (read-only, populate-on-demand arrives in Wave C) -->
+    <!-- Gap banner — click a button to spawn a populate batch for that (year, form_type) combo -->
     {% if gaps %}
     <div class="alert alert-info mb-3" role="alert">
       <strong>Universe gaps detected</strong> — the following (year, form_type) combinations have
-      no filings in the database yet. Run a populate job to load them (coming in a later phase).
-      <ul class="mb-0 mt-2">
+      no filings in the database yet. Click to populate; you'll be redirected to the populate batch's
+      progress page. Re-run the preview after it completes to discover the new filings.
+      <div class="mt-2 d-flex gap-2 flex-wrap">
         {% for gap in gaps %}
-        <li>{{ gap.year }} / {{ gap.form_type }}</li>
+        <form action="{{ url_for('ingest.populate') }}" method="POST" class="d-inline">
+          <input type="hidden" name="year" value="{{ gap.year }}">
+          <input type="hidden" name="form_type" value="{{ gap.form_type }}">
+          <input type="hidden" name="reviewer_name" value="{{ reviewer_name }}">
+          <button type="submit" class="btn btn-sm btn-outline-primary">
+            Populate {{ gap.year }} {{ gap.form_type }}
+          </button>
+        </form>
         {% endfor %}
-      </ul>
+      </div>
     </div>
     {% endif %}
 
