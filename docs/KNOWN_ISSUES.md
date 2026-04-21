@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21 (#35 partially resolved — `chart_only` mode landed via PR #50; 3-filing Neon smoke validated mechanism safety; full 8-filing backfill deferred pending investigation of #53/#54. #53 opened for chart call limit truncation; #54 opened for chart-bridge low-confidence misbinds; #55 opened for 28 stuck 8-K filings from form-filter bypass. #56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports; README gains pipeline-stage class mentions + coverage line matching the sync script's regex. #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. #56+#57 unblock PR #50 and every future PR. Previously on 2026-04-20: #32 resolved — `src/shared/html_segmenter.py` deleted as dead V1 code; #33 resolved — `pyproject.toml` `fail_under` raised 75 → 80; #44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`; #48 resolved — `image_crop` guarded by `@require_api_key`; #49 opened for integration test DB flakiness; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; #51 opened for brittle source-string assertions in `test_persistence_sql.py`; #52 opened for `pg_dump` version-mismatch silent failure)
+**Last Updated**: 2026-04-21 (Wave B/C/D batch-ingest-ui follow-ups filed: #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test. Previously: #35 partially resolved — `chart_only` mode landed via PR #50; 3-filing Neon smoke validated mechanism safety; full 8-filing backfill deferred pending investigation of #53/#54. #53 opened for chart call limit truncation; #54 opened for chart-bridge low-confidence misbinds; #55 opened for 28 stuck 8-K filings from form-filter bypass. #56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports; README gains pipeline-stage class mentions + coverage line matching the sync script's regex. #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. #56+#57 unblock PR #50 and every future PR. On 2026-04-20: #32 resolved — `src/shared/html_segmenter.py` deleted as dead V1 code; #33 resolved — `pyproject.toml` `fail_under` raised 75 → 80; #44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`; #48 resolved — `image_crop` guarded by `@require_api_key`; #49 opened for integration test DB flakiness; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; #51 opened for brittle source-string assertions in `test_persistence_sql.py`; #52 opened for `pg_dump` version-mismatch silent failure)
 
 ---
 
@@ -300,6 +300,12 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Low | Low | Out-of-scope 8-Ks reached `v2_image_assets` via form-filter bypass during ingestion; inflates Issue #35 baseline. Either delete or reclassify to `out_of_scope` and narrow diagnostic to S-1/F-1 |
 | `check_docs_sync.py --ci` fails CI on transitive-import warnings (Issue #56) | Resolved (2026-04-21) | — | — | `import_to_pkg` dict extended for `dateutil`, `botocore`, `PIL`; README updated with pipeline-stage class names + coverage line matching `(\d+)%\s*overall` regex. Unblocks every PR |
 | `unified_review.html` missing breadcrumb + count badges broke 7 Playwright tests (Issue #57) | Resolved (2026-04-21) | — | — | Template gained Bootstrap breadcrumb + accepted/rejected count badges; 2 test selectors updated to match compact-UI refactor (`.fact-metric-id` + `.fs-5.fw-bold`). All 151 UI tests pass |
+| 8-K fetcher ignores Exhibit 99.1 (Issue #58) | Open | Medium | Medium | Primary doc is often a cover sheet; earnings content lives in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
+| 8-K section classifier missing earnings-exhibit patterns (Issue #59) | Open | Low | Low | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS. Facts still bind; section-aware logic degrades |
+| `detect_universe_gaps` ignores SIC filter (Issue #60) | Open | Low | Low | Reports gaps based on `(year, form_type)` only; can trigger needless populate runs when filings exist but not for the queried SIC |
+| `/ingest/preview` integration-test gap (Issue #61) | Open | Low | Low | Preview path is unit-tested via form parsers; no end-to-end assertion on bucket split + volume banner + hidden-field snapshot |
+| Local-dev stuck-batch recovery is manual (Issue #62) | Open | Low | Low | No watcher runs locally; subprocess death leaves `status='running'` forever; needs runbook + optional `--cleanup-stuck` flag |
+| Cancel-during-populate not integration-tested (Issue #63) | Open | Low | Low | Behaviour documented + conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 
 ---
 
@@ -1858,6 +1864,115 @@ The compact-UI refactor that replaced `v2_review.html` with `unified_review.html
 - Updated line 253 selector from `.fs-4.fw-bold` to `.fs-5.fw-bold` (matches the compact-UI sizing choice).
 
 Verified: all 151 UI tests pass locally (`npm run test:ui`).
+
+---
+
+## 58. 8-K Fetcher Returns Only Primary Doc; Earnings Content Lives in Exhibit 99.1
+
+**Status**: Open
+**Severity**: Medium — blocks 8-K recall in batch-ingest UI rollout
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
+
+### Problem
+
+`FilingFetcher.fetch_filing` (`src/filing_fetcher/filing_fetcher.py:263-365`) downloads only `primary.htm` resolved from the accession's directory URL. For many 8-K filings the primary doc is a ~10 KB cover page that points at Exhibit 99.1 (the actual press release / financial-highlights HTML). Pipeline ran cleanly on 4/5 Phase 0 candidates but Samsara (2025-08-21) produced 0 facts — the primary doc was 9,336 bytes of boilerplate; all customer-metric content sat in `exhibit991-2025x08x21.htm` which was never fetched.
+
+### Next Steps
+
+1. In `fetch_filing`, after downloading `primary.htm`, parse the index for `99.1` (or regex-matched variants like `ex-99-1`) and download the exhibit alongside the primary doc.
+2. Decide whether the pipeline consumes only the exhibit, both docs concatenated, or runs twice and merges facts — prefer "concat with a section break" for the MVP to avoid invalidating `filing_id` uniqueness.
+3. Add an integration test using the Samsara 8-K (or a fixture mirroring its structure) asserting >0 customer-metric facts.
+4. Gate on this before enabling 8-K in the batch-ingest UI form-type selector.
+
+---
+
+## 59. 8-K Section Classifier Produces Only `COVER` / `FINANCIALS` Labels
+
+**Status**: Open
+**Severity**: Low — extraction still works; section-aware FP rules and UI navigation degrade
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
+
+### Problem
+
+`SectionClassificationStage.SECTION_PATTERNS` (`src/extraction_v2/stages/section_classification.py:104-138`) only knows S-1/10-K structural headings (`Item 1A`, `Item 7`, `Item 8`, etc.). 8-K earnings exhibits use narrative patterns like "Financial Highlights", "Key Business Metrics", "Q4 Highlights", "Results of Operations" that none of the existing patterns match. Phase 0 run: every segment on Chewy / DoorDash / Robinhood / Snowflake 8-Ks was classified as `COVER` or `FINANCIALS`. Candidate generation and value binding still produced correct facts, but sections-aware downstream logic (FP rules keyed on `section_type`, reviewer UI navigation, section-scoped metric scoring) is blind on 8-Ks.
+
+### Next Steps
+
+1. Add a new `SectionType` variant — e.g. `EARNINGS_HIGHLIGHTS` — or piggyback on `BUSINESS` if the existing type taxonomy already carries the right semantics.
+2. Add pattern list entries for common 8-K headings: `Financial Highlights`, `Key Business Metrics`, `Q[1-4]\s*\d{4}\s*Highlights`, `Results of Operations`, `Business Highlights`.
+3. Validate against the Phase 0 candidate set (Chewy, DoorDash, Robinhood, Snowflake 8-Ks) — expect >=30% of segments to land on non-COVER sections.
+4. Audit existing FP rules for section-gated behavior that might fire differently once 8-K segments are correctly typed.
+
+---
+
+## 60. `detect_universe_gaps` Ignores SIC Filter When Reporting Populate Gaps
+
+**Status**: Open
+**Severity**: Low — correctness-neutral, efficiency issue
+**Discovered**: 2026-04-20 (Phase 1 review of `src/universe/onboarding.py`)
+
+### Problem
+
+`src/universe/onboarding.py::detect_universe_gaps` reports a `(year, form_type)` gap whenever the `filings` table has zero rows for that combination in the query's year range, regardless of the query's SIC code set. A reviewer filtering the UI to e.g. grocery retail 8-Ks will see a "populate 2023" prompt even if 2023 already has thousands of non-grocery 8-K filings in `filings` — the SIC intersection with those is empty, but the year/form coverage exists. The populate run that follows will re-fetch an entire year of 8-K metadata unnecessarily.
+
+### Next Steps
+
+1. Change the gap query from `filings.form_type + filing_date` to `filings JOIN companies ON company_id` with `industry_code = ANY(%(sic_codes)s)` (or the equivalent once the companies.industry_code field is populated — check that first).
+2. Alternatively, accept the over-populate behavior and document the trade-off in `src/universe/onboarding.py` at the function docstring — populate is idempotent, just bandwidth-wasteful.
+3. Add a unit test covering the "filings exist but not for our SIC" case.
+
+---
+
+## 61. `/ingest/preview` Has No Integration-Test Coverage
+
+**Status**: Open
+**Severity**: Low — unit tests exist for the form-parsing layer; the end-to-end path is untested
+**Discovered**: 2026-04-20 (Wave B Phase 4 review)
+
+### Problem
+
+`tests/integration/web/test_ingest_flow.py` covers `GET /ingest/`, `POST /ingest/start`, `GET /api/v2/ingest/batches/<id>/status`, `POST /cancel`, and auth. `POST /ingest/preview` — the middle step that runs `resolve_criteria` + `discover` + `classify_volume` + `count_reviewer_work` and renders the three-bucket candidate table — is only covered by unit tests on the form-parser helpers. No end-to-end assertion that a valid criteria submission renders a preview page with the correct bucket split + volume banner.
+
+### Next Steps
+
+1. Add an integration test that seeds two filings (one in `v2_documents`, one not) + a reviewed fact on the extracted one, POSTs `/ingest/preview` with criteria that match both, and asserts the three buckets render correctly.
+2. Assert the volume banner class (`alert-success` / `alert-warning` / `alert-danger`) for each band.
+3. Assert hidden-field snapshot survives re-render — `filing_id` hidden inputs must be present and match the discovered IDs.
+
+---
+
+## 62. Local-Dev Stuck-Batch Recovery Is Manual
+
+**Status**: Open
+**Severity**: Low — operational; no data loss, just operator inconvenience
+**Discovered**: 2026-04-20 (Wave B Phase 3 review)
+
+### Problem
+
+On Render (Phase 7), a worker service with `--watch` mode will re-claim a batch whose `run_lock_until` has expired. On local dev there is no watcher — if the `onboarding_runner` subprocess dies mid-batch (kernel OOM, user kills the Flask server, etc.), the batch stays in `status='running'` forever. Currently recovery requires a hand-crafted `UPDATE v2_ingest_batches SET status='failed' WHERE batch_id=...` plus a cleanup of partially-processed `v2_ingest_batch_filings` rows.
+
+### Next Steps
+
+1. Document the manual recovery SQL in `docs/operations/TICKER_ONBOARDING.md` (or a new batch-ingest runbook) when that file lands in Phase 7.
+2. Consider a `python3 -m src.universe.onboarding_runner --cleanup-stuck` admin flag that scans for batches with `run_lock_until < NOW() - INTERVAL '1 hour'` still in `running` state and either marks them failed or re-claims them.
+3. Add a CLI log line to the runner on SIGTERM that tells the operator "batch <id> interrupted — run `... --cleanup-stuck` to recover".
+
+---
+
+## 63. Cancel-During-Populate Not Exercised by Integration Test
+
+**Status**: Open
+**Severity**: Low — behaviour is documented + the conditional SQL is unit-tested
+**Discovered**: 2026-04-20 (Wave C / Phase 6 review)
+
+### Problem
+
+Wave C documents the cancel-during-populate flow (cancel flips `status='cancelled'`; runner respects it on natural completion via the new `WHERE status='running'` predicate on `_BATCH_COMPLETE_SQL`). The conditional SQL is unit-tested via string assertion (`tests/unit/universe/test_onboarding_runner.py::TestBatchCompleteConditional`), but no integration test simulates a runner mid-`build_universe` while cancel fires concurrently.
+
+### Next Steps
+
+1. Add an integration test in `tests/integration/universe/test_onboarding_runner_integration.py::TestPopulateCancellation` that: inserts a populate batch, monkey-patches `UniverseBuilder.build_universe` to flip the batch status to `cancelled` mid-run, calls `_run_populate`, asserts final status stays `cancelled` (not `complete`) and `finished_at IS NOT NULL`.
+2. Optionally extend Phase 5's JS to render a "Cancellation pending — batch will stop after current operation completes" banner when `status='cancelled' AND finished_at IS NULL` (today the JS shows the cancelled banner immediately).
 
 ---
 

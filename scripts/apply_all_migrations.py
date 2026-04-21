@@ -92,6 +92,7 @@ MIGRATION_ORDER = [
     "36_backfill_presentation_urls.sql",
     "37_create_analytics_role.sql",
     "38_create_analytics_views.sql",
+    "39_v2_ingest_batches.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
