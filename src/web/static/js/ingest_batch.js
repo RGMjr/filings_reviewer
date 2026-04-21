@@ -151,11 +151,15 @@
             statusEl.dataset.batchStatus = body.status;
         }
 
-        // Update per-filing rows
-        var filings = body.filings || [];
-        filings.forEach(function (filing) {
-            updateFilingRow(filing);
-        });
+        // Per-filing rows: only for onboard batches (populate has none)
+        if (body.kind === 'populate') {
+            updatePopulateProgress(body.populate_progress);
+        } else {
+            var filings = body.filings || [];
+            filings.forEach(function (filing) {
+                updateFilingRow(filing);
+            });
+        }
 
         // Terminal state?
         if (TERMINAL_STATUSES.indexOf(body.status) !== -1) {
@@ -164,6 +168,27 @@
             showTerminalBanner(body.status);
         } else {
             scheduleTick();
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Populate-batch progress update
+    // ------------------------------------------------------------------
+
+    function updatePopulateProgress(progress) {
+        if (!progress) return;
+        var processed = progress.processed || 0;
+        var total = progress.total || 0;
+
+        var bar = document.querySelector('[data-populate-progress="bar"]');
+        if (bar) {
+            var pct = total > 0 ? Math.max(0, (processed / total) * 100) : 0;
+            bar.style.width = pct + '%';
+        }
+
+        var counter = document.querySelector('[data-populate-progress="counter"]');
+        if (counter) {
+            counter.textContent = processed + ' / ' + total;
         }
     }
 

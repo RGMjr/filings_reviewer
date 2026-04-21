@@ -19,6 +19,7 @@ CLI flags
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import re
@@ -32,7 +33,14 @@ from dotenv import load_dotenv
 
 from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
-from src.universe.onboarding import FilingEvent, load_candidates_by_filing_ids, onboard
+from src.infra.sec_client import SECClient
+from src.universe.onboarding import (
+    FORM_TYPE_BUNDLES,
+    FilingEvent,
+    load_candidates_by_filing_ids,
+    onboard,
+)
+from src.universe.universe_builder import UniverseBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +134,13 @@ WHERE batch_id = %s AND current_status = 'queued';
 _BATCH_COMPLETE_SQL = """\
 UPDATE v2_ingest_batches
 SET status = 'complete', finished_at = NOW(), run_lock_until = NULL
-WHERE batch_id = %s;
+WHERE batch_id = %s AND status = 'running';
+"""
+
+_FINALIZE_CANCEL_SQL = """\
+UPDATE v2_ingest_batches
+SET finished_at = NOW()
+WHERE batch_id = %s AND status = 'cancelled' AND finished_at IS NULL;
 """
 
 _BATCH_FAILED_SQL = """\
@@ -144,6 +158,12 @@ SELECT filing_id, initial_bucket
 FROM v2_ingest_batch_filings
 WHERE batch_id = %s
 ORDER BY filing_id;
+"""
+
+_POPULATE_PROGRESS_SQL = """\
+UPDATE v2_ingest_batches
+SET limits = jsonb_set(coalesce(limits, '{}'::jsonb), '{populate_progress}', %s::jsonb)
+WHERE batch_id = %s;
 """
 
 _FACT_COUNT_RE = re.compile(r"(\d+)\s+facts")
@@ -239,7 +259,21 @@ def should_abort(db: DatabaseAdapter, batch_id: uuid.UUID) -> bool:
 
 
 def run_one(db: DatabaseAdapter, batch_row: dict[str, Any]) -> None:
-    """Process a single claimed batch to completion.
+    """Dispatch a single claimed batch to the appropriate handler based on kind.
+
+    Raises ValueError for unknown batch kinds.
+    """
+    kind = batch_row.get("kind", "onboard")
+    if kind == "onboard":
+        _run_onboard(db, batch_row)
+    elif kind == "populate":
+        _run_populate(db, batch_row)
+    else:
+        raise ValueError(f"Unknown batch kind: {kind!r}")
+
+
+def _run_onboard(db: DatabaseAdapter, batch_row: dict[str, Any]) -> None:
+    """Process a single onboard batch to completion.
 
     Steps:
     1. Load candidates from v2_ingest_batch_filings.
@@ -252,7 +286,7 @@ def run_one(db: DatabaseAdapter, batch_row: dict[str, Any]) -> None:
     batch_id_str = str(batch_row["batch_id"])
     batch_id = uuid.UUID(batch_id_str)
 
-    logger.info("run_one: starting batch_id=%s", batch_id_str)
+    logger.info("_run_onboard: starting batch_id=%s", batch_id_str)
 
     # 1. Load per-filing rows.
     filing_rows = db.query(_BATCH_FILINGS_SQL, [batch_id_str])
@@ -264,7 +298,7 @@ def run_one(db: DatabaseAdapter, batch_row: dict[str, Any]) -> None:
 
     # 2. Reconstruct Candidate objects.
     candidates = load_candidates_by_filing_ids(db, filing_ids)
-    logger.info("run_one: batch_id=%s, %d candidates loaded", batch_id_str, len(candidates))
+    logger.info("_run_onboard: batch_id=%s, %d candidates loaded", batch_id_str, len(candidates))
 
     # 3. Build callbacks.
     progress_cb = build_progress_cb(db, batch_id)
@@ -283,19 +317,81 @@ def run_one(db: DatabaseAdapter, batch_row: dict[str, Any]) -> None:
         )
     except Exception as exc:  # noqa: BLE001
         error_msg = repr(exc)[:500]
-        logger.exception("run_one: unhandled exception in batch_id=%s", batch_id_str)
+        logger.exception("_run_onboard: unhandled exception in batch_id=%s", batch_id_str)
         db.execute(_BATCH_FAILED_SQL, [error_msg, batch_id_str])
         return
 
     # 5. Post-run: check whether we aborted.
     if _abort_check():
-        logger.info("run_one: batch_id=%s aborted — flipping remaining queued to cancelled", batch_id_str)
+        logger.info(
+            "_run_onboard: batch_id=%s aborted — flipping remaining queued to cancelled",
+            batch_id_str,
+        )
         db.execute(_CANCEL_QUEUED_SQL, [batch_id_str])
         # Leave batch status as 'cancelled' (already set by caller via API).
+        # Finalize finished_at if not yet set.
+        db.execute(_FINALIZE_CANCEL_SQL, [batch_id_str])
         return
 
     db.execute(_BATCH_COMPLETE_SQL, [batch_id_str])
-    logger.info("run_one: batch_id=%s complete", batch_id_str)
+    db.execute(_FINALIZE_CANCEL_SQL, [batch_id_str])
+    logger.info("_run_onboard: batch_id=%s complete", batch_id_str)
+
+
+def _run_populate(db: DatabaseAdapter, batch_row: dict[str, Any]) -> None:
+    """Process a single populate batch using UniverseBuilder.
+
+    Steps:
+    1. Parse criteria (year + form_type).
+    2. Resolve form_types via FORM_TYPE_BUNDLES.
+    3. Define a progress callback that writes populate_progress JSONB and heartbeats.
+    4. Call UniverseBuilder.build_universe with progress_cb.
+    5. On success: mark complete (conditional) + finalize cancel if needed.
+       On exception: mark failed.
+    Does NOT touch v2_ingest_batch_filings — populate has no per-filing rows.
+    """
+    batch_id_str = str(batch_row["batch_id"])
+    lock_ttl_seconds = 900
+
+    logger.info("_run_populate: starting batch_id=%s", batch_id_str)
+
+    # 1. Parse criteria.
+    criteria = batch_row.get("criteria") or {}
+    if isinstance(criteria, str):
+        criteria = json.loads(criteria)
+    year = int(criteria["year"])
+    form_type = str(criteria["form_type"])
+
+    start = f"{year}-01-01"
+    end = f"{year}-12-31"
+
+    # 2. Resolve form types.
+    resolved = FORM_TYPE_BUNDLES.get(form_type, [form_type])
+
+    # 3. Define progress callback.
+    def _cb(processed: int, total: int) -> None:
+        progress_json = json.dumps({"processed": processed, "total": total})
+        db.execute(_POPULATE_PROGRESS_SQL, [progress_json, batch_id_str])
+        db.execute(_HEARTBEAT_SQL, {"batch_id": batch_id_str, "ttl": lock_ttl_seconds})
+
+    # 4. Build and call UniverseBuilder.
+    user_agent = os.environ.get("SEC_USER_AGENT", "filings-reviewer info@example.com")
+    sec_client = SECClient(user_agent=user_agent)
+    builder = UniverseBuilder(sec_client=sec_client, db=db)
+
+    try:
+        builder.build_universe(start, end, form_types=resolved, progress_cb=_cb)
+    except Exception as exc:  # noqa: BLE001
+        error_msg = repr(exc)[:500]
+        logger.exception("_run_populate: unhandled exception in batch_id=%s", batch_id_str)
+        db.execute(_BATCH_FAILED_SQL, [error_msg, batch_id_str])
+        return
+
+    # 5. Mark complete (conditional: only if still 'running'; no-op if cancelled).
+    db.execute(_BATCH_COMPLETE_SQL, [batch_id_str])
+    # Finalize finished_at for cancelled-mid-run case.
+    db.execute(_FINALIZE_CANCEL_SQL, [batch_id_str])
+    logger.info("_run_populate: batch_id=%s done", batch_id_str)
 
 
 def main() -> int:

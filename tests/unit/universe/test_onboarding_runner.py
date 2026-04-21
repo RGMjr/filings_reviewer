@@ -333,3 +333,166 @@ class TestFactCountRegex:
         m = _FACT_COUNT_RE.search(message)
         result = int(m.group(1)) if m else None
         assert result == expected
+
+
+class TestRunOneDispatch:
+    """Wave C: run_one branches on batch_row['kind']."""
+
+    def test_dispatch_onboard_calls_run_onboard(self) -> None:
+        import src.universe.onboarding_runner as runner_mod
+        from src.universe.onboarding_runner import run_one
+
+        called = {}
+
+        def fake_run_onboard(db, row):
+            called["onboard"] = row
+
+        original = runner_mod._run_onboard
+        runner_mod._run_onboard = fake_run_onboard
+        try:
+            run_one(_FakeDB(), {"kind": "onboard", "batch_id": "x"})
+        finally:
+            runner_mod._run_onboard = original
+
+        assert "onboard" in called
+
+    def test_dispatch_populate_calls_run_populate(self) -> None:
+        import src.universe.onboarding_runner as runner_mod
+        from src.universe.onboarding_runner import run_one
+
+        called = {}
+
+        def fake_run_populate(db, row):
+            called["populate"] = row
+
+        original = runner_mod._run_populate
+        runner_mod._run_populate = fake_run_populate
+        try:
+            run_one(_FakeDB(), {"kind": "populate", "batch_id": "x"})
+        finally:
+            runner_mod._run_populate = original
+
+        assert "populate" in called
+
+    def test_dispatch_unknown_kind_raises(self) -> None:
+        from src.universe.onboarding_runner import run_one
+        with pytest.raises(ValueError, match="Unknown batch kind"):
+            run_one(_FakeDB(), {"kind": "wat", "batch_id": "x"})
+
+
+class TestRunPopulate:
+    """Wave C: _run_populate calls build_universe + writes populate_progress."""
+
+    def test_progress_cb_writes_jsonb(self) -> None:
+        """The progress_cb passed into build_universe must UPDATE limits.populate_progress."""
+        import src.universe.onboarding_runner as runner_mod
+        from src.universe.onboarding_runner import _run_populate
+
+        db = _FakeDB(rows=[])
+
+        # Capture the progress_cb to invoke it directly
+        captured_cb = {}
+
+        class FakeBuilder:
+            def __init__(self, *a, **kw):
+                pass
+
+            def build_universe(self, start, end, form_types=None, progress_cb=None, **kw):
+                captured_cb["fn"] = progress_cb
+                if progress_cb:
+                    progress_cb(0, 10)
+                    progress_cb(5, 10)
+                    progress_cb(10, 10)
+                return 10
+
+        original = runner_mod.UniverseBuilder
+        runner_mod.UniverseBuilder = FakeBuilder
+        try:
+            _run_populate(db, {
+                "batch_id": "abc",
+                "kind": "populate",
+                "criteria": {"year": 2024, "form_type": "10-K"},
+            })
+        finally:
+            runner_mod.UniverseBuilder = original
+
+        # Heartbeat + populate-progress UPDATEs fired
+        sqls = " ".join(c[0] for c in db.calls)
+        assert "populate_progress" in sqls
+        # _BATCH_COMPLETE_SQL fired (conditional WHERE status='running')
+        assert "status = 'complete'" in sqls
+        # _FINALIZE_CANCEL_SQL also fired (idempotent finaliser)
+        assert "status = 'cancelled' AND finished_at IS NULL" in sqls
+
+    def test_exception_marks_batch_failed(self) -> None:
+        import src.universe.onboarding_runner as runner_mod
+        from src.universe.onboarding_runner import _run_populate
+
+        db = _FakeDB(rows=[])
+
+        class BoomBuilder:
+            def __init__(self, *a, **kw):
+                pass
+
+            def build_universe(self, *a, **kw):
+                raise RuntimeError("SEC says no")
+
+        original = runner_mod.UniverseBuilder
+        runner_mod.UniverseBuilder = BoomBuilder
+        try:
+            _run_populate(db, {
+                "batch_id": "abc",
+                "kind": "populate",
+                "criteria": {"year": 2024, "form_type": "10-K"},
+            })
+        finally:
+            runner_mod.UniverseBuilder = original
+
+        sqls = " ".join(c[0] for c in db.calls)
+        assert "status = 'failed'" in sqls
+
+    def test_criteria_string_is_parsed(self) -> None:
+        """criteria may arrive as a JSON string (depending on psycopg version)."""
+        import json as _json
+
+        import src.universe.onboarding_runner as runner_mod
+        from src.universe.onboarding_runner import _run_populate
+
+        db = _FakeDB(rows=[])
+        captured = {}
+
+        class FakeBuilder:
+            def __init__(self, *a, **kw):
+                pass
+
+            def build_universe(self, start, end, form_types=None, **kw):
+                captured["form_types"] = form_types
+                captured["start"] = start
+                return 0
+
+        original = runner_mod.UniverseBuilder
+        runner_mod.UniverseBuilder = FakeBuilder
+        try:
+            _run_populate(db, {
+                "batch_id": "abc",
+                "kind": "populate",
+                "criteria": _json.dumps({"year": 2024, "form_type": "10-K"}),
+            })
+        finally:
+            runner_mod.UniverseBuilder = original
+
+        assert captured["start"] == "2024-01-01"
+        assert "10-K" in captured["form_types"]
+
+
+class TestBatchCompleteConditional:
+    """Wave C bugfix: _BATCH_COMPLETE_SQL has WHERE status='running' guard."""
+
+    def test_complete_sql_has_status_running_predicate(self) -> None:
+        from src.universe.onboarding_runner import _BATCH_COMPLETE_SQL
+        assert "status = 'running'" in _BATCH_COMPLETE_SQL
+
+    def test_finalize_cancel_sql_exists(self) -> None:
+        from src.universe.onboarding_runner import _FINALIZE_CANCEL_SQL
+        assert "status = 'cancelled'" in _FINALIZE_CANCEL_SQL
+        assert "finished_at IS NULL" in _FINALIZE_CANCEL_SQL

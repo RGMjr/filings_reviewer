@@ -247,3 +247,97 @@ class TestAuth:
             headers={"Origin": "https://evil.example.com", "X-API-Key": "test-key-xyz"},
         )
         assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: populate flow
+# ---------------------------------------------------------------------------
+
+
+class TestPopulateFlow:
+    def test_populate_creates_batch_no_filings(self, client, db_adapter):
+        form = {"reviewer_name": "popbot", "year": "2024", "form_type": "10-K"}
+        r = client.post("/ingest/populate", data=form, follow_redirects=False)
+        assert r.status_code == 302, r.data
+        assert r.location.startswith("/ingest/batch/")
+        batch_id = r.location.split("/")[-1]
+
+        rows = db_adapter.query(
+            "SELECT kind, status, criteria FROM v2_ingest_batches WHERE batch_id = %s",
+            [batch_id],
+        )
+        assert len(rows) == 1
+        assert rows[0]["kind"] == "populate"
+        assert rows[0]["status"] == "queued"
+        criteria = rows[0]["criteria"]
+        if isinstance(criteria, str):
+            criteria = json.loads(criteria)
+        assert criteria == {"year": 2024, "form_type": "10-K"}
+
+        # No per-filing rows for populate
+        filing_rows = db_adapter.query(
+            "SELECT 1 FROM v2_ingest_batch_filings WHERE batch_id = %s", [batch_id]
+        )
+        assert filing_rows == []
+
+        db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [batch_id])
+
+    def test_populate_invalid_year_rejects(self, client):
+        form = {"reviewer_name": "popbot", "year": "abc", "form_type": "10-K"}
+        r = client.post("/ingest/populate", data=form, follow_redirects=False)
+        assert r.status_code == 400
+
+    def test_populate_year_out_of_range_rejects(self, client):
+        form = {"reviewer_name": "popbot", "year": "1850", "form_type": "10-K"}
+        r = client.post("/ingest/populate", data=form, follow_redirects=False)
+        assert r.status_code == 400
+
+    def test_populate_unknown_form_type_rejects(self, client):
+        form = {"reviewer_name": "popbot", "year": "2024", "form_type": "WHAT-EVER"}
+        r = client.post("/ingest/populate", data=form, follow_redirects=False)
+        assert r.status_code == 400
+
+    def test_populate_status_includes_populate_progress_and_criteria(
+        self, client, db_adapter
+    ):
+        form = {"reviewer_name": "popbot", "year": "2024", "form_type": "10-K"}
+        r = client.post("/ingest/populate", data=form, follow_redirects=False)
+        batch_id = r.location.split("/")[-1]
+
+        # Initially populate_progress is null
+        s = client.get(
+            f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH
+        )
+        body = s.get_json()
+        assert body["kind"] == "populate"
+        assert body["populate_progress"] is None
+        assert body["criteria"] == {"year": 2024, "form_type": "10-K"}
+        assert body["filings"] == []
+
+        # After runner writes progress, status reflects it
+        db_adapter.execute(
+            """
+            UPDATE v2_ingest_batches
+            SET limits = jsonb_set(coalesce(limits,'{}'::jsonb),
+                                    '{populate_progress}', %s::jsonb)
+            WHERE batch_id = %s
+            """,
+            [json.dumps({"processed": 17, "total": 42}), batch_id],
+        )
+        s2 = client.get(
+            f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH
+        )
+        body2 = s2.get_json()
+        assert body2["populate_progress"] == {"processed": 17, "total": 42}
+
+        db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [batch_id])
+
+    def test_onboard_status_also_includes_criteria_field(self, client, batch_id):
+        """Regression: criteria field must appear for onboard batches too."""
+        r = client.get(
+            f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH
+        )
+        body = r.get_json()
+        assert "criteria" in body
+        assert isinstance(body["criteria"], dict)
+        assert body["populate_progress"] is None  # onboard batches always null
