@@ -42,7 +42,7 @@ _(none currently)_
 | Nightly sweeper uses GNU `timeout` — macOS incompatible (Issue #68) | Open | Local `/sweep` on Mac fails at the `timeout` call; Render (Linux) production is fine |
 | `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
 | CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
-| Integration Tests job has no path filter (Issue #71) | Open | Docs-only / `.claude/`-only PRs still spin up Postgres + migrations; stacks extra wall-time under merge queue |
+| Integration Tests job has no path filter (Issue #71) | Open | Docs-only / `.claude/`-only PRs still spin up Postgres + migrations (~3–6 min); wall-time save |
 
 ### Partially Resolved
 
@@ -969,7 +969,7 @@ The functional behavior is correct — the hook fires and blocks the operation a
 
 ### Problem
 
-`.github/workflows/ci.yml` runs the `integration-tests` job on every PR regardless of touched paths. UI E2E already has a conservative path filter (`ci.yml:49-69`) that skips the job when every changed path is under `docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, or `.github/CODEOWNERS`. Integration Tests has no equivalent, so docs-only and `.claude/`-only PRs still spin up Postgres 15, apply migrations, and run the full integration suite (~3–6 min). After the merge queue is enabled, this wall-time adds directly to queue latency per batch, slowing unrelated PRs.
+`.github/workflows/ci.yml` runs the `integration-tests` job on every PR regardless of touched paths. UI E2E already has a conservative path filter (`ci.yml:49-69`) that skips the job when every changed path is under `docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, or `.github/CODEOWNERS`. Integration Tests has no equivalent, so docs-only and `.claude/`-only PRs still spin up Postgres 15, apply migrations, and run the full integration suite (~3–6 min). Net ~3–6 min wall-time save per docs-only PR.
 
 ### Next Steps
 
