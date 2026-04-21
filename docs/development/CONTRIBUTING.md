@@ -30,6 +30,8 @@ feature branch → PR against main → CI green → squash-merge
 [`docs/operations/ci-branch-protection.md`](../operations/ci-branch-protection.md)).
 Direct pushes are refused; a red CI blocks the merge button.
 
+Run `/commit` from a `ccw` worktree. HEAD-moving git commands in the primary tree are blocked by a PreToolUse hook — see `docs/development/claude-sessions-and-worktrees.md`.
+
 ### Committing via `/commit` (Claude Code)
 
 The project-local `/commit` skill (`.claude/commands/commit.md`) handles the
