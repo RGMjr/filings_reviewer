@@ -12,6 +12,8 @@ services:
         value: production
       - key: FILINGS_API_KEY
         sync: false
+      - key: INGEST_SPAWN_SUBPROCESS
+        value: "false"
 
   - type: cron
     name: filings-extraction
@@ -21,4 +23,17 @@ services:
     schedule: "0 6 * * *"  # Daily at 6am UTC
     envVars:
       - key: DATABASE_URL
+        sync: false
+
+  - type: worker
+    name: filings-onboarding-runner
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python3 -m src.universe.onboarding_runner --watch --poll-interval 10
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SEC_USER_AGENT
+        sync: false
+      - key: OPENAI_API_KEY
         sync: false
