@@ -8,49 +8,28 @@
 
 
 ## Test Plan
-<!-- How was this tested? -->
-- [ ] Unit tests pass (`pytest tests/unit/`)
-- [ ] Integration tests pass (if applicable)
-- [ ] Manual testing completed
 
+- [ ] Unit tests pass (`pytest tests/unit/ -x -q`)
+- [ ] Integration tests pass (if applicable)
+- [ ] Manual/UI testing completed for user-facing changes
 
 ---
 
 ## Extraction Code Checklist
 
 <!--
-If this PR modifies extraction code, please review the checklist below.
-Check items that apply, or mark N/A if this PR doesn't touch extraction.
+Complete this section if the PR modifies `src/extraction_v2/**` or `config/metric_keywords.yaml`.
+Mark items N/A otherwise.
 -->
 
-**Does this PR modify any of these paths?**
-- `src/extraction_v2/**`
-- `config/metric_keywords.yaml`
-
-If **yes**, please complete this checklist:
-
-- [ ] **Decision Log**: Does this change warrant an entry in `docs/architecture/extraction-decisions.md`?
-  - *Add an entry if: changing extraction logic, adding/removing metrics, modifying classification thresholds, or fixing a bug that reveals a design decision*
-
-- [ ] **Gold Standard Validation**: Did you run `python3 -m src.gold_standard.v2_validator`?
-  - *Required for extraction changes to ensure no regression in extraction quality*
-
-- [ ] **Keyword Config**: If modifying `metric_keywords.yaml`, did you follow the `/metric-lifecycle` guide?
+- [ ] **Gold standard validation passed locally OR N/A** — `python3 -m src.gold_standard.v2_validator --fail-on-regression` exits clean (the pre-commit hook enforces this, but confirm explicitly in the PR description if you skipped via `--no-verify`).
+- [ ] **Decision log** — Added an entry in `docs/architecture/extraction-decisions.md` if this change alters extraction logic, adds/removes metrics, modifies classification thresholds, or fixes a bug that reveals a design decision. N/A otherwise.
+- [ ] **Keyword config** — Followed `/metric-lifecycle` guidance for any `metric_keywords.yaml` edits. N/A otherwise.
 
 ### Decision Log Entry (if applicable)
 
 <!--
-If adding a decision log entry, paste a brief summary here:
-
 **Decision:** [What was decided]
 **Rationale:** [Why this approach]
 **Date:** [YYYY-MM-DD]
--->
-
-
----
-
-<!--
-Note: This template serves as a gentle reminder for extraction changes.
-Not all checkboxes need to be checked - use judgment based on the scope of changes.
 -->
