@@ -102,6 +102,7 @@ class BatchConfig:
     status: str | None = None  # Filter filings by processing_status (e.g. 'fetched')
     force_reextract: bool = False  # Purge existing human decisions on re-extract
     filing_ids: list[int] | None = None  # Explicit whitelist of filing_ids to process
+    chart_only: bool = False  # Write only chart facts; preserve text facts + decisions
 
 
 @dataclass
@@ -269,7 +270,10 @@ def _process_filing_worker(
         adapter = V2PersistenceAdapter(db)
         try:
             persist_result = adapter.persist_pipeline_result(
-                result, filing_id, force=config_dict.get("force_reextract", False)
+                result,
+                filing_id,
+                force=config_dict.get("force_reextract", False),
+                chart_only=config_dict.get("chart_only", False),
             )
         except ReviewedFilingError as guard_err:
             # Non-destructive skip: filing has human decisions and --force-reextract
@@ -484,6 +488,7 @@ class BatchV2Runner:
             "no_images": self.config.no_images,
             "min_confidence": self.config.min_confidence,
             "force_reextract": self.config.force_reextract,
+            "chart_only": self.config.chart_only,
         }
 
         last_filing_id = 0
@@ -691,6 +696,18 @@ def main() -> None:
             "--filing-id, --status, and --resume-from."
         ),
     )
+    parser.add_argument(
+        "--chart-only",
+        action="store_true",
+        help=(
+            "Persist only chart-sourced facts; preserve existing text facts "
+            "and their reviewer decisions. The fact-persistence DELETE is "
+            "scoped to source_type='chart', and the reviewed-filing guard "
+            "counts decisions on chart facts only. Used for backfilling "
+            "missing chart facts (Issue #35) on filings with accumulated "
+            "reviewer work."
+        ),
+    )
     args = parser.parse_args()
 
     filing_ids: list[int] | None = None
@@ -741,6 +758,7 @@ def main() -> None:
         status=args.status,
         force_reextract=args.force_reextract,
         filing_ids=filing_ids,
+        chart_only=args.chart_only,
     )
 
     runner = BatchV2Runner(config=config, db_url=db_url)
