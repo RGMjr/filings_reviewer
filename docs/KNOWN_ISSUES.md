@@ -37,7 +37,6 @@ _(none currently)_
 | 8-K fetcher ignores Exhibit 99.1 (Issue #58) | Open | Primary doc often a cover sheet; earnings content in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
 | 8-K section classifier missing earnings patterns (Issue #59) | Open | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS |
 | `detect_universe_gaps` ignores SIC filter (Issue #60) | Open | Reports gaps on `(year, form_type)` only; can trigger needless populate runs |
-| `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
 | Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 | Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
@@ -748,22 +747,6 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ---
 
-## 61. `/ingest/preview` Has No Integration-Test Coverage
-
-**Status**: Open
-**Severity**: Low — unit tests exist for the form-parsing layer; the end-to-end path is untested
-**Discovered**: 2026-04-20 (Wave B Phase 4 review)
-
-### Problem
-
-`tests/integration/web/test_ingest_flow.py` covers `GET /ingest/`, `POST /ingest/start`, `GET /api/v2/ingest/batches/<id>/status`, `POST /cancel`, and auth. `POST /ingest/preview` — the middle step that runs `resolve_criteria` + `discover` + `classify_volume` + `count_reviewer_work` and renders the three-bucket candidate table — is only covered by unit tests on the form-parser helpers. No end-to-end assertion that a valid criteria submission renders a preview page with the correct bucket split + volume banner.
-
-### Next Steps
-
-1. Add an integration test that seeds two filings (one in `v2_documents`, one not) + a reviewed fact on the extracted one, POSTs `/ingest/preview` with criteria that match both, and asserts the three buckets render correctly.
-2. Assert the volume banner class (`alert-success` / `alert-warning` / `alert-danger`) for each band.
-3. Assert hidden-field snapshot survives re-render — `filing_id` hidden inputs must be present and match the discovered IDs.
-
 ---
 
 ## 62. Local-Dev Stuck-Batch Recovery Is Manual
@@ -876,6 +859,19 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 ---
 
 ## Archive (Resolved Issues)
+
+### Issue #61: `/ingest/preview` Integration-Test Gap
+
+**Status**: Resolved (2026-04-21)
+
+`POST /ingest/preview` was only covered by unit tests on the form-parser helpers.
+Added `TestIngestPreview` to `tests/integration/web/test_ingest_flow.py` with three tests:
+three-bucket split assertion (new / already-extracted no-review / already-reviewed),
+volume-banner alert-class check (`alert-success` for ≤49 filings via `_volume_band_alert_class`),
+and hidden-`filing_id` field survival assertion. Seeds two 10-K filings via
+`create_test_company_and_filing`; reuses existing `client`/`db_adapter` fixtures.
+
+---
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
 
