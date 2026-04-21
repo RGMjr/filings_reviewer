@@ -81,6 +81,9 @@ class DocsChecker:
             "fitz": "pymupdf",   # PyMuPDF package is imported as 'fitz'
             "pdfium": "pypdfium2",  # pypdfium2 imported as pdfium
             "sklearn": "scikit_learn",  # scikit-learn imported as sklearn
+            "dateutil": "boto3",  # python-dateutil ships transitively via boto3 → botocore
+            "botocore": "boto3",  # botocore is a direct boto3 dependency
+            "PIL": "pillow",  # Pillow package exposes the PIL module (case-sensitive import)
         }
 
         # Find all imports in src/
