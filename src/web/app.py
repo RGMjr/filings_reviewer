@@ -42,6 +42,11 @@ class Config:
     DB_POOL_MIN_SIZE = int(os.environ.get("DB_POOL_MIN_SIZE", "2"))
     DB_POOL_MAX_SIZE = int(os.environ.get("DB_POOL_MAX_SIZE", "10"))
 
+    # Subprocess spawn control: set to False in production (Render worker handles batches).
+    # NOTE: env var is read at class-definition time (module import). Use config_override or
+    # monkeypatch.setattr(Config, 'INGEST_SPAWN_SUBPROCESS', ...) in tests, not setenv.
+    INGEST_SPAWN_SUBPROCESS = os.environ.get("INGEST_SPAWN_SUBPROCESS", "true").lower() == "true"
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""
