@@ -34,13 +34,104 @@
 
   .context-text { color: #666; font-size: 0.9rem; font-style: italic; }
 </style>
+<script>
+// Review-page preference persistence. Runs synchronously in <head> so we can
+// redirect before any body content paints. URL params are authoritative;
+// missing params fall back to localStorage and trigger a redirect-once.
+(function () {
+  var KEYS = {
+    TAB:          'cmasb:review:tab',          // "text" | "images"
+    TEXT_FILTER:  'cmasb:review:text_filter',  // {status, metric, sort}
+    IMAGE_FILTER: 'cmasb:review:image_filter'  // {status}
+  };
+  var VALID_TABS = ['text', 'images'];
+  var url = new URL(window.location.href);
+  var params = url.searchParams;
+  var dirty = false;
+
+  function getJSON(key) {
+    try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }
+    catch (e) { localStorage.removeItem(key); return null; }
+  }
+
+  // --- Write: URL wins, persist it ---
+  var tab = params.get('tab');
+  if (tab && VALID_TABS.includes(tab)) localStorage.setItem(KEYS.TAB, tab);
+
+  if (tab === null || tab === 'text') {
+    var status = params.get('status');
+    var metric = params.get('metric');
+    var sort   = params.get('sort');
+    if (status || metric || sort) {
+      localStorage.setItem(KEYS.TEXT_FILTER, JSON.stringify({
+        status: status || 'all', metric: metric || 'all', sort: sort || 'confidence_desc'
+      }));
+    }
+  }
+  if (tab === 'images') {
+    var imgStatus = params.get('image_status');
+    if (imgStatus) {
+      localStorage.setItem(KEYS.IMAGE_FILTER, JSON.stringify({ status: imgStatus }));
+    }
+  }
+
+  // --- Read: if URL omits a pref and storage has one, redirect once ---
+  if (!tab) {
+    var savedTab = localStorage.getItem(KEYS.TAB);
+    if (savedTab && VALID_TABS.includes(savedTab) && savedTab !== 'text') {
+      // Only redirect if stored tab differs from the server default ('text').
+      params.set('tab', savedTab);
+      dirty = true;
+    }
+    tab = savedTab || 'text';
+  }
+  if (tab === 'text' && !params.has('status') && !params.has('metric') && !params.has('sort')) {
+    var savedText = getJSON(KEYS.TEXT_FILTER);
+    if (savedText) {
+      if (savedText.status && savedText.status !== 'all')    { params.set('status', savedText.status); dirty = true; }
+      if (savedText.metric && savedText.metric !== 'all')    { params.set('metric', savedText.metric); dirty = true; }
+      if (savedText.sort   && savedText.sort !== 'confidence_desc') { params.set('sort', savedText.sort); dirty = true; }
+    }
+  }
+  if (tab === 'images' && !params.has('image_status')) {
+    var savedImg = getJSON(KEYS.IMAGE_FILTER);
+    if (savedImg && savedImg.status && savedImg.status !== 'all') {
+      params.set('image_status', savedImg.status);
+      dirty = true;
+    }
+  }
+
+  if (dirty) window.location.replace(url.toString());
+}());
+</script>
 {% endblock %}
 
 {% block content %}
 
+{# Breadcrumb back to list — threads list_* query params so the list page
+   reopens in the same sort/filter/reviewer scope the user came from. If
+   list_* are missing (deep link), unified_filing_list.html's localStorage
+   bootstrap still restores the user's last view. #}
+{%- set breadcrumb_kwargs = {} -%}
+{%- if request.args.get('list_sort_by') -%}
+  {% set _ = breadcrumb_kwargs.update({'sort_by': request.args.get('list_sort_by')}) %}
+{%- endif -%}
+{%- if request.args.get('list_sort_dir') -%}
+  {% set _ = breadcrumb_kwargs.update({'sort_dir': request.args.get('list_sort_dir')}) %}
+{%- endif -%}
+{%- if request.args.get('list_document_type') -%}
+  {% set _ = breadcrumb_kwargs.update({'document_type': request.args.get('list_document_type')}) %}
+{%- endif -%}
+{%- if request.args.get('list_hide_completed') == '1' -%}
+  {% set _ = breadcrumb_kwargs.update({'hide_completed': 1}) %}
+{%- endif -%}
+{%- set list_rev_ids = request.args.getlist('list_reviewer_id') -%}
+{%- if list_rev_ids -%}
+  {% set _ = breadcrumb_kwargs.update({'reviewer_id': list_rev_ids}) %}
+{%- endif -%}
 <nav aria-label="breadcrumb" class="mb-2">
   <ol class="breadcrumb">
-    <li class="breadcrumb-item"><a href="/">Review Filings</a></li>
+    <li class="breadcrumb-item"><a href="{{ url_for('review_unified.filing_list', **breadcrumb_kwargs) }}">Review Filings</a></li>
     <li class="breadcrumb-item active" aria-current="page">{{ filing.company_name }}</li>
   </ol>
 </nav>
@@ -121,7 +212,7 @@
         <option value="period" {% if current_filters.sort == 'period' %}selected{% endif %}>By Period</option>
       </select>
       {% if current_filters.has_active_filters %}
-      <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=text" class="btn btn-sm btn-outline-secondary">Clear</a>
+      <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=text&status=all&metric=all&sort=confidence_desc" class="btn btn-sm btn-outline-secondary">Clear</a>
       {% endif %}
       <span class="text-muted ms-2" style="font-size: 0.85rem;">
         Showing {{ total_facts }} of {{ total_facts_unfiltered }} facts
