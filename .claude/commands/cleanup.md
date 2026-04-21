@@ -10,7 +10,18 @@
 
 ## Steps
 
-1. **Detect execution context.** Run `test -d .claude/worktrees && echo local || echo remote`. Remote runs skip step 5. Report the mode in the opening line.
+1. **Detect execution context.** Run the following expression; it anchors to the primary repo's git dir so the check works from any linked worktree (agent-isolation or ccw) — not just the primary tree.
+
+   ```bash
+   if test -d "$(git rev-parse --git-common-dir 2>/dev/null)/.claude/worktrees" \
+      || test -d "$HOME/.claude-worktrees"; then
+     echo local
+   else
+     echo remote
+   fi
+   ```
+
+   Remote runs skip step 5. Report the mode in the opening line.
 
 2. **Sync remote state.** Run `git fetch --prune origin`. This deletes remote-tracking refs whose upstream branch is gone.
 
@@ -35,7 +46,7 @@
    - **Agent-isolation trees** (path matches `.claude/worktrees/agent-*`):
      - Parse the `locked` line to extract the pid (format: `locked claude agent <name> (pid <N>)`).
      - Check liveness: `ps -p <pid> -o pid= 2>/dev/null`. If the pid is alive, **skip** (active Claude session).
-     - If dead: `git worktree remove --force <path>` then `git branch -D <branch>` for the matching `worktree-agent-*` branch.
+     - If dead: `git worktree remove -f -f <path>` then `git branch -D <branch>` for the matching `worktree-agent-*` branch. Double `-f` is required — a single `--force` won't override the worktree's lock and fails with `cannot remove a locked working tree`.
      - Worktrees without a `locked` line (unexpected): report and skip — do not auto-remove.
 
    - **`ccw` trees** (path under `$HOME/.claude-worktrees/<repo>/`, created by the `ccw` zsh wrapper — see `docs/development/claude-sessions-and-worktrees.md`):
