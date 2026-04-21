@@ -90,7 +90,9 @@ EOF
 
 ### Why not a merge queue?
 
-GitHub's merge queue would be the ideal solution for concurrent-PR orchestration — it batches and serializes merges, runs CI on a synthetic `merge_group` ref, and removes manual rebase entirely. **But merge queue is available only on organization-owned repositories.** Personal (user-owned) accounts like `RGMjr` can't create `merge_queue` rulesets: the Rulesets API returns `422 Invalid rule 'merge_queue'` and the UI doesn't surface the option under either Branches or Rules → Rulesets. Verified 2026-04-21. If the repo is ever transferred to a GitHub organization, revisit this decision.
+GitHub's merge queue would be the ideal solution for concurrent-PR orchestration — it batches and serializes merges, runs CI on a synthetic `merge_group` ref, and removes manual rebase entirely. **But merge queue is available only on organization-owned repositories.** Personal (user-owned) accounts like `RGMjr` can't create `merge_queue` rulesets: the Rulesets API returns `422 Invalid rule 'merge_queue'` and the UI doesn't surface the option under either Branches or Rules → Rulesets. Verified 2026-04-21.
+
+If this repo is ever transferred to a GitHub organization, revisit — see [github-org-transfer.md](./github-org-transfer.md) for the trigger conditions, migration runbook, and the post-transfer steps to re-enable the queue.
 
 ### Verify
 
