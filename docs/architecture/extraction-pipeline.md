@@ -302,7 +302,7 @@ OPENAI_API_KEY=sk-...  # For LLM-enhanced extraction and OCR
 
 ## Appendix: V1 Pipeline (Retired)
 
-> **V1 is retired and `src/extraction/` has been fully deleted.** The modules that are still used by V2 (`html_segmenter.py`, `exceptions.py`, `validators.py`) were moved to `src/shared/`. All other V1 source files described below (`keyword_config.py`, `models.py`, `metric_classifier.py`, `segment_enricher.py`, `enricher_config.py`, `cohort_chart_detector.py`, `value_extractor.py`, `definition_extractor.py`, `quality_scorer.py`, `extraction_pipeline.py`, `structure_parser.py`, `candidate_detector.py`, `context_extractor.py`) have been **deleted** from the repository. The component specifications below are preserved as historical documentation only — the files no longer exist and the code cannot be run.
+> **V1 is retired and `src/extraction/` has been fully deleted.** The V1 segmenter (`html_segmenter.py`) was preserved in `src/shared/` as legacy reference material until 2026-04-20, when it too was deleted (see KNOWN_ISSUES #32). The companion modules `exceptions.py` and `validators.py` are still used independently by V2 (`src/shared/extraction_exceptions.py`, `src/shared/segment_validators.py`). All other V1 source files described below (`keyword_config.py`, `models.py`, `metric_classifier.py`, `segment_enricher.py`, `enricher_config.py`, `cohort_chart_detector.py`, `value_extractor.py`, `definition_extractor.py`, `quality_scorer.py`, `extraction_pipeline.py`, `structure_parser.py`, `candidate_detector.py`, `context_extractor.py`) have been **deleted** from the repository. The component specifications below are preserved as historical documentation only — the files no longer exist and the code cannot be run.
 
 The V1 pipeline implemented a 5-stage extraction workflow (HTML Segmentation → Metric Classification → Segment Enrichment → Value Extraction → Definition Extraction → Quality Scoring). The stage descriptions below are preserved for historical reference.
 
@@ -312,9 +312,9 @@ The V1 pipeline implemented a 5-stage extraction workflow (HTML Segmentation →
 
 #### 1. HTML Segmenter
 
-**Module:** `src/extraction/html_segmenter.py`
+**Module:** `src/extraction/html_segmenter.py` (deleted)
 **Class:** `HTMLSegmenter`
-**Status:** Retired (file still present)
+**Status:** Retired — file deleted 2026-04-20 (KNOWN_ISSUES #32)
 
 **Responsibilities:**
 - Parse filing HTML into semantic segments

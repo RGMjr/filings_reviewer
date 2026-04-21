@@ -9,7 +9,6 @@ import io
 import logging
 import threading
 import time
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
@@ -37,6 +36,7 @@ from src.review.models import (
     IMAGE_REVIEW_STATUSES,
 )
 from src.web.app import get_db
+from src.web.middleware import require_api_key
 from src.web.routes._metrics import get_active_metrics
 from src.web.url_builders import build_sec_directory_url, resolve_sec_filing_url
 
@@ -522,6 +522,7 @@ def next_filing():
 
 
 @review_unified_bp.route("/image_crop/<img_id>")
+@require_api_key
 def image_crop(img_id: str) -> Response:
     """
     Serve a chart image (full or cropped) stored on disk.
@@ -531,8 +532,10 @@ def image_crop(img_id: str) -> Response:
     does not populate per-DataPoint bbox, so most chart-sourced facts can
     only link back to the whole chart image.
 
-    Security: file_path is validated against the project data/ directory
-    before opening to prevent path traversal.
+    Security: `require_api_key` gates external fetches (same-origin browser
+    loads from the review UI pass via the Origin/Referer bypass). `file_path`
+    is additionally validated by `get_image_storage().get_bytes` to prevent
+    path traversal.
     """
     try:
         from PIL import Image  # type: ignore[import]
@@ -556,21 +559,18 @@ def image_crop(img_id: str) -> Response:
     if not file_path:
         abort(404)
 
-    # Security: resolve the path and confirm it lives under data/
-    resolved = Path(file_path).resolve()
-    project_root = Path(current_app.root_path).parent.parent.resolve()
-    data_dir = project_root / "data"
-    try:
-        resolved.relative_to(data_dir)
-    except ValueError:
-        logger.warning("image_crop: path traversal attempt for img_id=%s path=%s", img_id, file_path)
-        abort(404)
+    from src.infra.image_storage import InvalidStorageKeyError, get_image_storage
 
-    if not resolved.exists():
+    try:
+        image_bytes = get_image_storage().get_bytes(file_path)
+    except InvalidStorageKeyError:
+        logger.warning("image_crop: invalid storage key for img_id=%s key=%s", img_id, file_path)
+        abort(404)
+    except FileNotFoundError:
         abort(404)
 
     try:
-        img = Image.open(resolved)
+        img = Image.open(io.BytesIO(image_bytes))
         if w > 0 and h > 0:
             output = img.crop((x, y, x + w, y + h))
         else:
@@ -578,7 +578,9 @@ def image_crop(img_id: str) -> Response:
         buf = io.BytesIO()
         output.save(buf, format="PNG")
         buf.seek(0)
-        return Response(buf.read(), mimetype="image/png")
+        resp = Response(buf.read(), mimetype="image/png")
+        resp.headers["Cache-Control"] = "private, max-age=3600"
+        return resp
     except Exception as exc:
         logger.error("image_crop: failed to serve img_id=%s: %s", img_id, exc)
         abort(500)
@@ -632,15 +634,12 @@ def _resolve_chart_image_status(db: Any, fact: dict) -> dict | None:
     if not file_path:
         return {"status": "file_missing"}
 
-    resolved = Path(file_path).resolve()
-    project_root = Path(current_app.root_path).parent.parent.resolve()
-    data_dir = project_root / "data"
-    try:
-        resolved.relative_to(data_dir)
-    except ValueError:
-        return {"status": "file_missing"}
+    from src.infra.image_storage import InvalidStorageKeyError, get_image_storage
 
-    if not resolved.exists():
+    try:
+        if not get_image_storage().exists(file_path):
+            return {"status": "file_missing"}
+    except InvalidStorageKeyError:
         return {"status": "file_missing"}
 
     return {"status": "ok"}

@@ -28,6 +28,7 @@ from src.extraction_v2.models import (
     MetricDefinition,
     MetricFact,
     Segment,
+    SourceType,
     Table,
 )
 from src.shared.keyword_config import match_nearby_text
@@ -249,6 +250,7 @@ class V2PersistenceAdapter:
         filing_id: int,
         *,
         force: bool = False,
+        chart_only: bool = False,
     ) -> int:
         """
         Upsert V2 metric facts using identity-based conflict resolution.
@@ -263,13 +265,20 @@ class V2PersistenceAdapter:
             force: If True, proceed even when the filing has existing human
                 review decisions (which will be CASCADE-deleted). Default
                 False raises ``ReviewedFilingError`` in that case.
+            chart_only: If True, restrict the operation to ``source_type='chart'``
+                facts. Inbound ``facts`` are filtered to chart facts only,
+                the DELETE is scoped so text facts survive, and the guard
+                counts decisions on chart facts only. Used for Issue #35
+                backfills.
 
         Returns:
             Number of facts upserted
         """
         with self._db.transaction() as conn:
             with conn.cursor() as cur:
-                count = self._persist_facts_in_tx(cur, facts, filing_id, force=force)
+                count = self._persist_facts_in_tx(
+                    cur, facts, filing_id, force=force, chart_only=chart_only
+                )
         logger.debug(f"Upserted {count} facts for filing_id={filing_id}")
         return count
 
@@ -283,6 +292,7 @@ class V2PersistenceAdapter:
         transcript_source: str | None = None,
         *,
         force: bool = False,
+        chart_only: bool = False,
     ) -> PersistenceResult:
         """
         Persist a complete pipeline result in a single transaction.
@@ -293,6 +303,13 @@ class V2PersistenceAdapter:
             force: If True, proceed even when the filing has existing human
                 review decisions (which will be CASCADE-deleted). Default
                 False raises ``ReviewedFilingError`` in that case.
+            chart_only: If True, only chart-sourced facts are written.
+                The fact-persistence DELETE is scoped to chart facts so
+                text facts and their reviewer decisions are preserved.
+                Other persistence steps (documents, segments, tables,
+                images, definitions) run normally — they are idempotent
+                via ON CONFLICT and do not touch reviewer decisions.
+                Used for Issue #35 chart-fact backfills.
 
         Returns:
             PersistenceResult with counts and any errors
@@ -326,9 +343,7 @@ class V2PersistenceAdapter:
                         )
 
                         # 2. Persist segments
-                        seg_count = self._persist_segments_in_tx(
-                            cur, result.segments, filing_id
-                        )
+                        seg_count = self._persist_segments_in_tx(cur, result.segments, filing_id)
 
                         # 3. Persist tables and cells
                         table_count, cell_count = self._persist_tables_in_tx(
@@ -355,7 +370,7 @@ class V2PersistenceAdapter:
 
                     # 5. Persist facts
                     fact_count = self._persist_facts_in_tx(
-                        cur, result.facts, filing_id, force=force
+                        cur, result.facts, filing_id, force=force, chart_only=chart_only
                     )
 
                     # 6. Persist definitions
@@ -577,9 +592,7 @@ class V2PersistenceAdapter:
             for table in tables
         ]
         cell_params_list = [
-            self._cell_to_params(cell, table.table_id)
-            for table in tables
-            for cell in table.cells
+            self._cell_to_params(cell, table.table_id) for table in tables for cell in table.cells
         ]
         cur.executemany(table_sql, table_params_list)
         cur.executemany(cell_sql, cell_params_list)
@@ -624,8 +637,7 @@ class V2PersistenceAdapter:
         incoming_hidden_filenames = [
             image.filename
             for image in images
-            if image.classification.value in self._HIDDEN_IMAGE_CLASSIFICATIONS
-            and image.filename
+            if image.classification.value in self._HIDDEN_IMAGE_CLASSIFICATIONS and image.filename
         ]
         if incoming_hidden_filenames:
             cur.execute(
@@ -739,7 +751,7 @@ class V2PersistenceAdapter:
                 "requires_manual": image.requires_manual_capture,
                 "detected_keywords": match_nearby_text(
                     ((image.nearby_text or "") + " " + (image.ocr_text or "")).strip()
-                ) or None,
+                ) or None,  # fmt: skip
             }
             for image in images
         ]
@@ -797,29 +809,43 @@ class V2PersistenceAdapter:
         filing_id: int,
         *,
         force: bool = False,
+        chart_only: bool = False,
     ) -> int:
         """Persist facts within an existing transaction using delete-then-insert.
 
         Guards against silent destruction of human review decisions: if any
         fact for ``filing_id`` has a row in ``v2_review_decisions``, raises
         ``ReviewedFilingError`` unless ``force=True``.
+
+        When ``chart_only=True``, only chart-sourced facts are touched:
+        inbound ``facts`` are filtered to ``source_type='chart'``, the DELETE
+        is scoped to ``source_type='chart'``, and the reviewed-filing guard
+        counts decisions on chart facts only. Text facts and any reviewer
+        decisions on them are left untouched. Used for Issue #35 backfills
+        of missing chart facts on filings with accumulated reviewer work
+        on text facts.
         """
+        if chart_only:
+            facts = [f for f in facts if f.source_type == SourceType.CHART]
+
         if not facts:
             return 0
 
         # Guard: refuse to wipe human review decisions without explicit opt-in.
         # The DELETE below CASCADEs through v2_review_decisions.fact_id FK, so
         # without this check any re-extraction silently destroys reviewer work.
-        cur.execute(
-            """
+        # In chart_only mode, we only count decisions on chart facts — text
+        # facts are not touched, so decisions on them are irrelevant here.
+        guard_sql = """
             SELECT COUNT(*) AS decision_count,
                    COUNT(DISTINCT rd.reviewer_id) AS reviewer_count
               FROM v2_metric_facts mf
               JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
              WHERE mf.doc_id = %(filing_id)s
-            """,
-            {"filing_id": filing_id},
-        )
+        """
+        if chart_only:
+            guard_sql += "               AND mf.source_type = 'chart'\n"
+        cur.execute(guard_sql, {"filing_id": filing_id})
         row = cur.fetchone()
         decision_count = int(row["decision_count"]) if row else 0
         reviewer_count = int(row["reviewer_count"]) if row else 0
@@ -832,18 +858,27 @@ class V2PersistenceAdapter:
                 )
             logger.warning(
                 "force-reextract purging reviewed filing: "
-                "filing_id=%s purged_decision_count=%s distinct_reviewer_count=%s",
+                "filing_id=%s purged_decision_count=%s distinct_reviewer_count=%s chart_only=%s",
                 filing_id,
                 decision_count,
                 reviewer_count,
+                chart_only,
             )
 
         # Delete existing facts for this filing before inserting fresh results.
         # This is idempotent and handles re-runs correctly without requiring a
-        # complex unique index across nullable expression columns.
-        cur.execute(
-            "DELETE FROM v2_metric_facts WHERE doc_id = %(filing_id)s", {"filing_id": filing_id}
-        )
+        # complex unique index across nullable expression columns. In
+        # chart_only mode the DELETE is scoped so text facts survive.
+        if chart_only:
+            cur.execute(
+                "DELETE FROM v2_metric_facts WHERE doc_id = %(filing_id)s AND source_type = 'chart'",
+                {"filing_id": filing_id},
+            )
+        else:
+            cur.execute(
+                "DELETE FROM v2_metric_facts WHERE doc_id = %(filing_id)s",
+                {"filing_id": filing_id},
+            )
 
         sql = """
             INSERT INTO v2_metric_facts (

@@ -25,6 +25,21 @@ from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.llm.vision_client import VisionResponse
 
 
+@pytest.fixture(autouse=True)
+def _route_image_cache_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Route LocalFilesystemStorage under tmp_path for all tests in this module."""
+    from src.infra.image_storage import get_image_storage
+    from src.infra.paths import image_cache_dir
+
+    monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+    yield
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+
+
 class MockVisionClient:
     """Mock vision client returning a realistic chart extraction response."""
 
@@ -96,7 +111,7 @@ class TestChartExtractionE2E:
         asset = ImageAsset(
             img_id="chart_mau_001",
             filename="mau_chart.png",
-            file_path=str(tmp_chart_image),
+            file_path=tmp_chart_image.name,
             classification=ImageClassification.CHART,
             relevance_score=0.85,
             nearby_text="The following chart shows our Monthly Active Users over 2023.",
@@ -137,7 +152,7 @@ class TestChartExtractionE2E:
         asset = ImageAsset(
             img_id="chart_002",
             filename="chart.png",
-            file_path=str(tmp_chart_image),
+            file_path=tmp_chart_image.name,
             classification=ImageClassification.CHART,
             relevance_score=0.90,
         )
@@ -167,7 +182,7 @@ class TestChartExtractionE2E:
         asset = ImageAsset(
             img_id="chart_low_rel",
             filename="chart.png",
-            file_path=str(tmp_chart_image),
+            file_path=tmp_chart_image.name,
             classification=ImageClassification.CHART,
             relevance_score=0.10,  # Below MIN_RELEVANCE_FOR_PROCESSING (0.3)
         )
@@ -206,7 +221,7 @@ class TestChartExtractionE2E:
         asset = ImageAsset(
             img_id="chart_fc_001",
             filename="chart.png",
-            file_path=str(tmp_chart_image),
+            file_path=tmp_chart_image.name,
             classification=ImageClassification.CHART,
             nearby_text="Monthly active users reached 52 million in Q4 2023.",
             chart_data=ChartData(

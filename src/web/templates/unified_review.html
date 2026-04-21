@@ -38,6 +38,13 @@
 
 {% block content %}
 
+<nav aria-label="breadcrumb" class="mb-2">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/">Review Filings</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ filing.company_name }}</li>
+  </ol>
+</nav>
+
 <div class="review-sticky-header">
   {# Filing Header #}
   <div class="row">
@@ -58,6 +65,8 @@
         <div class="text-end review-pill-row">
           <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
           <span class="badge bg-warning text-dark">{{ pending_count }} pending</span>
+          <span class="badge bg-success">{{ accepted_count|default(0) }} accepted</span>
+          <span class="badge bg-danger">{{ rejected_count|default(0) }} rejected</span>
           {% if image_pending is defined %}
           <span class="badge bg-info text-dark ms-2">{{ image_pending }} img pending</span>
           {% if image_auto_rejected is defined and image_auto_rejected > 0 %}

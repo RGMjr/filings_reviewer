@@ -224,9 +224,7 @@ class TestGuardOnPersistFacts:
 
         new_fact = _make_fact(test_filing_id, value=300.0)
         with caplog.at_level(logging.WARNING, logger="src.extraction_v2.persistence"):
-            count = persistence_adapter.persist_facts(
-                [new_fact], test_filing_id, force=True
-            )
+            count = persistence_adapter.persist_facts([new_fact], test_filing_id, force=True)
         assert count == 1
         # CASCADE wiped both decisions and the old facts
         assert _decision_count(db_adapter, test_filing_id) == 0
@@ -534,3 +532,140 @@ def _make_pipeline_result_with_images(images: list[ImageAsset]) -> PipelineResul
         total_duration_ms=1,
         success=True,
     )
+
+
+def _make_chart_fact(
+    filing_id: int,
+    value: float = 500.0,
+    period_year: int = 2025,
+) -> MetricFact:
+    return MetricFact(
+        fact_id=str(uuid.uuid4()),
+        doc_id=str(filing_id),
+        canonical_metric_id="cm_revenue_by_cohort",
+        value=value,
+        value_raw=str(value),
+        unit=Unit.COUNT,
+        period_type=PeriodType.ANNUAL,
+        period_start=date(period_year, 1, 1),
+        period_end=date(period_year, 12, 31),
+        source_type=SourceType.CHART,
+        source_locator=SourceLocator(
+            dom_locator=f"chart[{period_year}]",
+            img_id=str(uuid.uuid4()),
+        ),
+        evidence_pack=EvidencePack(snippet_html=f"<p>chart {value}</p>"),
+        confidence=0.85,
+        extraction_method=ExtractionMethod.EXACT_MATCH,
+        review_status=ReviewStatus.PENDING_REVIEW,
+    )
+
+
+class TestChartOnlyMode:
+    """Verify the `chart_only` persistence path preserves text facts + decisions."""
+
+    def test_chart_only_filters_inbound_to_chart_facts(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        text_fact = _make_fact(test_filing_id, value=100.0, period_year=2024)
+        chart_fact = _make_chart_fact(test_filing_id, value=500.0, period_year=2025)
+
+        count = persistence_adapter.persist_facts(
+            [text_fact, chart_fact], test_filing_id, chart_only=True
+        )
+        assert count == 1
+
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT source_type FROM v2_metric_facts WHERE doc_id = %s",
+                (test_filing_id,),
+            )
+            rows = cur.fetchall()
+        assert [r["source_type"] for r in rows] == ["chart"]
+
+    def test_chart_only_preserves_existing_text_facts_and_decisions(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Seed a text fact with a reviewer decision (the thing we must preserve).
+        text_fact = _make_fact(test_filing_id, value=100.0, period_year=2024)
+        persistence_adapter.persist_facts([text_fact], test_filing_id)
+        _insert_decision(db_adapter, text_fact.fact_id, reviewer_id="alice@example.com")
+        assert _decision_count(db_adapter, test_filing_id) == 1
+
+        # Chart-only backfill: no force needed; text fact + decision must survive.
+        chart_fact = _make_chart_fact(test_filing_id, value=500.0)
+        count = persistence_adapter.persist_facts([chart_fact], test_filing_id, chart_only=True)
+        assert count == 1
+
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT fact_id, source_type FROM v2_metric_facts WHERE doc_id = %s ORDER BY source_type",
+                (test_filing_id,),
+            )
+            rows = cur.fetchall()
+        assert {r["source_type"] for r in rows} == {"chart", "text"}
+        assert _decision_count(db_adapter, test_filing_id) == 1
+        # Specifically: the text fact's fact_id is unchanged (decision FK intact).
+        text_fact_ids = [r["fact_id"] for r in rows if r["source_type"] == "text"]
+        assert str(text_fact_ids[0]) == text_fact.fact_id
+
+    def test_chart_only_guard_counts_chart_decisions_only(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Text-fact decision exists; chart-only mode must NOT treat this as a
+        # reason to raise, because we're not touching text facts.
+        text_fact = _make_fact(test_filing_id, value=100.0, period_year=2024)
+        persistence_adapter.persist_facts([text_fact], test_filing_id)
+        _insert_decision(db_adapter, text_fact.fact_id, reviewer_id="alice@example.com")
+
+        chart_fact = _make_chart_fact(test_filing_id, value=500.0)
+        # No force=True, no ReviewedFilingError expected.
+        count = persistence_adapter.persist_facts([chart_fact], test_filing_id, chart_only=True)
+        assert count == 1
+        assert _decision_count(db_adapter, test_filing_id) == 1
+
+    def test_chart_only_guard_raises_when_chart_decision_exists(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Seed a reviewed chart fact — chart_only must raise without force.
+        chart_fact = _make_chart_fact(test_filing_id, value=500.0, period_year=2024)
+        persistence_adapter.persist_facts([chart_fact], test_filing_id)
+        _insert_decision(db_adapter, chart_fact.fact_id, reviewer_id="alice@example.com")
+
+        new_chart = _make_chart_fact(test_filing_id, value=600.0, period_year=2025)
+        with pytest.raises(ReviewedFilingError):
+            persistence_adapter.persist_facts([new_chart], test_filing_id, chart_only=True)
+        assert _decision_count(db_adapter, test_filing_id) == 1
+
+    def test_chart_only_empty_inbound_is_noop(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Text fact exists; inbound list has no chart facts → nothing happens,
+        # including no DELETE that would spuriously wipe chart state.
+        text_fact = _make_fact(test_filing_id)
+        persistence_adapter.persist_facts([text_fact], test_filing_id)
+
+        count = persistence_adapter.persist_facts([text_fact], test_filing_id, chart_only=True)
+        assert count == 0  # filtered-out list is empty
+
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE doc_id = %s",
+                (test_filing_id,),
+            )
+            assert int(cur.fetchone()["n"]) == 1
