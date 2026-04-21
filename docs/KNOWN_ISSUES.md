@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod; #48 opened for `image_crop` auth gap)
+**Last Updated**: 2026-04-20 (#48 resolved — `image_crop` now guarded by `@require_api_key`; new `_verify_api_key` helper + view decorator in `src/web/middleware.py`; 5 new auth test cases in `tests/unit/web/test_image_crop.py`; #49 opened for integration test DB flakiness under full-suite `pytest -x`; #50 opened for missing 401-path test coverage on `api_unified_bp`; #46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
 
 ---
 
@@ -272,7 +272,9 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
 | `apply_all_migrations.py` stale (Issue #46) | Open | Low | Low | MIGRATION_ORDER list stops at 31; unregistered-guard aborts on files 32-38. Canonical runner is `apply_migrations.py`; resolve by syncing or deleting the stale variant |
 | `data/audit/` not gitignored (Issue #47) | Open | Low | Low | Runtime JSONL audit output accumulates as untracked files; peer `data/*` subpaths are already gitignored. One-line `.gitignore` addition |
-| `image_crop` unauthenticated (Issue #48) | Open | Medium | Low | No auth guard on `review_unified_bp`; `_check_api_key` used on V2 API blueprint should extend to image endpoints as reviewer pool grows |
+| `image_crop` unauthenticated (Issue #48) | Resolved (2026-04-20) | — | — | `@require_api_key` decorator added in `src/web/middleware.py` (extracts the existing `_check_api_key` body into `_verify_api_key`); applied to `image_crop` in `review_unified.py`; 5 auth tests cover missing / wrong / correct key, same-origin bypass, and misconfig 500 |
+| Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Low | Medium | First integration test to hit the pool fails with `AdminShutdown` / `the connection is lost` / `deadlock detected`; specific test varies run-to-run; reproduces on clean main. Undermines the `pytest -x -q` pre-commit gate |
+| No 401-path test coverage for `api_unified_bp` (Issue #50) | Open | Low | Low | `register_api_auth(api_unified_bp)` has no auth-rejected test; silent regression of `_verify_api_key` on the V2 API path would not be caught. Mirror `TestImageCropAuth` shape for the V2 API blueprint |
 
 ---
 
@@ -1530,27 +1532,107 @@ Keep the error message when `DATABASE_URL` is still unset after `load_dotenv()` 
 
 ## 48. `image_crop` Endpoint Is Unauthenticated
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-20)
 **Severity**: Medium — reviewer workflow exposure; not a data-security issue (SEC filings are public)
 **Discovered**: 2026-04-20 (explicitly flagged as out-of-scope follow-up during Issue #34 Phase 3 R2 migration)
+**Resolved**: 2026-04-20
 
 ### Problem
 
-`src/web/routes/review_unified.py::image_crop` has no auth guard. Anyone on the internet who knows (or guesses) a filing's `img_id` UUID can fetch the extracted chart from Render. The underlying SEC source images are public anyway, but the endpoint effectively exposes a live inventory of which charts the pipeline has extracted and which filings are currently in review — workflow context that should not leak outside the reviewer pool. Concern grows as the reviewer pool expands.
+`src/web/routes/review_unified.py::image_crop` had no auth guard. Anyone on the internet who knew (or guessed) a filing's `img_id` UUID could fetch the extracted chart from Render. The underlying SEC source images are public anyway, but the endpoint effectively exposed a live inventory of which charts the pipeline has extracted and which filings are currently in review — workflow context that should not leak outside the reviewer pool.
 
-`_check_api_key` middleware already guards the V2 API blueprint (see `.claude/rules/web.md`), but `review_unified_bp` (the blueprint that owns `image_crop`) does not use it.
+`_check_api_key` middleware already guarded the V2 API blueprint (see `.claude/rules/web.md`), but `review_unified_bp` (the blueprint that owns `image_crop`) did not use it.
 
-### Next Steps
+### Resolution (2026-04-20)
 
-- Decide auth model: API key via the existing `_check_api_key` pattern, session login, or SSO.
-- Apply guard to `image_crop` and (for consistency) all image-related endpoints on `review_unified_bp`.
-- Update `tests/unit/web/test_image_crop.py` to cover the auth-rejected path.
+API-key guard applied at the route level rather than the blueprint level, because `review_unified_bp` also serves the browser-facing HTML review pages that reviewers reach via bookmark/typed URL (no `Origin` or `Referer` — would otherwise hit 401 and regress UX).
+
+- `src/web/middleware.py` — the auth check body was lifted out of `register_api_auth`'s nested `_check_api_key` into a module-level `_verify_api_key()` helper (returns `None` to pass, or a Flask response tuple to reject). `register_api_auth` is now a thin wrapper; existing V2 API blueprint behaviour is unchanged.
+- A new `require_api_key` per-view decorator wraps any view in a call to `_verify_api_key()`.
+- `src/web/routes/review_unified.py::image_crop` — decorated with `@require_api_key` (route decorator remains outermost). The same-origin `Origin`/`Referer` bypass in `_verify_api_key` allows embedded `<img src="/v2/review/image_crop/...">` loads from rendered review pages to pass without a header; external direct fetches require `X-API-Key` or `?api_key=`.
+- `tests/unit/web/test_image_crop.py::TestImageCropAuth` — five new cases covering 401 missing key, 401 wrong key, 200 correct key, 200 same-origin Referer bypass, 500 `API_KEY_REQUIRED=True` with unset `API_KEY`.
+
+### Verification
+
+- `pytest tests/unit/web/test_image_crop.py` → 13/13 pass (8 existing + 5 new auth).
+- `pytest tests/unit/web/` → 88/88 pass (no V2 API regression from the middleware refactor).
+- Full unit suite `pytest tests/unit` → 3369/3369 pass.
 
 ### Cross-References
 
-- `.claude/rules/web.md` — `_check_api_key` convention on the V2 API blueprint
-- `docs/architecture/image-storage.md` — "Security" section flags this as the outstanding gap
-- Issue #34 — R2 migration plan explicitly listed this as out of scope
+- `.claude/rules/web.md` — now documents `require_api_key` as the per-route alternative for mixed blueprints.
+- `docs/architecture/image-storage.md` — Security section rewritten to reflect the guard.
+- Issue #34 — R2 migration plan explicitly listed this as out of scope; now closed.
+
+---
+
+## 49. Integration Test DB Flakiness Under Full-Suite `pytest -x`
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20
+
+### Problem
+
+Running `pytest -x -q` over the full suite (unit + integration) reproducibly
+fails in the first integration test that hits the connection pool. Errors
+observed: `AdminShutdown: terminating connection due to administrator
+command`, `psycopg.OperationalError: the connection is lost`, and
+`deadlock detected` in `ROLLBACK` during fixture teardown. The specific
+test that trips varies run-to-run — during #48 work, both
+`tests/integration/test_db_v2_image_methods.py::TestGetImageReviewCandidatesForFilingV2::test_returns_non_decorative_images_only`
+and
+`tests/integration/extraction_v2/test_batch_runner_db.py::TestBatchRunnerQueryFilings::test_query_filings_returns_expected_columns`
+have surfaced. Each test passes individually. Reproduces on clean `main`
+with in-flight changes stashed, so it predates #48. Distinct from resolved
+issues #7/#8 (missing teardown); symptom here looks like cross-test pool
+orchestration or a session-scoped fixture forcing a pool rebuild during
+another test's open transaction.
+
+The effect is that the "run `pytest -x -q` before committing" gate in
+CLAUDE.md is undermined — operators have to know to fall back to
+`pytest tests/unit -q` and separately exercise integration, or skip the
+pre-commit check.
+
+### Next Steps
+
+- Reproduce deterministically: run `pytest -x -q` against the integration
+  dir in isolation and bisect which test ordering triggers the admin
+  shutdown.
+- Inspect `tests/integration/conftest.py` `test_db_adapter` and
+  `clean_db` fixtures for session-scoped lifetime vs. per-test pool use.
+- Candidate fix: force `function`-scoped pools for integration tests, or
+  ensure the `clean_db` fixture's `TRUNCATE` does not race with another
+  test's open connection.
+
+---
+
+## 50. No 401-Path Test Coverage for `api_unified_bp`
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20 (surfaced during #48 Explore sweep)
+
+### Problem
+
+`src/web/routes/api_unified.py:28` installs `register_api_auth(api_unified_bp)`,
+but no test in `tests/` exercises the 401 path — a grep for `_check_api_key`
+across the test tree returns zero matches. Issue #48 added a
+`TestImageCropAuth` class in `tests/unit/web/test_image_crop.py` that covers
+the new `@require_api_key` decorator on `review_unified_bp.image_crop`, but
+the symmetric coverage for the V2 API blueprint's blueprint-wide guard is
+still missing. A regression that silently removes `register_api_auth(bp)`
+or weakens `_verify_api_key` in a way that only affects the V2 API path
+would not be caught.
+
+### Next Steps
+
+- Add a test module (e.g. `tests/unit/web/test_api_unified_auth.py`) that
+  instantiates an app with `API_KEY_REQUIRED=True` + `API_KEY="test-key"`
+  and exercises one V2 API endpoint with: missing key → 401, wrong key →
+  401, correct key → 200, same-origin Referer → 200, `API_KEY` unset →
+  500. Mirror the shape of `TestImageCropAuth` in
+  `tests/unit/web/test_image_crop.py` after #48.
 
 ---
 
