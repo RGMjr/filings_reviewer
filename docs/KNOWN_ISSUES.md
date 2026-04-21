@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -36,7 +36,6 @@ _(none currently)_
 | 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Out-of-scope 8-Ks reached `v2_image_assets`; inflates Issue #35 baseline |
 | 8-K fetcher ignores Exhibit 99.1 (Issue #58) | Open | Primary doc often a cover sheet; earnings content in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
 | 8-K section classifier missing earnings patterns (Issue #59) | Open | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS |
-| `detect_universe_gaps` ignores SIC filter (Issue #60) | Open | Reports gaps on `(year, form_type)` only; can trigger needless populate runs |
 | `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
 | Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
@@ -730,24 +729,6 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ---
 
-## 60. `detect_universe_gaps` Ignores SIC Filter When Reporting Populate Gaps
-
-**Status**: Open
-**Severity**: Low — correctness-neutral, efficiency issue
-**Discovered**: 2026-04-20 (Phase 1 review of `src/universe/onboarding.py`)
-
-### Problem
-
-`src/universe/onboarding.py::detect_universe_gaps` reports a `(year, form_type)` gap whenever the `filings` table has zero rows for that combination in the query's year range, regardless of the query's SIC code set. A reviewer filtering the UI to e.g. grocery retail 8-Ks will see a "populate 2023" prompt even if 2023 already has thousands of non-grocery 8-K filings in `filings` — the SIC intersection with those is empty, but the year/form coverage exists. The populate run that follows will re-fetch an entire year of 8-K metadata unnecessarily.
-
-### Next Steps
-
-1. Change the gap query from `filings.form_type + filing_date` to `filings JOIN companies ON company_id` with `industry_code = ANY(%(sic_codes)s)` (or the equivalent once the companies.industry_code field is populated — check that first).
-2. Alternatively, accept the over-populate behavior and document the trade-off in `src/universe/onboarding.py` at the function docstring — populate is idempotent, just bandwidth-wasteful.
-3. Add a unit test covering the "filings exist but not for our SIC" case.
-
----
-
 ## 61. `/ingest/preview` Has No Integration-Test Coverage
 
 **Status**: Open
@@ -876,6 +857,12 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 ---
 
 ## Archive (Resolved Issues)
+
+### Issue #60: `detect_universe_gaps` Ignores SIC Filter
+
+**Status**: Resolved (2026-04-21)
+
+`_YEARS_IN_FILINGS_SQL` now joins `companies` and filters on `industry_code = ANY(%(sic_codes)s)`, matching the pattern already used by `discover_candidates`. Gap detection no longer reports spurious populate prompts for years that have filings under a different SIC. Three unit tests added in `tests/unit/universe/test_onboarding.py`.
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
 
