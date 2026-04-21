@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #65 resolved (env-variant gitignore + gitleaks pre-commit hook); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -35,12 +35,12 @@ _(none currently)_
 | 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Out-of-scope 8-Ks reached `v2_image_assets`; inflates Issue #35 baseline |
 | 8-K fetcher ignores Exhibit 99.1 (Issue #58) | Open | Primary doc often a cover sheet; earnings content in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
 | 8-K section classifier missing earnings patterns (Issue #59) | Open | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS |
-| `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
 | Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 | Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
 | Nightly sweeper uses GNU `timeout` — macOS incompatible (Issue #68) | Open | Local `/sweep` on Mac fails at the `timeout` call; Render (Linux) production is fine |
 | `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
+| CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
 
 ### Partially Resolved
 
@@ -101,7 +101,6 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #58   | review   | S         | `src/filing_fetcher/*.py tests/unit/filing_fetcher/*.py`                | 8-K Exhibit 99.1 fetch; feature add, needs validator run      |
 | #59   | review   | S         | `src/extraction_v2/classifier*.py tests/unit/extraction_v2/*classifier*`| New classifier patterns; FP risk                              |
 | #60   | safe     | XS        | `src/universe/onboarding.py tests/unit/universe/test_onboarding.py`     | SIC-filter JOIN in detect_universe_gaps                       |
-| #61   | safe     | S         | `tests/integration/web/test_ingest_flow.py`                             | New integration test; isolated file                           |
 | #62   | review   | S         | `docs/operations/* src/universe/onboarding_runner.py`                   | Docs + optional admin flag; needs design call                 |
 | #63   | skip     | S         | —                                                                       | Monkey-patch integration test; mid-complexity                 |
 | #64   | skip     | S         | —                                                                       | Classifier margin investigation; data-driven                  |
@@ -776,21 +775,6 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ---
 
-## 61. `/ingest/preview` Has No Integration-Test Coverage
-
-**Status**: Open
-**Severity**: Low — unit tests exist for the form-parsing layer; the end-to-end path is untested
-**Discovered**: 2026-04-20 (Wave B Phase 4 review)
-
-### Problem
-
-`tests/integration/web/test_ingest_flow.py` covers `GET /ingest/`, `POST /ingest/start`, `GET /api/v2/ingest/batches/<id>/status`, `POST /cancel`, and auth. `POST /ingest/preview` — the middle step that runs `resolve_criteria` + `discover` + `classify_volume` + `count_reviewer_work` and renders the three-bucket candidate table — is only covered by unit tests on the form-parser helpers. No end-to-end assertion that a valid criteria submission renders a preview page with the correct bucket split + volume banner.
-
-### Next Steps
-
-1. Add an integration test that seeds two filings (one in `v2_documents`, one not) + a reviewed fact on the extracted one, POSTs `/ingest/preview` with criteria that match both, and asserts the three buckets render correctly.
-2. Assert the volume banner class (`alert-success` / `alert-warning` / `alert-danger`) for each band.
-3. Assert hidden-field snapshot survives re-render — `filing_id` hidden inputs must be present and match the discovered IDs.
 
 ---
 
@@ -914,6 +898,36 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 
 ---
 
+## 70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
+
+**Status**: Open
+**Severity**: Low — documentation only; functional behavior is correct
+**Discovered**: 2026-04-21 (during PR #71 planning — CLAUDE.md + worktree-rule documentation sweep)
+
+### Problem
+
+`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
+
+> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
+
+This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
+
+The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
+
+### Next Steps
+
+- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
+- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
+
+### Cross-References
+
+- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
+- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
+- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
+- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #60: `detect_universe_gaps` Ignores SIC Filter
@@ -921,6 +935,17 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 **Status**: Resolved (2026-04-21)
 
 `_YEARS_IN_FILINGS_SQL` now joins `companies` and filters on `industry_code = ANY(%(sic_codes)s)`, matching the pattern already used by `discover_candidates`. Gap detection no longer reports spurious populate prompts for years that have filings under a different SIC. Three unit tests added in `tests/unit/universe/test_onboarding.py`.
+
+### Issue #61: `/ingest/preview` Integration-Test Gap
+
+**Status**: Resolved (2026-04-21)
+
+`POST /ingest/preview` was only covered by unit tests on the form-parser helpers.
+Added `TestIngestPreview` to `tests/integration/web/test_ingest_flow.py` with three tests:
+three-bucket split assertion (new / already-extracted no-review / already-reviewed),
+volume-banner alert-class check (`alert-success` for ≤49 filings via `_volume_band_alert_class`),
+and hidden-`filing_id` field survival assertion. Seeds two 10-K filings via
+`create_test_company_and_filing`; reuses existing `client`/`db_adapter` fixtures.
 
 ### Issue #65: Secret-Leak Guard for Mis-Named Env Duplicates
 
@@ -930,6 +955,8 @@ Broadened `.gitignore` to `.env*` with `!.env.template` allowlist; added
 `gitleaks` pre-commit hook at the repo-wide level. Forward-looking defense
 only — historical audit surfaced one real OpenAI key (rotated; history
 scrub deferred to a separate task).
+
+---
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
 
