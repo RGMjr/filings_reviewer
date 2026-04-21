@@ -39,7 +39,7 @@ types-PyYAML>=6.0
 
 # Faster HTML/XML parser for BeautifulSoup and extraction_v2
 # Required by extraction_v2/stages/ingestion.py for 10x faster parsing
-lxml>=4.9.0
+lxml>=6.1.0
 
 # PDF parsing - Used by presentation_converter.py for investor presentations
 pdfplumber>=0.10.0
