@@ -71,6 +71,27 @@ make it invisible. `force=True` proceeds and logs
 Re-classifications within the visible set, or re-classifications of an
 already-hidden image, are not blocked.
 
+### Chart-only re-extraction (`chart_only=True`)
+
+`persist_facts` and `persist_pipeline_result` accept `chart_only=True` to
+scope the DELETE-then-INSERT to `source_type='chart'` only. Inbound
+facts are filtered to chart facts; the DELETE is `WHERE doc_id=%s AND
+source_type='chart'`; the reviewed-filing guard counts decisions on
+chart facts only. Text facts and their reviewer decisions are untouched.
+
+Use this mode for Issue #35-style chart-fact backfills on filings that
+already have accumulated reviewer decisions on text facts — the full
+`force=True` escape is too destructive for that scenario.
+
+CLI: `scripts/batch_v2_extraction.py --chart-only` threads the flag
+through the `BatchConfig` and `ProcessPoolExecutor` worker. Combine with
+`--filing-ids-file PATH` to target a specific set of filings.
+
+Applicability guard: `chart_only=True` is safe only when existing chart
+facts (if any) have no reviewer decisions. The guard still raises
+`ReviewedFilingError` if chart-fact decisions exist — pass `force=True`
+alongside `chart_only=True` to explicitly accept that loss.
+
 ## Metric Priority Tiers
 
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.

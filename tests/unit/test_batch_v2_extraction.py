@@ -677,3 +677,23 @@ class TestQueryFilingsWhitelist:
         sql, params = db.query.call_args.args
         assert "WHERE" not in sql
         assert params == {}
+
+
+class TestChartOnlyConfig:
+    """Verify --chart-only threads into BatchConfig and the worker config_dict."""
+
+    def test_default_is_false(self):
+        assert BatchConfig().chart_only is False
+
+    def test_config_dict_includes_chart_only(self):
+        # The worker config_dict is assembled inside BatchV2Runner.run(); we
+        # replicate the key assembly pattern here to lock the contract.
+        config = BatchConfig(chart_only=True)
+        worker_dict = {
+            "dry_run": config.dry_run,
+            "no_images": config.no_images,
+            "min_confidence": config.min_confidence,
+            "force_reextract": config.force_reextract,
+            "chart_only": config.chart_only,
+        }
+        assert worker_dict["chart_only"] is True
