@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#43 opened for 8-K document selection only fetching primary doc; #44 opened for 8-K section classifier missing earnings-exhibit patterns; #45 opened for `detect_universe_gaps` ignoring SIC filter; #46 opened for `/ingest/preview` integration coverage gap; #47 opened for local-dev stuck-batch recovery runbook)
+**Last Updated**: 2026-04-20 (#43 opened for 8-K document selection only fetching primary doc; #44 opened for 8-K section classifier missing earnings-exhibit patterns; #45 opened for `detect_universe_gaps` ignoring SIC filter; #46 opened for `/ingest/preview` integration coverage gap; #47 opened for local-dev stuck-batch recovery runbook; #48 opened for `test_e2e_persistence_roundtrip` flake under full suite; #49 opened for cancel-during-populate not exercised by integration test)
 
 ---
 
@@ -231,6 +231,8 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | `detect_universe_gaps` ignores SIC filter (Issue #45) | Open | Low | Low | Reports gaps based on `(year, form_type)` only; can trigger needless populate runs when filings exist but not for the queried SIC |
 | `/ingest/preview` integration-test gap (Issue #46) | Open | Low | Low | Preview path is unit-tested via form parsers; no end-to-end assertion on bucket split + volume banner + hidden-field snapshot |
 | Local-dev stuck-batch recovery is manual (Issue #47) | Open | Low | Low | No watcher runs locally; subprocess death leaves `status='running'` forever; needs runbook + optional `--cleanup-stuck` flag |
+| `test_e2e_persistence_roundtrip` flakes under full suite (Issue #48) | Open | Low | Low | Fails ~1/2 runs of `pytest -q`; passes in isolation. DB state leak from another integration test exposed by Wave C test load |
+| Cancel-during-populate not integration-tested (Issue #49) | Open | Low | Low | Behaviour documented + conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 
 ---
 
@@ -1483,6 +1485,41 @@ On Render (Phase 7), a worker service with `--watch` mode will re-claim a batch 
 1. Document the manual recovery SQL in `docs/operations/TICKER_ONBOARDING.md` (or a new batch-ingest runbook) when that file lands in Phase 7.
 2. Consider a `python3 -m src.universe.onboarding_runner --cleanup-stuck` admin flag that scans for batches with `run_lock_until < NOW() - INTERVAL '1 hour'` still in `running` state and either marks them failed or re-claims them.
 3. Add a CLI log line to the runner on SIGTERM that tells the operator "batch <id> interrupted — run `... --cleanup-stuck` to recover".
+
+---
+
+## 48. `test_e2e_persistence_roundtrip` Flakes Under Full Suite
+
+**Status**: Open
+**Severity**: Low — flake, passes deterministically in isolation
+**Discovered**: 2026-04-20 (Wave C / Phase 6 review)
+
+### Problem
+
+`tests/integration/extraction_v2/test_e2e_pipeline.py::TestE2EPersistence::test_e2e_persistence_roundtrip` fails roughly 1 in 2 runs of `pytest -q` on the full suite, asserting on segment count from a Slack S-1 fixture (gets 1603 when expected ~0). Verified pre-existing-not-caused-by-Wave-C via `git stash` (passes 100% without Wave C tests), but the new Wave C integration tests under `tests/integration/web/test_ingest_flow.py` add enough load to expose the flake. Always passes when run in isolation or in just `tests/integration/`.
+
+### Next Steps
+
+1. Diagnose: likely DB state leak from an earlier integration test (probably one that processes the same Slack fixture). Run `pytest --collect-only` to see test order; bisect to find the polluter.
+2. Likely fix: add a fixture that DELETEs `v2_documents` / `v2_segments` rows for the test fixture's `doc_id` at test setup, or scope the test to its own namespace.
+3. Until fixed, the test is non-blocking — re-run the suite and it passes.
+
+---
+
+## 49. Cancel-During-Populate Not Exercised by Integration Test
+
+**Status**: Open
+**Severity**: Low — behaviour is documented + the conditional SQL is unit-tested
+**Discovered**: 2026-04-20 (Wave C / Phase 6 review)
+
+### Problem
+
+Wave C documents the cancel-during-populate flow (cancel flips `status='cancelled'`; runner respects it on natural completion via the new `WHERE status='running'` predicate on `_BATCH_COMPLETE_SQL`). The conditional SQL is unit-tested via string assertion (`tests/unit/universe/test_onboarding_runner.py::TestBatchCompleteConditional`), but no integration test simulates a runner mid-`build_universe` while cancel fires concurrently.
+
+### Next Steps
+
+1. Add an integration test in `tests/integration/universe/test_onboarding_runner_integration.py::TestPopulateCancellation` that: inserts a populate batch, monkey-patches `UniverseBuilder.build_universe` to flip the batch status to `cancelled` mid-run, calls `_run_populate`, asserts final status stays `cancelled` (not `complete`) and `finished_at IS NOT NULL`.
+2. Optionally extend Phase 5's JS to render a "Cancellation pending — batch will stop after current operation completes" banner when `status='cancelled' AND finished_at IS NULL` (today the JS shows the cancelled banner immediately).
 
 ---
 
