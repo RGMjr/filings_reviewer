@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Preview Candidates — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <h2 class="mb-3">Preview Candidates</h2>
+
+    <!-- Volume banner -->
+    <div class="alert {{ band_class }} mb-3" role="alert">
+      <strong>Volume: {{ band.value.upper() }}</strong> — {{ band_message }}
+    </div>
+
+    <!-- Gap banner (read-only, populate-on-demand arrives in Wave C) -->
+    {% if gaps %}
+    <div class="alert alert-info mb-3" role="alert">
+      <strong>Universe gaps detected</strong> — the following (year, form_type) combinations have
+      no filings in the database yet. Run a populate job to load them (coming in a later phase).
+      <ul class="mb-0 mt-2">
+        {% for gap in gaps %}
+        <li>{{ gap.year }} / {{ gap.form_type }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <form action="{{ url_for('ingest.ingest_start') }}" method="POST" id="start-form">
+      <!-- Hidden: pass criteria back to /ingest/start -->
+      <input type="hidden" name="reviewer_name" value="{{ reviewer_name }}">
+      <input type="hidden" name="criteria_json" value="{{ criteria_json }}">
+      <input type="hidden" name="resolved_json" value="{{ resolved_json }}">
+      <!-- JS sets this when reviewed rows are ticked -->
+      <input type="hidden" name="reextract_reviewed_ack" id="reextract_reviewed_ack" value="">
+
+      <!-- ================================================================
+           Section 1: New filings
+      ================================================================ -->
+      <h4 class="mt-4">New Filings <span class="badge bg-primary">{{ new_candidates | length }}</span></h4>
+      {% if new_candidates %}
+      <p class="text-muted small">These filings have not been extracted yet. All will be included in the batch.</p>
+      <div class="table-responsive mb-4">
+        <table class="table table-sm table-striped align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Filing ID</th>
+              <th>Ticker</th>
+              <th>Company</th>
+              <th>Form</th>
+              <th>Date</th>
+              <th>Include</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in new_candidates %}
+            <tr>
+              <td>{{ c.filing_id }}</td>
+              <td>{{ c.ticker or '—' }}</td>
+              <td>{{ c.company_name }}</td>
+              <td>{{ c.form_type }}</td>
+              <td>{{ c.filing_date }}</td>
+              <td>
+                <!-- Always included; hidden filing_id signals inclusion -->
+                <input type="hidden" name="filing_id" value="{{ c.filing_id }}">
+                <input type="hidden" name="bucket_{{ c.filing_id }}" value="new">
+                <span class="badge bg-success">Yes</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted">No new filings found for these criteria.</p>
+      {% endif %}
+
+      <!-- ================================================================
+           Section 2: Already extracted — no review decisions
+      ================================================================ -->
+      <h4 class="mt-4">
+        Already Extracted — No Review Decisions
+        <span class="badge bg-secondary">{{ already_no_review | length }}</span>
+      </h4>
+      {% if already_no_review %}
+      <p class="text-muted small">
+        These filings have already been extracted. Check the box to re-extract (overwrites existing facts).
+      </p>
+      <div class="table-responsive mb-4">
+        <table class="table table-sm table-striped align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Filing ID</th>
+              <th>Ticker</th>
+              <th>Company</th>
+              <th>Form</th>
+              <th>Date</th>
+              <th>Re-extract?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in already_no_review %}
+            <tr>
+              <td>{{ c.filing_id }}</td>
+              <td>{{ c.ticker or '—' }}</td>
+              <td>{{ c.company_name }}</td>
+              <td>{{ c.form_type }}</td>
+              <td>{{ c.filing_date }}</td>
+              <td>
+                <input type="hidden" name="filing_id" value="{{ c.filing_id }}">
+                <input type="hidden" name="bucket_{{ c.filing_id }}" value="reextract">
+                <input class="form-check-input" type="checkbox"
+                       name="reextract_{{ c.filing_id }}" value="on">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted">None.</p>
+      {% endif %}
+
+      <!-- ================================================================
+           Section 3: Already extracted — has review decisions
+      ================================================================ -->
+      <h4 class="mt-4">
+        Already Extracted — Has Review Decisions
+        <span class="badge bg-warning text-dark">{{ already_reviewed | length }}</span>
+      </h4>
+      {% if already_reviewed %}
+      <div class="alert alert-warning mb-2" role="alert">
+        <strong>Warning:</strong> Re-extracting these filings will permanently delete
+        human review decisions. Use the checkbox with caution.
+      </div>
+      <div class="table-responsive mb-4">
+        <table class="table table-sm table-striped align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Filing ID</th>
+              <th>Ticker</th>
+              <th>Company</th>
+              <th>Form</th>
+              <th>Date</th>
+              <th>Decisions</th>
+              <th>Re-extract?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c, decision_count in already_reviewed %}
+            <tr>
+              <td>{{ c.filing_id }}</td>
+              <td>{{ c.ticker or '—' }}</td>
+              <td>{{ c.company_name }}</td>
+              <td>{{ c.form_type }}</td>
+              <td>{{ c.filing_date }}</td>
+              <td><span class="badge bg-warning text-dark">{{ decision_count }}</span></td>
+              <td>
+                <input type="hidden" name="filing_id" value="{{ c.filing_id }}">
+                <input type="hidden" name="bucket_{{ c.filing_id }}" value="reextract_reviewed">
+                <input class="form-check-input reviewed-reextract-cb" type="checkbox"
+                       name="reextract_{{ c.filing_id }}" value="on"
+                       data-reviewed="true">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted">None.</p>
+      {% endif %}
+
+      <!-- Large-batch acknowledgement (shown only for HARD_WARN) -->
+      {% if band.value == 'hard_warn' %}
+      <div class="alert alert-warning mt-3" role="alert">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="hard_warn_ack" name="hard_warn_ack" value="on">
+          <label class="form-check-label" for="hard_warn_ack">
+            I understand this is a large batch ({{ total }} filings) and confirm I want to proceed.
+          </label>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Submit -->
+      <div class="mt-4 mb-5">
+        {% if submit_disabled %}
+        <button type="submit" class="btn btn-danger btn-lg" disabled>
+          Cannot Start — Refine Criteria
+        </button>
+        <p class="text-danger mt-2">
+          The volume band is {{ band.value.upper() }}.
+          Add more filters on the criteria page to reduce the candidate count.
+        </p>
+        {% else %}
+        <button type="submit" class="btn btn-success btn-lg" id="start-btn">
+          Start Batch ({{ total }} filing{{ 's' if total != 1 else '' }})
+        </button>
+        {% endif %}
+        <a href="{{ url_for('ingest.ingest_form') }}" class="btn btn-outline-secondary btn-lg ms-2">
+          Back to Criteria
+        </a>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  var form = document.getElementById('start-form');
+  if (!form) return;
+
+  form.addEventListener('submit', function (e) {
+    var reviewedBoxes = document.querySelectorAll('.reviewed-reextract-cb:checked');
+    if (reviewedBoxes.length === 0) return; // nothing to confirm
+
+    var msg = 'You are about to re-extract ' + reviewedBoxes.length +
+              ' filing(s) that have human review decisions. ' +
+              'This will permanently delete those decisions.\n\nProceed?';
+    if (!window.confirm(msg)) {
+      e.preventDefault();
+      return;
+    }
+    // Set ack hidden field so server accepts
+    document.getElementById('reextract_reviewed_ack').value = 'on';
+  });
+})();
+</script>
+{% endblock %}
