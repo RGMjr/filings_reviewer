@@ -47,7 +47,6 @@ _(none currently)_
 |-------|--------|-------|
 | Snap Filing (ID 32/33) — Mislabeled Data (Issue #9) | Partially resolved | Snap not yet in gold standard; validation DB no longer required |
 | Gold Standard Coverage Tests (Issue #11) | Partially resolved | 11/12 pass; 1 remaining (linked to archived Issue #10) |
-| Images Tab Playwright assertions fail (Issue #27) | Partially resolved | 1 test fixed; 2 stale assertions `test.skip`-ed with TODOs |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved | `chart_only` mode landed (PR #50); full 8-filing backfill deferred (#53, #54) |
 
 ### Known Limitations
@@ -300,47 +299,6 @@ The script now reports three classes and is wired into the integration-tests CI 
 - **Class (C)** — asset rows with `file_path` outside `data/` or missing on disk. Warning-only; tracked under Issue #34.
 
 `tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` locks the Class (A) invariant at unit-test level.
-
----
-
-## 27. Images Tab Playwright Assertions Fail
-
-**Status**: Partially resolved (2026-04-19) — 1 test fixed via mock update; 2 stale assertions skipped
-**Severity**: Low (test-only; no production impact)
-**Discovered**: 2026-04-19 (latent; visible once `ui-e2e` CI job runs)
-**Updated**: 2026-04-19
-
-### Problem
-
-Three tests in the Images Tab group of `tests/ui/review.spec.js` fail against the current mock server:
-
-- `review.spec.js:965` — "first thumbnail item is active (current image)"
-- `review.spec.js:1037` — "keyword badges shown in context panel"
-- `review.spec.js:1054` — "image position shown in context panel" (expects `.image-context-panel` to contain text `"Image 1 of 2"`)
-
-Verified byte-identical to the pre-rename `unified_review.spec.js` at `HEAD` before commit `413b386`, so the failures predate the Playwright-consolidation work and were masked by the suite never running in CI.
-
-### Likely Cause
-
-Either (a) the mock server's `/images-tab` route does not populate the exact shape `unified_review.html` expects for the "active thumbnail" / "image 1 of 2" / "keyword badge" markup, or (b) the template markup changed after the tests were authored without updating the tests. Needs a DOM inspection of the rendered page vs. the assertions.
-
-### Why This Matters Now
-
-The `ui-e2e` CI job added in commit `413b386` will flag these three tests red on every PR. Without fixing or explicitly skipping them, developers will start ignoring the suite's red status — the exact failure mode the CI job was meant to prevent.
-
-### Resolution (2026-04-19, partial)
-
-Root causes diagnosed via DOM inspection of `/images-tab` on the local mock server:
-
-1. **`review.spec.js:965` (thumbnail active)** — `unified_review.html:617` compares `candidate.img_id == current_image.img_id`; the two mock dicts in `tests/ui/test_server.py` lacked `img_id`, so both thumbnails matched (`None == None`) and `.thumbnail-item.active` resolved to 2 elements. **Fixed** by adding distinct `img_id` values (`img-pending-10`, `img-reviewed-11`) to `MOCK_IMAGE_CANDIDATE_PENDING` / `MOCK_IMAGE_CANDIDATE_REVIEWED`.
-2. **`review.spec.js:1037` (`.keyword-badge`)** — template has no `.keyword-badge` element; assertion is stale. **Skipped** with `test.skip` + TODO(KNOWN_ISSUES #27).
-3. **`review.spec.js:1054` ("Image 1 of 2")** — template renders "Image #N" in the main display (`unified_review.html:668`), not "Image N of M" in the context panel; assertion is stale. **Skipped** with `test.skip` + TODO(KNOWN_ISSUES #27).
-
-Verified via `npx playwright test review.spec.js`: 142 pass, 2 skip, 0 fail.
-
-### Remaining
-
-If the "Image N of M" counter and keyword-badge visualisation are features that *should* exist in the context panel, re-introduce them in `unified_review.html` and unskip the two tests. Otherwise delete the skipped tests next time this module is touched. Tracked here because the product intent is unclear.
 
 ---
 
@@ -1000,6 +958,12 @@ Module-level docstring expanded to clarify the script only rewrites local gold-s
 
 `sql/36_backfill_presentation_urls.sql` corrected 166 rows; `src/web/url_builders.py` introduced as single source for URL construction; `scripts/validate_database_urls.py` gained `--fail-on-errors` / `--document-type` and wired into CI. See `sql/36_backfill_presentation_urls.sql`, `src/web/url_builders.py`, and git log (2026-04-19).
 
+### Issue #27: Images Tab Playwright Assertions Fail
+
+**Status**: Resolved (2026-04-21)
+
+Of 3 originally failing assertions: line 965 fixed via mock `img_id` addition in commit `413b386`; the two remaining `test.skip` blocks (keyword-badge and "Image 1 of 2" in the image context panel) deleted as stale — neither element is rendered by `unified_review.html` (template renders `Image #N` only, no "of M" counter; no `.keyword-badge` class exists). Product intent confirmed: these assertions had no corresponding template markup to validate. See git log 2026-04-21.
+
 ### Issue #29: `cm_new_customers_acquired` Receives `2.71x` Chart Fact From Farfetch LTV/CAC Chart
 
 **Status**: Resolved (2026-04-19)
@@ -1195,3 +1159,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-20**: Issue #47 resolved — `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores (`data/filings/`, `data/image_cache/`). Verified via `git check-ignore -v`
 - **2026-04-21**: Archive cleanup — collapsed 29 fully-resolved issues (#10, #12, #13, #14, #15, #17, #18, #19, #20, #21, #22, #23, #25, #26, #29, #30, #31, #32, #33, #36, #37, #41, #44, #45, #46, #47, #48, #56, #57) from main body into Archive section; rewrote Summary table to foreground open items; removed resolved rows from Summary table. Issue #11 cross-reference to #10 updated to point to archive entry.
 - **2026-04-21**: Five-issue follow-up bundle landed in commit `7848605` — resolved #42 (double image-write collapsed via public `SECClient.get_image_cache_path`), #50 (new `tests/unit/web/test_api_unified_auth.py`), #51 (behavioral mock-cursor rewrite; `# fmt: skip` removed), #52 (new `scripts/check_pg_client_version.py` pre-flight + infrastructure.md doc section), #54 (new `chart_metric_min_confidence` knob with default 0.60 to avoid Tier 1 regression). Archive entries added. #64 opened — chart classifier Tier 1 boundary sensitivity: HOOD `cm_balance_by_cohort` scores 0.6024 (0.0024 above gate); surfaced while forcing #54's default down from the originally-proposed 0.70. (Renumbered from an earlier working #58 after merge from origin/main revealed issues #58–#63 had been claimed by the Wave B/C/D batch-ingest-ui follow-ups.)
+- **2026-04-21**: Issue #27 archived — 2 stale `test.skip` Playwright blocks in `tests/ui/review.spec.js` deleted; `.keyword-badge` and "Image N of M" markup never existed in `unified_review.html`. Full suite now 142 pass / 0 skip.
