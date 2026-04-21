@@ -59,6 +59,7 @@ MOCK_FILING = {
     "form_type": "S-1",
     "accession_number": "0001234567-25-000001",
     "cik": "0001234567",
+    "ticker": None,
 }
 
 MOCK_FACT_PENDING = {
@@ -86,7 +87,7 @@ MOCK_FACT_PENDING = {
         "stub_path": None,
         "snippet_html": None,
     },
-    "source_locator": {"segment_id": "42"},
+    "source_locator": {"segment_id": "42", "img_id": None},
     "_table_context": None,
     "_segment_context": None,
     "decision_id": None,
@@ -97,6 +98,8 @@ MOCK_FACT_PENDING = {
     "rejection_category": None,
     "reviewer_notes": None,
     "reviewer_id": None,
+    "confirming_source_types": None,
+    "_chart_image_status": None,
 }
 
 MOCK_FACT_ACCEPTED = {
@@ -117,7 +120,7 @@ MOCK_FACT_ACCEPTED = {
     "extraction_method": "keyword",
     "review_reason": None,
     "evidence_pack": {},
-    "source_locator": {"segment_id": "43"},
+    "source_locator": {"segment_id": "43", "img_id": None},
     "_table_context": None,
     "_segment_context": None,
     "decision_id": "decision-001",
@@ -128,6 +131,8 @@ MOCK_FACT_ACCEPTED = {
     "rejection_category": None,
     "reviewer_notes": None,
     "reviewer_id": "test_reviewer",
+    "confirming_source_types": None,
+    "_chart_image_status": None,
 }
 
 MOCK_FACT_REJECTED = {
@@ -148,7 +153,7 @@ MOCK_FACT_REJECTED = {
     "extraction_method": "keyword",
     "review_reason": None,
     "evidence_pack": {},
-    "source_locator": {},
+    "source_locator": {"segment_id": None, "img_id": None},
     "_table_context": None,
     "_segment_context": None,
     "decision_id": "decision-002",
@@ -159,6 +164,8 @@ MOCK_FACT_REJECTED = {
     "rejection_category": "not_a_metric",
     "reviewer_notes": None,
     "reviewer_id": "test_reviewer",
+    "confirming_source_types": None,
+    "_chart_image_status": None,
 }
 
 MOCK_FACTS = [MOCK_FACT_PENDING, MOCK_FACT_ACCEPTED, MOCK_FACT_REJECTED]
@@ -194,6 +201,7 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "img_id": "img-pending-10",
     "filing_id": 1,
     "image_url": "https://via.placeholder.com/400x300?text=Chart1",
+    "image_src_url": "https://via.placeholder.com/400x300?text=Chart1",
     "image_alt": "Net Revenue Retention Chart",
     "image_src": "chart1.png",
     "image_width": 400,
@@ -217,6 +225,7 @@ MOCK_IMAGE_CANDIDATE_REVIEWED = {
     "img_id": "img-reviewed-11",
     "filing_id": 1,
     "image_url": "https://via.placeholder.com/400x300?text=Chart2",
+    "image_src_url": "https://via.placeholder.com/400x300?text=Chart2",
     "image_alt": "Churn Rate Chart",
     "image_src": "chart2.png",
     "image_width": 400,
