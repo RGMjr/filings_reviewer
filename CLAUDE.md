@@ -12,6 +12,16 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 
 **Analytics surface:** `v_analytics_*` Postgres views (sql/38) are the canonical shape for BI/reporting queries. Add new reporting views as `sql/NN_*.sql` migrations rather than aggregation code in `src/`. See `docs/operations/analytics-ui-runbook.md`.
 
+## Workflow
+
+**PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit` (project-local): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass.
+
+Required status checks: **Lint**, **Unit Tests**, **Vulnerability Scan**, **Integration Tests**, **UI E2E (Playwright)**. Use `/ci-fix` when checks fail; `/merge-check` for a manual pre-merge sweep.
+
+Local guards (`.claude/settings.json`): `git push origin main`, `git push --force*`, and `gh pr merge --admin*` are denied. A PreToolUse hook refuses `git commit` on `main`. Pre-commit framework (`make hooks-install`) runs ruff + the Tier-1 regression / docs-folder guard on every commit.
+
+See `docs/development/CONTRIBUTING.md` for the full flow.
+
 ## Key Commands
 
 ```bash
@@ -25,7 +35,7 @@ mypy src/review/ --strict          # Type checking
 
 ## Database
 
-PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_tables`, `v2_audit_log`. Shared: `companies`, `filings`. V1 review tables (`review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions`, `learned_patterns`, `review_audit_log`) are retired — drop migration at `sql/31_drop_v1_review_tables.sql`. Schema files in `sql/` (00-36). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_tables`, `v2_audit_log`, `v2_ingest_batches`, `v2_ingest_batch_filings`. Shared: `companies`, `filings`. V1 review tables (`review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions`, `learned_patterns`, `review_audit_log`) are retired — drop migration at `sql/31_drop_v1_review_tables.sql`. Schema files in `sql/` (00-36, 39). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 Image bytes live in Cloudflare R2 (prod) / local filesystem (dev) via `src/infra/image_storage.py`, NOT in Postgres. `v2_image_assets.file_path` stores an opaque storage key (e.g. `pipeline/<cik>/<accession>/<filename>`) — see `.claude/rules/infrastructure.md#image-storage`.
 
@@ -51,8 +61,8 @@ Metrics are classified into importance tiers based on analytical value. These ti
 - All other `cm_*` metrics (customer counts, MAU/DAU, ARPU, AOV, etc.)
 
 **Rules:**
-- Tier 1 regression in gold standard validation = blocker, must fix before commit
-- Tier 2 regression = acceptable trade-off if Tier 1 improves; note in commit message
+- Tier 1 regression in gold standard validation = blocker, must fix before the PR can merge (enforced locally by the pre-commit hook, again in CI on the PR)
+- Tier 2 regression = acceptable trade-off if Tier 1 improves; note in PR description
 - Extraction improvements (keywords, FP rules, value binding) should prioritize Tier 1 recall gaps first
 - Gold standard coverage expansion should target Tier 1 metrics with low coverage
 - Tier definitions live in `config/metric_keywords.yaml` (authoritative) and `src/gold_standard/v2_validator.py` (runtime)

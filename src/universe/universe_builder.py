@@ -8,6 +8,7 @@ Per 05_COMPONENT_INTERFACE_SPECS.md Section 3.
 """
 
 import logging
+from collections.abc import Callable
 
 from src.infra.db import DatabaseAdapter
 from src.infra.sec_client import FilingMetadata, SECClient
@@ -59,6 +60,7 @@ class UniverseBuilder:
         end_date: str,
         form_types: list[str] | None = None,
         limit: int | None = None,
+        progress_cb: Callable[[int, int], None] | None = None,
     ) -> int:
         """
         Discover and upsert companies and filings for the given date range.
@@ -76,6 +78,11 @@ class UniverseBuilder:
                 recorded, so operators can cap a year-scale 10-K sweep
                 before committing to a 15-minute SEC traffic run. Default
                 ``None`` preserves unbounded behaviour.
+            progress_cb: Optional callback invoked with ``(processed, total)``
+                as the filing loop advances. Called once with ``(0, total)``
+                after the SEC filing list is fetched, then every 5 iterations,
+                and once more with ``(total, total)`` at loop end. No-op when
+                ``None``.
 
         Returns:
             Number of filings marked as in-scope for Phase 1
@@ -102,11 +109,17 @@ class UniverseBuilder:
 
         logger.info(f"Found {len(filings)} filings from EDGAR")
 
+        total = len(filings)
+
+        # Fire progress callback at (0, total) once we know the list size.
+        if progress_cb is not None:
+            progress_cb(0, total)
+
         # Process each filing
         in_scope_count = 0
         requires_review_count = 0
 
-        for filing in filings:
+        for i, filing in enumerate(filings):
             try:
                 is_in_scope = self._process_filing(filing)
                 if is_in_scope:
@@ -124,6 +137,15 @@ class UniverseBuilder:
                     exc_info=True,
                 )
                 requires_review_count += 1
+
+            # Fire progress callback every 5 iterations (1-indexed so first fires after i==4).
+            processed = i + 1
+            if progress_cb is not None and processed % 5 == 0:
+                progress_cb(processed, total)
+
+        # Final callback at (total, total).
+        if progress_cb is not None:
+            progress_cb(total, total)
 
         # Mark earlier S-1/S-1/A/F-1/F-1/A filings as out of scope.
         # Only the latest amendment per company should be fetched and extracted.
@@ -272,8 +294,7 @@ class UniverseBuilder:
 
         if classification_method == "uncertain":
             logger.warning(
-                f"Filing {filing.accession_number} ({filing.company_name}) "
-                f"requires manual review"
+                f"Filing {filing.accession_number} ({filing.company_name}) requires manual review"
             )
 
         return in_scope
@@ -327,9 +348,7 @@ class UniverseBuilder:
         in_scope_count = self.db.get_in_scope_filing_count()
 
         # SPAC count
-        spac_result = self.db.query(
-            "SELECT COUNT(*) as count FROM filings WHERE is_spac = true"
-        )
+        spac_result = self.db.query("SELECT COUNT(*) as count FROM filings WHERE is_spac = true")
         spac_count = spac_result[0]["count"] if spac_result else 0
 
         # First-time issuer count

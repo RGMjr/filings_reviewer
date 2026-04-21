@@ -751,7 +751,8 @@ class V2PersistenceAdapter:
                 "requires_manual": image.requires_manual_capture,
                 "detected_keywords": match_nearby_text(
                     ((image.nearby_text or "") + " " + (image.ocr_text or "")).strip()
-                ) or None,  # fmt: skip
+                )
+                or None,
             }
             for image in images
         ]

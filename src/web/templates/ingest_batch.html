@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Batch {{ batch.batch_id }} — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+
+    <!-- Batch metadata header -->
+    <div class="d-flex justify-content-between align-items-start mb-3">
+      <div>
+        <h2 class="mb-1">Ingest Batch</h2>
+        <p class="text-muted mb-0">
+          <code>{{ batch.batch_id }}</code>
+          &nbsp;|&nbsp; Reviewer: <strong>{{ batch.reviewer_id }}</strong>
+          &nbsp;|&nbsp; Created: {{ batch.created_at.strftime('%Y-%m-%d %H:%M UTC') if batch.created_at else '—' }}
+        </p>
+      </div>
+      <!-- Cancel button (visible only when batch is queued or running) -->
+      {% if batch.status in ('queued', 'running') %}
+      <button class="btn btn-outline-danger"
+              id="cancel-btn">
+        Cancel Batch
+      </button>
+      {% endif %}
+    </div>
+
+    <!-- Status badge -->
+    <div class="mb-3" data-batch-status="{{ batch.status }}">
+      {% if batch.status == 'complete' %}
+      <span class="badge bg-success fs-6">Complete</span>
+      {% elif batch.status == 'running' %}
+      <span class="badge bg-primary fs-6">Running</span>
+      {% elif batch.status == 'queued' %}
+      <span class="badge bg-secondary fs-6">Queued</span>
+      {% elif batch.status == 'failed' %}
+      <span class="badge bg-danger fs-6">Failed</span>
+      {% elif batch.status == 'cancelled' %}
+      <span class="badge bg-warning text-dark fs-6">Cancelled</span>
+      {% else %}
+      <span class="badge bg-secondary fs-6">{{ batch.status }}</span>
+      {% endif %}
+
+      {% if batch.error %}
+      <div class="alert alert-danger mt-2" role="alert">
+        <strong>Batch error:</strong> {{ batch.error }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Populate-batch indicator (kind='populate' only — no per-filing rows) -->
+    {% if batch.kind == 'populate' %}
+    {% set pop = (batch.limits or {}).get('populate_progress') if batch.limits else None %}
+    <div class="mb-4" data-batch-id="{{ batch.batch_id }}">
+      <h4>Populating {{ batch.criteria.year }} {{ batch.criteria.form_type }}</h4>
+      <p class="text-muted small mb-2">
+        <span data-populate-progress="counter">{% if pop %}{{ pop.processed }} / {{ pop.total }}{% else %}starting…{% endif %}</span>
+        filings processed
+      </p>
+      <div class="progress" style="height: 20px;">
+        <div class="progress-bar bg-success" role="progressbar"
+             data-populate-progress="bar"
+             style="width: {% if pop and pop.total %}{{ ((pop.processed / pop.total) * 100) | round | int }}{% else %}0{% endif %}%">
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Progress bar — onboard batches only (per-filing tracking) -->
+    {% if batch.kind == 'onboard' and total and total > 0 %}
+    <div class="mb-4">
+      <div class="d-flex justify-content-between mb-1">
+        <span class="text-muted small">Progress</span>
+        <span class="text-muted small">{{ done }} / {{ total }} done</span>
+      </div>
+      <div class="progress" style="height: 20px;">
+        <div class="progress-bar bg-success" role="progressbar"
+             data-progress="persisted"
+             style="width: {{ ((status_counts.persisted / total) * 100) | round | int }}%"
+             aria-valuenow="{{ status_counts.persisted }}" aria-valuemin="0" aria-valuemax="{{ total }}">
+          {% if status_counts.persisted > 0 %}{{ status_counts.persisted }} persisted{% endif %}
+        </div>
+        <div class="progress-bar bg-danger" role="progressbar"
+             data-progress="failed"
+             style="width: {{ ((status_counts.failed / total) * 100) | round | int }}%">
+          {% if status_counts.failed > 0 %}{{ status_counts.failed }} failed{% endif %}
+        </div>
+        <div class="progress-bar bg-secondary" role="progressbar"
+             data-progress="skipped"
+             style="width: {{ (((status_counts.skipped + status_counts.cancelled) / total) * 100) | round | int }}%">
+          {% if status_counts.skipped + status_counts.cancelled > 0 %}
+          {{ status_counts.skipped + status_counts.cancelled }} skipped/cancelled
+          {% endif %}
+        </div>
+      </div>
+      <div class="mt-1 d-flex gap-3 flex-wrap small text-muted">
+        <span>Queued: <span data-count="queued">{{ status_counts.queued }}</span></span>
+        <span>Fetching: <span data-count="fetching">{{ status_counts.fetching }}</span></span>
+        <span>Extracting: <span data-count="extracting">{{ status_counts.extracting }}</span></span>
+        <span>Persisted: <span data-count="persisted">{{ status_counts.persisted }}</span></span>
+        <span>Failed: <span data-count="failed">{{ status_counts.failed }}</span></span>
+        <span>Skipped: <span data-count="skipped">{{ status_counts.skipped }}</span></span>
+        <span>Cancelled: <span data-count="cancelled">{{ status_counts.cancelled }}</span></span>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Filings table — onboard batches only (populate has no per-filing rows) -->
+    {% if batch.kind == 'onboard' %}
+    <div data-batch-id="{{ batch.batch_id }}">
+      <h4>Filings ({{ filings | length }})</h4>
+      {% if filings %}
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Filing ID</th>
+              <th>Ticker</th>
+              <th>Company</th>
+              <th>Form</th>
+              <th>Date</th>
+              <th>Bucket</th>
+              <th>Status</th>
+              <th>Facts</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in filings %}
+            <tr data-filing-id="{{ f.filing_id }}">
+              <td>{{ f.filing_id }}</td>
+              <td>{{ f.ticker or '—' }}</td>
+              <td>{{ f.company_name }}</td>
+              <td>{{ f.form_type }}</td>
+              <td>{{ f.filing_date }}</td>
+              <td>
+                {% if f.initial_bucket == 'new' %}
+                <span class="badge bg-primary">new</span>
+                {% elif f.initial_bucket == 'reextract' %}
+                <span class="badge bg-info text-dark">reextract</span>
+                {% elif f.initial_bucket == 'reextract_reviewed' %}
+                <span class="badge bg-warning text-dark">reextract-reviewed</span>
+                {% else %}
+                <span class="badge bg-secondary">{{ f.initial_bucket }}</span>
+                {% endif %}
+              </td>
+              <td class="status-cell">
+                {% if f.current_status == 'persisted' %}
+                <span class="badge bg-success">persisted</span>
+                {% elif f.current_status == 'failed' %}
+                <span class="badge bg-danger">failed</span>
+                {% elif f.current_status == 'queued' %}
+                <span class="badge bg-secondary">queued</span>
+                {% elif f.current_status == 'fetching' %}
+                <span class="badge bg-primary">fetching</span>
+                {% elif f.current_status == 'extracting' %}
+                <span class="badge bg-info text-dark">extracting</span>
+                {% elif f.current_status == 'skipped' %}
+                <span class="badge bg-light text-dark border">skipped</span>
+                {% elif f.current_status == 'cancelled' %}
+                <span class="badge bg-warning text-dark">cancelled</span>
+                {% else %}
+                <span class="badge bg-secondary">{{ f.current_status }}</span>
+                {% endif %}
+              </td>
+              <td class="fact-count-cell">{{ f.fact_count if f.fact_count is not none else '—' }}</td>
+              <td class="error-cell">
+                {% if f.error %}
+                <span class="text-danger small" title="{{ f.error }}">
+                  {{ f.error[:60] }}{% if f.error | length > 60 %}…{% endif %}
+                </span>
+                {% else %}
+                —
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted">No filings in this batch.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="mt-3">
+      <a href="{{ url_for('ingest.ingest_form') }}" class="btn btn-outline-secondary">
+        Start Another Batch
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/ingest_batch.js') }}"></script>
+{% endblock %}

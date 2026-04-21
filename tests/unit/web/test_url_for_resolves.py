@@ -25,6 +25,15 @@ _ENDPOINTS: list[tuple[str, dict]] = [
     ("review_pres_images.index", {}),
     ("static", {"filename": "css/review.css"}),
     ("static", {"filename": "js/review_images_v2.js"}),
+    # Ingest HTML routes
+    ("ingest.ingest_form", {}),
+    ("ingest.ingest_preview", {}),
+    ("ingest.ingest_start", {}),
+    ("ingest.populate", {}),
+    ("ingest.ingest_batch", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
+    # Ingest API routes
+    ("api_ingest.batch_status", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
+    ("api_ingest.batch_cancel", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
 ]
 
 

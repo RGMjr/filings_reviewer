@@ -307,14 +307,10 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "search_filings", wraps=sec_client.search_filings
-        ) as spy:
+        with patch.object(sec_client, "search_filings", wraps=sec_client.search_filings) as spy:
             builder.build_universe("2015-01-01", "2015-12-31")
 
-        spy.assert_called_once_with(
-            "2015-01-01", "2015-12-31", DEFAULT_FORM_TYPES_S1F1
-        )
+        spy.assert_called_once_with("2015-01-01", "2015-12-31", DEFAULT_FORM_TYPES_S1F1)
 
     def test_custom_form_types_passed_to_sec_client(self, mock_db):
         """Passing form_types=['10-K', '10-K/A'] forwards to search_filings."""
@@ -323,12 +319,8 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "search_filings", wraps=sec_client.search_filings
-        ) as spy:
-            builder.build_universe(
-                "2020-01-01", "2020-12-31", form_types=["10-K", "10-K/A"]
-            )
+        with patch.object(sec_client, "search_filings", wraps=sec_client.search_filings) as spy:
+            builder.build_universe("2020-01-01", "2020-12-31", form_types=["10-K", "10-K/A"])
 
         spy.assert_called_once_with("2020-01-01", "2020-12-31", ["10-K", "10-K/A"])
 
@@ -354,12 +346,8 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[tenk_filing])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "fetch_filing_text_sample"
-        ) as text_spy:
-            builder.build_universe(
-                "2020-01-01", "2020-12-31", form_types=["10-K"]
-            )
+        with patch.object(sec_client, "fetch_filing_text_sample") as text_spy:
+            builder.build_universe("2020-01-01", "2020-12-31", form_types=["10-K"])
 
         text_spy.assert_not_called()
         # Filing still lands with is_in_scope_phase1=False (correct: 10-K not Phase 1)
@@ -416,9 +404,7 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=filings)
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        count = builder.build_universe(
-            "2020-01-01", "2020-12-31", limit=2
-        )
+        count = builder.build_universe("2020-01-01", "2020-12-31", limit=2)
 
         assert count == 2
         assert mock_db.upsert_filing.call_count == 2
@@ -440,9 +426,7 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[s1_filing])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "fetch_filing_text_sample", return_value=""
-        ) as text_spy:
+        with patch.object(sec_client, "fetch_filing_text_sample", return_value="") as text_spy:
             builder.build_universe("2019-01-01", "2019-12-31")
 
         text_spy.assert_called_once()
@@ -502,3 +486,63 @@ class TestUniverseBuilderCoverageStats:
         assert stats["spac_count"] == 3
         assert stats["first_time_issuer_count"] == 12
         assert stats["by_year"] == {2020: 8, 2021: 7}
+
+
+class TestProgressCallback:
+    """Tests for the progress_cb kwarg added in Wave C / Phase 6."""
+
+    def _make_n_filings(self, n: int) -> list[FilingMetadata]:
+        return [
+            FilingMetadata(
+                cik=f"{1_000_000 + i:010d}",
+                company_name=f"TestCo {i}",
+                form_type="S-1",
+                filing_date="2024-01-01",
+                accession_number=f"0001000000-24-{i:06d}",
+                primary_doc_url=f"https://example.com/{i}.htm",
+                ticker=f"T{i:03d}",
+            )
+            for i in range(n)
+        ]
+
+    def test_callback_invoked_at_start_every_5_and_end(self, mock_db):
+        sec_client = MockSECClient()
+        sec_client.search_filings = Mock(return_value=self._make_n_filings(12))
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        calls: list[tuple[int, int]] = []
+
+        def cb(processed: int, total: int) -> None:
+            calls.append((processed, total))
+
+        builder.build_universe("2024-01-01", "2024-12-31", progress_cb=cb)
+
+        # Expect: (0, 12), (5, 12), (10, 12), (12, 12).
+        # The "every 5 iterations" tick fires when processed % 5 == 0; with 12
+        # filings that's processed=5 and processed=10. The final (total, total)
+        # always fires at the end.
+        assert (0, 12) in calls
+        assert (5, 12) in calls
+        assert (10, 12) in calls
+        assert (12, 12) in calls
+
+    def test_callback_none_is_safe(self, mock_db):
+        """progress_cb=None default must not raise."""
+        sec_client = MockSECClient()
+        sec_client.search_filings = Mock(return_value=self._make_n_filings(3))
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+        # Default kwarg — should not raise
+        builder.build_universe("2024-01-01", "2024-12-31")
+
+    def test_callback_with_zero_filings(self, mock_db):
+        """Empty filing list still fires (0, 0) start + (0, 0) end."""
+        sec_client = MockSECClient()
+        sec_client.search_filings = Mock(return_value=[])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        calls: list[tuple[int, int]] = []
+        builder.build_universe(
+            "2024-01-01", "2024-12-31", progress_cb=lambda p, t: calls.append((p, t))
+        )
+        # First and last fire even with empty list
+        assert calls.count((0, 0)) >= 1
