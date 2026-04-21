@@ -78,9 +78,9 @@ class TableRowParser:
         """Parse table structure and map row boundaries to text positions.
 
         Uses flexible whitespace matching to handle normalization differences
-        between HTML get_text() and HTMLSegmenter text extraction. This fixes
-        issues where <br/> tags in HTML become different whitespace in each
-        system (HRV-17 fix).
+        between HTML get_text() and the V2 ingestion stage's text extraction.
+        This fixes issues where <br/> tags in HTML become different whitespace
+        in each system (HRV-17 fix).
         """
         self.rows = []
 
@@ -206,7 +206,7 @@ class TableRowParser:
         logger.debug(f"Parsed {len(self.rows)} table rows")
 
     def _normalize_text(self, text: str) -> str:
-        """Normalize text the same way as HTMLSegmenter does."""
+        """Normalize text the same way as the V2 ingestion stage does."""
         # Collapse multiple whitespace into single space
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
@@ -218,9 +218,9 @@ class TableRowParser:
         Find row text with flexible whitespace matching.
 
         This handles cases where <br/> tags in HTML become different whitespace
-        in get_text() vs HTMLSegmenter extraction:
+        in get_text() vs the V2 ingestion stage's extraction:
         - get_text(): <br/> -> newline -> normalized to space
-        - HTMLSegmenter: <br/> -> removed entirely (no space)
+        - V2 ingestion stage: <br/> -> removed entirely (no space)
 
         Returns:
             Tuple of (start_position, matched_length) or (-1, 0) if not found
