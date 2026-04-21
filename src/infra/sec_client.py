@@ -91,9 +91,7 @@ class SECClientMetrics:
         """
         with self._lock:
             avg_elapsed = (
-                self.total_elapsed_seconds / self.requests_total
-                if self.requests_total > 0
-                else 0.0
+                self.total_elapsed_seconds / self.requests_total if self.requests_total > 0 else 0.0
             )
             success_rate = (
                 (self.requests_success / self.requests_total * 100)
@@ -269,16 +267,14 @@ class SECClient:
                     if self._metrics:
                         self._metrics.record_failure(elapsed)
 
-                    preview = http_response.content[:200].decode('utf-8', errors='replace')
+                    preview = http_response.content[:200].decode("utf-8", errors="replace")
                     raise SECDataError(
-                        f"Invalid JSON response from {url}: {e}",
-                        url=url,
-                        response_preview=preview
+                        f"Invalid JSON response from {url}: {e}", url=url, response_preview=preview
                     ) from e
 
             except requests.HTTPError as e:
                 elapsed = time.time() - request_start_time
-                status_code = e.response.status_code if hasattr(e, 'response') else None
+                status_code = e.response.status_code if hasattr(e, "response") else None
 
                 # Record failure for all HTTP errors
                 if self._metrics:
@@ -297,7 +293,7 @@ class SECClient:
                 # 5xx errors (server errors) - retry with backoff
                 if status_code and status_code >= 500:
                     if attempt < max_retries:
-                        backoff_delay = 2 ** attempt  # 1s, 2s, 4s
+                        backoff_delay = 2**attempt  # 1s, 2s, 4s
                         logger.warning(
                             f"Server error {status_code} for {url}. "
                             f"Retrying in {backoff_delay}s (attempt {attempt + 1}/{max_retries + 1})"
@@ -319,7 +315,7 @@ class SECClient:
                     self._metrics.record_timeout(elapsed)
 
                 if attempt < max_retries:
-                    backoff_delay = 2 ** attempt
+                    backoff_delay = 2**attempt
                     logger.warning(
                         f"Timeout for {url}. Retrying in {backoff_delay}s "
                         f"(attempt {attempt + 1}/{max_retries + 1})"
@@ -367,10 +363,7 @@ class SECClient:
         except ValidationError as e:
             raise ValueError(str(e)) from e
 
-        logger.info(
-            f"Searching for filings: {start_date} to {end_date}, "
-            f"form_types={form_types}"
-        )
+        logger.info(f"Searching for filings: {start_date} to {end_date}, form_types={form_types}")
 
         filings = []
         current_date = start
@@ -379,9 +372,7 @@ class SECClient:
             try:
                 daily_filings = self._get_daily_filings(current_date, form_types)
                 filings.extend(daily_filings)
-                logger.info(
-                    f"Found {len(daily_filings)} filings on {current_date.date()}"
-                )
+                logger.info(f"Found {len(daily_filings)} filings on {current_date.date()}")
             except requests.HTTPError as e:
                 if e.response.status_code == 404:
                     logger.debug(f"No index file for {current_date.date()}")
@@ -398,9 +389,7 @@ class SECClient:
         logger.info(f"Total filings found: {len(filings)}")
         return filings
 
-    def _get_daily_filings(
-        self, date: datetime, form_types: list[str]
-    ) -> list[FilingMetadata]:
+    def _get_daily_filings(self, date: datetime, form_types: list[str]) -> list[FilingMetadata]:
         """
         Get filings from a single day's master index file.
 
@@ -418,8 +407,7 @@ class SECClient:
         date_str = date.strftime("%Y%m%d")
 
         url = (
-            f"{self.BASE_URL}/Archives/edgar/daily-index/"
-            f"{year}/QTR{quarter}/master.{date_str}.idx"
+            f"{self.BASE_URL}/Archives/edgar/daily-index/{year}/QTR{quarter}/master.{date_str}.idx"
         )
 
         # Fetch and parse index file
@@ -427,13 +415,11 @@ class SECClient:
         http_response = self._http_client.get(url, timeout=10.0)
 
         # Decode bytes to text
-        response_text = http_response.content.decode('utf-8', errors='replace')
+        response_text = http_response.content.decode("utf-8", errors="replace")
 
         return self._parse_master_index(response_text, form_types)
 
-    def _parse_master_index(
-        self, index_text: str, form_types: list[str]
-    ) -> list[FilingMetadata]:
+    def _parse_master_index(self, index_text: str, form_types: list[str]) -> list[FilingMetadata]:
         """
         Parse SEC master index file format.
 
@@ -482,9 +468,7 @@ class SECClient:
             # Primary doc URL needs to be resolved from the filing's index
             # We store a placeholder directory URL that FilingFetcher will resolve
             accession_no_dashes = accession_number.replace("-", "")
-            primary_doc_url = (
-                f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/"
-            )
+            primary_doc_url = f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/"
 
             filings.append(
                 FilingMetadata(
@@ -523,9 +507,7 @@ class SECClient:
             return accession
         return ""
 
-    def resolve_primary_document_url(
-        self, cik: str, accession_number: str
-    ) -> str | None:
+    def resolve_primary_document_url(self, cik: str, accession_number: str) -> str | None:
         """
         Resolve the primary HTML document URL for a filing by fetching its index.
 
@@ -537,10 +519,7 @@ class SECClient:
             Full URL to primary HTML document, or None if not found
         """
         accession_no_dashes = accession_number.replace("-", "")
-        index_url = (
-            f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
-            f"{accession_no_dashes}/index.json"
-        )
+        index_url = f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/index.json"
 
         try:
             # Use _make_request for JSON with retry logic
@@ -565,7 +544,7 @@ class SECClient:
             # which would incorrectly match before the actual S-1 document.
             # Match "ex" followed by a digit anywhere in the name to catch patterns
             # like "fs12019a1ex1-1_hennessy.htm" where "ex" is not at the start.
-            _exhibit_re = re.compile(r'ex\d', re.IGNORECASE)
+            _exhibit_re = re.compile(r"ex\d", re.IGNORECASE)
             non_exhibit_files = [
                 item
                 for item in htm_files
@@ -624,15 +603,10 @@ class SECClient:
                 f"({largest_file.get('size', 0)} bytes)"
             )
 
-            return (
-                f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
-                f"{accession_no_dashes}/{primary_doc}"
-            )
+            return f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/{primary_doc}"
 
         except Exception as e:
-            logger.error(
-                f"Error resolving primary doc for {cik}/{accession_number}: {e}"
-            )
+            logger.error(f"Error resolving primary doc for {cik}/{accession_number}: {e}")
             return None
 
     def get_company_info(self, cik: str) -> dict | None:
@@ -670,8 +644,7 @@ class SECClient:
                     sic_code = validate_sic_code(str(raw_sic))
                 except ValidationError as e:
                     logger.warning(
-                        f"Invalid SIC code '{raw_sic}' for CIK {cik}: {e}. "
-                        "Using raw value."
+                        f"Invalid SIC code '{raw_sic}' for CIK {cik}: {e}. Using raw value."
                     )
                     sic_code = str(raw_sic)
 
@@ -695,9 +668,7 @@ class SECClient:
             logger.error(f"Error fetching company info for CIK {cik}: {e}")
             return None
 
-    def fetch_filing_text_sample(
-        self, url: str, max_chars: int = 10000
-    ) -> str | None:
+    def fetch_filing_text_sample(self, url: str, max_chars: int = 10000) -> str | None:
         """
         Fetch the first max_chars characters of a filing document for classification.
 
@@ -720,9 +691,7 @@ class SECClient:
             logger.warning(f"Failed to fetch filing text sample from {url}: {e}")
             return None
 
-    def get_filing_by_accession(
-        self, cik: str, accession_number: str
-    ) -> FilingMetadata | None:
+    def get_filing_by_accession(self, cik: str, accession_number: str) -> FilingMetadata | None:
         """
         Get filing metadata by CIK and accession number.
 
@@ -748,9 +717,7 @@ class SECClient:
             try:
                 idx = accession_numbers.index(accession_number)
             except ValueError:
-                logger.warning(
-                    f"Accession number {accession_number} not found for CIK {cik}"
-                )
+                logger.warning(f"Accession number {accession_number} not found for CIK {cik}")
                 return None
 
             # Extract filing metadata
@@ -855,9 +822,7 @@ class SECClient:
                     logger.warning(f"Error fetching archived file {file_name}: {e}")
                     continue
 
-            logger.warning(
-                f"No {form_types} filings found for CIK {cik}"
-            )
+            logger.warning(f"No {form_types} filings found for CIK {cik}")
             return None
 
         except requests.HTTPError as e:
@@ -867,9 +832,7 @@ class SECClient:
             logger.error(f"Error parsing filing data for CIK {cik}: {e}")
             return None
 
-    def _get_image_cache_path(
-        self, cik: str, accession_number: str, filename: str
-    ) -> Path | None:
+    def _get_image_cache_path(self, cik: str, accession_number: str, filename: str) -> Path | None:
         """Get cache path for an image, or None if caching disabled.
 
         Args:
@@ -887,6 +850,27 @@ class SECClient:
         accession_no_dashes = accession_number.replace("-", "")
 
         return self._image_cache_dir / cik_stripped / accession_no_dashes / filename
+
+    def get_image_cache_path(self, cik: str, accession_number: str, filename: str) -> Path:
+        """Return the cache path for an image (public accessor).
+
+        Args:
+            cik: SEC Central Index Key (raw, will be stripped of leading zeros)
+            accession_number: SEC accession number (with dashes)
+            filename: Image filename
+
+        Returns:
+            Path to the cached image file
+
+        Raises:
+            ValueError: If image caching was not configured (image_cache_dir is None)
+        """
+        path = self._get_image_cache_path(cik, accession_number, filename)
+        if path is None:
+            raise ValueError(
+                "get_image_cache_path called but image_cache_dir was not set on this SECClient"
+            )
+        return path
 
     def _read_cached_image(self, cache_path: Path) -> bytes | None:
         """Read image from cache if it exists.
@@ -969,10 +953,7 @@ class SECClient:
             if cached is not None:
                 return cached
 
-        url = (
-            f"{self.BASE_URL}/Archives/edgar/data/"
-            f"{cik_stripped}/{accession_no_dashes}/{filename}"
-        )
+        url = f"{self.BASE_URL}/Archives/edgar/data/{cik_stripped}/{accession_no_dashes}/{filename}"
 
         try:
             self._rate_limit()
@@ -993,9 +974,7 @@ class SECClient:
             # Validate Content-Type is an image
             content_type = http_response.headers.get("Content-Type", "").lower()
             if not content_type.startswith("image/"):
-                logger.warning(
-                    f"Invalid Content-Type for image {filename}: {content_type}"
-                )
+                logger.warning(f"Invalid Content-Type for image {filename}: {content_type}")
                 return None
 
             # Check Content-Length before reading full response
@@ -1005,8 +984,7 @@ class SECClient:
                     size = int(content_length)
                     if size > max_size_bytes:
                         logger.warning(
-                            f"Image {filename} exceeds size limit: "
-                            f"{size} > {max_size_bytes} bytes"
+                            f"Image {filename} exceeds size limit: {size} > {max_size_bytes} bytes"
                         )
                         return None
                 except ValueError:
@@ -1147,8 +1125,7 @@ class MockSECClient(SECClient):
         filtered = [
             f
             for f in self.mock_filings
-            if f.form_type in form_types
-            and start <= datetime.fromisoformat(f.filing_date) <= end
+            if f.form_type in form_types and start <= datetime.fromisoformat(f.filing_date) <= end
         ]
 
         logger.info(f"Mock search returned {len(filtered)} filings")
@@ -1163,9 +1140,7 @@ class MockSECClient(SECClient):
         text = self.mock_filing_texts.get(url)
         return text[:max_chars] if text else None
 
-    def get_filing_by_accession(
-        self, cik: str, accession_number: str
-    ) -> FilingMetadata | None:
+    def get_filing_by_accession(self, cik: str, accession_number: str) -> FilingMetadata | None:
         """Return mock filing by accession number."""
         for filing in self.mock_filings:
             if filing.cik == cik and filing.accession_number == accession_number:

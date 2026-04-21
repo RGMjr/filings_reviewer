@@ -142,6 +142,14 @@ class PipelineConfig:
     chart_image_min_confidence: float = 0.6
     chart_fact_review_threshold: float = 0.80
     chart_axis_range_multiplier: float = 10.0
+    chart_metric_min_confidence: float = 0.60
+    """Minimum classifier score required to emit a chart-sourced fact. Distinct from
+    ``chart_metric_classification_min_score`` (0.6), which gates whether ANY metric is
+    considered a match. Default matches the classification gate — the knob exists for
+    operators to tighten during backfills or analytics runs where reviewer-queue noise
+    costs more than chart-sourced recall (see Issue #54). Raising to 0.70 would regress
+    Tier 1 recall because legitimate cohort charts (e.g. HOOD ``cm_balance_by_cohort``)
+    classify barely above the 0.6 gate."""
 
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
@@ -353,9 +361,14 @@ class V2Pipeline:
         """Initialize pipeline stages."""
         self._check_vision_api_availability()
         # Stage 1: Ingestion & Parsing
-        self._stages.append((PipelineStage.INGESTION, IngestionStage(
-            min_paragraph_chars=self.config.min_paragraph_chars,
-        )))
+        self._stages.append(
+            (
+                PipelineStage.INGESTION,
+                IngestionStage(
+                    min_paragraph_chars=self.config.min_paragraph_chars,
+                ),
+            )
+        )
 
         # Stage 2: Section Classification
         if self.config.enable_section_classification:
@@ -381,9 +394,7 @@ class V2Pipeline:
 
         # Stage 5.5: Chart Fact Bridge
         if self.config.enable_chart_fact_bridge:
-            self._stages.append(
-                (PipelineStage.CHART_FACT_BRIDGE, ChartFactBridgeStage())
-            )
+            self._stages.append((PipelineStage.CHART_FACT_BRIDGE, ChartFactBridgeStage()))
 
         # Stage 6: Metric Candidate Generation
         self._stages.append((PipelineStage.CANDIDATE_GENERATION, CandidateGenerationStage()))

@@ -307,14 +307,10 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "search_filings", wraps=sec_client.search_filings
-        ) as spy:
+        with patch.object(sec_client, "search_filings", wraps=sec_client.search_filings) as spy:
             builder.build_universe("2015-01-01", "2015-12-31")
 
-        spy.assert_called_once_with(
-            "2015-01-01", "2015-12-31", DEFAULT_FORM_TYPES_S1F1
-        )
+        spy.assert_called_once_with("2015-01-01", "2015-12-31", DEFAULT_FORM_TYPES_S1F1)
 
     def test_custom_form_types_passed_to_sec_client(self, mock_db):
         """Passing form_types=['10-K', '10-K/A'] forwards to search_filings."""
@@ -323,12 +319,8 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "search_filings", wraps=sec_client.search_filings
-        ) as spy:
-            builder.build_universe(
-                "2020-01-01", "2020-12-31", form_types=["10-K", "10-K/A"]
-            )
+        with patch.object(sec_client, "search_filings", wraps=sec_client.search_filings) as spy:
+            builder.build_universe("2020-01-01", "2020-12-31", form_types=["10-K", "10-K/A"])
 
         spy.assert_called_once_with("2020-01-01", "2020-12-31", ["10-K", "10-K/A"])
 
@@ -354,12 +346,8 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[tenk_filing])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "fetch_filing_text_sample"
-        ) as text_spy:
-            builder.build_universe(
-                "2020-01-01", "2020-12-31", form_types=["10-K"]
-            )
+        with patch.object(sec_client, "fetch_filing_text_sample") as text_spy:
+            builder.build_universe("2020-01-01", "2020-12-31", form_types=["10-K"])
 
         text_spy.assert_not_called()
         # Filing still lands with is_in_scope_phase1=False (correct: 10-K not Phase 1)
@@ -416,9 +404,7 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=filings)
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        count = builder.build_universe(
-            "2020-01-01", "2020-12-31", limit=2
-        )
+        count = builder.build_universe("2020-01-01", "2020-12-31", limit=2)
 
         assert count == 2
         assert mock_db.upsert_filing.call_count == 2
@@ -440,9 +426,7 @@ class TestBuildUniverseFormTypes:
         sec_client = MockSECClient(mock_filings=[s1_filing])
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
-        with patch.object(
-            sec_client, "fetch_filing_text_sample", return_value=""
-        ) as text_spy:
+        with patch.object(sec_client, "fetch_filing_text_sample", return_value="") as text_spy:
             builder.build_universe("2019-01-01", "2019-12-31")
 
         text_spy.assert_called_once()
@@ -523,9 +507,7 @@ class TestProgressCallback:
 
     def test_callback_invoked_at_start_every_5_and_end(self, mock_db):
         sec_client = MockSECClient()
-        sec_client.search_filings = Mock(
-            return_value=self._make_n_filings(12)
-        )
+        sec_client.search_filings = Mock(return_value=self._make_n_filings(12))
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
 
         calls: list[tuple[int, int]] = []
@@ -547,9 +529,7 @@ class TestProgressCallback:
     def test_callback_none_is_safe(self, mock_db):
         """progress_cb=None default must not raise."""
         sec_client = MockSECClient()
-        sec_client.search_filings = Mock(
-            return_value=self._make_n_filings(3)
-        )
+        sec_client.search_filings = Mock(return_value=self._make_n_filings(3))
         builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
         # Default kwarg — should not raise
         builder.build_universe("2024-01-01", "2024-12-31")
