@@ -36,7 +36,7 @@ _(none currently)_
 | 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Out-of-scope 8-Ks reached `v2_image_assets`; inflates Issue #35 baseline |
 | 8-K fetcher ignores Exhibit 99.1 (Issue #58) | Open | Primary doc often a cover sheet; earnings content in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
 | 8-K section classifier missing earnings patterns (Issue #59) | Open | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS |
-| Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
+| `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 | Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
 | Nightly sweeper uses GNU `timeout` — macOS incompatible (Issue #68) | Open | Local `/sweep` on Mac fails at the `timeout` call; Render (Linux) production is fine |
@@ -51,6 +51,7 @@ _(none currently)_
 | Snap Filing (ID 32/33) — Mislabeled Data (Issue #9) | Partially resolved | Snap not yet in gold standard; validation DB no longer required |
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved | 1 test fixed; 2 stale assertions `test.skip`-ed with TODOs |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved | `chart_only` mode landed (PR #50); full 8-filing backfill deferred (#53, #54) |
+| Local-Dev Stuck-Batch Recovery (Issue #62) | Partially resolved | Manual recovery SQL documented in TICKER_ONBOARDING.md; `--cleanup-stuck` CLI flag + SIGTERM log deferred |
 
 ### Known Limitations
 
@@ -784,13 +785,17 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ## 62. Local-Dev Stuck-Batch Recovery Is Manual
 
-**Status**: Open
+**Status**: Partially resolved (2026-04-21) — manual recovery SQL documented; `--cleanup-stuck` CLI flag + SIGTERM log deferred
 **Severity**: Low — operational; no data loss, just operator inconvenience
 **Discovered**: 2026-04-20 (Wave B Phase 3 review)
 
 ### Problem
 
 On Render (Phase 7), a worker service with `--watch` mode will re-claim a batch whose `run_lock_until` has expired. On local dev there is no watcher — if the `onboarding_runner` subprocess dies mid-batch (kernel OOM, user kills the Flask server, etc.), the batch stays in `status='running'` forever. Currently recovery requires a hand-crafted `UPDATE v2_ingest_batches SET status='failed' WHERE batch_id=...` plus a cleanup of partially-processed `v2_ingest_batch_filings` rows.
+
+### Partial Resolution (2026-04-21)
+
+Manual recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md` under the new "Recovering a stuck batch (local dev)" section. Operators can now self-serve stuck-batch recovery without improvising SQL. Next Steps 2 (`--cleanup-stuck` admin flag) and 3 (SIGTERM log line) remain open.
 
 ### Next Steps
 
@@ -1318,3 +1323,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-21**: Issue #11 archived — resolved-by-deletion. Remaining "1/12" test was in `tests/integration/test_gold_standard_coverage.py`, deleted in commit `03a8a20` during V1 retirement.
 - **2026-04-21**: Added Issue #67 — `/cleanup` skill step-1 mode-detection (`test -d .claude/worktrees`) is CWD-relative and returns `remote` when invoked from a ccw worktree, silently skipping the step-5 worktree sweep on local machines. Companion to the step-5 `-f -f` fix in commit for `.claude/commands/cleanup.md`.
 - **2026-04-21**: Issue #67 resolved — session-hygiene bundle: (a) `cleanup.md` step 1 re-anchored to `git rev-parse --git-common-dir` so local mode detects from any linked worktree; (b) `ccw` in `~/.zshrc` now writes a PID lockfile on entry and refuses silent second-session occupancy (self-healing via `kill -0`); (c) `ccw-rm` auto-deletes merged branches via `gh pr list --state merged` (offline-safe fallback); (d) `/commit` step 1 appends `-HHMM` timestamp on branch-name collision. Docs updated in `docs/development/claude-sessions-and-worktrees.md`. Summary row removed. Note: `~/.zshrc` edits (b, c) apply manually — patch in PR description.
+- **2026-04-21**: Issue #62 partially resolved — manual stuck-batch recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md`. CLI-flag and SIGTERM-log follow-ups remain open.
