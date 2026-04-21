@@ -8,8 +8,7 @@ Key modules:
     ``src/extraction_v2/stages/value_binding.py`` and V2 false-positive filter.
   - ``respectively_parser`` — detect_respectively_pattern, used by
     ``src/extraction_v2/stages/value_binding.py``.
-  - ``boundary_detection`` — BoundaryDetector, used by
-    ``src/shared/html_segmenter.py`` and keyword matching.
+  - ``boundary_detection`` — BoundaryDetector, used by keyword matching.
   - ``models`` — shared dataclasses and enum tuples imported by
     ``src/infra/db.py``, ``src/web/routes/api_unified.py``, and
     ``src/web/routes/review_unified.py``.
