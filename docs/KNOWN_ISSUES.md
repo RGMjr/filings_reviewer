@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#43 opened for 8-K document selection only fetching primary doc; #44 opened for 8-K section classifier missing earnings-exhibit patterns; #45 opened for `detect_universe_gaps` ignoring SIC filter)
+**Last Updated**: 2026-04-20 (#43 opened for 8-K document selection only fetching primary doc; #44 opened for 8-K section classifier missing earnings-exhibit patterns; #45 opened for `detect_universe_gaps` ignoring SIC filter; #46 opened for `/ingest/preview` integration coverage gap; #47 opened for local-dev stuck-batch recovery runbook)
 
 ---
 
@@ -229,6 +229,8 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | 8-K fetcher ignores Exhibit 99.1 (Issue #43) | Open | Medium | Medium | Primary doc is often a cover sheet; earnings content lives in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
 | 8-K section classifier missing earnings-exhibit patterns (Issue #44) | Open | Low | Low | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS. Facts still bind; section-aware logic degrades |
 | `detect_universe_gaps` ignores SIC filter (Issue #45) | Open | Low | Low | Reports gaps based on `(year, form_type)` only; can trigger needless populate runs when filings exist but not for the queried SIC |
+| `/ingest/preview` integration-test gap (Issue #46) | Open | Low | Low | Preview path is unit-tested via form parsers; no end-to-end assertion on bucket split + volume banner + hidden-field snapshot |
+| Local-dev stuck-batch recovery is manual (Issue #47) | Open | Low | Low | No watcher runs locally; subprocess death leaves `status='running'` forever; needs runbook + optional `--cleanup-stuck` flag |
 
 ---
 
@@ -1445,6 +1447,42 @@ Lightweight — <20 LOC of CSS, no template restructure.
 1. Change the gap query from `filings.form_type + filing_date` to `filings JOIN companies ON company_id` with `industry_code = ANY(%(sic_codes)s)` (or the equivalent once the companies.industry_code field is populated — check that first).
 2. Alternatively, accept the over-populate behavior and document the trade-off in `src/universe/onboarding.py` at the function docstring — populate is idempotent, just bandwidth-wasteful.
 3. Add a unit test covering the "filings exist but not for our SIC" case.
+
+---
+
+## 46. `/ingest/preview` Has No Integration-Test Coverage
+
+**Status**: Open
+**Severity**: Low — unit tests exist for the form-parsing layer; the end-to-end path is untested
+**Discovered**: 2026-04-20 (Wave B Phase 4 review)
+
+### Problem
+
+`tests/integration/web/test_ingest_flow.py` covers `GET /ingest/`, `POST /ingest/start`, `GET /api/v2/ingest/batches/<id>/status`, `POST /cancel`, and auth. `POST /ingest/preview` — the middle step that runs `resolve_criteria` + `discover` + `classify_volume` + `count_reviewer_work` and renders the three-bucket candidate table — is only covered by unit tests on the form-parser helpers. No end-to-end assertion that a valid criteria submission renders a preview page with the correct bucket split + volume banner.
+
+### Next Steps
+
+1. Add an integration test that seeds two filings (one in `v2_documents`, one not) + a reviewed fact on the extracted one, POSTs `/ingest/preview` with criteria that match both, and asserts the three buckets render correctly.
+2. Assert the volume banner class (`alert-success` / `alert-warning` / `alert-danger`) for each band.
+3. Assert hidden-field snapshot survives re-render — `filing_id` hidden inputs must be present and match the discovered IDs.
+
+---
+
+## 47. Local-Dev Stuck-Batch Recovery Is Manual
+
+**Status**: Open
+**Severity**: Low — operational; no data loss, just operator inconvenience
+**Discovered**: 2026-04-20 (Wave B Phase 3 review)
+
+### Problem
+
+On Render (Phase 7), a worker service with `--watch` mode will re-claim a batch whose `run_lock_until` has expired. On local dev there is no watcher — if the `onboarding_runner` subprocess dies mid-batch (kernel OOM, user kills the Flask server, etc.), the batch stays in `status='running'` forever. Currently recovery requires a hand-crafted `UPDATE v2_ingest_batches SET status='failed' WHERE batch_id=...` plus a cleanup of partially-processed `v2_ingest_batch_filings` rows.
+
+### Next Steps
+
+1. Document the manual recovery SQL in `docs/operations/TICKER_ONBOARDING.md` (or a new batch-ingest runbook) when that file lands in Phase 7.
+2. Consider a `python3 -m src.universe.onboarding_runner --cleanup-stuck` admin flag that scans for batches with `run_lock_until < NOW() - INTERVAL '1 hour'` still in `running` state and either marks them failed or re-claims them.
+3. Add a CLI log line to the runner on SIGTERM that tells the operator "batch <id> interrupted — run `... --cleanup-stuck` to recover".
 
 ---
 
