@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21 (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #58 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Previously: archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items.)
+**Last Updated**: 2026-04-21 (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -32,7 +32,13 @@ _(none currently)_
 | Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Undermines pre-commit gate; reproduces on clean main |
 | Chart call limit (10) truncates OCR on high-chart filings (Issue #53) | Open | Tier 1 charts in positions 11+ invisible to the bridge |
 | 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Out-of-scope 8-Ks reached `v2_image_assets`; inflates Issue #35 baseline |
-| Chart classifier Tier 1 boundary sensitivity (Issue #58) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
+| 8-K fetcher ignores Exhibit 99.1 (Issue #58) | Open | Primary doc often a cover sheet; earnings content in Exhibit 99.1. Blocks 8-K recall in batch-ingest UI rollout |
+| 8-K section classifier missing earnings patterns (Issue #59) | Open | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS |
+| `detect_universe_gaps` ignores SIC filter (Issue #60) | Open | Reports gaps on `(year, form_type)` only; can trigger needless populate runs |
+| `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
+| Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
+| Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
+| Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
 
 ### Partially Resolved
 
@@ -719,7 +725,116 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ---
 
-## 58. Chart Classifier Tier 1 Boundary Sensitivity
+## 58. 8-K Fetcher Returns Only Primary Doc; Earnings Content Lives in Exhibit 99.1
+
+**Status**: Open
+**Severity**: Medium — blocks 8-K recall in batch-ingest UI rollout
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
+
+### Problem
+
+`FilingFetcher.fetch_filing` (`src/filing_fetcher/filing_fetcher.py:263-365`) downloads only `primary.htm` resolved from the accession's directory URL. For many 8-K filings the primary doc is a ~10 KB cover page that points at Exhibit 99.1 (the actual press release / financial-highlights HTML). Pipeline ran cleanly on 4/5 Phase 0 candidates but Samsara (2025-08-21) produced 0 facts — the primary doc was 9,336 bytes of boilerplate; all customer-metric content sat in `exhibit991-2025x08x21.htm` which was never fetched.
+
+### Next Steps
+
+1. In `fetch_filing`, after downloading `primary.htm`, parse the index for `99.1` (or regex-matched variants like `ex-99-1`) and download the exhibit alongside the primary doc.
+2. Decide whether the pipeline consumes only the exhibit, both docs concatenated, or runs twice and merges facts — prefer "concat with a section break" for the MVP to avoid invalidating `filing_id` uniqueness.
+3. Add an integration test using the Samsara 8-K (or a fixture mirroring its structure) asserting >0 customer-metric facts.
+4. Gate on this before enabling 8-K in the batch-ingest UI form-type selector.
+
+---
+
+## 59. 8-K Section Classifier Produces Only `COVER` / `FINANCIALS` Labels
+
+**Status**: Open
+**Severity**: Low — extraction still works; section-aware FP rules and UI navigation degrade
+**Discovered**: 2026-04-20 (Phase 0 pre-flight for batch-ingest UI)
+
+### Problem
+
+`SectionClassificationStage.SECTION_PATTERNS` (`src/extraction_v2/stages/section_classification.py:104-138`) only knows S-1/10-K structural headings (`Item 1A`, `Item 7`, `Item 8`, etc.). 8-K earnings exhibits use narrative patterns like "Financial Highlights", "Key Business Metrics", "Q4 Highlights", "Results of Operations" that none of the existing patterns match. Phase 0 run: every segment on Chewy / DoorDash / Robinhood / Snowflake 8-Ks was classified as `COVER` or `FINANCIALS`. Candidate generation and value binding still produced correct facts, but sections-aware downstream logic (FP rules keyed on `section_type`, reviewer UI navigation, section-scoped metric scoring) is blind on 8-Ks.
+
+### Next Steps
+
+1. Add a new `SectionType` variant — e.g. `EARNINGS_HIGHLIGHTS` — or piggyback on `BUSINESS` if the existing type taxonomy already carries the right semantics.
+2. Add pattern list entries for common 8-K headings: `Financial Highlights`, `Key Business Metrics`, `Q[1-4]\s*\d{4}\s*Highlights`, `Results of Operations`, `Business Highlights`.
+3. Validate against the Phase 0 candidate set (Chewy, DoorDash, Robinhood, Snowflake 8-Ks) — expect >=30% of segments to land on non-COVER sections.
+4. Audit existing FP rules for section-gated behavior that might fire differently once 8-K segments are correctly typed.
+
+---
+
+## 60. `detect_universe_gaps` Ignores SIC Filter When Reporting Populate Gaps
+
+**Status**: Open
+**Severity**: Low — correctness-neutral, efficiency issue
+**Discovered**: 2026-04-20 (Phase 1 review of `src/universe/onboarding.py`)
+
+### Problem
+
+`src/universe/onboarding.py::detect_universe_gaps` reports a `(year, form_type)` gap whenever the `filings` table has zero rows for that combination in the query's year range, regardless of the query's SIC code set. A reviewer filtering the UI to e.g. grocery retail 8-Ks will see a "populate 2023" prompt even if 2023 already has thousands of non-grocery 8-K filings in `filings` — the SIC intersection with those is empty, but the year/form coverage exists. The populate run that follows will re-fetch an entire year of 8-K metadata unnecessarily.
+
+### Next Steps
+
+1. Change the gap query from `filings.form_type + filing_date` to `filings JOIN companies ON company_id` with `industry_code = ANY(%(sic_codes)s)` (or the equivalent once the companies.industry_code field is populated — check that first).
+2. Alternatively, accept the over-populate behavior and document the trade-off in `src/universe/onboarding.py` at the function docstring — populate is idempotent, just bandwidth-wasteful.
+3. Add a unit test covering the "filings exist but not for our SIC" case.
+
+---
+
+## 61. `/ingest/preview` Has No Integration-Test Coverage
+
+**Status**: Open
+**Severity**: Low — unit tests exist for the form-parsing layer; the end-to-end path is untested
+**Discovered**: 2026-04-20 (Wave B Phase 4 review)
+
+### Problem
+
+`tests/integration/web/test_ingest_flow.py` covers `GET /ingest/`, `POST /ingest/start`, `GET /api/v2/ingest/batches/<id>/status`, `POST /cancel`, and auth. `POST /ingest/preview` — the middle step that runs `resolve_criteria` + `discover` + `classify_volume` + `count_reviewer_work` and renders the three-bucket candidate table — is only covered by unit tests on the form-parser helpers. No end-to-end assertion that a valid criteria submission renders a preview page with the correct bucket split + volume banner.
+
+### Next Steps
+
+1. Add an integration test that seeds two filings (one in `v2_documents`, one not) + a reviewed fact on the extracted one, POSTs `/ingest/preview` with criteria that match both, and asserts the three buckets render correctly.
+2. Assert the volume banner class (`alert-success` / `alert-warning` / `alert-danger`) for each band.
+3. Assert hidden-field snapshot survives re-render — `filing_id` hidden inputs must be present and match the discovered IDs.
+
+---
+
+## 62. Local-Dev Stuck-Batch Recovery Is Manual
+
+**Status**: Open
+**Severity**: Low — operational; no data loss, just operator inconvenience
+**Discovered**: 2026-04-20 (Wave B Phase 3 review)
+
+### Problem
+
+On Render (Phase 7), a worker service with `--watch` mode will re-claim a batch whose `run_lock_until` has expired. On local dev there is no watcher — if the `onboarding_runner` subprocess dies mid-batch (kernel OOM, user kills the Flask server, etc.), the batch stays in `status='running'` forever. Currently recovery requires a hand-crafted `UPDATE v2_ingest_batches SET status='failed' WHERE batch_id=...` plus a cleanup of partially-processed `v2_ingest_batch_filings` rows.
+
+### Next Steps
+
+1. Document the manual recovery SQL in `docs/operations/TICKER_ONBOARDING.md` (or a new batch-ingest runbook) when that file lands in Phase 7.
+2. Consider a `python3 -m src.universe.onboarding_runner --cleanup-stuck` admin flag that scans for batches with `run_lock_until < NOW() - INTERVAL '1 hour'` still in `running` state and either marks them failed or re-claims them.
+3. Add a CLI log line to the runner on SIGTERM that tells the operator "batch <id> interrupted — run `... --cleanup-stuck` to recover".
+
+---
+
+## 63. Cancel-During-Populate Not Exercised by Integration Test
+
+**Status**: Open
+**Severity**: Low — behaviour is documented + the conditional SQL is unit-tested
+**Discovered**: 2026-04-20 (Wave C / Phase 6 review)
+
+### Problem
+
+Wave C documents the cancel-during-populate flow (cancel flips `status='cancelled'`; runner respects it on natural completion via the new `WHERE status='running'` predicate on `_BATCH_COMPLETE_SQL`). The conditional SQL is unit-tested via string assertion (`tests/unit/universe/test_onboarding_runner.py::TestBatchCompleteConditional`), but no integration test simulates a runner mid-`build_universe` while cancel fires concurrently.
+
+### Next Steps
+
+1. Add an integration test in `tests/integration/universe/test_onboarding_runner_integration.py::TestPopulateCancellation` that: inserts a populate batch, monkey-patches `UniverseBuilder.build_universe` to flip the batch status to `cancelled` mid-run, calls `_run_populate`, asserts final status stays `cancelled` (not `complete`) and `finished_at IS NOT NULL`.
+2. Optionally extend Phase 5's JS to render a "Cancellation pending — batch will stop after current operation completes" banner when `status='cancelled' AND finished_at IS NULL` (today the JS shows the cancelled banner immediately).
+
+---
+
+## 64. Chart Classifier Tier 1 Boundary Sensitivity
 
 **Status**: Open
 **Severity**: Low — monitoring / silent-regression risk
@@ -978,7 +1093,7 @@ New `scripts/check_pg_client_version.py` pre-flight that compares `pg_dump` majo
 
 **Status**: Resolved (2026-04-21)
 
-New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBridgeStage`). Default 0.60 matches the existing classification gate — no default behavior change — because Tier 1 `cm_balance_by_cohort` classifies at ~0.6024 and a 0.70 default would regress Tier 1 recall. Operators can tighten the knob during backfills to suppress weak top-match binds. 5 unit tests added as `TestGuard6MetricConfidenceFloor`. See commit `7848605` and companion Issue #58 for the boundary sensitivity follow-up.
+New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBridgeStage`). Default 0.60 matches the existing classification gate — no default behavior change — because Tier 1 `cm_balance_by_cohort` classifies at ~0.6024 and a 0.70 default would regress Tier 1 recall. Operators can tighten the knob during backfills to suppress weak top-match binds. 5 unit tests added as `TestGuard6MetricConfidenceFloor`. See commit `7848605` and companion Issue #64 for the boundary sensitivity follow-up.
 
 ---
 
@@ -1054,4 +1169,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-20**: Issue #46 resolved — `MIGRATION_ORDER` in `scripts/apply_all_migrations.py` extended with `32_add_detected_keywords_to_v2_image_assets.sql`, `33_fix_identity_index.sql`, `34_dedup_v2_image_assets.sql`, `35_drop_v2_image_assets_segment_id.sql`, `36_backfill_presentation_urls.sql`, `37_create_analytics_role.sql`, `38_create_analytics_views.sql`. `--dry-run` now reports 44 migrations (31 pre-existing + 7 new); `check_unregistered_migrations` no longer aborts. Sync rather than delete (script still referenced from 7 docs); sql/33 included for fresh-DB-from-scratch semantics — migration is explicitly idempotent
 - **2026-04-20**: Issue #47 resolved — `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores (`data/filings/`, `data/image_cache/`). Verified via `git check-ignore -v`
 - **2026-04-21**: Archive cleanup — collapsed 29 fully-resolved issues (#10, #12, #13, #14, #15, #17, #18, #19, #20, #21, #22, #23, #25, #26, #29, #30, #31, #32, #33, #36, #37, #41, #44, #45, #46, #47, #48, #56, #57) from main body into Archive section; rewrote Summary table to foreground open items; removed resolved rows from Summary table. Issue #11 cross-reference to #10 updated to point to archive entry.
-- **2026-04-21**: Five-issue follow-up bundle landed in commit `7848605` — resolved #42 (double image-write collapsed via public `SECClient.get_image_cache_path`), #50 (new `tests/unit/web/test_api_unified_auth.py`), #51 (behavioral mock-cursor rewrite; `# fmt: skip` removed), #52 (new `scripts/check_pg_client_version.py` pre-flight + infrastructure.md doc section), #54 (new `chart_metric_min_confidence` knob with default 0.60 to avoid Tier 1 regression). Archive entries added. #58 opened — chart classifier Tier 1 boundary sensitivity: HOOD `cm_balance_by_cohort` scores 0.6024 (0.0024 above gate); surfaced while forcing #54's default down from the originally-proposed 0.70.
+- **2026-04-21**: Five-issue follow-up bundle landed in commit `7848605` — resolved #42 (double image-write collapsed via public `SECClient.get_image_cache_path`), #50 (new `tests/unit/web/test_api_unified_auth.py`), #51 (behavioral mock-cursor rewrite; `# fmt: skip` removed), #52 (new `scripts/check_pg_client_version.py` pre-flight + infrastructure.md doc section), #54 (new `chart_metric_min_confidence` knob with default 0.60 to avoid Tier 1 regression). Archive entries added. #64 opened — chart classifier Tier 1 boundary sensitivity: HOOD `cm_balance_by_cohort` scores 0.6024 (0.0024 above gate); surfaced while forcing #54's default down from the originally-proposed 0.70. (Renumbered from an earlier working #58 after merge from origin/main revealed issues #58–#63 had been claimed by the Wave B/C/D batch-ingest-ui follow-ups.)

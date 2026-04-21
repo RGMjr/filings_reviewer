@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Batch Ingest — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <h2 class="mb-4">Batch Ingest — Criteria</h2>
+    <p class="text-muted">
+      Select criteria below to discover filings for extraction.
+      After previewing the candidate list you can start a batch run.
+    </p>
+
+    <form method="POST" action="{{ url_for('ingest.ingest_preview') }}">
+
+      <!-- Industry multi-select -->
+      <div class="mb-3">
+        <label for="industries" class="form-label fw-semibold">Industries</label>
+        <select id="industries" name="industries" class="form-select" multiple size="6">
+          {% for ind in industries %}
+          <option value="{{ ind.key }}">{{ ind.label }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Hold Ctrl / Cmd to select multiple industries.</div>
+      </div>
+
+      <!-- Direct SIC codes -->
+      <div class="mb-3">
+        <label for="sic_codes" class="form-label fw-semibold">Direct SIC Codes</label>
+        <input type="text" id="sic_codes" name="sic_codes"
+               class="form-control" placeholder="e.g. 7372, 5411"
+               value="">
+        <div class="form-text">Comma-separated 4-digit SIC codes. Combined (union) with industry selection above.</div>
+      </div>
+
+      <!-- Form types -->
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Form Types</label>
+        <div>
+          {% for ft in form_types_available %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox"
+                   id="ft_{{ ft.key }}" name="form_types" value="{{ ft.key }}"
+                   {% if ft.key == 's1f1' %}checked{% endif %}>
+            <label class="form-check-label" for="ft_{{ ft.key }}">{{ ft.label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Year / year range -->
+      <div class="mb-3">
+        <label for="year" class="form-label fw-semibold">Year or Year Range</label>
+        <input type="text" id="year" name="year"
+               class="form-control" placeholder="e.g. 2023 or 2020-2024"
+               required>
+        <div class="form-text">Single year (2023) or inclusive range (2020-2024).</div>
+      </div>
+
+      <!-- Company name filter -->
+      <div class="mb-3">
+        <label for="company_name_ilike" class="form-label fw-semibold">
+          Company Name Filter <span class="text-muted fw-normal">(optional)</span>
+        </label>
+        <input type="text" id="company_name_ilike" name="company_name_ilike"
+               class="form-control" placeholder="e.g. Chewy">
+        <div class="form-text">Case-insensitive substring match on company name.</div>
+      </div>
+
+      <!-- Reviewer name -->
+      <div class="mb-4">
+        <label for="reviewer_name" class="form-label fw-semibold">Your Name</label>
+        <input type="text" id="reviewer_name" name="reviewer_name"
+               class="form-control" placeholder="e.g. Rob"
+               value="{{ reviewer_name }}" required maxlength="100">
+        <div class="form-text">Used to attribute this batch in the audit log. Remembered via cookie.</div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-lg">Preview Candidates</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

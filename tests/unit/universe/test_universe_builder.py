@@ -502,3 +502,67 @@ class TestUniverseBuilderCoverageStats:
         assert stats["spac_count"] == 3
         assert stats["first_time_issuer_count"] == 12
         assert stats["by_year"] == {2020: 8, 2021: 7}
+
+
+class TestProgressCallback:
+    """Tests for the progress_cb kwarg added in Wave C / Phase 6."""
+
+    def _make_n_filings(self, n: int) -> list[FilingMetadata]:
+        return [
+            FilingMetadata(
+                cik=f"{1_000_000 + i:010d}",
+                company_name=f"TestCo {i}",
+                form_type="S-1",
+                filing_date="2024-01-01",
+                accession_number=f"0001000000-24-{i:06d}",
+                primary_doc_url=f"https://example.com/{i}.htm",
+                ticker=f"T{i:03d}",
+            )
+            for i in range(n)
+        ]
+
+    def test_callback_invoked_at_start_every_5_and_end(self, mock_db):
+        sec_client = MockSECClient()
+        sec_client.search_filings = Mock(
+            return_value=self._make_n_filings(12)
+        )
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        calls: list[tuple[int, int]] = []
+
+        def cb(processed: int, total: int) -> None:
+            calls.append((processed, total))
+
+        builder.build_universe("2024-01-01", "2024-12-31", progress_cb=cb)
+
+        # Expect: (0, 12), (5, 12), (10, 12), (12, 12).
+        # The "every 5 iterations" tick fires when processed % 5 == 0; with 12
+        # filings that's processed=5 and processed=10. The final (total, total)
+        # always fires at the end.
+        assert (0, 12) in calls
+        assert (5, 12) in calls
+        assert (10, 12) in calls
+        assert (12, 12) in calls
+
+    def test_callback_none_is_safe(self, mock_db):
+        """progress_cb=None default must not raise."""
+        sec_client = MockSECClient()
+        sec_client.search_filings = Mock(
+            return_value=self._make_n_filings(3)
+        )
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+        # Default kwarg — should not raise
+        builder.build_universe("2024-01-01", "2024-12-31")
+
+    def test_callback_with_zero_filings(self, mock_db):
+        """Empty filing list still fires (0, 0) start + (0, 0) end."""
+        sec_client = MockSECClient()
+        sec_client.search_filings = Mock(return_value=[])
+        builder = UniverseBuilder(sec_client=sec_client, db=mock_db)
+
+        calls: list[tuple[int, int]] = []
+        builder.build_universe(
+            "2024-01-01", "2024-12-31", progress_cb=lambda p, t: calls.append((p, t))
+        )
+        # First and last fire even with empty list
+        assert calls.count((0, 0)) >= 1
