@@ -144,15 +144,20 @@ def _sniff_html_content_column(head: bytes | memoryview | str | None) -> bool:
 
 
 def _classify_path(row: dict) -> str:
-    """Return 'A' (URL-only patch), 'B' (force-reextract), or 'C' (defer)."""
+    """Return 'A' (URL-only patch), 'B' (force-reextract),
+    'B_coordinated' (one refetch, N row updates), or 'C' (defer)."""
     if not row["html_content_is_uber"]:
         return "A"
     if row["v2_review_decisions_count"] > 0 or row["v2_image_review_decisions_count"] > 0:
         return "C"
     if row.get("in_gold_standard"):
         return "C"
+    # facts == 0: URL-only is safe; cached-HTML residue is latent
+    if row["v2_metric_facts_count"] == 0:
+        return "A"
+    # facts > 0 and reviews == 0: refetch needed
     if row["accession_collides_in_scope"] or row["html_storage_path_shared_with"]:
-        return "C"
+        return "B_coordinated"
     return "B"
 
 
@@ -176,9 +181,7 @@ def run_audit(db: DatabaseAdapter, sec: SECClient) -> dict:
         resolved_url = None
         resolve_error = None
         try:
-            resolved_url = sec.resolve_primary_document_url(
-                r["filing_cik"], r["accession_number"]
-            )
+            resolved_url = sec.resolve_primary_document_url(r["filing_cik"], r["accession_number"])
         except Exception as e:  # network / parse failures
             resolve_error = str(e)
             logger.warning("resolve_primary_document_url failed for %s: %s", fid, e)
@@ -187,16 +190,11 @@ def run_audit(db: DatabaseAdapter, sec: SECClient) -> dict:
         column_is_uber = _sniff_html_content_column(r["html_content_head"])
         html_content_is_uber = on_disk_is_uber or column_is_uber
 
-        cik_drift = (
-            _normalise_cik(r["filing_cik"]) != _normalise_cik(r["company_cik"])
-        )
+        cik_drift = _normalise_cik(r["filing_cik"]) != _normalise_cik(r["company_cik"])
 
-        accession_collides = (
-            len(by_accession.get(r["accession_number"], [])) > 1
-        )
+        accession_collides = len(by_accession.get(r["accession_number"], [])) > 1
         storage_path_shared_with = [
-            other for other in by_storage_path.get(r["html_storage_path"] or "", [])
-            if other != fid
+            other for other in by_storage_path.get(r["html_storage_path"] or "", []) if other != fid
         ]
 
         downstream = _count_downstream(db, fid)
@@ -210,18 +208,14 @@ def run_audit(db: DatabaseAdapter, sec: SECClient) -> dict:
             "accession_number": r["accession_number"],
             "accession_collides_in_scope": accession_collides,
             "form_type": r["form_type"],
-            "filing_date": (
-                r["filing_date"].isoformat() if r["filing_date"] else None
-            ),
+            "filing_date": (r["filing_date"].isoformat() if r["filing_date"] else None),
             "processing_status": r["processing_status"],
             "stale_sec_html_url": r["stale_sec_html_url"],
             "resolved_url": resolved_url,
             "resolve_error": resolve_error,
             "html_storage_path": r["html_storage_path"],
             "html_storage_path_shared_with": storage_path_shared_with,
-            "html_content_len": (
-                int(r["html_content_len"]) if r["html_content_len"] else 0
-            ),
+            "html_content_len": (int(r["html_content_len"]) if r["html_content_len"] else 0),
             "html_on_disk_is_uber": on_disk_is_uber,
             "html_content_column_is_uber": column_is_uber,
             "html_content_is_uber": html_content_is_uber,
@@ -267,9 +261,17 @@ def _print_table(report: dict) -> None:
 
     # Compact per-row table. Columns chosen for decision clarity.
     headers = [
-        "fid", "path", "company", "cik",
-        "facts", "rv", "img_rv",
-        "html_uber", "collide", "shared", "resolved_url_ok",
+        "fid",
+        "path",
+        "company",
+        "cik",
+        "facts",
+        "rv",
+        "img_rv",
+        "html_uber",
+        "collide",
+        "shared",
+        "resolved_url_ok",
     ]
     widths = [6, 4, 28, 12, 6, 4, 6, 9, 7, 6, 15]
 
@@ -280,19 +282,23 @@ def _print_table(report: dict) -> None:
     print(_fmt_row(headers))
     print(_fmt_row(["-" * w for w in widths]))
     for r in rows:
-        print(_fmt_row([
-            r["filing_id"],
-            r["recommended_path"],
-            r["company_name"],
-            r["filing_cik"],
-            r["v2_metric_facts_count"],
-            r["v2_review_decisions_count"],
-            r["v2_image_review_decisions_count"],
-            "Y" if r["html_content_is_uber"] else "N",
-            "Y" if r["accession_collides_in_scope"] else "N",
-            "Y" if r["html_storage_path_shared_with"] else "N",
-            "Y" if r["resolved_url"] else ("ERR" if r["resolve_error"] else "N"),
-        ]))
+        print(
+            _fmt_row(
+                [
+                    r["filing_id"],
+                    r["recommended_path"],
+                    r["company_name"],
+                    r["filing_cik"],
+                    r["v2_metric_facts_count"],
+                    r["v2_review_decisions_count"],
+                    r["v2_image_review_decisions_count"],
+                    "Y" if r["html_content_is_uber"] else "N",
+                    "Y" if r["accession_collides_in_scope"] else "N",
+                    "Y" if r["html_storage_path_shared_with"] else "N",
+                    "Y" if r["resolved_url"] else ("ERR" if r["resolve_error"] else "N"),
+                ]
+            )
+        )
     print("")
     s = report["summary"]
     print(
