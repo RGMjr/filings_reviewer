@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1
+#
+# Dockerfile.nightly-sweep — image for the autonomous KNOWN_ISSUES sweeper.
+#
+# Differences vs. the main Dockerfile:
+#   - Adds the Claude Code CLI (`claude`) and GitHub CLI (`gh`)
+#   - Installs git (the base `python:slim` image lacks it)
+#   - Keeps the same Python + pip layer so /commit's `pytest -x -q` can run
+#     inside worktrees.
+#
+# Entrypoint is the orchestrator shell script; the Render cron service
+# overrides with its own command if needed.
+
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+
+# System deps: git (for worktrees + push), curl (to fetch CLIs), build deps
+# for psycopg/cffi wheels that the repo pulls in via requirements.lock.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# GitHub CLI (gh). Official install via keyring + apt.
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Claude Code CLI. Installs to /usr/local/bin/claude via the official installer.
+# The installer is idempotent and safe to run at build time.
+RUN curl -fsSL https://claude.ai/install.sh | sh
+
+# Non-privileged user (matches main Dockerfile pattern).
+ARG UID=10001
+RUN adduser --disabled-password --gecos "" \
+        --home "/home/appuser" --shell "/bin/bash" --uid "${UID}" appuser
+
+# Python dependencies — same lockfile as the main image so pytest works inside
+# sweep worktrees without a separate install step.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=requirements.lock,target=requirements.lock \
+    python -m pip install -r requirements.lock
+
+COPY --chown=appuser:appuser . .
+
+RUN mkdir -p /app/.claude/worktrees /app/.claude/sweep-digests \
+    && chown -R appuser:appuser /app/.claude
+
+USER appuser
+
+CMD ["bash", "scripts/run_nightly_sweep.sh"]
