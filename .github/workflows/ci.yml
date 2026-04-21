@@ -43,21 +43,50 @@ jobs:
     needs: [lint]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for UI-relevant changes
+        id: filter
+        # Skip Playwright when EVERY changed path is in the docs/skills/meta
+        # allowlist. Any src/, tests/, config/, sql/, requirements*, pyproject,
+        # uv.lock, or .github/workflows change still runs the full Playwright
+        # suite. Conservative — err toward running when in doubt.
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            base="origin/${{ github.base_ref }}"
+          else
+            base="HEAD^"
+          fi
+          if git diff --name-only "$base"...HEAD \
+              | grep -vE '^(docs/|\.claude/|CLAUDE\.md|README\.md|\.gitignore|\.github/CODEOWNERS)' \
+              | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=UI E2E skipped::No UI-relevant paths changed."
+          fi
 
       - uses: actions/setup-node@v4
+        if: steps.filter.outputs.run == 'true'
         with:
           node-version: '20'
           cache: 'npm'
 
       - uses: astral-sh/setup-uv@v3
+        if: steps.filter.outputs.run == 'true'
 
       - name: Install Python dependencies
+        if: steps.filter.outputs.run == 'true'
         run: uv sync --extra dev
 
       - name: Install Node dependencies
+        if: steps.filter.outputs.run == 'true'
         run: npm ci
 
       - name: Cache Playwright browsers
+        if: steps.filter.outputs.run == 'true'
         id: playwright-cache
         uses: actions/cache@v4
         with:
@@ -65,14 +94,15 @@ jobs:
           key: playwright-chrome-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright Chrome
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        if: steps.filter.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chrome
 
       - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        if: steps.filter.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chrome
 
       - name: Run Playwright tests
+        if: steps.filter.outputs.run == 'true'
         working-directory: tests/ui
         shell: bash
         # webServer command in playwright.config.js invokes `python3 test_server.py`
@@ -82,7 +112,7 @@ jobs:
           npx playwright test
 
       - name: Upload Playwright report on failure
-        if: failure()
+        if: failure() && steps.filter.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
