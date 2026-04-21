@@ -38,23 +38,19 @@ if TYPE_CHECKING:
 # Filing ID to Company Name mapping
 # History: Original IDs 32/34 had wrong data (RLX Technology / Vodka Brands due to CIK
 # mismatch, labeled as Snowflake/DocuSign). Fixed 2025-12-26: IDs 39/40 created for real
-# Snowflake/DocuSign. Filing 33 (labeled Snap, CIK 0001644378) contained RMR Group Inc.
-# data — mislabeling confirmed, correct Snap CIK is 0001564408.
-# IDs 31/33 no longer in use after DB reorganization.
-#
-# NOTE (2026-04-19): Filing 32 (below) is still mislabeled: the DB row labelled
-# "Snap" stores RMR Group Inc. filing content. A `companies.cik` column update
-# alone will NOT fix this — the extracted facts are sourced from RMR's filing,
-# not Snap's. A correct fix requires re-ingesting the actual Snap S-1/A
-# (accession 0001193125-17-056992, filed 2017-02-27) via the normal ingestion
-# pipeline. Tracked in docs/KNOWN_ISSUES.md Issue #9 as a separate workstream.
+# Snowflake/DocuSign. Filing 32 was labeled "Snap" but contained RMR Group Inc. content
+# (CIK 0001644378). Resolved 2026-04-21 (see docs/KNOWN_ISSUES.md #9): the CIK-0001644378
+# companies row was relabeled "RMR Group Inc." (preserving extracted content), and the
+# real Snap S-1/A (CIK 0001564408, accession 0001193125-17-056992, filed 2017-02-27)
+# was seeded + re-extracted locally. Adding Snap's new filing_id to validation is a
+# gold-standard decision outside this map's scope.
 FILING_MAP = {
     29: "Farfetch Ltd",
-    32: "Snap",               # MISLABELED: filing content is RMR Group, not Snap. See Issue #9.
+    32: "RMR Group Inc.",  # Relabeled 2026-04-21 from mislabeled "Snap" (Issue #9).
     34: "SUSHI GINZA ONODERA",
     35: "Slack Technologies",
-    39: "Snowflake Inc",      # Real Snowflake S-1/A (CIK 0001640147, 2020-09-14)
-    40: "DocuSign Inc",       # Real DocuSign S-1 (CIK 0001261333, 2018-09-11)
+    39: "Snowflake Inc",  # Real Snowflake S-1/A (CIK 0001640147, 2020-09-14)
+    40: "DocuSign Inc",  # Real DocuSign S-1 (CIK 0001261333, 2018-09-11)
 }
 
 VALIDATION_FILING_IDS = (29, 32, 34, 35, 39, 40)
@@ -170,12 +166,8 @@ def analyze_boolean_flags(segments: list[SegmentData]) -> dict[str, dict]:
 
     flags = {
         "contains_temporal_trend": sum(1 for s in segments if s.contains_temporal_trend),
-        "contains_cohort_breakdown": sum(
-            1 for s in segments if s.contains_cohort_breakdown
-        ),
-        "contains_definition_flag": sum(
-            1 for s in segments if s.contains_definition_flag
-        ),
+        "contains_cohort_breakdown": sum(1 for s in segments if s.contains_cohort_breakdown),
+        "contains_definition_flag": sum(1 for s in segments if s.contains_definition_flag),
     }
 
     return {
@@ -193,7 +185,9 @@ def analyze_numeric_components(segments: list[SegmentData]) -> dict[str, dict]:
     results = {}
 
     # Classifier confidence
-    confidence_vals = [s.classifier_confidence for s in segments if s.classifier_confidence is not None]
+    confidence_vals = [
+        s.classifier_confidence for s in segments if s.classifier_confidence is not None
+    ]
     if confidence_vals:
         stats = calculate_percentiles(confidence_vals)
         results["classifier_confidence"] = {
@@ -244,7 +238,7 @@ def print_histogram_visual(hist: dict[str, int], max_width: int = 40) -> None:
         count = hist.get(i, 0)
         bar_width = int(count / max_count * max_width) if max_count > 0 else 0
         bar = "█" * bar_width
-        print(f"{i:.1f} - {i+1:.1f}     | {count:>6} | {bar}")
+        print(f"{i:.1f} - {i + 1:.1f}     | {count:>6} | {bar}")
 
     print("```")
 
@@ -343,9 +337,7 @@ def analyze_slack_ground_truth(segments: list[SegmentData]) -> None:
     slack_segments.sort(key=lambda s: s.richness_score, reverse=True)
 
     print("\n## Ground Truth Comparison (Slack - filing_id=35)\n")
-    print(
-        "From GI-2: 25 goldmines identified, system detects 1 at threshold 6.0 (4% recall)\n"
-    )
+    print("From GI-2: 25 goldmines identified, system detects 1 at threshold 6.0 (4% recall)\n")
 
     # Threshold analysis
     thresholds = [4.0, 5.0, 5.5, 6.0, 7.0, 8.0]
@@ -359,12 +351,8 @@ def analyze_slack_ground_truth(segments: list[SegmentData]) -> None:
 
     # Top segments
     print("\n### Top 10 Slack Segments by Richness\n")
-    print(
-        "| Rank | Seg ID | Score | Conf | Metrics | Temporal | Cohort | Definition | Images |"
-    )
-    print(
-        "|------|--------|-------|------|---------|----------|--------|------------|--------|"
-    )
+    print("| Rank | Seg ID | Score | Conf | Metrics | Temporal | Cohort | Definition | Images |")
+    print("|------|--------|-------|------|---------|----------|--------|------------|--------|")
 
     for i, s in enumerate(slack_segments[:10], 1):
         conf = f"{s.classifier_confidence:.2f}" if s.classifier_confidence else "-"
@@ -394,15 +382,9 @@ def print_score_breakdown(segments: list[SegmentData]) -> None:
 
     tiers = {
         "Below 2.0": sum(1 for s in segments if s.richness_score < 2.0),
-        "2.0 - 3.99": sum(
-            1 for s in segments if 2.0 <= s.richness_score < 4.0
-        ),
-        "4.0 - 5.99": sum(
-            1 for s in segments if 4.0 <= s.richness_score < 6.0
-        ),
-        "6.0 - 7.99 (Goldmine)": sum(
-            1 for s in segments if 6.0 <= s.richness_score < 8.0
-        ),
+        "2.0 - 3.99": sum(1 for s in segments if 2.0 <= s.richness_score < 4.0),
+        "4.0 - 5.99": sum(1 for s in segments if 4.0 <= s.richness_score < 6.0),
+        "6.0 - 7.99 (Goldmine)": sum(1 for s in segments if 6.0 <= s.richness_score < 8.0),
         "8.0+ (High-Value)": sum(1 for s in segments if s.richness_score >= 8.0),
     }
 
@@ -504,7 +486,9 @@ def main() -> None:
     print("## Executive Summary\n")
     print("- **Analysis date**: 2025-12-17")
     print(f"- **Total segments analyzed**: {len(segments)}")
-    print(f"- **Filings analyzed**: {len(FILING_MAP)} (IDs: {', '.join(map(str, VALIDATION_FILING_IDS))})")
+    print(
+        f"- **Filings analyzed**: {len(FILING_MAP)} (IDs: {', '.join(map(str, VALIDATION_FILING_IDS))})"
+    )
 
     # Overall stats
     scores = [s.richness_score for s in segments]

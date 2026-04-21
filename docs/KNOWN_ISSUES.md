@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #9 resolved (Snap Filing ID 32/33 mislabeled data — local relabel + Snap S-1/A re-ingested; FILING_MAP updated; Partially-Resolved row removed); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -46,7 +46,6 @@ _(none currently)_
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| Snap Filing (ID 32/33) — Mislabeled Data (Issue #9) | Partially resolved | Snap not yet in gold standard; validation DB no longer required |
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved | 1 test fixed; 2 stale assertions `test.skip`-ed with TODOs |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved | `chart_only` mode landed (PR #50); full 8-filing backfill deferred (#53, #54) |
 
@@ -62,55 +61,6 @@ _(none currently)_
 | Issue | Notes |
 |-------|-------|
 | Image cache / R2 backend (Issue #34) | Cross-referenced by #24, #35, #42; body retained until those close |
-
----
-
-## 9. Snap Filing (ID 32/33) — Mislabeled Data (Validation DB Dependency Resolved)
-
-**Status**: Partially resolved — validation DB dependency eliminated; Snap CIK fix still pending
-**Severity**: Low (Snap not yet in gold standard; gold standard validation no longer DB-dependent)
-**Discovered**: 2025-12-27 (HRV-5)
-**Investigated**: 2026-03-19
-**Updated**: 2026-03-19
-
-### Problem
-
-Filing ID 33 (and later reorganized to ID 32 in `gi3_richness_analysis.py`) is labeled "Snap"
-but the CIK on record (`0001644378`) belongs to **RMR Group Inc.** (a REIT management company),
-confirmed via SEC EDGAR API.
-
-The local dev DB validation dataset was found to be **empty** as of 2026-03-19. The backup file
-`filings_backup.dump` contains only schema, not data.
-
-### Confirmed Facts
-
-- Filing 33 CIK `0001644378` = RMR Group Inc. (confirmed 2026-03-19 via SEC API)
-- Snap's correct CIK = `0001564408`, form S-1/A, filed 2017-02-27, accession `0001193125-17-056992`
-- `gi3_richness_analysis.py` FILING_MAP comment was stale (said "IDs 31/33" were wrong; actually
-  IDs 32/34 had RLX Technology / Vodka Brands data per GR-FINAL_VALIDATION.md 2025-12-26)
-
-### Root Cause
-
-CIK `0001644378` was mistakenly used for Snap instead of `0001564408` when originally ingested.
-
-### Resolution (2026-03-19)
-
-The empty local validation DB is no longer a blocker. Gold standard validation now runs in
-**fresh mode** (`pytest -m gold_standard --gold-standard-mode=fresh -v`), which re-extracts
-candidates directly from locally cached HTML files without requiring a populated database.
-
-`test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh`, making the
-validation reproducible without any database setup. The `*.dump` pattern is now in `.gitignore`
-to prevent accidentally committing production database dumps.
-
-### Remaining (Low Priority)
-
-- Re-ingest the actual Snap S-1/A (CIK `0001564408`, accession `0001193125-17-056992`, filed 2017-02-27) and add to the gold standard. **This is not a simple `companies.cik` column update** — filing 32 in the local DB (labeled "Snap") contains RMR Group content, so changing the CIK alone would leave the extracted facts pointing at the wrong company. A correct fix deletes or archives the orphaned filing 32 row, then runs the normal ingestion pipeline against the real Snap S-1/A URL. Track this as a separate workstream; not blocking.
-
-### Partial Fix Applied (2026-03-19)
-
-- Corrected stale comment in `gi3_richness_analysis.py` FILING_MAP
-- Added inline note on Snap CIK pending fix
 
 ---
 
@@ -918,6 +868,20 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 
 The "1 remaining" test tied to archived Issue #10 no longer exists; `tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The 11/12 → 12/12 finish line was reached implicitly. See archive entry for Issue #10.
 
+### Issue #9: Snap Filing (ID 32/33) — Mislabeled Data
+
+**Status**: Resolved (2026-04-21)
+
+Filing 32 was labelled "Snap" but the CIK on record (`0001644378`) belongs to RMR Group Inc.; no Snap content had ever been ingested. Resolution:
+
+1. Relabeled the local `companies` row for CIK `0001644378` to `'RMR Group Inc.'` (preserves the already-extracted RMR content under the correct issuer name; no CASCADE through `v2_segments`/`v2_metric_facts`/`v2_review_decisions`).
+2. Seeded `Snap Inc.` (CIK `0001564408`) + its real S-1/A (accession `0001193125-17-056992`, filed 2017-02-27, primary doc `d270216ds1a.htm`) via `sql/seed_snap_s1a.sql` (unnumbered, one-off — follows `sql/register_gold_standard_filings.sql` precedent; not registered in `scripts/apply_migrations.py`).
+3. Fetched HTML via `FilingFetcher.fetch_filing` (2.3 MB into `data/filings/0001564408/000119312517056992/primary.htm`).
+4. Ran V2 extraction — 8 facts across `cm_daily_active_users`, `cm_revenue_per_customer`, `cm_active_customers_total` (1724 segments, 547 tables, 40 images persisted).
+5. Updated `scripts/gi3_richness_analysis.py` FILING_MAP (id 32 → `"RMR Group Inc."`; comment shortened).
+
+Scope limited to local (`$TEST_DATABASE_URL`). Neon prod mirror is a separate workstream. Adding Snap's new filing_id to gold-standard coverage is also out of scope — owned by the gold-standard workflow.
+
 ### Issue #12: `test_image_crop.py` Pollutes Working Tree with Test PNGs
 
 **Status**: Resolved (2026-04-18)
@@ -1200,3 +1164,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-21**: Issue #11 archived — resolved-by-deletion. Remaining "1/12" test was in `tests/integration/test_gold_standard_coverage.py`, deleted in commit `03a8a20` during V1 retirement.
 - **2026-04-21**: Added Issue #67 — `/cleanup` skill step-1 mode-detection (`test -d .claude/worktrees`) is CWD-relative and returns `remote` when invoked from a ccw worktree, silently skipping the step-5 worktree sweep on local machines. Companion to the step-5 `-f -f` fix in commit for `.claude/commands/cleanup.md`.
 - **2026-04-21**: Issue #67 resolved — session-hygiene bundle: (a) `cleanup.md` step 1 re-anchored to `git rev-parse --git-common-dir` so local mode detects from any linked worktree; (b) `ccw` in `~/.zshrc` now writes a PID lockfile on entry and refuses silent second-session occupancy (self-healing via `kill -0`); (c) `ccw-rm` auto-deletes merged branches via `gh pr list --state merged` (offline-safe fallback); (d) `/commit` step 1 appends `-HHMM` timestamp on branch-name collision. Docs updated in `docs/development/claude-sessions-and-worktrees.md`. Summary row removed. Note: `~/.zshrc` edits (b, c) apply manually — patch in PR description.
+- **2026-04-21**: Issue #9 resolved (local) — `sql/seed_snap_s1a.sql` (unnumbered, follows `register_gold_standard_filings.sql` precedent) relabels CIK `0001644378` row to `RMR Group Inc.` and seeds Snap Inc. (CIK `0001564408`) + its real S-1/A (accession `0001193125-17-056992`, primary doc `d270216ds1a.htm`, SEC 200 OK confirmed today). `FilingFetcher.fetch_filing` pulled 2.3 MB into `data/filings/0001564408/000119312517056992/primary.htm`; `batch_v2_extraction.py --filing-id 20682` persisted 8 facts / 1724 segments / 547 tables / 40 images (DAU 153M/158M, revenue-per-user $2.15). `scripts/gi3_richness_analysis.py` FILING_MAP entry for id 32 corrected to `"RMR Group Inc."`. Partially-Resolved summary row removed. Scope: local (`$TEST_DATABASE_URL`) only — Neon prod mirror and gold-standard coverage addition are separate workstreams.
