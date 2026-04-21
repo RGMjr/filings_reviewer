@@ -15,6 +15,7 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 ## Workflow
 
 **PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit` (project-local): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass.
+Merges go through GitHub's merge queue; do not manually rebase an in-flight PR unless the queue explicitly fails it for conflicts.
 
 **Worktree-first.** Run `/commit` (and any HEAD-moving git work) from a `ccw` worktree, not the primary tree — a PreToolUse guard denies `git checkout`/`switch`/`checkout -b` in the primary tree to protect concurrent sessions. Use `EnterWorktree` inside a session or `ccw [branch]` from the shell. See `docs/development/claude-sessions-and-worktrees.md`.
 
@@ -81,6 +82,10 @@ Metrics are classified into importance tiers based on analytical value. These ti
 4. **Conservative classification**: "Require BOTH" signals to minimize false positives
 5. **Image pipeline is active**: Do not delete image-processing code (`src/llm/vision_client.py`, `src/extraction_v2/` image/OCR stages, `src/web/routes/review_unified.py` + `api_unified.py` image endpoints, image scripts). The image review system is complete and in use.
 6. **Reviewed-filing guard**: Re-extraction of a filing with human review decisions requires explicit `force=True` / `--force-reextract`. Enforced in `V2PersistenceAdapter._persist_facts_in_tx`; raises `ReviewedFilingError` otherwise. Prevents silent CASCADE-destruction of reviewer work via `v2_review_decisions.fact_id ON DELETE CASCADE`.
+
+## Hooks
+
+A PreToolUse hook nudges `/simplify` when 3+ files are modified before `/commit` — see `.claude/hooks/precommit-simplify-check.sh`.
 
 ## Compact Instructions
 

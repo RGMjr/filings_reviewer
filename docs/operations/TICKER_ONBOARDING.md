@@ -370,3 +370,34 @@ WHERE batch_id = '<id>' AND status = 'running';
 
 After this, re-submit from the preview page. A `--cleanup-stuck` admin flag
 (auto-resets timed-out running rows on worker startup) is a planned follow-up.
+
+---
+
+## Recovering a stuck batch (local dev)
+
+On local dev there is no watcher process. If `onboarding_runner` dies mid-batch (kernel OOM, Flask server killed, `ctrl-c` at the wrong time), the row in `v2_ingest_batches` stays in `status='running'` forever and subsequent runs won't re-claim it.
+
+To find stuck candidates:
+
+```sql
+SELECT batch_id, started_at, run_lock_until
+FROM v2_ingest_batches
+WHERE status = 'running'
+  AND (run_lock_until IS NULL OR run_lock_until < NOW() - INTERVAL '1 hour');
+```
+
+To mark a batch failed manually:
+
+```sql
+UPDATE v2_ingest_batches
+SET status = 'failed',
+    finished_at = NOW(),
+    run_lock_until = NULL
+WHERE batch_id = '<uuid>';
+```
+
+Partially-processed `v2_ingest_batch_filings` rows with `processing_status='running'` should also be reset or deleted depending on whether the filings had side effects (image assets written, facts persisted). Inspect before cleaning.
+
+Prod / Render: the `--watch` mode on the worker service automatically re-claims batches whose `run_lock_until` has expired — no manual step needed.
+
+Tracked under Issue #62 in `docs/KNOWN_ISSUES.md`. A `--cleanup-stuck` CLI flag on `onboarding_runner` and a SIGTERM-log-line hint are still open as follow-ups.
