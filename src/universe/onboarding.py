@@ -536,12 +536,66 @@ class RunSummary:
     events: list[FilingEvent] = field(default_factory=list)
 
 
+def load_candidates_by_filing_ids(
+    db: DatabaseAdapter,
+    filing_ids: Sequence[int],
+) -> list[Candidate]:
+    """Load Candidate objects for the given filing IDs.
+
+    Used by the batch runner to reconstruct Candidate objects from the
+    filing_id list stored in v2_ingest_batch_filings.  Returns an empty
+    list when *filing_ids* is empty.
+    """
+    if not filing_ids:
+        return []
+
+    sql = """
+SELECT
+    f.filing_id,
+    c.cik,
+    c.ticker,
+    c.company_name,
+    f.form_type,
+    f.filing_date,
+    c.industry_code,
+    f.accession_number,
+    f.sec_html_url  AS primary_doc_url,
+    f.sec_txt_url   AS txt_url,
+    (v.doc_id IS NOT NULL) AS already_extracted,
+    v.created_at    AS extracted_at
+FROM filings f
+JOIN companies c ON c.company_id = f.company_id
+LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
+WHERE f.filing_id = ANY(%(filing_ids)s)
+ORDER BY f.filing_date, c.company_name
+"""
+    rows = db.query(sql, {"filing_ids": list(filing_ids)})
+    return [
+        Candidate(
+            filing_id=r["filing_id"],
+            cik=r["cik"],
+            ticker=r.get("ticker"),
+            company_name=r["company_name"],
+            form_type=r["form_type"],
+            filing_date=str(r["filing_date"]),
+            industry_code=r.get("industry_code"),
+            accession_number=r["accession_number"],
+            primary_doc_url=r["primary_doc_url"],
+            txt_url=r.get("txt_url"),
+            already_extracted=bool(r["already_extracted"]),
+            extracted_at=str(r["extracted_at"]) if r.get("extracted_at") else None,
+        )
+        for r in rows
+    ]
+
+
 def onboard(
     db: DatabaseAdapter,
     candidates: list[Any],  # list[Candidate]
     reextract_decisions: dict[int, bool],
     progress_cb: Callable[[FilingEvent], None] | None = None,
     *,
+    abort_check: Callable[[], bool] | None = None,
     storage_root: str = "data/filings",
     user_agent: str = "CMASB Filings Analyzer rgmarkey@gmail.com",
     skip_txt: bool = False,
@@ -566,6 +620,13 @@ def onboard(
         Optional callback invoked with a ``FilingEvent`` for every status
         change.  Callers may use this to update SSE streams, DB batch-filing
         rows, or log output.
+    abort_check:
+        Optional callable that returns ``True`` when the caller wants the
+        loop to stop early (e.g. batch cancellation).  Checked **between**
+        candidate iterations — the in-flight filing always completes.  When
+        the check fires the function returns immediately without emitting any
+        additional events; the caller is responsible for marking remaining
+        queued items as cancelled.
     storage_root:
         Directory root for FilingFetcher cached downloads.
     user_agent:
@@ -678,5 +739,10 @@ def onboard(
             logger.error(msg, exc_info=True)
             _emit(FilingEvent(filing_id=c.filing_id, status="failed", message=str(e)))
             summary.failed += 1
+
+        # Check between filings — in-flight filing always completes first.
+        if abort_check is not None and abort_check():
+            logger.info("onboard: abort_check fired — stopping early")
+            break
 
     return summary
