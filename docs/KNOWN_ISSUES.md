@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-19 (Issue #13 resolved — prod verified 9-col; #31 fully resolved — sync middleware path now matches async TESTING guard; #36 resolved — `populate --limit N` + `build_universe(limit=)`; #37 resolved — FTI classifier gated to S-1/F-1; #41 resolved — `--navbar-height` CSS var + compact navbar + pill flex-wrap + three badges dropped; deployed Render build verified visually; #30 resolved — audit→Path-A URL fix on 15 Spectrum Brands co-registrants; #43–#45 opened from #30 audit out-of-scope follow-ups)
+**Last Updated**: 2026-04-20 (#46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored)
 
 ---
 
@@ -188,6 +188,50 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 ---
 
+## 46. `scripts/apply_all_migrations.py` Stale — Stops at Migration 31
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20
+
+### Problem
+
+`scripts/apply_all_migrations.py` maintains its own `MIGRATION_ORDER` list that
+ends at `31_drop_v1_review_tables.sql`. It also runs a
+`check_unregistered_migrations` guard that aborts with an error if any `sql/*.sql`
+file is missing from the list. That means anyone invoking this variant today
+will hit a confusing failure because files 32–38 are unregistered there, while
+the canonical runner (`scripts/apply_migrations.py`) handles them correctly.
+
+### Next Steps
+
+- Either bring `apply_all_migrations.py` into sync with `apply_migrations.py`
+  and keep both in lockstep, or
+- Delete `apply_all_migrations.py` entirely if the canonical runner is
+  sufficient. The two scripts overlap substantially in behavior.
+
+---
+
+## 47. `data/audit/` Not Gitignored
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20
+
+### Problem
+
+Runtime audit output (e.g. `data/audit/issue_30_applied_*.jsonl`) accumulates
+in the working tree as untracked files. Other runtime subpaths under `data/`
+are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
+`data/llm_cache.db`, etc.), but `data/audit/` was missed.
+
+### Next Steps
+
+- Add `data/audit/` to `.gitignore` alongside the existing `data/*` entries.
+- Confirm no historical `data/audit/` contents are expected to be versioned.
+
+---
+
 ## Summary
 
 | Issue | Status | Priority | Effort | Impact |
@@ -226,6 +270,8 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
 | Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Resolved (2026-04-19) | — | — | `--navbar-height: 48px`, compact navbar, `.review-pill-row` flex-wrap; three badges dropped; deployed Render build verified visually |
 | `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
+| `apply_all_migrations.py` stale (Issue #46) | Open | Low | Low | MIGRATION_ORDER list stops at 31; unregistered-guard aborts on files 32-38. Canonical runner is `apply_migrations.py`; resolve by syncing or deleting the stale variant |
+| `data/audit/` not gitignored (Issue #47) | Open | Low | Low | Runtime JSONL audit output accumulates as untracked files; peer `data/*` subpaths are already gitignored. One-line `.gitignore` addition |
 
 ---
 
@@ -1575,3 +1621,5 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Issue #36 resolved — `UniverseBuilder.build_universe` gained optional `limit: int | None` kwarg; `scripts/onboard_tickers.py populate --limit N` threads through. Default `None` preserves unbounded behaviour; regression test at `tests/unit/universe/test_universe_builder.py::test_limit_stops_after_n_in_scope_upserts`. Commit `366d9dd`
 - **2026-04-19**: Issue #37 resolved — `_process_filing` in `src/universe/universe_builder.py` gates `classify_first_time_issuer` on `filing.form_type in DEFAULT_FORM_TYPES_S1F1`; non-applicable filings land with `is_first_time_issuer=NULL` and `fti_method="not_applicable"`. Mirror of the existing SPAC-SGML gate at line 163. Covered by `tests/unit/universe/test_universe_builder.py::test_10k_filing_has_null_first_time_issuer`. Commit `366d9dd`
 - **2026-04-19**: Issue #41 resolved — `--navbar-height: 48px` CSS custom property in `src/web/static/css/review.css` unifies sticky offsets; `.navbar.sticky-top` padding-y compacted to 0.25rem; `.review-pill-row` flex-wrap class on the `unified_review.html:58` stat-pill row. Separately, `accepted`, `rejected`, and `img reviewed` badges dropped to reduce horizontal load; badge font-size shrunk to 0.7rem; sticky-header vertical padding trimmed to absorb container `mt-4`. Deployed Render build verified visually. Commit `366d9dd`
+- **2026-04-20**: Added Issue #46 — `scripts/apply_all_migrations.py` `MIGRATION_ORDER` list stops at 31 and its unregistered-guard aborts on files 32-38; surfaced during analytics-UI phase 1 (sql/37 + sql/38) audit. Canonical runner is `scripts/apply_migrations.py`
+- **2026-04-20**: Added Issue #47 — `data/audit/` runtime JSONL output is untracked but not gitignored; peer `data/*` subpaths are. Surfaced during analytics-UI phase 1 pre-commit `git status` review
