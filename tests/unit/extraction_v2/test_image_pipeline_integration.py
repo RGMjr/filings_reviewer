@@ -129,9 +129,14 @@ class MockVisionClient:
 class MockSECClient:
     """Mock SEC client for testing image downloading."""
 
-    def __init__(self, image_data: dict[str, bytes] | None = None) -> None:
+    def __init__(
+        self,
+        image_data: dict[str, bytes] | None = None,
+        cache_root: Path | None = None,
+    ) -> None:
         self.image_data = image_data or {}
         self.fetch_calls: list[tuple[str, str, str]] = []
+        self._cache_root = cache_root
 
     def fetch_image(
         self,
@@ -142,7 +147,21 @@ class MockSECClient:
         max_size_bytes: int = 10 * 1024 * 1024,
     ) -> bytes | None:
         self.fetch_calls.append((cik, accession_number, filename))
-        return self.image_data.get(filename)
+        data = self.image_data.get(filename)
+        if data is not None and self._cache_root is not None:
+            # Simulate the on-disk write that SECClient.fetch_image performs
+            cache_path = self.get_image_cache_path(cik, accession_number, filename)
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_bytes(data)
+        return data
+
+    def get_image_cache_path(self, cik: str, accession_number: str, filename: str) -> Path:
+        """Return the SECClient-layout cache path under cache_root."""
+        if self._cache_root is None:
+            raise ValueError("get_image_cache_path called but cache_root is not set")
+        cik_stripped = cik.lstrip("0") or "0"
+        accession_no_dashes = accession_number.replace("-", "")
+        return self._cache_root / cik_stripped / accession_no_dashes / filename
 
 
 def _make_chart_asset(
@@ -202,9 +221,7 @@ class TestImageDownloading:
     """Tests for OCRExtractionStage._download_missing_images."""
 
     @pytest.fixture(autouse=True)
-    def _isolate_image_cache(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
+    def _isolate_image_cache(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         from src.infra.image_storage import get_image_storage
         from src.infra.paths import image_cache_dir
 
@@ -217,8 +234,11 @@ class TestImageDownloading:
         get_image_storage.cache_clear()
 
     def test_downloads_images_without_file_path(self, tmp_path: Path) -> None:
-        """Images that passed triage but lack file_path get uploaded to storage."""
-        mock_sec = MockSECClient(image_data={"chart1.jpg": b"\xff\xd8\xff\xe0fake_jpeg_data"})
+        """Images that passed triage but lack file_path get the SECClient cache key."""
+        mock_sec = MockSECClient(
+            image_data={"chart1.jpg": b"\xff\xd8\xff\xe0fake_jpeg_data"},
+            cache_root=tmp_path,
+        )
         stage = OCRExtractionStage(sec_client=mock_sec)
 
         context = MockPipelineContext(
@@ -238,10 +258,15 @@ class TestImageDownloading:
         downloaded = stage._download_missing_images(context)
 
         assert downloaded == 1
-        # file_path is now a storage key, not an absolute path
-        assert asset.file_path == "pipeline/1234567/0001234567-24-000001/chart1.jpg"
-        # Underlying bytes live under tmp_path (LocalFilesystemStorage root)
-        assert (tmp_path / asset.file_path).exists()
+        # file_path uses the SECClient cache layout (no "pipeline/" prefix)
+        expected_key = "1234567/000123456724000001/chart1.jpg"
+        assert asset.file_path == expected_key
+        # Bytes exist at the SECClient cache path (written by fetch_image)
+        assert (tmp_path / expected_key).exists()
+        # The old pipeline/ layout must NOT exist
+        assert not (
+            tmp_path / "pipeline" / "1234567" / "0001234567-24-000001" / "chart1.jpg"
+        ).exists()
         assert mock_sec.fetch_calls == [("1234567", "0001234567-24-000001", "chart1.jpg")]
 
     def test_skips_images_with_existing_file_path(self) -> None:
@@ -834,9 +859,7 @@ class TestV2PipelineSecClient:
         pipeline = V2Pipeline(sec_client=mock_client)
         assert pipeline._sec_client is mock_client
 
-    def test_pipeline_passes_sec_client_to_ocr_stage(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pipeline_passes_sec_client_to_ocr_stage(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """V2Pipeline passes sec_client through to OCRExtractionStage."""
         from src.extraction_v2.pipeline import V2Pipeline
 

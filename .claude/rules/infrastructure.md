@@ -25,6 +25,12 @@ Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmo
 
 `render.yaml` defines: `filings-reviewer` web service + `filings-extraction` cron (daily 6am UTC, runs `batch_v2_extraction.py --status fetched --workers 2 --limit 50`).
 
+### pg_dump client version
+
+- `pg_dump` must be greater than or equal to the server major version. Neon is on PG15; use a PG16+ client for safety.
+- Install with `brew install postgresql@16` and invoke via the explicit Cellar path or a pinned symlink (do not rely on the default `/opt/homebrew/bin/pg_dump` which resolves to whatever was installed first).
+- Run `python3 scripts/check_pg_client_version.py` before taking snapshots. Silent failure (0-byte file with exit 0) is the symptom when this guard is skipped.
+
 ## DATABASE_URL vs TEST_DATABASE_URL — IMPORTANT
 
 **In this project's `.env`, `DATABASE_URL` points at the Neon prod database, NOT local Postgres.** The local Docker Postgres is addressed by `TEST_DATABASE_URL`.
@@ -83,4 +89,3 @@ are rejected at every call site.
 ## Pre-commit Deployment Checklist
 
 For any change touching routes, migrations, or auth: (1) verify migration files are registered in the migration runner, (2) verify `url_for` endpoints resolve correctly, (3) test API endpoints with both direct calls and browser fetch to catch auth/CORS issues. (Historically, unregistered migrations and broken `url_for` calls caused multiple deployment 500 errors in Apr 2026.)
-

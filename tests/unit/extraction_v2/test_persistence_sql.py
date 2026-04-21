@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import re
+from unittest.mock import MagicMock, patch
 
 
 class TestFactUpsertSQL:
@@ -81,6 +82,7 @@ class TestPersistDedup:
 
     def _get_dedup_source(self) -> str:
         from src.extraction_v2.persistence import V2PersistenceAdapter
+
         return inspect.getsource(V2PersistenceAdapter._persist_facts_in_tx)
 
     def _run_dedup(self, params_list: list[dict]) -> list[dict]:
@@ -169,45 +171,143 @@ class TestPersistDedup:
         )
 
 
+def _make_image_asset():
+    """Build a minimal ImageAsset fixture suitable for _persist_images_in_tx tests."""
+    from src.extraction_v2.models import ImageAsset, ImageClassification
+
+    return ImageAsset(
+        img_id="test-img-id",
+        filename="test_image.png",
+        nearby_text="",
+        ocr_text=None,
+        classification=ImageClassification.UNKNOWN,
+    )
+
+
+def _make_adapter():
+    """Build a V2PersistenceAdapter without requiring a DB connection."""
+    from unittest.mock import MagicMock
+
+    from src.extraction_v2.persistence import V2PersistenceAdapter
+
+    adapter = V2PersistenceAdapter.__new__(V2PersistenceAdapter)
+    adapter._db = MagicMock()
+    return adapter
+
+
+def _make_cursor(rows=None):
+    """Build a mock cursor whose fetchall returns [] and fetchone returns a mock row."""
+    cur = MagicMock()
+    # Guard query (incoming_hidden_filenames check) returns no rows
+    cur.fetchall.return_value = []
+    # execute().fetchone() for the upsert RETURNING clause
+    row_mock = MagicMock()
+    row_mock.__getitem__ = lambda self, key: "test-img-id"
+    row_mock.__iter__ = lambda self: iter(["test-img-id"])
+    cur.fetchone.return_value = row_mock
+    return cur
+
+
 class TestImagePersistSQL:
     """Verify detected_keywords is wired through _persist_images_in_tx (sql/32)."""
 
-    def _get_image_persist_source(self) -> str:
-        from src.extraction_v2.persistence import V2PersistenceAdapter
-
-        return inspect.getsource(V2PersistenceAdapter._persist_images_in_tx)
-
     def test_detected_keywords_in_insert_columns(self) -> None:
-        source = self._get_image_persist_source()
+        """detected_keywords must appear in the INSERT column list of the upsert SQL."""
+        adapter = _make_adapter()
+        cur = _make_cursor()
+        image = _make_image_asset()
+
+        with patch("src.extraction_v2.persistence.match_nearby_text", return_value=["keyword"]):
+            adapter._persist_images_in_tx(cur, [image], filing_id=1)
+
+        # Capture the SQL string from the first execute call (the upsert, not the guard)
+        # The guard only fires when incoming_hidden_filenames is non-empty; with UNKNOWN
+        # classification that branch is skipped, so execute call 0 is the upsert.
+        sql_calls = [
+            call
+            for call in cur.execute.call_args_list
+            if "INSERT INTO v2_image_assets" in str(call)
+        ]
+        assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
+        sql_text = sql_calls[0].args[0]
+
         insert_match = re.search(
             r"INSERT INTO v2_image_assets\s*\((.*?)\)\s*VALUES",
-            source,
+            sql_text,
             re.DOTALL | re.IGNORECASE,
         )
-        assert insert_match, "Could not find INSERT column list in _persist_images_in_tx"
+        assert insert_match, "Could not find INSERT column list in upsert SQL"
         assert "detected_keywords" in insert_match.group(1), (
             "detected_keywords must be in INSERT columns"
         )
 
     def test_detected_keywords_in_on_conflict_update(self) -> None:
-        source = self._get_image_persist_source()
-        assert "detected_keywords = EXCLUDED.detected_keywords" in source, (
+        """detected_keywords must appear in the ON CONFLICT DO UPDATE SET clause."""
+        adapter = _make_adapter()
+        cur = _make_cursor()
+        image = _make_image_asset()
+
+        with patch("src.extraction_v2.persistence.match_nearby_text", return_value=["keyword"]):
+            adapter._persist_images_in_tx(cur, [image], filing_id=1)
+
+        sql_calls = [
+            call
+            for call in cur.execute.call_args_list
+            if "INSERT INTO v2_image_assets" in str(call)
+        ]
+        assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
+        sql_text = sql_calls[0].args[0]
+
+        assert "detected_keywords = EXCLUDED.detected_keywords" in sql_text, (
             "detected_keywords must be refreshed on ON CONFLICT DO UPDATE so re-extraction "
             "recomputes keywords against current YAML patterns"
         )
 
     def test_matcher_invoked_for_each_image(self) -> None:
-        source = self._get_image_persist_source()
-        assert "match_nearby_text(" in source, (
-            "_persist_images_in_tx must call match_nearby_text() to compute detected_keywords"
-        )
-        assert "image.nearby_text" in source and "image.ocr_text" in source, (
-            "matcher must receive nearby_text + ocr_text concatenated"
+        """match_nearby_text must be called once per ImageAsset."""
+        from src.extraction_v2.models import ImageAsset, ImageClassification
+
+        adapter = _make_adapter()
+        cur = _make_cursor()
+
+        images = [
+            ImageAsset(
+                img_id=f"img-{i}",
+                filename=f"image_{i}.png",
+                nearby_text=f"text {i}",
+                ocr_text=None,
+                classification=ImageClassification.UNKNOWN,
+            )
+            for i in range(3)
+        ]
+
+        with patch(
+            "src.extraction_v2.persistence.match_nearby_text", return_value=["kw"]
+        ) as mock_matcher:
+            adapter._persist_images_in_tx(cur, images, filing_id=1)
+
+        assert mock_matcher.call_count == 3, (
+            f"Expected match_nearby_text called 3 times (once per image), got {mock_matcher.call_count}"
         )
 
     def test_empty_matches_persist_as_null(self) -> None:
-        """` or None` ensures an empty list becomes NULL in SQL (not an empty array)."""
-        source = self._get_image_persist_source()
-        assert ") or None," in source, (
-            "Empty matcher result must collapse to None (NULL in SQL), not []"
+        """When match_nearby_text returns [], detected_keywords param must be None (SQL NULL)."""
+        adapter = _make_adapter()
+        cur = _make_cursor()
+        image = _make_image_asset()
+
+        with patch("src.extraction_v2.persistence.match_nearby_text", return_value=[]):
+            adapter._persist_images_in_tx(cur, [image], filing_id=1)
+
+        # Find the upsert params (second positional arg to execute)
+        sql_calls = [
+            call
+            for call in cur.execute.call_args_list
+            if "INSERT INTO v2_image_assets" in str(call)
+        ]
+        assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
+        params = sql_calls[0].args[1]
+
+        assert params["detected_keywords"] is None, (
+            f"Empty matcher result must collapse to None (SQL NULL), got {params['detected_keywords']!r}"
         )

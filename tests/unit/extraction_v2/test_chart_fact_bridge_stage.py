@@ -1,13 +1,15 @@
 """
 Unit tests for ChartFactBridgeStage hallucination guards (Cluster A).
 
-Tests Guard 1–5 and config override behaviour.
+Tests Guard 1–6 and config override behaviour.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from src.extraction_v2.models import (
     ChartData,
@@ -148,8 +150,8 @@ class TestGuard2LabelRequired:
                 (
                     "Enterprise",
                     [
-                        ("Cohort 2018", 3.5, "3.5x"),   # labeled — should emit
-                        ("Cohort 2019", 4.0, None),     # no label — should skip
+                        ("Cohort 2018", 3.5, "3.5x"),  # labeled — should emit
+                        ("Cohort 2019", 4.0, None),  # no label — should skip
                     ],
                 )
             ]
@@ -181,9 +183,9 @@ class TestGuard3AxisRange:
                 (
                     "Enterprise",
                     [
-                        ("Cohort 2018", 3.5, "3.5x"),   # labeled, in-range → emits fact
-                        ("Cohort 2019", 4.0, "4.0x"),   # labeled, in-range → emits fact
-                        ("Noise", 1000.0, None),         # unlabeled, out-of-range → skipped by G3
+                        ("Cohort 2018", 3.5, "3.5x"),  # labeled, in-range → emits fact
+                        ("Cohort 2019", 4.0, "4.0x"),  # labeled, in-range → emits fact
+                        ("Noise", 1000.0, None),  # unlabeled, out-of-range → skipped by G3
                     ],
                 )
             ]
@@ -328,3 +330,102 @@ class TestConfigOverrides:
         assert result.metadata["guard_skipped_low_image_confidence"] == 0
         # Should have emitted facts (image passes through)
         assert len(context.facts) > 0
+
+
+# ---------------------------------------------------------------------------
+# Guard 6: metric confidence floor (Issue #54)
+# ---------------------------------------------------------------------------
+
+
+class TestGuard6MetricConfidenceFloor:
+    """Adds a configurable floor on classifier score, distinct from
+    ``chart_metric_classification_min_score`` (0.6 default gate). The floor
+    default matches the classification gate — no change at default — but
+    operators can set it higher (e.g. 0.70) during backfills to reject
+    weak top-match binds. See Issue #54."""
+
+    def test_tightened_floor_suppresses_weak_bind(self, caplog) -> None:
+        """With floor raised to 0.70, classifier scores below that are suppressed."""
+        config = PipelineConfig(chart_metric_min_confidence=0.70)
+        image = _make_ltv_image(confidence=0.9)
+        context = _make_context([image], config=config)
+        stage = ChartFactBridgeStage()
+
+        with patch(
+            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
+            return_value=("cm_ltv_to_cac_ratio", 0.65),
+        ):
+            with caplog.at_level(
+                logging.DEBUG, logger="src.extraction_v2.stages.chart_fact_bridge"
+            ):
+                result = stage.process(context)
+
+        assert result.success
+        assert len(context.facts) == 0
+        assert any(
+            "skipping low-confidence metric bind" in rec.message and "score=0.6500" in rec.message
+            for rec in caplog.records
+        )
+
+    def test_tightened_floor_emits_at_threshold(self) -> None:
+        """With floor raised to 0.70, scores at or above 0.70 still emit."""
+        config = PipelineConfig(chart_metric_min_confidence=0.70)
+        image = _make_ltv_image(confidence=0.9)
+        context = _make_context([image], config=config)
+        stage = ChartFactBridgeStage()
+
+        with patch(
+            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
+            return_value=("cm_ltv_to_cac_ratio", 0.70),
+        ):
+            result = stage.process(context)
+
+        assert result.success
+        assert len(context.facts) > 0
+
+    def test_default_floor_does_not_suppress_tier1_boundary(self) -> None:
+        """Default floor (0.60) does NOT suppress Tier 1 scores that barely clear
+        the classification gate (e.g. HOOD ``cm_balance_by_cohort`` at ~0.60)."""
+        image = _make_ltv_image(confidence=0.9)
+        context = _make_context([image])  # default config
+        stage = ChartFactBridgeStage()
+
+        with patch(
+            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
+            return_value=("cm_ltv_to_cac_ratio", 0.6024),
+        ):
+            result = stage.process(context)
+
+        assert result.success
+        assert len(context.facts) > 0
+
+    def test_high_score_still_emits(self) -> None:
+        """Positive-control regression: score of 0.95 still emits under default."""
+        image = _make_ltv_image(confidence=0.9)
+        context = _make_context([image])
+        stage = ChartFactBridgeStage()
+
+        with patch(
+            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
+            return_value=("cm_ltv_to_cac_ratio", 0.95),
+        ):
+            result = stage.process(context)
+
+        assert result.success
+        assert len(context.facts) > 0
+
+    def test_extreme_tightening_suppresses_all(self) -> None:
+        """Setting the floor above any realistic score suppresses all chart facts."""
+        config = PipelineConfig(chart_metric_min_confidence=0.99)
+        image = _make_ltv_image(confidence=0.9)
+        context = _make_context([image], config=config)
+        stage = ChartFactBridgeStage()
+
+        with patch(
+            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
+            return_value=("cm_ltv_to_cac_ratio", 0.85),
+        ):
+            result = stage.process(context)
+
+        assert result.success
+        assert len(context.facts) == 0
