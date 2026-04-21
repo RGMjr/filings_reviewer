@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -17,7 +17,6 @@ _(none currently)_
 | Issue | Status | Notes |
 |-------|--------|-------|
 | Low Farfetch Recall (Issue #2) | Re-diagnosed umbrella | P=50% R=37% F1=42% on 2026-04-18; superseded by sub-issues #14–#19 |
-| Secret-leak guard on mis-named env duplicates (Issue #65) | Open | `.gitignore` only matches `.env` exactly; a file named `" "` containing full env was untracked but not ignore-protected |
 | Migrations not auto-applied on Render deploy (Issue #66) | Open | PR #48 merged `sql/39` but Render didn't run `apply_migrations.py`; worker crashed with `UndefinedTable` until manual apply |
 
 ### Open — Low Severity
@@ -103,7 +102,6 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #60   | safe     | XS        | `src/universe/onboarding.py tests/unit/universe/test_onboarding.py`     | SIC-filter JOIN in detect_universe_gaps                       |
 | #62   | review   | S         | `docs/operations/* src/universe/onboarding_runner.py`                   | Docs + optional admin flag; needs design call                 |
 | #63   | skip     | S         | —                                                                       | Monkey-patch integration test; mid-complexity                 |
-| #65   | review   | S         | `.gitignore .pre-commit-config.yaml`                                    | Regex patterns for secret detection; needs judgment           |
 | #66   | review   | S         | `render.yaml .claude/rules/infrastructure.md`                           | Wire apply_migrations into Render deploy; infra-change risk   |
 | #68   | safe     | XS        | `scripts/run_nightly_sweep.sh`                                          | Detect timeout vs gtimeout; fallback path for macOS           |
 | #69   | review   | S         | `Dockerfile.nightly-sweep`                                              | Pin claude + gh versions; needs validation step               |
@@ -762,27 +760,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 
 ---
 
-## 65. Secret-Leak Guard for Mis-Named Env File Duplicates
-
-**Status**: Open
-**Severity**: Medium
-**Discovered**: 2026-04-21 (surfaced during branch-cleanup session)
-
-### Problem
-
-`.gitignore` matches `.env` by exact name only. During cleanup today a file literally named `" "` (single space) was found in the repo root — a 19-line subset of `.env` containing real production secrets (OpenAI key, Neon DB URL with creds, GitHub PAT, Brave/Gemini keys, `SECRET_KEY`, `FILINGS_API_KEY`). The file was untracked and never committed, but **`git check-ignore` confirms `.gitignore` does NOT protect it** — a `git add .` or `git add -A` would have caught it. Likely origin: a shell redirect typo like `cp .env " "`. No pre-commit hook scans staged blobs for secret patterns either.
-
-### Next Steps
-
-- Broaden `.gitignore` to cover env-variant filenames: add `.env*` and consider `!.env.template` / `!.env.example` allowlists.
-- Add a `detect-private-key`-style pre-commit hook that scans staged content for known secret patterns: `sk-proj-*`, `github_pat_*`, `postgresql://*neon.tech`, `OPENAI_API_KEY=`, `SECRET_KEY=`, `FILINGS_API_KEY=`, R2 endpoint URLs.
-- Evaluate `gitleaks` or `detect-secrets` as a belt-and-suspenders scan at commit-time and in CI.
-- Audit `git log --all -S 'OPENAI_API_KEY='` / `sk-proj-` / `github_pat_` to confirm no secret was ever committed historically.
-
-### Cross-References
-
-- `.gitignore` line 2 (current `.env` entry)
-- `.pre-commit-config.yaml` (hook location)
 
 ---
 
@@ -921,6 +898,15 @@ and hidden-`filing_id` field survival assertion. Seeds two 10-K filings via
 Resolved by adding `tests/extraction_v2/chart/test_chart_classifier_margin.py`: a parametrized characterization test that measures empirical scores for three Tier 1 chart fixtures (HOOD `cm_balance_by_cohort` at 0.6024, Farfetch `cm_gross_margin_by_cohort` at 1.0000, FTCH empty-axes `cm_gross_margin_by_cohort` at 0.6627), locks in score floors (measured score − 0.005), and also asserts the 0.60 gate. Any future re-weighting that narrows the margin fails loudly. Classifier itself is untouched.
 
 Cross-references: Issue #54 — `chart_metric_min_confidence` knob; `src/extraction_v2/chart/metric_classifier.py`.
+
+### Issue #65: Secret-Leak Guard for Mis-Named Env Duplicates
+
+**Status**: Resolved (2026-04-21)
+
+Broadened `.gitignore` to `.env*` with `!.env.template` allowlist; added
+`gitleaks` pre-commit hook at the repo-wide level. Forward-looking defense
+only — historical audit surfaced one real OpenAI key (rotated; history
+scrub deferred to a separate task).
 
 ---
 
