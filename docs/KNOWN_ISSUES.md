@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #68 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); PR #71 merged `/supervise-prs` + orchestration section to worktree guide; #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -40,7 +40,9 @@ _(none currently)_
 | Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 | Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
-| CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #68) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
+| Nightly sweeper uses GNU `timeout` — macOS incompatible (Issue #68) | Open | Local `/sweep` on Mac fails at the `timeout` call; Render (Linux) production is fine |
+| `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
+| CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
 
 ### Partially Resolved
 
@@ -62,6 +64,53 @@ _(none currently)_
 | Issue | Notes |
 |-------|-------|
 | Image cache / R2 backend (Issue #34) | Cross-referenced by #24, #35, #42; body retained until those close |
+
+---
+
+## Nightly Sweeper Classification
+
+Source of truth for `scripts/known_issues_selector.py` — the nightly autonomous sweeper reads this table to decide which issues it may work on, and whether to auto-merge or hold for morning review. See `docs/operations/nightly-sweep-runbook.md` for the full flow.
+
+**Autonomy values:**
+- `safe` — sweeper may open a PR and auto-merge on green CI (branch protection's 5 required checks are the real gate).
+- `review` — sweeper may open a draft PR, but it holds for your morning approval. Use for judgment calls, cross-module edits, new feature logic.
+- `skip` — sweeper never touches. Use for stakeholder decisions, data-driven tuning, investigations, or anything requiring human reasoning.
+
+**Default for new issues:** `skip`. Reclassify after triage. The `/commit` skill's known-issues-filing step appends a row here with `skip` / `?` / `—` defaults.
+
+**Touches** column holds space-separated file globs. The selector uses these to pick non-colliding batches — if two issues touch overlapping files, only one is picked per night.
+
+| Issue | Autonomy | Estimated | Touches                                                                 | Note                                                          |
+|-------|----------|-----------|-------------------------------------------------------------------------|---------------------------------------------------------------|
+| #2    | skip     | L         | —                                                                       | Umbrella for Farfetch recall; sub-issues, stakeholder tuning  |
+| #4    | skip     | —         | —                                                                       | Known limitation; not actionable                              |
+| #5    | skip     | —         | —                                                                       | Working as designed                                           |
+| #9    | skip     | M         | —                                                                       | Needs re-ingestion of real Snap filing; not a code fix        |
+| #11   | skip     | XS        | —                                                                       | Tied to archived Issue #10; defer                             |
+| #16   | skip     | M         | —                                                                       | Precision tuning; data-driven, needs judgment                 |
+| #24   | skip     | M         | —                                                                       | Data audit + FK migration; needs cleanup decision             |
+| #27   | skip     | S         | —                                                                       | Stale assertions — needs judgment on test rewrite             |
+| #28   | skip     | L         | —                                                                       | Root architecture issue; no single-file fix                   |
+| #34   | skip     | —         | —                                                                       | Cross-referenced only; closes when dependents close           |
+| #35   | skip     | L         | —                                                                       | Backfill; needs coordination with #53/#54                     |
+| #38   | review   | M         | `sql/*.sql src/*/*.py src/web/routes/*.py tests/**/*.py`                | Column rename + callsite sweep; needs callsite audit          |
+| #39   | skip     | M         | —                                                                       | Column rename; needs migration ordering decision              |
+| #40   | skip     | —         | —                                                                       | Stakeholder decision (supersession semantics)                 |
+| #43   | skip     | —         | —                                                                       | Latent; no action needed until re-extraction                  |
+| #49   | skip     | M         | —                                                                       | Flaky test investigation; risk of masking real bug            |
+| #53   | skip     | M         | —                                                                       | Chart call limit; needs data-driven tuning                    |
+| #55   | skip     | S         | —                                                                       | Data cleanup; needs inspection of stuck filings               |
+| #58   | review   | S         | `src/filing_fetcher/*.py tests/unit/filing_fetcher/*.py`                | 8-K Exhibit 99.1 fetch; feature add, needs validator run      |
+| #59   | review   | S         | `src/extraction_v2/classifier*.py tests/unit/extraction_v2/*classifier*`| New classifier patterns; FP risk                              |
+| #60   | safe     | XS        | `src/universe/onboarding.py tests/unit/universe/test_onboarding.py`     | SIC-filter JOIN in detect_universe_gaps                       |
+| #61   | safe     | S         | `tests/integration/web/test_ingest_flow.py`                             | New integration test; isolated file                           |
+| #62   | review   | S         | `docs/operations/* src/universe/onboarding_runner.py`                   | Docs + optional admin flag; needs design call                 |
+| #63   | skip     | S         | —                                                                       | Monkey-patch integration test; mid-complexity                 |
+| #64   | skip     | S         | —                                                                       | Classifier margin investigation; data-driven                  |
+| #65   | review   | S         | `.gitignore .pre-commit-config.yaml`                                    | Regex patterns for secret detection; needs judgment           |
+| #66   | review   | S         | `render.yaml .claude/rules/infrastructure.md`                           | Wire apply_migrations into Render deploy; infra-change risk   |
+| #68   | safe     | XS        | `scripts/run_nightly_sweep.sh`                                          | Detect timeout vs gtimeout; fallback path for macOS           |
+| #69   | review   | S         | `Dockerfile.nightly-sweep`                                              | Pin claude + gh versions; needs validation step               |
 
 ---
 
@@ -857,7 +906,42 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 
 ---
 
-## 68. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
+## 67. Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-21 (during nightly sweeper implementation)
+
+### Problem
+
+`scripts/run_nightly_sweep.sh` invokes `timeout "$PER_ISSUE_BUDGET" claude -p "$prompt"` to enforce per-issue wall-clock budgets. `timeout` is GNU coreutils; macOS ships BSD utilities and does not include it by default. Local `/sweep` skill invocations on macOS fail at the `timeout` call. Render's container image is Linux so production is fine.
+
+### Next Steps
+
+- Detect `timeout` vs `gtimeout` vs neither at script start; fall back to `gtimeout` on macOS (via `brew install coreutils`) or to a no-timeout code path with a warning log.
+- Alternatively, install `coreutils` as part of the local-dev setup docs for the `/sweep` skill.
+
+---
+
+## 68. `Dockerfile.nightly-sweep` Installs `claude` + `gh` Unpinned
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-21 (during nightly sweeper implementation)
+
+### Problem
+
+`Dockerfile.nightly-sweep` installs the Claude Code CLI via `curl -fsSL https://claude.ai/install.sh | sh` and the GitHub CLI via the package repo without a version pin. Each Render build pulls whatever is current, so a tool update between builds could silently change sweeper behaviour (e.g., `claude -p` flag semantics, `gh pr merge` auto-squash wiring).
+
+### Next Steps
+
+- Pin the `claude` installer to a specific version once the installer supports a version argument; otherwise cache a specific binary in the image.
+- Pin `gh` to a specific apt version (`gh=2.X.Y`) or switch to the GitHub Releases tarball.
+- Consider adding a build-time smoke test: `claude --version && gh --version` to fail the build on unexpected drift.
+
+---
+
+## 70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
 
 **Status**: Open
 **Severity**: Low — documentation only; functional behavior is correct
