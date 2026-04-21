@@ -37,7 +37,6 @@ _(none currently)_
 | 8-K section classifier missing earnings patterns (Issue #59) | Open | Classifier only knows `Item 1A/7/8`; 8-K segments all fall through to COVER/FINANCIALS |
 | `detect_universe_gaps` ignores SIC filter (Issue #60) | Open | Reports gaps on `(year, form_type)` only; can trigger needless populate runs |
 | `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
-| Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 | Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
 
@@ -49,6 +48,7 @@ _(none currently)_
 | Gold Standard Coverage Tests (Issue #11) | Partially resolved | 11/12 pass; 1 remaining (linked to archived Issue #10) |
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved | 1 test fixed; 2 stale assertions `test.skip`-ed with TODOs |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved | `chart_only` mode landed (PR #50); full 8-filing backfill deferred (#53, #54) |
+| Local-Dev Stuck-Batch Recovery (Issue #62) | Partially resolved | Manual recovery SQL documented in TICKER_ONBOARDING.md; `--cleanup-stuck` CLI flag + SIGTERM log deferred |
 
 ### Known Limitations
 
@@ -802,13 +802,17 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ## 62. Local-Dev Stuck-Batch Recovery Is Manual
 
-**Status**: Open
+**Status**: Partially resolved (2026-04-21) — manual recovery SQL documented; `--cleanup-stuck` CLI flag + SIGTERM log deferred
 **Severity**: Low — operational; no data loss, just operator inconvenience
 **Discovered**: 2026-04-20 (Wave B Phase 3 review)
 
 ### Problem
 
 On Render (Phase 7), a worker service with `--watch` mode will re-claim a batch whose `run_lock_until` has expired. On local dev there is no watcher — if the `onboarding_runner` subprocess dies mid-batch (kernel OOM, user kills the Flask server, etc.), the batch stays in `status='running'` forever. Currently recovery requires a hand-crafted `UPDATE v2_ingest_batches SET status='failed' WHERE batch_id=...` plus a cleanup of partially-processed `v2_ingest_batch_filings` rows.
+
+### Partial Resolution (2026-04-21)
+
+Manual recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md` under the new "Recovering a stuck batch (local dev)" section. Operators can now self-serve stuck-batch recovery without improvising SQL. Next Steps 2 (`--cleanup-stuck` admin flag) and 3 (SIGTERM log line) remain open.
 
 ### Next Steps
 
@@ -1195,3 +1199,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-20**: Issue #47 resolved — `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores (`data/filings/`, `data/image_cache/`). Verified via `git check-ignore -v`
 - **2026-04-21**: Archive cleanup — collapsed 29 fully-resolved issues (#10, #12, #13, #14, #15, #17, #18, #19, #20, #21, #22, #23, #25, #26, #29, #30, #31, #32, #33, #36, #37, #41, #44, #45, #46, #47, #48, #56, #57) from main body into Archive section; rewrote Summary table to foreground open items; removed resolved rows from Summary table. Issue #11 cross-reference to #10 updated to point to archive entry.
 - **2026-04-21**: Five-issue follow-up bundle landed in commit `7848605` — resolved #42 (double image-write collapsed via public `SECClient.get_image_cache_path`), #50 (new `tests/unit/web/test_api_unified_auth.py`), #51 (behavioral mock-cursor rewrite; `# fmt: skip` removed), #52 (new `scripts/check_pg_client_version.py` pre-flight + infrastructure.md doc section), #54 (new `chart_metric_min_confidence` knob with default 0.60 to avoid Tier 1 regression). Archive entries added. #64 opened — chart classifier Tier 1 boundary sensitivity: HOOD `cm_balance_by_cohort` scores 0.6024 (0.0024 above gate); surfaced while forcing #54's default down from the originally-proposed 0.70. (Renumbered from an earlier working #58 after merge from origin/main revealed issues #58–#63 had been claimed by the Wave B/C/D batch-ingest-ui follow-ups.)
+- **2026-04-21**: Issue #62 partially resolved — manual stuck-batch recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md`. CLI-flag and SIGTERM-log follow-ups remain open.
