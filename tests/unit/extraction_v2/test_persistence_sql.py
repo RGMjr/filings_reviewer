@@ -31,15 +31,18 @@ class TestFactUpsertSQL:
         )
 
     def test_delete_before_insert(self):
-        """DELETE FROM v2_metric_facts WHERE doc_id must precede INSERT (WP-12)."""
+        """DELETE FROM v2_metric_facts scoped by doc_id must precede INSERT (WP-12)."""
         source = self._get_persist_sql()
 
-        assert "DELETE FROM v2_metric_facts WHERE doc_id" in source, (
+        assert "DELETE FROM v2_metric_facts" in source, (
             "_persist_facts_in_tx must DELETE existing facts before inserting fresh results"
+        )
+        assert "doc_id = %(filing_id)s" in source, (
+            "_persist_facts_in_tx DELETE must be scoped by doc_id so cross-filing data is not wiped"
         )
 
         # DELETE should appear before INSERT in the source
-        delete_pos = source.index("DELETE FROM v2_metric_facts WHERE doc_id")
+        delete_pos = source.index("DELETE FROM v2_metric_facts")
         insert_pos = source.index("INSERT INTO v2_metric_facts")
         assert delete_pos < insert_pos, "DELETE must precede INSERT in _persist_facts_in_tx"
 
