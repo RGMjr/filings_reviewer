@@ -66,6 +66,10 @@ Metrics are classified into importance tiers based on analytical value. These ti
 5. **Image pipeline is active**: Do not delete image-processing code (`src/llm/vision_client.py`, `src/extraction_v2/` image/OCR stages, `src/web/routes/review_unified.py` + `api_unified.py` image endpoints, image scripts). The image review system is complete and in use.
 6. **Reviewed-filing guard**: Re-extraction of a filing with human review decisions requires explicit `force=True` / `--force-reextract`. Enforced in `V2PersistenceAdapter._persist_facts_in_tx`; raises `ReviewedFilingError` otherwise. Prevents silent CASCADE-destruction of reviewer work via `v2_review_decisions.fact_id ON DELETE CASCADE`.
 
+## Hooks
+
+A PreToolUse hook nudges `/simplify` when 3+ files are modified before `/commit` — see `.claude/hooks/precommit-simplify-check.sh`.
+
 ## Compact Instructions
 
 When compacting, preserve: modified file paths, current test/gold-standard validation status, extraction pipeline decisions made this session, and any active task checklist.
