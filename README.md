@@ -27,7 +27,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | Human Review System | Complete |
 | Transcripts & Presentations | Complete (beyond SEC) |
 
-**Coverage target:** 80% minimum (enforced per CLAUDE.md).
+**Coverage target:** 80% overall minimum (enforced per CLAUDE.md).
 
 **Corpus:** ~7,300 in-scope S-1/F-1 filings (2015-2025), plus earnings call transcripts and investor presentations.
 
@@ -96,6 +96,8 @@ src/
 ```
 UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 ```
+
+**V2 pipeline stages** (in `src/extraction_v2/stages/`): ingestion, section_classification, table_reconstruction, image_triage, ocr_extraction, `CandidateGenerationStage`, `ValueBindingStage`, false_positive_filter, period_inference, fact_construction, `DefinitionExtractionStage`, deduplication, validation, and chart_fact_bridge.
 
 ## Documentation
 
