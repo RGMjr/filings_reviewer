@@ -408,6 +408,13 @@ def _register_blueprints(app: Flask) -> None:
 
     app.register_blueprint(image_cache_bp)
 
+    # Batch ingest UI (HTML) and status API (JSON, auth-gated)
+    from src.web.routes.api_ingest import api_ingest_bp
+    from src.web.routes.ingest import ingest_bp
+
+    app.register_blueprint(ingest_bp)
+    app.register_blueprint(api_ingest_bp)
+
 
 def _wants_json_response() -> bool:
     """Check if the client prefers JSON over HTML."""
