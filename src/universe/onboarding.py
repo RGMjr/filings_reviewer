@@ -394,8 +394,10 @@ _YEARS_IN_FILINGS_SQL = """
 SELECT DISTINCT EXTRACT(YEAR FROM f.filing_date)::int AS yr,
                 f.form_type
 FROM filings f
+JOIN companies c ON c.company_id = f.company_id
 WHERE f.form_type = ANY(%(form_types)s)
   AND EXTRACT(YEAR FROM f.filing_date) BETWEEN %(year_min)s AND %(year_max)s
+  AND c.industry_code = ANY(%(sic_codes)s)
 """
 
 
@@ -419,6 +421,7 @@ def detect_universe_gaps(db: DatabaseAdapter, query: ResolvedQuery) -> list[Gap]
             "form_types": query.form_types,
             "year_min": query.year_min,
             "year_max": query.year_max,
+            "sic_codes": query.sic_codes,
         },
     )
     present: set[tuple[int, str]] = {(r["yr"], r["form_type"]) for r in rows}
