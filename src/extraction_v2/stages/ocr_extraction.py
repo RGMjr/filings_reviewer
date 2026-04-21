@@ -209,19 +209,21 @@ class OCRExtractionStage:
         Returns:
             Number of images successfully downloaded
         """
-        from src.infra.image_storage import get_image_storage
+        from src.infra.image_storage import InvalidStorageKeyError, validate_key
+        from src.infra.paths import image_cache_dir
 
         if not context.cik or not context.accession_number:
             return 0
 
-        # Lazy-load SECClient. image_cache_dir=None because R2/LocalFilesystemStorage
-        # is now the authoritative cache; SECClient's own file cache would be redundant.
+        # Lazy-load SECClient with image_cache_dir set so fetch_image writes bytes
+        # directly to the shared cache root.  Storage keys are then derived as
+        # relative paths from that root — no second copy is written.
         if self._sec_client is None:
             from src.infra.sec_client import SECClient
 
-            self._sec_client = SECClient(image_cache_dir=None)
+            self._sec_client = SECClient(image_cache_dir=image_cache_dir())
 
-        storage = get_image_storage()
+        cache_root = image_cache_dir()
         downloaded = 0
 
         for asset in context.images:
@@ -248,8 +250,17 @@ class OCRExtractionStage:
                     filename=asset.filename,
                 )
                 if image_bytes:
-                    key = f"pipeline/{context.cik}/{context.accession_number}/{asset.filename}"
-                    storage.put_bytes(key, image_bytes, content_type="image/jpeg")
+                    cache_path = self._sec_client.get_image_cache_path(
+                        context.cik, context.accession_number, asset.filename
+                    )
+                    key = str(cache_path.relative_to(cache_root))
+                    try:
+                        validate_key(key)
+                    except InvalidStorageKeyError as err:
+                        raise InvalidStorageKeyError(
+                            f"Derived storage key {key!r} failed validation — "
+                            f"cache path {cache_path!r} is not under cache root {cache_root!r}"
+                        ) from err
                     asset.file_path = key
                     downloaded += 1
                     logger.info(f"Downloaded image {asset.filename}: {len(image_bytes)} bytes")

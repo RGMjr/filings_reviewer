@@ -97,9 +97,21 @@ class TestClaimBatch:
 class TestClaimNextQueuedBatch:
     def test_returns_row_when_available(self) -> None:
         batch_id = uuid.uuid4()
-        db = _FakeDB(rows=[{"batch_id": str(batch_id), "kind": "onboard", "status": "running",
-                             "reviewer_id": "rob", "criteria": {}, "resolved_query": {},
-                             "limits": {}, "total_filings": 1, "started_at": None}])
+        db = _FakeDB(
+            rows=[
+                {
+                    "batch_id": str(batch_id),
+                    "kind": "onboard",
+                    "status": "running",
+                    "reviewer_id": "rob",
+                    "criteria": {},
+                    "resolved_query": {},
+                    "limits": {},
+                    "total_filings": 1,
+                    "started_at": None,
+                }
+            ]
+        )
         result = claim_next_queued_batch(db)
         assert result is not None
         assert result["kind"] == "onboard"
@@ -176,7 +188,11 @@ class TestBuildProgressCb:
         db = self._make_db()
         batch_id = uuid.uuid4()
         cb = build_progress_cb(db, batch_id)
-        cb(FilingEvent(filing_id=42, status="succeeded", message="27 facts persisted (force=False)"))
+        cb(
+            FilingEvent(
+                filing_id=42, status="succeeded", message="27 facts persisted (force=False)"
+            )
+        )
         sqls_params = db.calls
         # Find the persisted update
         persisted_call = next(
@@ -224,7 +240,9 @@ class TestBuildProgressCb:
         cb = build_progress_cb(db, batch_id)
         cb(FilingEvent(filing_id=1, status="started"))
         cb(FilingEvent(filing_id=1, status="succeeded", message="5 facts persisted (force=False)"))
-        heartbeat_calls = [c for c in db.calls if "run_lock_until" in c[0] and "CASE WHEN" not in c[0]]
+        heartbeat_calls = [
+            c for c in db.calls if "run_lock_until" in c[0] and "CASE WHEN" not in c[0]
+        ]
         assert len(heartbeat_calls) == 2
 
     def test_batch_id_is_passed_to_all_updates(self) -> None:
@@ -275,7 +293,6 @@ class TestArgparse:
     def _parse(self, *args: str) -> Any:
         """Run argparse and return parsed namespace; raises SystemExit on error."""
         import argparse as _ap
-
 
         # Re-build the parser inline to avoid running main()
         parser = _ap.ArgumentParser()
@@ -376,6 +393,7 @@ class TestRunOneDispatch:
 
     def test_dispatch_unknown_kind_raises(self) -> None:
         from src.universe.onboarding_runner import run_one
+
         with pytest.raises(ValueError, match="Unknown batch kind"):
             run_one(_FakeDB(), {"kind": "wat", "batch_id": "x"})
 
@@ -408,11 +426,14 @@ class TestRunPopulate:
         original = runner_mod.UniverseBuilder
         runner_mod.UniverseBuilder = FakeBuilder
         try:
-            _run_populate(db, {
-                "batch_id": "abc",
-                "kind": "populate",
-                "criteria": {"year": 2024, "form_type": "10-K"},
-            })
+            _run_populate(
+                db,
+                {
+                    "batch_id": "abc",
+                    "kind": "populate",
+                    "criteria": {"year": 2024, "form_type": "10-K"},
+                },
+            )
         finally:
             runner_mod.UniverseBuilder = original
 
@@ -440,11 +461,14 @@ class TestRunPopulate:
         original = runner_mod.UniverseBuilder
         runner_mod.UniverseBuilder = BoomBuilder
         try:
-            _run_populate(db, {
-                "batch_id": "abc",
-                "kind": "populate",
-                "criteria": {"year": 2024, "form_type": "10-K"},
-            })
+            _run_populate(
+                db,
+                {
+                    "batch_id": "abc",
+                    "kind": "populate",
+                    "criteria": {"year": 2024, "form_type": "10-K"},
+                },
+            )
         finally:
             runner_mod.UniverseBuilder = original
 
@@ -473,11 +497,14 @@ class TestRunPopulate:
         original = runner_mod.UniverseBuilder
         runner_mod.UniverseBuilder = FakeBuilder
         try:
-            _run_populate(db, {
-                "batch_id": "abc",
-                "kind": "populate",
-                "criteria": _json.dumps({"year": 2024, "form_type": "10-K"}),
-            })
+            _run_populate(
+                db,
+                {
+                    "batch_id": "abc",
+                    "kind": "populate",
+                    "criteria": _json.dumps({"year": 2024, "form_type": "10-K"}),
+                },
+            )
         finally:
             runner_mod.UniverseBuilder = original
 
@@ -490,9 +517,11 @@ class TestBatchCompleteConditional:
 
     def test_complete_sql_has_status_running_predicate(self) -> None:
         from src.universe.onboarding_runner import _BATCH_COMPLETE_SQL
+
         assert "status = 'running'" in _BATCH_COMPLETE_SQL
 
     def test_finalize_cancel_sql_exists(self) -> None:
         from src.universe.onboarding_runner import _FINALIZE_CANCEL_SQL
+
         assert "status = 'cancelled'" in _FINALIZE_CANCEL_SQL
         assert "finished_at IS NULL" in _FINALIZE_CANCEL_SQL

@@ -23,12 +23,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_CURRENCY_OR_COUNT_METRICS = frozenset({
-    "cm_revenue_by_cohort",
-    "cm_transactions_by_cohort",
-    "cm_balance_by_cohort",
-    # Add new currency/count cohort metrics here if the classifier targets them
-})
+_CURRENCY_OR_COUNT_METRICS = frozenset(
+    {
+        "cm_revenue_by_cohort",
+        "cm_transactions_by_cohort",
+        "cm_balance_by_cohort",
+        # Add new currency/count cohort metrics here if the classifier targets them
+    }
+)
 
 
 def _annotation_compatible_with_metric(metric_id: str, ann: object) -> bool:
@@ -101,6 +103,20 @@ class ChartFactBridgeStage:
             if metric_id is None or score < context.config.chart_metric_classification_min_score:
                 continue
 
+            # Guard 6 — metric confidence floor (Issue #54)
+            # Keeps weak top-match binds out of the fact queue; fires AFTER the 0.6
+            # classification gate so only near-miss scores (0.6–0.70) are suppressed.
+            if score < context.config.chart_metric_min_confidence:
+                logger.debug(
+                    "ChartFactBridgeStage: skipping low-confidence metric bind "
+                    "doc_id=%s img_id=%s top_metric=%s score=%.4f",
+                    doc_id,
+                    image.img_id,
+                    metric_id,
+                    score,
+                )
+                continue
+
             unit, currency = infer_unit_and_currency(chart.y_axis_label)
             if unit is None:
                 unit = Unit.OTHER
@@ -158,7 +174,11 @@ class ChartFactBridgeStage:
                     for point in series.points:
                         # Guard 3 — axis-range sanity (runs before label guard so it can
                         # reject unlabeled noise points that exceed the labeled reference range)
-                        if labeled_max > 0 and abs(point.y) > labeled_max * context.config.chart_axis_range_multiplier:
+                        if (
+                            labeled_max > 0
+                            and abs(point.y)
+                            > labeled_max * context.config.chart_axis_range_multiplier
+                        ):
                             result_metadata["guard_skipped_out_of_range"] += 1
                             continue
 
@@ -208,7 +228,11 @@ class ChartFactBridgeStage:
                     for point in series.points:
                         # Guard 3 — axis-range sanity (runs before label guard so it can
                         # reject unlabeled noise points that exceed the labeled reference range)
-                        if labeled_max > 0 and abs(point.y) > labeled_max * context.config.chart_axis_range_multiplier:
+                        if (
+                            labeled_max > 0
+                            and abs(point.y)
+                            > labeled_max * context.config.chart_axis_range_multiplier
+                        ):
                             result_metadata["guard_skipped_out_of_range"] += 1
                             continue
 

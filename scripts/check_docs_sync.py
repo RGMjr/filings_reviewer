@@ -78,7 +78,7 @@ class DocsChecker:
             "psycopg_pool": "psycopg",  # psycopg[pool] extra
             "yaml": "pyyaml",
             "markupsafe": "flask",  # Flask transitive dependency
-            "fitz": "pymupdf",   # PyMuPDF package is imported as 'fitz'
+            "fitz": "pymupdf",  # PyMuPDF package is imported as 'fitz'
             "pdfium": "pypdfium2",  # pypdfium2 imported as pdfium
             "sklearn": "scikit_learn",  # scikit-learn imported as sklearn
             "dateutil": "boto3",  # python-dateutil ships transitively via boto3 → botocore
@@ -136,14 +136,61 @@ class DocsChecker:
     def _get_stdlib_modules(self) -> set:
         """Get standard library module names."""
         return {
-            "__future__", "abc", "argparse", "ast", "asyncio", "atexit", "base64",
-            "bisect", "collections", "concurrent", "contextlib", "copy", "csv",
-            "dataclasses", "datetime", "decimal", "difflib", "enum", "functools",
-            "hashlib", "hmac", "html", "http", "io", "itertools", "json", "logging",
-            "math", "os", "pathlib", "pickle", "random", "re", "secrets", "shutil",
-            "signal", "socket", "sqlite3", "statistics", "string", "subprocess", "sys",
-            "calendar", "tempfile", "textwrap", "threading", "time", "traceback", "typing",
-            "unittest", "urllib", "uuid", "warnings", "xml", "zipfile",
+            "__future__",
+            "abc",
+            "argparse",
+            "ast",
+            "asyncio",
+            "atexit",
+            "base64",
+            "bisect",
+            "collections",
+            "concurrent",
+            "contextlib",
+            "copy",
+            "csv",
+            "dataclasses",
+            "datetime",
+            "decimal",
+            "difflib",
+            "enum",
+            "functools",
+            "hashlib",
+            "hmac",
+            "html",
+            "http",
+            "io",
+            "itertools",
+            "json",
+            "logging",
+            "math",
+            "os",
+            "pathlib",
+            "pickle",
+            "random",
+            "re",
+            "secrets",
+            "shutil",
+            "signal",
+            "socket",
+            "sqlite3",
+            "statistics",
+            "string",
+            "subprocess",
+            "sys",
+            "calendar",
+            "tempfile",
+            "textwrap",
+            "threading",
+            "time",
+            "traceback",
+            "typing",
+            "unittest",
+            "urllib",
+            "uuid",
+            "warnings",
+            "xml",
+            "zipfile",
         }
 
     # -------------------------------------------------------------------------
@@ -215,9 +262,15 @@ class DocsChecker:
         expected_components = {
             "UniverseBuilder": SRC / "universe" / "universe_builder.py",
             "FilingFetcher": SRC / "filing_fetcher" / "filing_fetcher.py",
-            "CandidateGenerationStage": SRC / "extraction_v2" / "stages" / "candidate_generation.py",
+            "CandidateGenerationStage": SRC
+            / "extraction_v2"
+            / "stages"
+            / "candidate_generation.py",
             "ValueBindingStage": SRC / "extraction_v2" / "stages" / "value_binding.py",
-            "DefinitionExtractionStage": SRC / "extraction_v2" / "stages" / "definition_extraction.py",
+            "DefinitionExtractionStage": SRC
+            / "extraction_v2"
+            / "stages"
+            / "definition_extraction.py",
         }
 
         issues = []
@@ -312,9 +365,7 @@ class DocsChecker:
 def main():
     parser = argparse.ArgumentParser(description="Check documentation sync")
     parser.add_argument("--quiet", "-q", action="store_true", help="Minimal output")
-    parser.add_argument(
-        "--ci", action="store_true", help="CI mode (exit 1 on warnings)"
-    )
+    parser.add_argument("--ci", action="store_true", help="CI mode (exit 1 on warnings)")
     args = parser.parse_args()
 
     checker = DocsChecker(quiet=args.quiet)
