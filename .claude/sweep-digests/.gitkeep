@@ -1,0 +1,3 @@
+# Placeholder so the sweep-digests directory exists in git.
+# Nightly digests land here as YYYY-MM-DD.md via PR.
+# See docs/operations/nightly-sweep-runbook.md.
