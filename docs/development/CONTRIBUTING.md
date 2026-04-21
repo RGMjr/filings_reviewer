@@ -30,6 +30,51 @@ feature branch → PR against main → CI green → squash-merge
 [`docs/operations/ci-branch-protection.md`](../operations/ci-branch-protection.md)).
 Direct pushes are refused; a red CI blocks the merge button.
 
+### Committing via `/commit` (Claude Code)
+
+The project-local `/commit` skill (`.claude/commands/commit.md`) handles the
+full flow in one invocation:
+
+1. **Branch preflight.** If on `main`, auto-creates `claude/<type>-<slug>` and
+   switches to it. Otherwise stays on the current branch.
+2. **Pre-commit framework check.** Verifies `.git/hooks/pre-commit` is
+   installed; if missing, runs `make hooks-install`.
+3. **Lint + tests + doc-freshness + known-issues triage** (unchanged).
+4. **Commit** (primary) + optional `docs(known-issues): ...` follow-up commit.
+5. **Push** the branch: `git push -u origin <branch>`.
+6. **PR.** If no open PR exists for the branch: `gh pr create --fill`. If
+   one already exists: reuse it (new commits are appended).
+7. **Auto-merge.** `gh pr merge --auto --squash`. GitHub merges the PR once
+   all required checks pass (Lint / Unit Tests / Vulnerability Scan /
+   Integration Tests / UI E2E).
+
+Local safety rails in `.claude/settings.json`:
+
+- `git push origin main`, `git push --force*`, and `gh pr merge*--admin*` are
+  denied before the Bash tool fires them.
+- A PreToolUse hook refuses `git commit` while on `main` (belt-and-suspenders
+  if you bypass `/commit`).
+
+### When checks fail
+
+- **Red CI on a PR:** invoke `/ci-fix` — it iterates ruff/mypy/pytest to
+  green, then defers to `/commit` to push the fix. Auto-merge stays armed and
+  completes when the next run is green.
+- **Pre-merge sanity:** `/merge-check` runs the full local gauntlet (CI
+  status, migrations, import integrity, tests, type check, branch freshness)
+  and reports blockers without taking any action.
+- **Disable auto-merge on a specific PR:** `gh pr merge --disable-auto <num>`.
+
+### Escape hatches
+
+- `git push --no-verify` skips only the **pre-push** unit-test hook. CI still
+  runs the full suite and must pass for the merge button to enable.
+- The PreToolUse hook's `BLOCKED: refusing to commit on main` message is
+  recoverable: `git checkout -b <branch>` and retry the commit.
+- Do **not** use `gh pr merge --admin` — it's denied in settings and bypasses
+  required status checks. `enforce_admins: true` on the branch protection
+  rule would reject it server-side anyway.
+
 ## What runs on commit
 
 `.pre-commit-config.yaml` runs on every `git commit`:

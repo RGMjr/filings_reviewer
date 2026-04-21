@@ -3,11 +3,10 @@
 #   1. Extraction guard — blocks commits that regress gold standard metrics
 #   2. Docs structure guard — blocks commits that create unapproved docs folders
 #
-# Install:
-#   ln -sf ../../scripts/pre-commit-extraction-guard.sh .git/hooks/pre-commit
-#
-# Or add to an existing pre-commit hook:
-#   source scripts/pre-commit-extraction-guard.sh
+# Registration: this script is invoked by the `pre-commit` framework via an
+# entry in `.pre-commit-config.yaml` (hook id: extraction-guard). Install the
+# framework's git hook with `make hooks-install` — do NOT symlink this file
+# into `.git/hooks/pre-commit` (that would clobber ruff + ruff-format).
 
 set -euo pipefail
 
