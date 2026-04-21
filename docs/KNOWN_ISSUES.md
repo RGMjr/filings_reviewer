@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#48 resolved — `image_crop` now guarded by `@require_api_key`; new `_verify_api_key` helper + view decorator in `src/web/middleware.py`; 5 new auth test cases in `tests/unit/web/test_image_crop.py`; #49 opened for integration test DB flakiness under full-suite `pytest -x`; #50 opened for missing 401-path test coverage on `api_unified_bp`; #46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
+**Last Updated**: 2026-04-20 (#44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path + facts==0 short-circuit; `repair_filing_url_mismatch.py::_eligible_rows` warns on `B_coordinated` rows; 7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py`; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`. Earlier today: #48 resolved — `image_crop` now guarded by `@require_api_key`; new `_verify_api_key` helper + view decorator in `src/web/middleware.py`; 5 new auth test cases in `tests/unit/web/test_image_crop.py`; #49 opened for integration test DB flakiness under full-suite `pytest -x`; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
 
 ---
 
@@ -190,9 +190,18 @@ Review rejection rates for revenue synonyms to determine if context gating is to
 
 ## 46. `scripts/apply_all_migrations.py` Stale — Stops at Migration 31
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-20)
 **Severity**: Low
 **Discovered**: 2026-04-20
+**Resolved**: 2026-04-20
+
+### Resolution (2026-04-20)
+
+`MIGRATION_ORDER` in `scripts/apply_all_migrations.py` extended with the seven entries that were missing: `32_add_detected_keywords_to_v2_image_assets.sql`, `33_fix_identity_index.sql`, `34_dedup_v2_image_assets.sql`, `35_drop_v2_image_assets_segment_id.sql`, `36_backfill_presentation_urls.sql`, `37_create_analytics_role.sql`, `38_create_analytics_views.sql`. `--dry-run` now reports 44 migrations and the `check_unregistered_migrations` guard no longer aborts.
+
+Sync rather than delete: `apply_all_migrations.py` is referenced from `docs/operations/setup-guide.md`, `docs/operations/cloud-deployment-runbook.md`, `docs/operations/sql31-migration-runbook.md`, `docs/architecture/v1-table-deprecation-plan.md`, `docs/README.md`, `.claude/rules/scripts.md`, and `.claude/commands/project-tutorial.md`. Deletion would expand scope into 7 doc files; sync is a 7-line `MIGRATION_ORDER` append.
+
+`33_fix_identity_index.sql` is included even though `apply_migrations.py` skips it (because Neon prod was healed out-of-band, see `apply_migrations.py:68-74`); the migration is explicitly idempotent (`-- Idempotent: running this migration twice drops and rebuilds the same index` — `DROP INDEX IF EXISTS` + recreate), so re-applying through `apply_all_migrations.py`'s separate ledger is a no-op DDL.
 
 ### Problem
 
@@ -214,9 +223,14 @@ the canonical runner (`scripts/apply_migrations.py`) handles them correctly.
 
 ## 47. `data/audit/` Not Gitignored
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-20)
 **Severity**: Low
 **Discovered**: 2026-04-20
+**Resolved**: 2026-04-20
+
+### Resolution (2026-04-20)
+
+`data/audit/` added to `.gitignore` (line 46), grouped with the other runtime `data/*` subpaths (`data/filings/`, `data/image_cache/`, `data/llm_cache.db`). Verified via `git check-ignore -v data/audit/example.jsonl` → `.gitignore:46:data/audit/`. No historical contents needed versioning.
 
 ### Problem
 
@@ -270,8 +284,10 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Low | Low | `mark_superseded_filings()` is S-1/F-1-scoped; both 10-K and 10-K/A survive; analytic intent not validated with stakeholders |
 | Review-UI sticky header offset mismatch + narrow-width pill overlap (Issue #41) | Resolved (2026-04-19) | — | — | `--navbar-height: 48px`, compact navbar, `.review-pill-row` flex-wrap; three badges dropped; deployed Render build verified visually |
 | `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
-| `apply_all_migrations.py` stale (Issue #46) | Open | Low | Low | MIGRATION_ORDER list stops at 31; unregistered-guard aborts on files 32-38. Canonical runner is `apply_migrations.py`; resolve by syncing or deleting the stale variant |
-| `data/audit/` not gitignored (Issue #47) | Open | Low | Low | Runtime JSONL audit output accumulates as untracked files; peer `data/*` subpaths are already gitignored. One-line `.gitignore` addition |
+| `audit_filing_url_mismatch.py` over-rotates to Path C (Issue #44) | Resolved (2026-04-20) | — | — | `_classify_path` decision tree refined: `facts==0` short-circuits to Path A (Spectrum Brands pattern); `facts>0` + collision → new `B_coordinated` sub-path. `repair_filing_url_mismatch.py` warns on `B_coordinated` rows. 7 unit tests |
+| `validate_database_urls.py` missing `load_dotenv()` (Issue #45) | Resolved (2026-04-20) | — | — | `load_dotenv()` added before `DATABASE_URL` read; mirrors `apply_migrations.py` pattern |
+| `apply_all_migrations.py` stale (Issue #46) | Resolved (2026-04-20) | — | — | MIGRATION_ORDER extended with 32-38; `--dry-run` no longer aborts on unregistered files. Sync rather than delete (script still referenced from 7 docs) |
+| `data/audit/` not gitignored (Issue #47) | Resolved (2026-04-20) | — | — | `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores |
 | `image_crop` unauthenticated (Issue #48) | Resolved (2026-04-20) | — | — | `@require_api_key` decorator added in `src/web/middleware.py` (extracts the existing `_check_api_key` body into `_verify_api_key`); applied to `image_crop` in `review_unified.py`; 5 auth tests cover missing / wrong / correct key, same-origin bypass, and misconfig 500 |
 | Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Low | Medium | First integration test to hit the pool fails with `AdminShutdown` / `the connection is lost` / `deadlock detected`; specific test varies run-to-run; reproduces on clean main. Undermines the `pytest -x -q` pre-commit gate |
 | No 401-path test coverage for `api_unified_bp` (Issue #50) | Open | Low | Low | `register_api_auth(api_unified_bp)` has no auth-rejected test; silent regression of `_verify_api_key` on the V2 API path would not be caught. Mirror `TestImageCropAuth` shape for the V2 API blueprint |
@@ -1474,11 +1490,26 @@ See Issue #30 resolution notes for full audit trail. Apply log at `data/audit/is
 
 ## 44. `audit_filing_url_mismatch.py` Classifier Over-Rotates on Legitimate Co-Registrant Sharing
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-20)
 **Severity**: Low — cosmetic/ergonomic; a human-in-the-loop confirms the override via `--include-path-c`
 **Discovered**: 2026-04-19 (audit for Issue #30 classified all 15 rows as Path C when Path A was safe)
+**Resolved**: 2026-04-20
 
-### Problem
+### Resolution (2026-04-20)
+
+`_classify_path` (`scripts/audit_filing_url_mismatch.py:146`) now implements the four-outcome decision tree from the original "Next Steps":
+
+- `html_content_is_uber=False` → `"A"` (URL-only).
+- `reviews>0` / `img_reviews>0` / `in_gold_standard` → `"C"`.
+- `facts==0` (regardless of accession/storage collision) → `"A"` — this is the Spectrum Brands pattern from Issue #30, now correctly classified without `--include-path-c`.
+- `facts>0` and `accession_collides_in_scope` or `html_storage_path_shared_with` → `"B_coordinated"` (new sub-path; coordinated refetch handler not yet implemented — see guardrail).
+- Else (`facts>0`, no collision) → `"B"`.
+
+`scripts/repair_filing_url_mismatch.py::_eligible_rows` was updated to emit a single `logger.warning(...)` listing affected `filing_id`s when the audit report contains any `B_coordinated` rows, so they aren't silently dropped from existing A/B runs. Adding `B_coordinated` to the CLI `choices` (and implementing the coordinated-refetch handler) is deferred — the audit-side classification was the user-facing fix.
+
+7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py::TestClassifyPath` cover every branch (uber-false short-circuit; reviews/img-reviews/gold-standard → C; facts==0 + collision → A; facts>0 + collision → B_coordinated; facts>0 clean → B). Tests load `_classify_path` via `importlib.util.spec_from_file_location` so no `scripts/__init__.py` is required.
+
+### Original Problem
 
 `scripts/audit_filing_url_mismatch.py::_classify_path` treats `accession_collides_in_scope=True` OR `html_storage_path_shared_with≠[]` as a Path-C trigger. The logic was defensive: `FilingFetcher._update_database` filters `WHERE accession_number = %s`, so two rows sharing an accession would double-update during Path B refetch. That's correct for Path B.
 
@@ -1512,9 +1543,14 @@ The `B_coordinated` sub-path is the correct design for the Spectrum Brands patte
 
 ## 45. `scripts/validate_database_urls.py` Missing `load_dotenv()`
 
-**Status**: Open
+**Status**: ✅ Resolved (2026-04-20)
 **Severity**: Low — cosmetic (confusing UX); the script has a working connection path when the shell already exports `DATABASE_URL`
 **Discovered**: 2026-04-19 (attempted verification run during Issue #30 resolution fell back to `localhost:5432` / non-existent `filings_analysis` DB)
+**Resolved**: 2026-04-20
+
+### Resolution (2026-04-20)
+
+`from dotenv import load_dotenv` import added to the top of `scripts/validate_database_urls.py`; `load_dotenv()` invoked immediately before the `db_url = os.getenv("DATABASE_URL", ...)` read. Mirrors the pattern at `scripts/apply_migrations.py:21`. The existing fallback / error path remains intact for the case where `.env` has no `DATABASE_URL`.
 
 ### Problem
 
@@ -1736,3 +1772,7 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 - **2026-04-19**: Issue #41 resolved — `--navbar-height: 48px` CSS custom property in `src/web/static/css/review.css` unifies sticky offsets; `.navbar.sticky-top` padding-y compacted to 0.25rem; `.review-pill-row` flex-wrap class on the `unified_review.html:58` stat-pill row. Separately, `accepted`, `rejected`, and `img reviewed` badges dropped to reduce horizontal load; badge font-size shrunk to 0.7rem; sticky-header vertical padding trimmed to absorb container `mt-4`. Deployed Render build verified visually. Commit `366d9dd`
 - **2026-04-20**: Added Issue #46 — `scripts/apply_all_migrations.py` `MIGRATION_ORDER` list stops at 31 and its unregistered-guard aborts on files 32-38; surfaced during analytics-UI phase 1 (sql/37 + sql/38) audit. Canonical runner is `scripts/apply_migrations.py`
 - **2026-04-20**: Added Issue #47 — `data/audit/` runtime JSONL output is untracked but not gitignored; peer `data/*` subpaths are. Surfaced during analytics-UI phase 1 pre-commit `git status` review
+- **2026-04-20**: Issue #44 resolved — `_classify_path` in `scripts/audit_filing_url_mismatch.py` now implements the four-outcome decision tree from the original Next Steps: `facts==0` short-circuits to Path A (eliminates Spectrum Brands false-positive Path C), `facts>0` + accession/storage collision routes to new `B_coordinated` sub-path. `scripts/repair_filing_url_mismatch.py::_eligible_rows` warns once per invocation when `B_coordinated` rows are present so they aren't silently dropped from existing A/B runs. 7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py` cover every branch (loaded via `importlib.util` to avoid `scripts/__init__.py`)
+- **2026-04-20**: Issue #45 resolved — `from dotenv import load_dotenv` + `load_dotenv()` added to `scripts/validate_database_urls.py` ahead of the `DATABASE_URL` read; mirrors `scripts/apply_migrations.py:21`. Existing fallback / error path retained for the case where `.env` has no `DATABASE_URL`
+- **2026-04-20**: Issue #46 resolved — `MIGRATION_ORDER` in `scripts/apply_all_migrations.py` extended with `32_add_detected_keywords_to_v2_image_assets.sql`, `33_fix_identity_index.sql`, `34_dedup_v2_image_assets.sql`, `35_drop_v2_image_assets_segment_id.sql`, `36_backfill_presentation_urls.sql`, `37_create_analytics_role.sql`, `38_create_analytics_views.sql`. `--dry-run` now reports 44 migrations (31 pre-existing + 7 new); `check_unregistered_migrations` no longer aborts. Sync rather than delete (script still referenced from 7 docs); sql/33 included for fresh-DB-from-scratch semantics — migration is explicitly idempotent
+- **2026-04-20**: Issue #47 resolved — `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores (`data/filings/`, `data/image_cache/`). Verified via `git check-ignore -v`
