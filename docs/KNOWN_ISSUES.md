@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21 (#56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports (`dateutil`, `botocore`, `PIL`); README gains pipeline-stage class mentions + coverage line matching the sync script's regex; #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. Unblocks PR #50 and every future PR. Previously 2026-04-20: #32 resolved; #33 resolved; #44 resolved; #45 resolved; #46 resolved; #47 resolved; #48 resolved; #49 opened; #50 opened; #34 Phase 3 resolved; #35 fully unblocked)
+**Last Updated**: 2026-04-21 (#35 partially resolved — `chart_only` mode landed via PR #50; 3-filing Neon smoke validated mechanism safety; full 8-filing backfill deferred pending investigation of #53/#54. #53 opened for chart call limit truncation; #54 opened for chart-bridge low-confidence misbinds; #55 opened for 28 stuck 8-K filings from form-filter bypass. #56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports; README gains pipeline-stage class mentions + coverage line matching the sync script's regex. #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. #56+#57 unblock PR #50 and every future PR. Previously on 2026-04-20: #32 resolved — `src/shared/html_segmenter.py` deleted as dead V1 code; #33 resolved — `pyproject.toml` `fail_under` raised 75 → 80; #44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`; #48 resolved — `image_crop` guarded by `@require_api_key`; #49 opened for integration test DB flakiness; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; #51 opened for brittle source-string assertions in `test_persistence_sql.py`; #52 opened for `pg_dump` version-mismatch silent failure)
 
 ---
 
@@ -278,7 +278,7 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | `html_segmenter.py` 0% coverage (Issue #32) | Resolved (2026-04-20) | — | — | Verified zero production callers; module deleted (2032 LOC) along with smoke test. Coverage 81.44% → 83.5%. Successor: `src/extraction_v2/stages/ingestion.py` |
 | Raise coverage threshold to 80% (Issue #33) | Resolved (2026-04-20) | — | — | `pyproject.toml` `fail_under` 75 → 80 in same change as #32; `.claude/rules/testing.md` updated to match |
 | Image cache rooted in TMPDIR (Issue #34) | Resolved (Phases 1 + 3, 2026-04-19) | Medium | — | `ImageStorage` abstraction + Cloudflare R2 backend; `v2_image_assets.file_path` stores opaque storage keys; validated via `validate_key()`; 7 call sites migrated |
-| Pre-2026-04-17 filings missing chart facts (Issue #35) | Unblocked (2026-04-19) | Medium | Medium | `batch_v2_extraction.py --force-reextract` now viable on both dev and prod; 38 filings to queue |
+| Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved (2026-04-21) | Low | Low | `chart_only` mode landed (PR #50) — surgical backfill available without destroying reviewer work; 3-filing smoke on Neon confirms mechanism safe. Recall gain is marginal: 38-filing Class (E) baseline overstates the real Tier 1 gap because most in-scope filings' charts aren't cohort/NRR structures. Full 8-filing backfill deferred pending chart-bridge recall investigation (Issues #53, #54) |
 | `populate` has no `--limit` (Issue #36) | Resolved (2026-04-19) | — | — | `build_universe(limit=)` + `populate --limit N` land in commit `366d9dd`; regression-guarded |
 | `classify_first_time_issuer=True` for 10-K filers (Issue #37) | Resolved (2026-04-19) | — | — | `_process_filing` gates the classifier to S-1/F-1; non-applicable filings land with `is_first_time_issuer=NULL`; commit `366d9dd` |
 | `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | Low | Medium | BIGINT referencing `filings.filing_id` despite name; cost one prod SQL failure (commit `c353e83`); rename needs migration + caller sweep |
@@ -293,6 +293,11 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | `image_crop` unauthenticated (Issue #48) | Resolved (2026-04-20) | — | — | `@require_api_key` decorator added in `src/web/middleware.py` (extracts the existing `_check_api_key` body into `_verify_api_key`); applied to `image_crop` in `review_unified.py`; 5 auth tests cover missing / wrong / correct key, same-origin bypass, and misconfig 500 |
 | Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Low | Medium | First integration test to hit the pool fails with `AdminShutdown` / `the connection is lost` / `deadlock detected`; specific test varies run-to-run; reproduces on clean main. Undermines the `pytest -x -q` pre-commit gate |
 | No 401-path test coverage for `api_unified_bp` (Issue #50) | Open | Low | Low | `register_api_auth(api_unified_bp)` has no auth-rejected test; silent regression of `_verify_api_key` on the V2 API path would not be caught. Mirror `TestImageCropAuth` shape for the V2 API blueprint |
+| Brittle source-string assertions in `test_persistence_sql.py` (Issue #51) | Open | Low | Low | Exact-substring assertions break whenever `black` reformats adjacent code; `# fmt: skip` workaround applied during Issue #35 Option A'; convert to behavioral assertions against a mock cursor |
+| `pg_dump` version-mismatch silent failure (Issue #52) | Open | Low | Low | Default `/opt/homebrew/bin/pg_dump` is PG14; Neon is PG15; mismatch writes 0-byte snapshot with exit 0, error only on stderr. Pin a PG16 client path or add a pre-flight check |
+| Chart call limit (10) truncates OCR on high-chart filings (Issue #53) | Open | Low | Low | Chewy smoke only OCR'd 10 of 20 queued images; Tier 1 charts in positions 11+ invisible to the bridge. Raise the cap or expose as CLI flag |
+| Chart-bridge low-confidence misbinds (Issue #54) | Open | Low | Low | `cm_customer_acquisition_cost=$3` emitted at confidence 0.508 from a non-CAC chart on Chewy; auto-filtered by review threshold but dilutes backfill signal-to-noise. Tighten `chart_metric_min_confidence` |
+| 28 stuck 8-K filings in Class (E) (Issue #55) | Open | Low | Low | Out-of-scope 8-Ks reached `v2_image_assets` via form-filter bypass during ingestion; inflates Issue #35 baseline. Either delete or reclassify to `out_of_scope` and narrow diagnostic to S-1/F-1 |
 | `check_docs_sync.py --ci` fails CI on transitive-import warnings (Issue #56) | Resolved (2026-04-21) | — | — | `import_to_pkg` dict extended for `dateutil`, `botocore`, `PIL`; README updated with pipeline-stage class names + coverage line matching `(\d+)%\s*overall` regex. Unblocks every PR |
 | `unified_review.html` missing breadcrumb + count badges broke 7 Playwright tests (Issue #57) | Resolved (2026-04-21) | — | — | Template gained Bootstrap breadcrumb + accepted/rejected count badges; 2 test selectors updated to match compact-UI refactor (`.fact-metric-id` + `.fs-5.fw-bold`). All 151 UI tests pass |
 
@@ -1125,28 +1130,43 @@ Legacy rows (pre-migration absolute paths) fail `validate_key` and return 404 vi
 
 ## 35. Pre-2026-04-17 Filings Missing Chart-Sourced Facts
 
-**Status**: Open
-**Severity**: Medium — Tier-1 recall gap on chart-native metrics (38 filings affected)
+**Status**: Partially resolved (2026-04-21) — mechanism landed, recall gain marginal
+**Severity**: Low — Tier-1 recall gap was overstated; most in-scope filings don't have Tier 1 cohort/NRR charts
 **Discovered**: 2026-04-19 (Phase 1 of the "missing Chart Evidence" investigation, commit `d1430d9`)
+**Partial resolution**: 2026-04-21 (PR #50 landed `chart_only` surgical backfill mode)
 
-### Problem
+### Update 2026-04-21 — investigation outcome
 
-The 2026-04-17 chart-OCR fix (`VisionClient.analyze_image()` now forces `response_format={"type": "json_object"}` and `_parse_chart_json` has a truncation-repair fallback — see `.claude/rules/v2-pipeline.md`) resolved malformed-JSON responses from gpt-4o going forward. Filings extracted before that fix can retain chart images (`v2_image_assets` rows with `classification='chart'`) but zero `source_type='chart'` facts, because the chart bridge silently dropped the malformed OCR output.
+Backfill mechanism shipped via PR #50 (`V2PersistenceAdapter.persist_*(chart_only=True)` + `scripts/batch_v2_extraction.py --chart-only`). The mode scopes the DELETE-then-INSERT to `source_type='chart'` and the reviewed-filing guard to chart-fact decisions only, so text facts and their reviewer decisions are preserved — allowing surgical re-extraction on filings with accumulated reviewer work without CASCADE-destroying it.
 
-`scripts/diagnostic_chart_evidence_coverage.py` Class (E) reports **38 affected filings** on the local dev DB, with chart-image counts ranging from 14 to 22 per filing. Tier-1 chart-native metrics (`cm_revenue_by_cohort`, `cm_balance_by_cohort`, `cm_gross_margin_by_cohort`) take the brunt of the recall hit since those values typically live only in charts.
+Neon-prod quantification on 2026-04-21 revised the problem size sharply:
 
-### Suggested Fix
+- 38 Class (E) filings total → **28 are stuck 8-K filings** in `processing_status='processing'` that shouldn't have been ingested (see Issue #55 below), and **10 are in-scope S-1/F-1** (8 non-reviewed + 2 reviewed) — the real backfill target is ≤10 filings, not 38.
+- Of those ≤10, all 8 non-reviewed candidates have accumulated 81 reviewer decisions across them, making the guard's preservation the binding constraint (which `chart_only` solves).
 
-Issue #34 Phase 3 (R2 backend) landed on 2026-04-19 — this backfill is now viable on both local dev and prod. Queue the 38 filings for re-extraction with `scripts/batch_v2_extraction.py --force-reextract` in a backfill window. The reviewed-filing guard (`V2PersistenceAdapter._persist_facts_in_tx`) must be honoured; any filings with prior reviewer decisions need explicit handling before re-extraction wipes `v2_review_decisions` via CASCADE.
+Three smokes on Neon (1547 Samsara, 1541 Flywire, 1146 Chewy) confirmed:
 
-Prod count is unknown — run the diagnostic against Neon before sizing the backfill.
+- ✅ Mechanism is safe: reviewer decisions fully preserved across all three runs; text/html_table facts untouched.
+- ⚠️ Recall gain is sparse: only 1 chart fact produced across 3 filings (Chewy), and that fact was a low-confidence (0.508) misbind of `cm_customer_acquisition_cost`=$3 — a reviewer-gated false positive.
+
+Root cause of the sparse gain: the original 38-filing Class (E) baseline conflates (a) filings where pre-fix OCR dropped Tier 1 cohort/NRR chart data with (b) filings whose charts aren't Tier 1 metrics at all (market-size, process diagrams, photos). Only (a) recovers under re-extraction; most of the 38-filing set is (b).
+
+### Remaining work
+
+- Full 5-filing Phase 4' (1442, 1543, 1549 Snowflake, 1550 Tenable, 1146-remainder) deferred: expected recall gain doesn't justify the reviewer-curation overhead until Issues #53 and #54 (chart-call-limit truncation and chart-bridge low-confidence misbinds) are investigated.
+- Class (E) diagnostic should narrow to S-1/F-1 form types (and exclude filings whose charts don't include Tier 1 metrics) to avoid overstating the gap in future audits.
+- 2 reviewed filings (1542, 1543) still in Class (E) under chart_only's guard — acceptable; they preserve reviewer work.
 
 ### Cross-References
 
-- `.claude/rules/v2-pipeline.md` — chart-OCR fix dated 2026-04-17 (the inflection point)
-- Issue #34 — Phases 1 + 3 resolved 2026-04-19 (R2 backend live)
-- Issue #24 — any backfill must also clear the 9 Class (B) orphan refs
-- CLAUDE.md Core Design Principle #6 — reviewed-filing guard on re-extraction
+- `.claude/rules/v2-pipeline.md#chart-only-re-extraction-chart_onlytrue` — mechanism documentation
+- Issue #34 — R2 backend (Phases 1 + 3 resolved 2026-04-19)
+- Issue #24 — Class (B) orphan img_id refs (still open; independent of Issue #35 scope)
+- Issue #53 — chart call limit (10) truncates OCR for high-chart filings
+- Issue #54 — chart-bridge emits low-confidence misbinds on non-Tier-1 charts
+- Issue #55 — 28 stuck 8-K filings in Class (E) (form-filter bypass during ingestion)
+- PR #50 — `feat(persistence): add chart_only mode for surgical Issue #35 backfills`
+- Session artifacts: `data/audit/issue_35_presmoke_snapshot.sql`, `data/audit/issue_35_presmoke_gs.txt`, `logs/issue_35_prod_smoke{,2,3}.log`
 
 ---
 
@@ -1668,6 +1688,112 @@ would not be caught.
   401, correct key → 200, same-origin Referer → 200, `API_KEY` unset →
   500. Mirror the shape of `TestImageCropAuth` in
   `tests/unit/web/test_image_crop.py` after #48.
+
+---
+
+## 51. Brittle Source-String Assertions in `test_persistence_sql.py`
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20 (surfaced while implementing Issue #35 Option A' — `chart_only` persistence mode)
+
+### Problem
+
+`tests/unit/extraction_v2/test_persistence_sql.py::TestImagePersistSQL::test_empty_matches_persist_as_null` (line 211) asserts the exact one-line substring `") or None,"` inside `_persist_images_in_tx`. Running `black` on `persistence.py` for any reason can reformat that expression across two lines and break the test. This bit during the Option A' change — worked around with `# fmt: skip` on the affected block, but the test's intent (verify that empty matcher results collapse to `None` / SQL `NULL`) should be testable in a formatting-agnostic way. Other assertions in the same file (`test_detected_keywords_in_insert_columns`, `test_detected_keywords_in_on_conflict_update`, `test_matcher_invoked_for_each_image`) are similarly grep-the-source checks and carry the same risk.
+
+### Next Steps
+
+- Replace source-substring assertions with behavioral assertions: build a minimal `ImageAsset` fixture with empty `nearby_text`/`ocr_text`, call `_persist_images_in_tx` (or the helper that produces `params_list`) against a mock cursor, and assert the `detected_keywords` value in the captured `execute` params is `None`.
+- Remove the `# fmt: skip` comment in `persistence.py` once the test no longer depends on the single-line form.
+
+---
+
+## 52. `pg_dump` Version-Mismatch Silent Failure
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20 (surfaced while taking a pre-smoke snapshot for Issue #35)
+
+### Problem
+
+`/opt/homebrew/bin/pg_dump` resolves to the `postgresql@14` install (14.20 on this machine); Neon prod runs PostgreSQL 15.16. Running `pg_dump "$DATABASE_URL" --data-only > snapshot.sql` exits 0 but writes a 0-byte file — the actual error (`server version: 15.16; pg_dump version: 14.20 — aborting because of server version mismatch`) goes to stderr. Redirecting only stdout silently loses the snapshot. Worked around by invoking `/opt/homebrew/Cellar/postgresql@16/16.11/bin/pg_dump` directly.
+
+### Next Steps
+
+- Add a pre-flight helper (maybe `scripts/dev/snapshot_prod.sh` or a short `scripts/check_pg_client_version.py`) that resolves to a client ≥ server version or fails loudly.
+- Document the requirement in `.claude/rules/infrastructure.md` under the Neon/Render section: "pg_dump must be ≥ 15; prefer `brew install postgresql@16` and invoke via explicit path or a pinned symlink."
+- Optional: add a `brew services`-style doctor step that validates `pg_dump --version` against `SELECT version()` from `DATABASE_URL`.
+
+---
+
+## 53. Chart Call Limit (10) Truncates OCR on High-Chart Filings
+
+**Status**: Open
+**Severity**: Low — undercuts Tier 1 chart-fact recall for filings with >10 chart images
+**Discovered**: 2026-04-21 (surfaced during Issue #35 smoke on Chewy, filing_id=1146)
+
+### Problem
+
+`OCRExtractionStage` enforces a hard cap on per-filing chart OCR calls. During the Chewy smoke (`logs/issue_35_prod_smoke3.log`), only 10 of 20 queued chart/table images were OCR'd before:
+
+```
+WARNING:src.extraction_v2.stages.ocr_extraction:Chart call limit (10) reached
+```
+
+Filings with lots of charts (Chewy has 16 chart-classified images; Snowflake has 8; on-average-larger S-1s exceed 10 easily) silently lose extraction coverage on the trailing images. The skipped images never get queried, so any Tier 1 cohort/NRR chart in positions 11+ is invisible to the bridge regardless of whether the OCR would have succeeded.
+
+### Next Steps
+
+- Locate the limit in `src/extraction_v2/stages/ocr_extraction.py` (likely a module-level constant or `PipelineConfig` field) and either raise the default, convert to a per-filing override, or expose via CLI flag on `batch_v2_extraction.py`.
+- Re-run the Chewy smoke with the cap raised to quantify the missed-recall impact.
+- Consider prioritization: OCR charts in likely-Tier-1 sections first (MDA, financials) rather than HTML order.
+
+---
+
+## 54. Chart-Bridge Emits Low-Confidence Misbinds on Non-Tier-1 Charts
+
+**Status**: Open
+**Severity**: Low — adds reviewer noise; auto-filtered by confidence threshold
+**Discovered**: 2026-04-21 (Issue #35 smoke on Chewy — `cm_customer_acquisition_cost` = $3 from a bar chart with "3" in it)
+
+### Problem
+
+`ChartFactBridgeStage` + `ChartMetricClassifier` emitted a fact `cm_customer_acquisition_cost = 3` with confidence 0.508 from a Chewy chart that is almost certainly not a CAC chart. The number "3" (probably a cohort count or year marker in the chart) got bound to CAC because the chart loosely matched keyword/context heuristics.
+
+Confidence 0.508 is below both the auto-accept (0.90) and review (0.80) thresholds, so the fact lands as `requires_review=True` — a reviewer would see and reject it. Not data-corrupting, but:
+
+1. Adds reviewer workload with predictably-bad candidates.
+2. In aggregate across a backfill of many filings, these misbinds dilute the signal-to-noise of the chart-native recall gain claimed by Issue #35.
+
+The smoke's Chewy fact was rolled back manually (`DELETE FROM v2_metric_facts WHERE doc_id=1146 AND source_type='chart'`) after the 2026-04-21 investigation decided the backfill's recall gain didn't justify the reviewer overhead until this is understood.
+
+### Next Steps
+
+- Audit `ChartMetricClassifier` scoring: when no metric crosses a reasonable confidence floor (e.g. 0.7), emit NO fact rather than picking the highest-scoring weak match.
+- Add a unit test with a fixture chart that has only structural numbers (years, indexes) and assert no chart fact is produced.
+- Consider tightening `chart_image_min_confidence` or introducing a separate `chart_metric_min_confidence` threshold with a stricter default (e.g. 0.70).
+
+---
+
+## 55. 28 Stuck 8-K Filings in Class (E) from Form-Filter Bypass
+
+**Status**: Open
+**Severity**: Low — 8-K data is out-of-scope for this extraction system; inflates Class (E) baseline
+**Discovered**: 2026-04-21 (Issue #35 Phase 1 Neon quantification)
+
+### Problem
+
+Of the 38 filings in `scripts/diagnostic_chart_evidence_coverage.py` Class (E) on Neon prod, **28 are 8-K filings** in `processing_status='processing'` with `html_storage_path IS NULL` and `html_content IS NULL`. The extraction system is designed for S-1/F-1 (see `DEFAULT_FORM_TYPES_S1F1` in `src/universe/universe_builder.py`), yet these 8-Ks reached ingestion far enough to have `v2_image_assets` chart-classified rows written, then stalled. This suggests a form-filter bypass somewhere in the ingestion path — possibly an early-path onboarding script, possibly a reviewer action, possibly a daily-cron edge case.
+
+Seven of the 28 additionally have 2–3 reviewer decisions each on text/table facts, which is even more puzzling for an allegedly out-of-scope form type.
+
+Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the original target/exclusion lists.
+
+### Next Steps
+
+- Trace how these 8-K filings entered the pipeline: `git log` the ingestion path around the 2026-04-xx window, `grep` for any codepath that calls `FilingFetcher` or `V2Pipeline.process` without a form-type gate.
+- Decide cleanup strategy: (a) retroactively delete the `filings` + `v2_image_assets` + `v2_metric_facts` rows for these 28 ids; or (b) reclassify to `processing_status='out_of_scope'` and update the Class (E) diagnostic to filter on `form_type IN ('S-1','S-1/A','F-1','F-1/A')`.
+- If reviewer decisions on 8-Ks are intentional (user-directed review for some reason), skip the deletion option and go with (b).
 
 ---
 
