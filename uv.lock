@@ -784,7 +784,7 @@ requires-dist = [
     { name = "flask", specifier = ">=3.0.0" },
     { name = "flask-talisman", specifier = ">=1.1.0" },
     { name = "joblib", specifier = ">=1.3.0" },
-    { name = "lxml", specifier = ">=4.9.0" },
+    { name = "lxml", specifier = ">=6.1.0" },
     { name = "memory-profiler", marker = "extra == 'dev'", specifier = ">=0.61.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "nh3", specifier = ">=0.2.17" },
