@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21 (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -17,6 +17,7 @@ _(none currently)_
 | Issue | Status | Notes |
 |-------|--------|-------|
 | Low Farfetch Recall (Issue #2) | Re-diagnosed umbrella | P=50% R=37% F1=42% on 2026-04-18; superseded by sub-issues #14–#19 |
+| Secret-leak guard on mis-named env duplicates (Issue #65) | Open | `.gitignore` only matches `.env` exactly; a file named `" "` containing full env was untracked but not ignore-protected |
 
 ### Open — Low Severity
 
@@ -857,6 +858,30 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 - Issue #54 — landed `chart_metric_min_confidence` knob; forced to default 0.60 by this sensitivity.
 - `src/extraction_v2/chart/metric_classifier.py::ChartMetricClassifier.classify`
 - `tests/extraction_v2/chart/test_chart_fact_bridge_stage.py::test_emits_facts_for_classified_chart`
+
+---
+
+## 65. Secret-Leak Guard for Mis-Named Env File Duplicates
+
+**Status**: Open
+**Severity**: Medium
+**Discovered**: 2026-04-21 (surfaced during branch-cleanup session)
+
+### Problem
+
+`.gitignore` matches `.env` by exact name only. During cleanup today a file literally named `" "` (single space) was found in the repo root — a 19-line subset of `.env` containing real production secrets (OpenAI key, Neon DB URL with creds, GitHub PAT, Brave/Gemini keys, `SECRET_KEY`, `FILINGS_API_KEY`). The file was untracked and never committed, but **`git check-ignore` confirms `.gitignore` does NOT protect it** — a `git add .` or `git add -A` would have caught it. Likely origin: a shell redirect typo like `cp .env " "`. No pre-commit hook scans staged blobs for secret patterns either.
+
+### Next Steps
+
+- Broaden `.gitignore` to cover env-variant filenames: add `.env*` and consider `!.env.template` / `!.env.example` allowlists.
+- Add a `detect-private-key`-style pre-commit hook that scans staged content for known secret patterns: `sk-proj-*`, `github_pat_*`, `postgresql://*neon.tech`, `OPENAI_API_KEY=`, `SECRET_KEY=`, `FILINGS_API_KEY=`, R2 endpoint URLs.
+- Evaluate `gitleaks` or `detect-secrets` as a belt-and-suspenders scan at commit-time and in CI.
+- Audit `git log --all -S 'OPENAI_API_KEY='` / `sk-proj-` / `github_pat_` to confirm no secret was ever committed historically.
+
+### Cross-References
+
+- `.gitignore` line 2 (current `.env` entry)
+- `.pre-commit-config.yaml` (hook location)
 
 ---
 
