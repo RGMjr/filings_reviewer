@@ -12,6 +12,8 @@ services:
         value: production
       - key: FILINGS_API_KEY
         sync: false
+      - key: INGEST_SPAWN_SUBPROCESS
+        value: "false"  # production drains via filings-onboarding-runner worker
       # Cloudflare R2 image cache (src/infra/image_storage.py). Values set via Render dashboard.
       - key: R2_BUCKET
         sync: false
@@ -32,6 +34,28 @@ services:
       - key: DATABASE_URL
         sync: false
       # Cron writes images to R2 — must share the same bucket credentials as the web service.
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_ENDPOINT_URL
+        sync: false
+
+  - type: worker
+    name: filings-onboarding-runner
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python3 -m src.universe.onboarding_runner --watch --poll-interval 10
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SEC_USER_AGENT
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # Worker runs V2Pipeline for onboard batches — image OCR writes to R2.
       - key: R2_BUCKET
         sync: false
       - key: R2_ACCESS_KEY_ID

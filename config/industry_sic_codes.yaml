@@ -23,6 +23,27 @@ industries:
       - "7374"  # SERVICES-COMPUTER PROCESSING & DATA PREPARATION
       - "7377"  # SERVICES-COMPUTER RENTAL & LEASING
 
+  grocery_retail:
+    description: "Grocery and food stores"
+    sic_codes:
+      - "5411"  # RETAIL-GROCERY STORES
+      # Source: SEC SIC list https://www.sec.gov/corpfin/division-of-corporation-finance-standard-industrial-classification-sic-code-list
+      # Codes verified 2026-04-19.
+
+  industrial_services:
+    description: "Industrial and commercial services"
+    sic_codes:
+      - "7389"  # SERVICES-SERVICES, NEC (covers broad industrial / commercial services)
+      # Source: SEC SIC list https://www.sec.gov/corpfin/division-of-corporation-finance-standard-industrial-classification-sic-code-list
+      # Codes verified 2026-04-19.
+      # Additional codes may be appended here as needed (e.g. 7380 for
+      # miscellaneous business services, 7382 for home security services).
+
 aliases:
   saas: software
   "computer services": software
+  grocery: grocery_retail
+  "food retail": grocery_retail
+  "food stores": grocery_retail
+  "industrial": industrial_services
+  "business services": industrial_services
