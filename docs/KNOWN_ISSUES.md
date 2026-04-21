@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21 (#56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports (`dateutil`, `botocore`, `PIL`); README gains pipeline-stage class mentions + coverage line matching the sync script's regex; #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. Unblocks PR #50 and every future PR. Previously 2026-04-20: #32 resolved; #33 resolved; #44 resolved; #45 resolved; #46 resolved; #47 resolved; #48 resolved; #49 opened; #50 opened; #34 Phase 3 resolved; #35 fully unblocked)
+**Last Updated**: 2026-04-21 (#56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports (`dateutil`, `botocore`, `PIL`); README gains pipeline-stage class mentions + coverage line matching the sync script's regex; #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. Unblocks PR #50 and every future PR. Previously 2026-04-20: #32 resolved; #33 resolved; #44 resolved; #45 resolved; #46 resolved; #47 resolved; #48 resolved; #49 opened; #50 opened; #34 Phase 3 resolved; #35 fully unblocked; #51 opened for brittle source-string assertions in `test_persistence_sql.py`; #52 opened for `pg_dump` version-mismatch silent failure)
 
 ---
 
@@ -293,6 +293,8 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | `image_crop` unauthenticated (Issue #48) | Resolved (2026-04-20) | — | — | `@require_api_key` decorator added in `src/web/middleware.py` (extracts the existing `_check_api_key` body into `_verify_api_key`); applied to `image_crop` in `review_unified.py`; 5 auth tests cover missing / wrong / correct key, same-origin bypass, and misconfig 500 |
 | Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Low | Medium | First integration test to hit the pool fails with `AdminShutdown` / `the connection is lost` / `deadlock detected`; specific test varies run-to-run; reproduces on clean main. Undermines the `pytest -x -q` pre-commit gate |
 | No 401-path test coverage for `api_unified_bp` (Issue #50) | Open | Low | Low | `register_api_auth(api_unified_bp)` has no auth-rejected test; silent regression of `_verify_api_key` on the V2 API path would not be caught. Mirror `TestImageCropAuth` shape for the V2 API blueprint |
+| Brittle source-string assertions in `test_persistence_sql.py` (Issue #51) | Open | Low | Low | Exact-substring assertions break whenever `black` reformats adjacent code; `# fmt: skip` workaround applied during Issue #35 Option A'; convert to behavioral assertions against a mock cursor |
+| `pg_dump` version-mismatch silent failure (Issue #52) | Open | Low | Low | Default `/opt/homebrew/bin/pg_dump` is PG14; Neon is PG15; mismatch writes 0-byte snapshot with exit 0, error only on stderr. Pin a PG16 client path or add a pre-flight check |
 | `check_docs_sync.py --ci` fails CI on transitive-import warnings (Issue #56) | Resolved (2026-04-21) | — | — | `import_to_pkg` dict extended for `dateutil`, `botocore`, `PIL`; README updated with pipeline-stage class names + coverage line matching `(\d+)%\s*overall` regex. Unblocks every PR |
 | `unified_review.html` missing breadcrumb + count badges broke 7 Playwright tests (Issue #57) | Resolved (2026-04-21) | — | — | Template gained Bootstrap breadcrumb + accepted/rejected count badges; 2 test selectors updated to match compact-UI refactor (`.fact-metric-id` + `.fs-5.fw-bold`). All 151 UI tests pass |
 
@@ -1668,6 +1670,41 @@ would not be caught.
   401, correct key → 200, same-origin Referer → 200, `API_KEY` unset →
   500. Mirror the shape of `TestImageCropAuth` in
   `tests/unit/web/test_image_crop.py` after #48.
+
+---
+
+## 51. Brittle Source-String Assertions in `test_persistence_sql.py`
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20 (surfaced while implementing Issue #35 Option A' — `chart_only` persistence mode)
+
+### Problem
+
+`tests/unit/extraction_v2/test_persistence_sql.py::TestImagePersistSQL::test_empty_matches_persist_as_null` (line 211) asserts the exact one-line substring `") or None,"` inside `_persist_images_in_tx`. Running `black` on `persistence.py` for any reason can reformat that expression across two lines and break the test. This bit during the Option A' change — worked around with `# fmt: skip` on the affected block, but the test's intent (verify that empty matcher results collapse to `None` / SQL `NULL`) should be testable in a formatting-agnostic way. Other assertions in the same file (`test_detected_keywords_in_insert_columns`, `test_detected_keywords_in_on_conflict_update`, `test_matcher_invoked_for_each_image`) are similarly grep-the-source checks and carry the same risk.
+
+### Next Steps
+
+- Replace source-substring assertions with behavioral assertions: build a minimal `ImageAsset` fixture with empty `nearby_text`/`ocr_text`, call `_persist_images_in_tx` (or the helper that produces `params_list`) against a mock cursor, and assert the `detected_keywords` value in the captured `execute` params is `None`.
+- Remove the `# fmt: skip` comment in `persistence.py` once the test no longer depends on the single-line form.
+
+---
+
+## 52. `pg_dump` Version-Mismatch Silent Failure
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-20 (surfaced while taking a pre-smoke snapshot for Issue #35)
+
+### Problem
+
+`/opt/homebrew/bin/pg_dump` resolves to the `postgresql@14` install (14.20 on this machine); Neon prod runs PostgreSQL 15.16. Running `pg_dump "$DATABASE_URL" --data-only > snapshot.sql` exits 0 but writes a 0-byte file — the actual error (`server version: 15.16; pg_dump version: 14.20 — aborting because of server version mismatch`) goes to stderr. Redirecting only stdout silently loses the snapshot. Worked around by invoking `/opt/homebrew/Cellar/postgresql@16/16.11/bin/pg_dump` directly.
+
+### Next Steps
+
+- Add a pre-flight helper (maybe `scripts/dev/snapshot_prod.sh` or a short `scripts/check_pg_client_version.py`) that resolves to a client ≥ server version or fails loudly.
+- Document the requirement in `.claude/rules/infrastructure.md` under the Neon/Render section: "pg_dump must be ≥ 15; prefer `brew install postgresql@16` and invoke via explicit path or a pinned symlink."
+- Optional: add a `brew services`-style doctor step that validates `pg_dump --version` against `SELECT version()` from `DATABASE_URL`.
 
 ---
 
