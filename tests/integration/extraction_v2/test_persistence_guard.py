@@ -126,26 +126,39 @@ def _make_fact(
     filing_id: int,
     value: float = 100.0,
     period_year: int = 2025,
+    source_type: SourceType = SourceType.TEXT,
 ) -> MetricFact:
     """Build a MetricFact with a unique identity tuple per ``period_year``.
 
     ``_persist_facts_in_tx`` dedupes by
     (metric, period, unit, scope, cohort), so tests that need multiple
     coexisting facts for the same filing must vary one of those fields.
+
+    Pass ``source_type=SourceType.CHART`` for chart-fact test cases — the
+    canonical_metric_id and source_locator shape switch accordingly so the
+    fact satisfies the chart-fact img_id invariant.
     """
+    if source_type is SourceType.CHART:
+        metric_id = "cm_revenue_by_cohort"
+        locator = SourceLocator(dom_locator=f"chart[{period_year}]", img_id=str(uuid.uuid4()))
+        snippet = f"<p>chart {value}</p>"
+    else:
+        metric_id = "cm_new_customers_acquired"
+        locator = SourceLocator(dom_locator=f"/p[{period_year}]")
+        snippet = f"<p>{value}</p>"
     return MetricFact(
         fact_id=str(uuid.uuid4()),
         doc_id=str(filing_id),
-        canonical_metric_id="cm_new_customers_acquired",
+        canonical_metric_id=metric_id,
         value=value,
         value_raw=str(value),
         unit=Unit.COUNT,
         period_type=PeriodType.ANNUAL,
         period_start=date(period_year, 1, 1),
         period_end=date(period_year, 12, 31),
-        source_type=SourceType.TEXT,
-        source_locator=SourceLocator(dom_locator=f"/p[{period_year}]"),
-        evidence_pack=EvidencePack(snippet_html=f"<p>{value}</p>"),
+        source_type=source_type,
+        source_locator=locator,
+        evidence_pack=EvidencePack(snippet_html=snippet),
         confidence=0.85,
         extraction_method=ExtractionMethod.EXACT_MATCH,
         review_status=ReviewStatus.PENDING_REVIEW,
@@ -534,33 +547,6 @@ def _make_pipeline_result_with_images(images: list[ImageAsset]) -> PipelineResul
     )
 
 
-def _make_chart_fact(
-    filing_id: int,
-    value: float = 500.0,
-    period_year: int = 2025,
-) -> MetricFact:
-    return MetricFact(
-        fact_id=str(uuid.uuid4()),
-        doc_id=str(filing_id),
-        canonical_metric_id="cm_revenue_by_cohort",
-        value=value,
-        value_raw=str(value),
-        unit=Unit.COUNT,
-        period_type=PeriodType.ANNUAL,
-        period_start=date(period_year, 1, 1),
-        period_end=date(period_year, 12, 31),
-        source_type=SourceType.CHART,
-        source_locator=SourceLocator(
-            dom_locator=f"chart[{period_year}]",
-            img_id=str(uuid.uuid4()),
-        ),
-        evidence_pack=EvidencePack(snippet_html=f"<p>chart {value}</p>"),
-        confidence=0.85,
-        extraction_method=ExtractionMethod.EXACT_MATCH,
-        review_status=ReviewStatus.PENDING_REVIEW,
-    )
-
-
 class TestChartOnlyMode:
     """Verify the `chart_only` persistence path preserves text facts + decisions."""
 
@@ -571,7 +557,9 @@ class TestChartOnlyMode:
         test_filing_id: int,
     ):
         text_fact = _make_fact(test_filing_id, value=100.0, period_year=2024)
-        chart_fact = _make_chart_fact(test_filing_id, value=500.0, period_year=2025)
+        chart_fact = _make_fact(
+            test_filing_id, value=500.0, period_year=2025, source_type=SourceType.CHART
+        )
 
         count = persistence_adapter.persist_facts(
             [text_fact, chart_fact], test_filing_id, chart_only=True
@@ -599,7 +587,7 @@ class TestChartOnlyMode:
         assert _decision_count(db_adapter, test_filing_id) == 1
 
         # Chart-only backfill: no force needed; text fact + decision must survive.
-        chart_fact = _make_chart_fact(test_filing_id, value=500.0)
+        chart_fact = _make_fact(test_filing_id, value=500.0, source_type=SourceType.CHART)
         count = persistence_adapter.persist_facts([chart_fact], test_filing_id, chart_only=True)
         assert count == 1
 
@@ -627,7 +615,7 @@ class TestChartOnlyMode:
         persistence_adapter.persist_facts([text_fact], test_filing_id)
         _insert_decision(db_adapter, text_fact.fact_id, reviewer_id="alice@example.com")
 
-        chart_fact = _make_chart_fact(test_filing_id, value=500.0)
+        chart_fact = _make_fact(test_filing_id, value=500.0, source_type=SourceType.CHART)
         # No force=True, no ReviewedFilingError expected.
         count = persistence_adapter.persist_facts([chart_fact], test_filing_id, chart_only=True)
         assert count == 1
@@ -640,11 +628,15 @@ class TestChartOnlyMode:
         test_filing_id: int,
     ):
         # Seed a reviewed chart fact — chart_only must raise without force.
-        chart_fact = _make_chart_fact(test_filing_id, value=500.0, period_year=2024)
+        chart_fact = _make_fact(
+            test_filing_id, value=500.0, period_year=2024, source_type=SourceType.CHART
+        )
         persistence_adapter.persist_facts([chart_fact], test_filing_id)
         _insert_decision(db_adapter, chart_fact.fact_id, reviewer_id="alice@example.com")
 
-        new_chart = _make_chart_fact(test_filing_id, value=600.0, period_year=2025)
+        new_chart = _make_fact(
+            test_filing_id, value=600.0, period_year=2025, source_type=SourceType.CHART
+        )
         with pytest.raises(ReviewedFilingError):
             persistence_adapter.persist_facts([new_chart], test_filing_id, chart_only=True)
         assert _decision_count(db_adapter, test_filing_id) == 1
