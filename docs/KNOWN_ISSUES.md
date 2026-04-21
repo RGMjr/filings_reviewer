@@ -47,7 +47,6 @@ _(none currently)_
 | Issue | Status | Notes |
 |-------|--------|-------|
 | Snap Filing (ID 32/33) — Mislabeled Data (Issue #9) | Partially resolved | Snap not yet in gold standard; validation DB no longer required |
-| Gold Standard Coverage Tests (Issue #11) | Partially resolved | 11/12 pass; 1 remaining (linked to archived Issue #10) |
 | Images Tab Playwright assertions fail (Issue #27) | Partially resolved | 1 test fixed; 2 stale assertions `test.skip`-ed with TODOs |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved | `chart_only` mode landed (PR #50); full 8-filing backfill deferred (#53, #54) |
 
@@ -112,40 +111,6 @@ to prevent accidentally committing production database dumps.
 
 - Corrected stale comment in `gi3_richness_analysis.py` FILING_MAP
 - Added inline note on Snap CIK pending fix
-
----
-
-## 11. Gold Standard Coverage Tests — Partially Resolved
-
-**Status**: Partially resolved
-**Severity**: Low (1 test remaining)
-**Discovered**: 2026-03-19
-**Updated**: 2026-03-31
-
-### Original Problem
-
-Two tests in `tests/integration/test_gold_standard_coverage.py` were failing:
-- `test_candidate_generation_finds_active_consumers`
-- `test_candidate_generation_finds_number_of_orders`
-
-### Resolution (2026-03-31)
-
-Diagnosed and fixed. The failures had two root causes unrelated to the Farfetch re-fetch:
-
-1. **Wrong metric ID** — Test expected `cm_transactions_by_cohort` for "Number of Orders", but extraction
-   maps this to `cm_purchase_transactions_overall`. Fixed in test assertions (lines 62, 67, 267).
-
-2. **Broken import in `TestKeywordPatterns`** — Tests accessed `MetricClassifier.METRIC_KEYWORDS` which
-   does not exist (only `GENERAL_METRIC_KEYWORDS` is on the class). Fixed to import
-   `METRIC_KEYWORDS` from `src.review.keyword_matching`.
-
-After fix: 11/12 tests in `test_gold_standard_coverage.py` pass.
-
-### Remaining (archived Issue #10)
-
-`test_candidate_generation_finds_active_consumers` originally failed due to CMS-1 cross-metric
-suppression, but that test module was deleted in commit `03a8a20` (V1 retirement). The test no
-longer exists. See the archive entry for Issue #10 for full resolution details.
 
 ---
 
@@ -947,6 +912,12 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 
 `tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The failing test no longer exists; pipeline-level recall for `cm_active_customers_total` remains 100% on Farfetch. See commit `03a8a20`.
 
+### Issue #11: Gold Standard Coverage Tests
+
+**Status**: Resolved (2026-04-21) — resolved-by-deletion
+
+The "1 remaining" test tied to archived Issue #10 no longer exists; `tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The 11/12 → 12/12 finish line was reached implicitly. See archive entry for Issue #10.
+
 ### Issue #12: `test_image_crop.py` Pollutes Working Tree with Test PNGs
 
 **Status**: Resolved (2026-04-18)
@@ -1220,3 +1191,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-20**: Issue #47 resolved — `data/audit/` added to `.gitignore` line 46 alongside peer `data/*` runtime ignores (`data/filings/`, `data/image_cache/`). Verified via `git check-ignore -v`
 - **2026-04-21**: Archive cleanup — collapsed 29 fully-resolved issues (#10, #12, #13, #14, #15, #17, #18, #19, #20, #21, #22, #23, #25, #26, #29, #30, #31, #32, #33, #36, #37, #41, #44, #45, #46, #47, #48, #56, #57) from main body into Archive section; rewrote Summary table to foreground open items; removed resolved rows from Summary table. Issue #11 cross-reference to #10 updated to point to archive entry.
 - **2026-04-21**: Five-issue follow-up bundle landed in commit `7848605` — resolved #42 (double image-write collapsed via public `SECClient.get_image_cache_path`), #50 (new `tests/unit/web/test_api_unified_auth.py`), #51 (behavioral mock-cursor rewrite; `# fmt: skip` removed), #52 (new `scripts/check_pg_client_version.py` pre-flight + infrastructure.md doc section), #54 (new `chart_metric_min_confidence` knob with default 0.60 to avoid Tier 1 regression). Archive entries added. #64 opened — chart classifier Tier 1 boundary sensitivity: HOOD `cm_balance_by_cohort` scores 0.6024 (0.0024 above gate); surfaced while forcing #54's default down from the originally-proposed 0.70. (Renumbered from an earlier working #58 after merge from origin/main revealed issues #58–#63 had been claimed by the Wave B/C/D batch-ingest-ui follow-ups.)
+- **2026-04-21**: Issue #11 archived — resolved-by-deletion. Remaining "1/12" test was in `tests/integration/test_gold_standard_coverage.py`, deleted in commit `03a8a20` during V1 retirement.
