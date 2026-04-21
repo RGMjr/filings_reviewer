@@ -85,6 +85,13 @@ MIGRATION_ORDER = [
     "29_create_v2_image_review_decisions.sql",
     "30_drop_v1_image_review.sql",
     "31_drop_v1_review_tables.sql",
+    "32_add_detected_keywords_to_v2_image_assets.sql",
+    "33_fix_identity_index.sql",
+    "34_dedup_v2_image_assets.sql",
+    "35_drop_v2_image_assets_segment_id.sql",
+    "36_backfill_presentation_urls.sql",
+    "37_create_analytics_role.sql",
+    "38_create_analytics_views.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.

@@ -36,6 +36,7 @@ from src.review.models import (
     IMAGE_REVIEW_STATUSES,
 )
 from src.web.app import get_db
+from src.web.middleware import require_api_key
 from src.web.routes._metrics import get_active_metrics
 from src.web.url_builders import build_sec_directory_url, resolve_sec_filing_url
 
@@ -521,6 +522,7 @@ def next_filing():
 
 
 @review_unified_bp.route("/image_crop/<img_id>")
+@require_api_key
 def image_crop(img_id: str) -> Response:
     """
     Serve a chart image (full or cropped) stored on disk.
@@ -530,8 +532,10 @@ def image_crop(img_id: str) -> Response:
     does not populate per-DataPoint bbox, so most chart-sourced facts can
     only link back to the whole chart image.
 
-    Security: file_path is validated against the project data/ directory
-    before opening to prevent path traversal.
+    Security: `require_api_key` gates external fetches (same-origin browser
+    loads from the review UI pass via the Origin/Referer bypass). `file_path`
+    is additionally validated by `get_image_storage().get_bytes` to prevent
+    path traversal.
     """
     try:
         from PIL import Image  # type: ignore[import]

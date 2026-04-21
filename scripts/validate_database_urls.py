@@ -23,6 +23,8 @@ import re
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.infra.db import DatabaseAdapter
@@ -257,6 +259,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    load_dotenv()
     db_url = os.getenv("DATABASE_URL", "postgresql://localhost/filings_analysis")
     db = DatabaseAdapter(db_url)
 
