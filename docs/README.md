@@ -3,7 +3,7 @@
 **Project:** SEC Filings Customer Metrics Extraction System
 **Version:** 2.6
 **Status:** Production Ready
-**Last Updated:** 2026-04-08
+**Last Updated:** 2026-04-21
 
 ---
 
@@ -349,13 +349,17 @@ Workflow commands for common tasks:
 
 | Command | Purpose |
 |---------|---------|
-| `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
-| `/plan-review` | Review and critique a plan before execution |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
+| `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit`. |
+| `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
+| `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/commit`, `/doc-audit`, `/metric-lifecycle`, and `/project-tutorial` are project-local command files under `.claude/commands/`. `/plan-review` is delivered via Claude Code skills/plugins rather than a project-local file.
+> **Note:** `/cleanup`, `/commit`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files.
 
 ### Sub-Agents (`.claude/agents/`)
 

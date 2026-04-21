@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -41,6 +41,7 @@ _(none currently)_
 | Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
 | Nightly sweeper uses GNU `timeout` — macOS incompatible (Issue #68) | Open | Local `/sweep` on Mac fails at the `timeout` call; Render (Linux) production is fine |
 | `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
+| CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
 
 ### Partially Resolved
 
@@ -920,6 +921,36 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 - Pin the `claude` installer to a specific version once the installer supports a version argument; otherwise cache a specific binary in the image.
 - Pin `gh` to a specific apt version (`gh=2.X.Y`) or switch to the GitHub Releases tarball.
 - Consider adding a build-time smoke test: `claude --version && gh --version` to fail the build on unexpected drift.
+
+---
+
+## 70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
+
+**Status**: Open
+**Severity**: Low — documentation only; functional behavior is correct
+**Discovered**: 2026-04-21 (during PR #71 planning — CLAUDE.md + worktree-rule documentation sweep)
+
+### Problem
+
+`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
+
+> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
+
+This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
+
+The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
+
+### Next Steps
+
+- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
+- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
+
+### Cross-References
+
+- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
+- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
+- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
+- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
 
 ---
 
