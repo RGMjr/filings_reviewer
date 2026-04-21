@@ -23,12 +23,12 @@ covered in [`docs/operations/setup-guide.md`](../operations/setup-guide.md).
 ## Workflow
 
 ```
-feature branch → PR against main → auto-enqueue → merge_group CI green → squash-merged
+feature branch → PR against main → CI green → squash-merge
 ```
 
 `main` is protected (see
 [`docs/operations/ci-branch-protection.md`](../operations/ci-branch-protection.md)).
-Direct pushes are refused; a red CI blocks the merge button. Merges flow through GitHub's merge queue — the queue runs required checks on a synthetic `merge_group` ref atop current `main`, so stale-branch manual rebases are no longer needed.
+Direct pushes are refused; a red CI blocks the merge button. Branches do NOT need to be up-to-date with `main` before merging — auto-merge squash-merges whichever PR finishes CI first; subsequent PRs merge on top.
 
 Run `/commit` from a `ccw` worktree. HEAD-moving git commands in the primary tree are blocked by a PreToolUse hook — see `docs/development/claude-sessions-and-worktrees.md`.
 
@@ -46,10 +46,9 @@ full flow in one invocation:
 5. **Push** the branch: `git push -u origin <branch>`.
 6. **PR.** If no open PR exists for the branch: `gh pr create --fill`. If
    one already exists: reuse it (new commits are appended).
-7. **Auto-merge.** `gh pr merge --auto --squash` enqueues the PR in the merge
-   queue. GitHub runs required checks (Lint / Unit Tests / Vulnerability Scan /
-   Integration Tests / UI E2E) on the queue's `merge_group` ref and
-   squash-merges the PR when they pass.
+7. **Auto-merge.** `gh pr merge --auto --squash`. GitHub merges the PR once
+   all required checks pass (Lint / Unit Tests / Vulnerability Scan /
+   Integration Tests / UI E2E).
 
 Local safety rails in `.claude/settings.json`:
 
@@ -123,8 +122,6 @@ the required jobs. At time of writing:
 
 Coverage threshold (`fail_under`) and the suite's expectations are in
 `pyproject.toml` under `[tool.coverage.report]` and `[tool.pytest.ini_options]`.
-
-Checks run both on PR pushes and on the merge queue's `merge_group` ref. A PR must pass the latter to merge.
 
 ## Commit style
 

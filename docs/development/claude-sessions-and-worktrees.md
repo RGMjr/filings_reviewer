@@ -94,12 +94,9 @@ Two sessions stepping into the same ccw worktree would share one HEAD, one index
   worktree starts without them. Copy or symlink `.env` from the primary
   tree if the session needs it.
 - **Starting ref.** `ccw <new-branch>` branches off the primary tree's
-  **current** HEAD. Rarely needed now that merges go through GitHub's
-  merge queue — the queue keeps `main` advancing predictably, so
-  primary-tree HEAD shouldn't drift far. But if you haven't fetched in a
-  while and see "branch out of date" on a PR, run
-  `git -C <primary> fetch && git -C <primary> pull` before calling `ccw`
-  to branch off a current main.
+  **current** HEAD. If that's stale, run `git -C <primary> fetch && git
+  -C <primary> checkout main && git -C <primary> pull` before calling
+  `ccw`, or pass an explicit ref via `git worktree add` directly.
 - **One checkout per branch.** Git refuses to check out the same branch
   in two worktrees at once. If you get "branch is already checked out",
   use a different branch name or `ccw-rm` the stale worktree.
