@@ -70,6 +70,7 @@ Instructions for setting up, running, and maintaining the system.
 | **[gold-standard-runbook.md](operations/gold-standard-runbook.md)** | Gold standard validation, baseline update, regression workflow | Developers |
 | **[image-model-training-runbook.md](operations/image-model-training-runbook.md)** | Image relevance model: export → train → score pipeline | Developers |
 | **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
+| **[github-org-transfer.md](operations/github-org-transfer.md)** | Decision record + runbook: when/how to migrate from user repo to GitHub org (unlocks merge queue, teams, org rulesets) | DevOps |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 
