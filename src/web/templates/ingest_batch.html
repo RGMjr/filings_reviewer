@@ -19,15 +19,14 @@
       <!-- Cancel button (visible only when batch is queued or running) -->
       {% if batch.status in ('queued', 'running') %}
       <button class="btn btn-outline-danger"
-              id="cancel-btn"
-              onclick="cancelBatch('{{ batch.batch_id }}')">
+              id="cancel-btn">
         Cancel Batch
       </button>
       {% endif %}
     </div>
 
     <!-- Status badge -->
-    <div class="mb-3">
+    <div class="mb-3" data-batch-status="{{ batch.status }}">
       {% if batch.status == 'complete' %}
       <span class="badge bg-success fs-6">Complete</span>
       {% elif batch.status == 'running' %}
@@ -58,15 +57,18 @@
       </div>
       <div class="progress" style="height: 20px;">
         <div class="progress-bar bg-success" role="progressbar"
+             data-progress="persisted"
              style="width: {{ ((status_counts.persisted / total) * 100) | round | int }}%"
              aria-valuenow="{{ status_counts.persisted }}" aria-valuemin="0" aria-valuemax="{{ total }}">
           {% if status_counts.persisted > 0 %}{{ status_counts.persisted }} persisted{% endif %}
         </div>
         <div class="progress-bar bg-danger" role="progressbar"
+             data-progress="failed"
              style="width: {{ ((status_counts.failed / total) * 100) | round | int }}%">
           {% if status_counts.failed > 0 %}{{ status_counts.failed }} failed{% endif %}
         </div>
         <div class="progress-bar bg-secondary" role="progressbar"
+             data-progress="skipped"
              style="width: {{ (((status_counts.skipped + status_counts.cancelled) / total) * 100) | round | int }}%">
           {% if status_counts.skipped + status_counts.cancelled > 0 %}
           {{ status_counts.skipped + status_counts.cancelled }} skipped/cancelled
@@ -74,13 +76,13 @@
         </div>
       </div>
       <div class="mt-1 d-flex gap-3 flex-wrap small text-muted">
-        <span>Queued: {{ status_counts.queued }}</span>
-        <span>Fetching: {{ status_counts.fetching }}</span>
-        <span>Extracting: {{ status_counts.extracting }}</span>
-        <span>Persisted: {{ status_counts.persisted }}</span>
-        <span>Failed: {{ status_counts.failed }}</span>
-        <span>Skipped: {{ status_counts.skipped }}</span>
-        <span>Cancelled: {{ status_counts.cancelled }}</span>
+        <span>Queued: <span data-count="queued">{{ status_counts.queued }}</span></span>
+        <span>Fetching: <span data-count="fetching">{{ status_counts.fetching }}</span></span>
+        <span>Extracting: <span data-count="extracting">{{ status_counts.extracting }}</span></span>
+        <span>Persisted: <span data-count="persisted">{{ status_counts.persisted }}</span></span>
+        <span>Failed: <span data-count="failed">{{ status_counts.failed }}</span></span>
+        <span>Skipped: <span data-count="skipped">{{ status_counts.skipped }}</span></span>
+        <span>Cancelled: <span data-count="cancelled">{{ status_counts.cancelled }}</span></span>
       </div>
     </div>
     {% endif %}
@@ -106,7 +108,7 @@
           </thead>
           <tbody>
             {% for f in filings %}
-            <tr>
+            <tr data-filing-id="{{ f.filing_id }}">
               <td>{{ f.filing_id }}</td>
               <td>{{ f.ticker or '—' }}</td>
               <td>{{ f.company_name }}</td>
@@ -123,7 +125,7 @@
                 <span class="badge bg-secondary">{{ f.initial_bucket }}</span>
                 {% endif %}
               </td>
-              <td>
+              <td class="status-cell">
                 {% if f.current_status == 'persisted' %}
                 <span class="badge bg-success">persisted</span>
                 {% elif f.current_status == 'failed' %}
@@ -142,8 +144,8 @@
                 <span class="badge bg-secondary">{{ f.current_status }}</span>
                 {% endif %}
               </td>
-              <td>{{ f.fact_count if f.fact_count is not none else '—' }}</td>
-              <td>
+              <td class="fact-count-cell">{{ f.fact_count if f.fact_count is not none else '—' }}</td>
+              <td class="error-cell">
                 {% if f.error %}
                 <span class="text-danger small" title="{{ f.error }}">
                   {{ f.error[:60] }}{% if f.error | length > 60 %}…{% endif %}
@@ -173,26 +175,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-function cancelBatch(batchId) {
-  if (!window.confirm('Cancel this batch? In-flight filings will complete; remaining queued filings will be marked cancelled.')) {
-    return;
-  }
-  fetch('/api/v2/ingest/batches/' + batchId + '/cancel', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-  })
-  .then(function (r) { return r.json(); })
-  .then(function (data) {
-    if (data.status === 'ok') {
-      window.location.reload();
-    } else {
-      alert('Cancel failed: ' + (data.message || 'Unknown error'));
-    }
-  })
-  .catch(function (err) {
-    alert('Network error: ' + err);
-  });
-}
-</script>
+<script src="{{ url_for('static', filename='js/ingest_batch.js') }}"></script>
 {% endblock %}
