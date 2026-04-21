@@ -2,11 +2,11 @@
 Parse table row boundaries from [ROW]/[CELL] markers in pre-marked text.
 
 This module provides MarkerRowParser, a lightweight parser for text that
-already contains structural markers from HTMLSegmenter. Unlike TableRowParser
-which parses HTML, this parser directly uses the markers to identify row
-boundaries.
+already contains structural markers from the V2 ingestion stage. Unlike
+TableRowParser which parses HTML, this parser directly uses the markers to
+identify row boundaries.
 
-Marker format (from HTMLSegmenter):
+Marker format (from the V2 ingestion stage):
     - Cells separated by: " [CELL] "
     - Rows separated by: " [ROW] "
     - First row has no leading [ROW] marker
@@ -64,7 +64,8 @@ class MarkerRowParser:
     """Parse row boundaries from [ROW]/[CELL] markers in text.
 
     This is a lightweight parser for text that already contains structural
-    markers from HTMLSegmenter. It does NOT parse HTML - just splits on markers.
+    markers from the V2 ingestion stage. It does NOT parse HTML - just splits
+    on markers.
 
     Attributes:
         text: Original marked text

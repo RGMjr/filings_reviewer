@@ -1,8 +1,8 @@
 """
 Validators for extraction modules.
 
-Provides validation functions for inputs and outputs of extraction modules
-(html_segmenter, metric_classifier). Raises ValidationError for invalid inputs.
+Provides validation functions for inputs and outputs of extraction layer
+modules. Raises ValidationError for invalid inputs.
 """
 
 import os
@@ -13,7 +13,7 @@ from src.shared.models import SourceSegment
 
 
 class SegmentValidator:
-    """Validates HTMLSegmenter inputs and outputs.
+    """Validates segmentation inputs and outputs.
 
     Provides static methods for validating filing IDs, HTML paths, and
     source segments.

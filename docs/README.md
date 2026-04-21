@@ -69,6 +69,7 @@ Instructions for setting up, running, and maintaining the system.
 | **[TICKER_ONBOARDING.md](operations/TICKER_ONBOARDING.md)** | Onboard SEC filings filtered by industry / year / form-type via `scripts/onboard_tickers.py` | Developers, DevOps |
 | **[gold-standard-runbook.md](operations/gold-standard-runbook.md)** | Gold standard validation, baseline update, regression workflow | Developers |
 | **[image-model-training-runbook.md](operations/image-model-training-runbook.md)** | Image relevance model: export → train → score pipeline | Developers |
+| **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 

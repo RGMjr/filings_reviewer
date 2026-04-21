@@ -10,6 +10,8 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 
 **Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 
+**Analytics surface:** `v_analytics_*` Postgres views (sql/38) are the canonical shape for BI/reporting queries. Add new reporting views as `sql/NN_*.sql` migrations rather than aggregation code in `src/`. See `docs/operations/analytics-ui-runbook.md`.
+
 ## Key Commands
 
 ```bash
@@ -25,9 +27,11 @@ mypy src/review/ --strict          # Type checking
 
 PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_tables`, `v2_audit_log`, `v2_ingest_batches`, `v2_ingest_batch_filings`. Shared: `companies`, `filings`. V1 review tables (`review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions`, `learned_patterns`, `review_audit_log`) are retired — drop migration at `sql/31_drop_v1_review_tables.sql`. Schema files in `sql/` (00-36, 39). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
+Image bytes live in Cloudflare R2 (prod) / local filesystem (dev) via `src/infra/image_storage.py`, NOT in Postgres. `v2_image_assets.file_path` stores an opaque storage key (e.g. `pipeline/<cik>/<accession>/<filename>`) — see `.claude/rules/infrastructure.md#image-storage`.
+
 ## Testing Standards
 
-- **Coverage**: 75% minimum (enforced)
+- **Coverage**: 80% minimum (enforced)
 - **Type safety**: `src/review/` passes `mypy --strict`
 - **Before committing**: Run `pytest -x -q` when staged changes include code files (`src/`, `tests/`, `scripts/`, `config/`, `sql/`, `pyproject.toml`, `requirements.txt`). Docs-only and `.claude/`-only commits may skip lint and tests. If fixing one failure breaks others, continue iterating until all pass in a single run before committing.
 - **Pre-existing failures**: When a test fails during implementation, check whether it was already failing before your changes (`git stash && pytest <failing_test> -x -q && git stash pop`). Do not spend time debugging failures that predate the current work — note them and move on.

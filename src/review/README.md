@@ -10,7 +10,7 @@ files and is not worth the diff noise.
 | `false_positive_filter.py` | `FalsePositiveFilter`, `should_treat_as_percentage` | `src/extraction_v2/stages/false_positive_filter.py` |
 | `number_parsing.py` | `NumberMatch`, `NumberParser`, `NUMBER_REGEX` | `src/extraction_v2/stages/value_binding.py`, `src/extraction_v2/stages/false_positive_filter.py` |
 | `respectively_parser.py` | `detect_respectively_pattern` | `src/extraction_v2/stages/value_binding.py` |
-| `boundary_detection.py` | `BoundaryDetector`, `TextBoundary` | `src/shared/html_segmenter.py`, `keyword_matching.py`, `models.py` |
+| `boundary_detection.py` | `BoundaryDetector`, `TextBoundary` | `keyword_matching.py`, `models.py` |
 | `keyword_matching.py` | `KeywordMatch`, `KeywordMatcher`, `METRIC_KEYWORDS` | V2 candidate-generation stage, tests |
 | `context_extraction.py` | `ContextExtractor` | V2 candidate-generation stage |
 | `marker_row_parser.py` | `MarkerRowParser` | V2 candidate-generation stage, keyword matching |

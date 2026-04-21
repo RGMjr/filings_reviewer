@@ -13,7 +13,8 @@ paths:
 **Required** before committing changes to:
 - `config/metric_keywords.yaml`
 - `src/extraction_v2/` modules (active V2 pipeline)
-- `src/shared/html_segmenter.py` or `src/shared/models.py` (HTMLSegmenter and SourceSegment)
+- `src/shared/models.py` (SourceSegment and related shared types)
+- `src/extraction_v2/stages/ingestion.py` (V2 segmentation entry point)
 - `src/shared/keyword_config.py` or `src/shared/models.py`
 - `src/review/keyword_matching.py`
 

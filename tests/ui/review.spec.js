@@ -228,7 +228,8 @@ test.describe('Fact Detail Card', () => {
 
   test('metric ID heading is visible', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('#fact-detail h5').first()).toContainText('cm_net_revenue_retention');
+    // Compact-UI refactor moved the metric ID from an <h5> into a <span class="fact-metric-id">.
+    await expect(page.locator('#fact-detail .fact-metric-id').first()).toContainText('cm_net_revenue_retention');
   });
 
   test('source type and extraction method shown', async ({ page }) => {
@@ -252,7 +253,8 @@ test.describe('Fact Detail Card', () => {
 
   test('value_raw is displayed prominently', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('.fs-4.fw-bold')).toContainText('115%');
+    // Compact-UI refactor uses Bootstrap `.fs-5.fw-bold` for the value block.
+    await expect(page.locator('.fs-5.fw-bold').first()).toContainText('115%');
   });
 
   test('parsed value and unit shown', async ({ page }) => {
