@@ -14,7 +14,8 @@
 psycopg[binary,pool]>=3.1.0
 
 # Environment variable management - Loads DATABASE_URL, API keys from .env files
-python-dotenv>=1.0.0
+# Pinned >=1.2.2 for CVE-2026-28684 (fixed in 1.2.2).
+python-dotenv>=1.2.2
 
 # Progress bars - Visual feedback for long-running operations
 tqdm>=4.66.0
