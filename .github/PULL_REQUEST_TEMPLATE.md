@@ -32,7 +32,7 @@ If **yes**, please complete this checklist:
 - [ ] **Decision Log**: Does this change warrant an entry in `docs/architecture/extraction-decisions.md`?
   - *Add an entry if: changing extraction logic, adding/removing metrics, modifying classification thresholds, or fixing a bug that reveals a design decision*
 
-- [ ] **Gold Standard Validation**: Did you run `pytest -m gold_standard --gold-standard-mode=fresh -v`?
+- [ ] **Gold Standard Validation**: Did you run `python3 -m src.gold_standard.v2_validator`?
   - *Required for extraction changes to ensure no regression in extraction quality*
 
 - [ ] **Keyword Config**: If modifying `metric_keywords.yaml`, did you follow the `/metric-lifecycle` guide?
