@@ -68,7 +68,7 @@ jobs:
             echo "::notice title=UI E2E skipped::No UI-relevant paths changed."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: steps.filter.outputs.run == 'true'
         with:
           node-version: '20'
