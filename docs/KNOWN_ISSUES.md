@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #67 opened for `/cleanup` skill step-1 mode-detection returning false `remote` from ccw worktrees; #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -41,6 +41,7 @@ _(none currently)_
 | Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 | Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
+| `/cleanup` skill mode-detection false-remote from ccw worktrees (Issue #67) | Open | Step 1's CWD-relative check returns `remote` when run from a ccw worktree; silently skips worktree sweep |
 
 ### Partially Resolved
 
@@ -875,6 +876,28 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 
 ---
 
+## 67. `/cleanup` Skill Mode-Detection Returns False `remote` From ccw Worktrees
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-21
+
+### Problem
+
+`.claude/commands/cleanup.md` step 1 decides local vs. remote execution with `test -d .claude/worktrees && echo local || echo remote`. The check is relative to the current working directory, but agent-isolation worktrees live at `.claude/worktrees/` **inside the primary repo** (e.g. `<repo>.git/.claude/worktrees/`), not inside a ccw worktree checkout like `$HOME/.claude-worktrees/filings_reviewer/<branch>`. Running `/cleanup` from a ccw worktree therefore reports `mode=remote` on a local machine and silently skips step 5 (worktree sweep), leaving dead agent worktrees and merged ccw worktrees to accumulate until the user notices and re-runs with an explicit override.
+
+### Next Steps
+
+- Replace the CWD-relative heuristic with one anchored to the primary repo — e.g. `test -d "$(git rev-parse --git-common-dir)/.claude/worktrees"`, or test for the ccw convention path `$HOME/.claude-worktrees/` on the host.
+- Alternatively: infer local mode by inspecting `git worktree list --porcelain` for any `.claude/worktrees/agent-*` or `$HOME/.claude-worktrees/` entries.
+- Simplest fallback: accept an explicit `--local` / `--remote` arg and keep the current heuristic as the default.
+
+### Cross-References
+
+- `.claude/commands/cleanup.md` — step 1 mode detection
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
@@ -1192,3 +1215,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-21**: Archive cleanup — collapsed 29 fully-resolved issues (#10, #12, #13, #14, #15, #17, #18, #19, #20, #21, #22, #23, #25, #26, #29, #30, #31, #32, #33, #36, #37, #41, #44, #45, #46, #47, #48, #56, #57) from main body into Archive section; rewrote Summary table to foreground open items; removed resolved rows from Summary table. Issue #11 cross-reference to #10 updated to point to archive entry.
 - **2026-04-21**: Five-issue follow-up bundle landed in commit `7848605` — resolved #42 (double image-write collapsed via public `SECClient.get_image_cache_path`), #50 (new `tests/unit/web/test_api_unified_auth.py`), #51 (behavioral mock-cursor rewrite; `# fmt: skip` removed), #52 (new `scripts/check_pg_client_version.py` pre-flight + infrastructure.md doc section), #54 (new `chart_metric_min_confidence` knob with default 0.60 to avoid Tier 1 regression). Archive entries added. #64 opened — chart classifier Tier 1 boundary sensitivity: HOOD `cm_balance_by_cohort` scores 0.6024 (0.0024 above gate); surfaced while forcing #54's default down from the originally-proposed 0.70. (Renumbered from an earlier working #58 after merge from origin/main revealed issues #58–#63 had been claimed by the Wave B/C/D batch-ingest-ui follow-ups.)
 - **2026-04-21**: Issue #11 archived — resolved-by-deletion. Remaining "1/12" test was in `tests/integration/test_gold_standard_coverage.py`, deleted in commit `03a8a20` during V1 retirement.
+- **2026-04-21**: Added Issue #67 — `/cleanup` skill step-1 mode-detection (`test -d .claude/worktrees`) is CWD-relative and returns `remote` when invoked from a ccw worktree, silently skipping the step-5 worktree sweep on local machines. Companion to the step-5 `-f -f` fix in commit for `.claude/commands/cleanup.md`.
