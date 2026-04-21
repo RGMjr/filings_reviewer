@@ -68,6 +68,20 @@ Session A cannot run `git checkout feat/foo` — the hook denies it and
 points at `ccw`. Sessions B and C do their work in parallel, never
 visible to each other.
 
+## Concurrent sessions (safeguards)
+
+Two sessions stepping into the same ccw worktree would share one HEAD, one index, and one set of files — a silent hazard. `ccw` protects against this with a PID lockfile:
+
+- On entry, `ccw` writes `$wt_dir/.ccw-session` with the shell's PID and registers an EXIT trap to remove it.
+- On re-entry, if the lockfile exists and the recorded PID is alive (`kill -0`), `ccw` refuses and points at `ccw --reuse` or `ccw-rm`. Stale lockfiles (PID gone) self-heal.
+- `.ccw-session` is listed in `~/.config/git/ignore` so it never leaks into a commit.
+
+**`ccw --reuse <branch>`** — intentionally share a worktree. Use when you want a second Claude session to observe the first (read-only tailing, for instance). Accept that file edits race.
+
+**`ccw-rm` behavior on merged branches.** After removing the worktree, `ccw-rm` checks via `gh` whether the branch has a merged PR. If so, it also runs `git branch -D <branch>`. On any `gh` failure (offline, rate-limit, auth), the branch is preserved. Pass `--keep-branch` to skip the deletion unconditionally.
+
+**`/commit` branch-name collisions.** When invoked from `main`, `/commit` derives `claude/<type>-<slug>`. If that branch already exists locally, `/commit` appends `-HHMM` (current-minute timestamp) before calling `checkout -b`, so two sessions starting similar work don't stomp each other's branch.
+
 ## Caveats
 
 - **First worktree checkout is slow.** A new worktree re-materializes

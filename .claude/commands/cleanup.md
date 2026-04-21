@@ -10,7 +10,18 @@
 
 ## Steps
 
-1. **Detect execution context.** Run `test -d .claude/worktrees && echo local || echo remote`. Remote runs skip step 5. Report the mode in the opening line.
+1. **Detect execution context.** Run the following expression; it anchors to the primary repo's git dir so the check works from any linked worktree (agent-isolation or ccw) — not just the primary tree.
+
+   ```bash
+   if test -d "$(git rev-parse --git-common-dir 2>/dev/null)/.claude/worktrees" \
+      || test -d "$HOME/.claude-worktrees"; then
+     echo local
+   else
+     echo remote
+   fi
+   ```
+
+   Remote runs skip step 5. Report the mode in the opening line.
 
 2. **Sync remote state.** Run `git fetch --prune origin`. This deletes remote-tracking refs whose upstream branch is gone.
 
