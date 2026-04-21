@@ -35,7 +35,7 @@
    - **Agent-isolation trees** (path matches `.claude/worktrees/agent-*`):
      - Parse the `locked` line to extract the pid (format: `locked claude agent <name> (pid <N>)`).
      - Check liveness: `ps -p <pid> -o pid= 2>/dev/null`. If the pid is alive, **skip** (active Claude session).
-     - If dead: `git worktree remove --force <path>` then `git branch -D <branch>` for the matching `worktree-agent-*` branch.
+     - If dead: `git worktree remove -f -f <path>` then `git branch -D <branch>` for the matching `worktree-agent-*` branch. Double `-f` is required — a single `--force` won't override the worktree's lock and fails with `cannot remove a locked working tree`.
      - Worktrees without a `locked` line (unexpected): report and skip — do not auto-remove.
 
    - **`ccw` trees** (path under `$HOME/.claude-worktrees/<repo>/`, created by the `ccw` zsh wrapper — see `docs/development/claude-sessions-and-worktrees.md`):
