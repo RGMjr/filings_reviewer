@@ -34,54 +34,40 @@ Five jobs from `.github/workflows/ci.yml` are consistent enough to gate on:
 - `Gold Standard Validation` — requires `OPENAI_API_KEY`; runs on a schedule
   rather than per-PR.
 
-### Path A — GitHub Web UI
+### GitHub Web UI — enabling Merge Queue
 
 1. Go to `https://github.com/RGMjr/filings_reviewer/settings/branches`.
-2. Click **Add branch ruleset** (or **Add classic branch protection rule**, which is simpler for a single repo).
+2. Click the edit pencil next to the `main` branch protection rule (or **Add classic branch protection rule** if starting fresh).
 3. Branch name pattern: `main`.
 4. Enable:
    - **Require a pull request before merging**
      - Required approvals: `0` for solo work, `1` if reviewing across a team.
      - Dismiss stale pull request approvals when new commits are pushed: `off` for solo, `on` for team.
+   - **Require merge queue**
+     - Merge method: **Squash**.
+     - Starter tunables: min group size `1`, max group size `5`, min wait `0` min, max wait `5` min, grace period `5` min. These are adjustable; start here and tune based on observed throughput.
    - **Require status checks to pass before merging**
-     - Require branches to be up to date before merging: `on`.
+     - **Require branches to be up to date before merging**: uncheck this. The merge queue subsumes it — leaving it on is harmless but redundant.
      - Status checks required: add each of the five listed above by name. They must have run at least once on a branch for GitHub to recognise them.
    - **Require conversation resolution before merging**: `on`.
-   - **Do not allow bypassing the above settings**: `off` initially (lets admin push directly for emergencies). Flip to `on` once the workflow is stable.
+   - **Do not allow bypassing the above settings** (`enforce_admins: true`), `allow_force_pushes: false`, `allow_deletions: false`: keep these as-is.
 5. Save.
 
-### Path B — `gh` CLI (idempotent)
+### Why no `gh` CLI path
 
-```bash
-gh api --method PUT /repos/RGMjr/filings_reviewer/branches/main/protection \
-  --input - <<'EOF'
-{
-  "required_status_checks": {
-    "strict": true,
-    "contexts": [
-      "Lint",
-      "Unit Tests",
-      "Vulnerability Scan",
-      "Integration Tests",
-      "UI E2E (Playwright)"
-    ]
-  },
-  "enforce_admins": false,
-  "required_pull_request_reviews": {
-    "required_approving_review_count": 0,
-    "dismiss_stale_reviews": false
-  },
-  "restrictions": null,
-  "allow_force_pushes": false,
-  "allow_deletions": false,
-  "required_conversation_resolution": true
-}
-EOF
-```
+The classic `branches/:branch/protection` REST API does not expose the merge-queue toggle — merge-queue configuration lives in the newer GitHub Rulesets API, which this repo has not audited. Use the UI; it's reliable and reversible in under two minutes.
 
-- `enforce_admins: false` keeps the admin escape hatch for emergency pushes. Set to `true` once the workflow is stable.
-- `required_approving_review_count: 0` works for solo development; bump to `1` when reviewing across a team.
-- `strict: true` = "require branches to be up to date" — prevents merging a PR that hasn't rebased on the latest failing commit.
+### Diagnosing a stuck queue
+
+**Symptom:** a PR sits in the queue for minutes without being merged or dequeued.
+
+- **First check:** open Actions and filter by event `merge_group`. If no `merge_group` runs exist, the CI workflow is missing the `merge_group:` trigger. It should appear in the `on:` block of `.github/workflows/ci.yml`. Add it if absent and push to the PR branch.
+- **Second check:** if `merge_group` runs exist but failed, GitHub automatically dequeues the offending PR and continues with the rest of the queue. Inspect the failing run to identify which PR in the group caused it.
+- **Third check:** if the queue is completely unresponsive (no activity at all), toggle **Require merge queue** off and back on again in the branch protection rule to reset it.
+
+### Temporarily disable the queue
+
+In the branch protection rule, uncheck **Require merge queue** and save. All currently-queued PRs fall back to per-PR auto-merge (still honoring the existing `--auto --squash` setting from `/commit`). Reversible in under 2 minutes. No data loss.
 
 ### Verify
 
@@ -89,24 +75,22 @@ EOF
 # Should reject with "protected branch hook declined" or similar.
 git push origin main
 
-# Should show the protection config.
+# Should show the required status check contexts.
 gh api /repos/RGMjr/filings_reviewer/branches/main/protection | jq '.required_status_checks.contexts'
 ```
 
+Additionally: queue a trivial PR via `/commit` and confirm a `merge_group` event appears in the Actions run list, running all 5 required checks before the PR merges.
+
 ### Rollback (emergency)
 
-If the protection blocks a legitimate hotfix:
+If the protection blocks a legitimate hotfix, use the UI:
 
-```bash
-# Temporarily disable, push the fix, re-enable.
-gh api --method DELETE /repos/RGMjr/filings_reviewer/branches/main/protection
-git push origin main
-# Re-apply the `gh api --method PUT` block above.
-```
+1. Go to `https://github.com/RGMjr/filings_reviewer/settings/branches`.
+2. Edit the `main` rule.
+3. Uncheck **Require merge queue** (and, if needed, **Require status checks to pass**).
+4. Save. The change takes effect immediately.
 
-Prefer "admin bypass" (flip `enforce_admins` to `false` if it isn't already)
-over deleting the rule — the rule stays visible and you only skip it for one
-push.
+This is reversible in under 2 minutes — re-enable the same checkboxes once the hotfix is in.
 
 ---
 
