@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -26,7 +26,6 @@ _(none currently)_
 |-------|--------|-------|
 | Farfetch precision drag — table-scale + period (Issue #16) | Open | 9 FPs across Active Consumers + Purchase Transactions; doesn't block recall |
 | `v2_metric_facts.source_locator.img_id` no referential integrity (Issue #24) | Open | 9 orphan facts in local DB; cleanup + FK promotion still open |
-| Mock-server / template-contract coupling (Issue #28) | Open | Smoke spec catches the symptom class; root coupling remains |
 | `v2_metric_facts.doc_id` misleading name (Issue #38) | Open | BIGINT referencing `filings.filing_id` despite name; rename needs migration + caller sweep |
 | `is_in_scope_phase1` misnomer post-10-K (Issue #39) | Open | Column name implies "in active universe" but means "Phase 1 IPO candidate" |
 | 10-K/A supersession semantics undefined (Issue #40) | Open | Stakeholder decision needed before first bulk 10-K onboard |
@@ -312,9 +311,10 @@ If the "Image N of M" counter and keyword-badge visualisation are features that 
 
 ## 28. Mock-Server / Template-Contract Coupling
 
-**Status**: Open
+**Status**: Resolved (2026-04-21)
 **Severity**: Low (smoke spec mitigates the most common breakage class)
 **Discovered**: 2026-04-17 (symptom in commit `3e398fd`); follow-up surfaced 2026-04-19 during Playwright consolidation
+**Resolved**: 2026-04-21 — `tests/unit/test_mock_server_contract.py` renders the 7 smoke-spec routes with `jinja2.StrictUndefined` via Flask `test_client` in <1s and runs in the Unit Tests CI job. Template-variable drift now fails fast with `UndefinedError: 'foo' is undefined` instead of as cascading 500s that time out UI E2E after ~28 minutes.
 
 ### Problem
 
@@ -322,27 +322,11 @@ If the "Image N of M" counter and keyword-badge visualisation are features that 
 
 Related surface: the mock also ships stubs for `POST /api/v2/decisions`, `DELETE /api/v2/decisions/<id>`, `POST /api/v2/image-decisions`, and `POST /api/v2/missed-metric`. Their response shapes are maintained in parallel with production; no contract check enforces parity.
 
-### Mitigation Already In Place
+### Resolution
 
-Commit `413b386` added `tests/ui/smoke.spec.js` which iterates the 7 template-rendering routes and asserts HTTP 200 + no `pageerror` events. This catches the Apr 17 failure class (500 on render) in ~5 seconds before the functional suite runs.
+The contract test exposed latent drift already on main — `filing.ticker`, `source_locator.img_id`, fact `confirming_source_types`, fact `_chart_image_status`, image-candidate `image_src_url` were all referenced by production templates but missing from mock context. These were added to the mock dicts in the same commit so the test lands green.
 
-### What the Mitigation Doesn't Catch
-
-1. Template variable that is defined but wrong *shape* (e.g. string where list expected) — no 500, but functional tests fail with harder-to-read assertions.
-2. Drift in the POST stub JSON response shape vs. production.
-3. New production routes or template files that the mock server has not been updated to support.
-
-### Possible Fixes (Pick One Later)
-
-| Option | Effort | Robustness | Notes |
-|---|---|---|---|
-| Extend smoke spec to POST routes | Small | Low | Asserts 2xx on each stub endpoint; doesn't verify response shape against production |
-| Declarative template-variable contract | Medium | Medium | Introduce a `mock_context.py` module listing all vars; add a unit test that imports the real route function and asserts the mock context is a superset |
-| Swap mock server for real Flask app + seeded test DB | Large | High | Eliminates the parallel implementation entirely; requires DB setup in Playwright webServer command |
-
-### Next Steps
-
-Not urgent. Revisit if the smoke spec starts missing real breakages or if the mock server grows enough routes that the duplication becomes a regular drag.
+Remaining narrow gaps (POST stub shape drift; non-rendering template files) are out of the contract test's scope — revisit if they become a real source of failure.
 
 ---
 
