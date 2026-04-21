@@ -114,3 +114,41 @@ only remove paths under `~/.claude-worktrees/`.
 **Orphaned worktrees.** If you delete a worktree directory manually
 (outside `git worktree remove`), run `git worktree prune` in the repo
 to clean up git's internal bookkeeping.
+
+## Orchestration pattern (planning session → parallel subagents)
+
+The primary working tree is where planning sessions run. They are read-only by design — `guard-destructive-git.sh` denies HEAD-moving commands, so `/commit` cannot run from the primary tree.
+
+For multi-fix plans, the planning session orchestrates:
+
+1. **Plan** — develop the plan in the primary tree and write it to `~/.claude/plans/<name>.md` with discrete phases.
+2. **Dispatch** — call `Agent` in parallel, one per phase, each with `isolation: "worktree"`. Each subagent prompt points at the plan file and specifies the single phase to execute. Subagent runs `/commit` inside its own worktree, opens a PR, enables `--auto --squash`, and returns the PR URL.
+3. **Supervise** — invoke via `/loop 90s /supervise-prs <pr_nums>`. Each iteration checks status, dispatches `/ci-fix` as a subagent when required checks fail, and prints a completion line once every PR is terminal.
+4. **Cleanup** — the final iteration of `/supervise-prs` hands off to `/cleanup` automatically. Merged branches and worktrees are removed; dirty or in-use worktrees are preserved.
+
+### Subagent prompt template
+
+Every dispatched subagent should receive:
+
+```
+You are implementing Phase {N} of the plan at {plan_file_path}.
+
+Pre-flight:
+1. Read the plan file in full.
+2. Confirm pwd is under a worktree (not the primary tree). You were launched with isolation: "worktree", so this should already be true.
+3. Run `uv pip install -r requirements.txt` if `.venv/` is absent (fresh worktree).
+
+Execution:
+- Implement only Phase {N}'s tasks. Do not touch other phases.
+- Complete the project's Pre-Implementation Gate before coding (CLAUDE.md).
+- Run tests relevant to the phase.
+
+Commit:
+- Invoke `/commit`. It will auto-branch, push, open a PR, and enable auto-merge.
+
+Return:
+- Final line of your response must be the PR URL (format: https://github.com/.../pull/NNN).
+- If anything blocks, report the blocker instead — do NOT invent a URL.
+```
+
+This keeps dispatch to a one-line Agent call per phase.
