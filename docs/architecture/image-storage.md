@@ -51,8 +51,10 @@ Writers (2):
 
 ## Security
 
-- `image_crop` is currently unauthenticated. SEC filings are public, but reviewer
-  pool growth will eventually require adding auth. Tracked as follow-up.
+- `image_crop` is guarded by `require_api_key` (`src/web/middleware.py`). External
+  fetches must present a valid `X-API-Key` header or `?api_key=` query param;
+  same-origin browser loads (embedded `<img>` inside a rendered review page) pass
+  via the `Origin`/`Referer` bypass without needing the header.
 - Key validation is the sole defense against path traversal. Legacy absolute
   paths from pre-migration rows return 404.
 - R2 bucket is private; access is gated by the API token stored in Render env.

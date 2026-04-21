@@ -144,3 +144,86 @@ class TestImageCrop404:
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
             resp = client.get("/v2/review/image_crop/img-missing?x=0&y=0&w=10&h=10")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Auth (KNOWN_ISSUES #48): image_crop is guarded by require_api_key.
+# Existing fixtures above use TestingConfig (API_KEY_REQUIRED=False); these
+# tests build an app with the guard active.
+# ---------------------------------------------------------------------------
+
+
+class TestImageCropAuth:
+    @pytest.fixture()
+    def authed_app(self):
+        return create_app(
+            config_name="testing",
+            config_override={
+                "DATABASE_URL": "postgresql://test:test@localhost/test",
+                "API_KEY_REQUIRED": True,
+                "API_KEY": "test-key",
+            },
+        )
+
+    @pytest.fixture()
+    def authed_client(self, authed_app):
+        return authed_app.test_client()
+
+    def test_missing_api_key_returns_401(self, authed_client, mock_db):
+        """No X-API-Key, no same-origin headers — external fetch is rejected."""
+        with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
+            resp = authed_client.get("/v2/review/image_crop/any-img?x=0&y=0&w=10&h=10")
+        assert resp.status_code == 401
+        mock_db.query.assert_not_called()
+
+    def test_wrong_api_key_returns_401(self, authed_client, mock_db):
+        with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
+            resp = authed_client.get(
+                "/v2/review/image_crop/any-img?x=0&y=0&w=10&h=10",
+                headers={"X-API-Key": "not-the-key"},
+            )
+        assert resp.status_code == 401
+        mock_db.query.assert_not_called()
+
+    def test_correct_api_key_returns_200(self, authed_client, mock_db, seed_image):
+        key = seed_image("pipeline/1234567/auth-001/chart.png")
+        mock_db.query.return_value = [{"file_path": key}]
+        with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
+            resp = authed_client.get(
+                "/v2/review/image_crop/auth-img-001?x=0&y=0&w=10&h=10",
+                headers={"X-API-Key": "test-key"},
+            )
+        assert resp.status_code == 200
+        assert resp.content_type.startswith("image/png")
+
+    def test_same_origin_referer_bypass_returns_200(
+        self, authed_client, mock_db, seed_image
+    ):
+        """Embedded <img src="..."> inside a review page carries a matching Referer."""
+        key = seed_image("pipeline/1234567/auth-002/chart.png")
+        mock_db.query.return_value = [{"file_path": key}]
+        with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
+            # Flask test client default host is localhost; Referer must start with host_url.
+            resp = authed_client.get(
+                "/v2/review/image_crop/auth-img-002?x=0&y=0&w=10&h=10",
+                headers={"Referer": "http://localhost/v2/review/filings"},
+            )
+        assert resp.status_code == 200
+
+    def test_api_key_required_but_unset_returns_500(self, mock_db):
+        """API_KEY_REQUIRED=True but API_KEY not configured is a server misconfig."""
+        app = create_app(
+            config_name="testing",
+            config_override={
+                "DATABASE_URL": "postgresql://test:test@localhost/test",
+                "API_KEY_REQUIRED": True,
+                "API_KEY": None,
+            },
+        )
+        client = app.test_client()
+        with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
+            resp = client.get(
+                "/v2/review/image_crop/any-img?x=0&y=0&w=10&h=10",
+                headers={"X-API-Key": "anything"},
+            )
+        assert resp.status_code == 500
