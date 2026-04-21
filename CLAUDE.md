@@ -22,6 +22,8 @@ Local guards (`.claude/settings.json`): `git push origin main`, `git push --forc
 
 See `docs/development/CONTRIBUTING.md` for the full flow.
 
+**Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 3 issues tagged `Autonomy: safe` from the **Nightly Sweeper Classification** table in `docs/KNOWN_ISSUES.md`, auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Ships paused via `.claude/sweep.pause`. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs.
+
 ## Key Commands
 
 ```bash
