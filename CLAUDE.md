@@ -15,6 +15,7 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 ## Workflow
 
 **PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit` (project-local): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass.
+Merges go through GitHub's merge queue; do not manually rebase an in-flight PR unless the queue explicitly fails it for conflicts.
 
 **Worktree-first.** Run `/commit` (and any HEAD-moving git work) from a `ccw` worktree, not the primary tree — a PreToolUse guard denies `git checkout`/`switch`/`checkout -b` in the primary tree to protect concurrent sessions. Use `EnterWorktree` inside a session or `ccw [branch]` from the shell. See `docs/development/claude-sessions-and-worktrees.md`.
 
