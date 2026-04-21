@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.); #64 resolved 2026-04-21 — characterization test `tests/extraction_v2/chart/test_chart_classifier_margin.py` locks in measured score floors for three Tier 1 chart fixtures; any future re-weighting that narrows the margin fails loudly.
 
 ---
 
@@ -40,7 +40,6 @@ _(none currently)_
 | `/ingest/preview` integration-test gap (Issue #61) | Open | Preview path is unit-tested; no end-to-end assertion on bucket split + volume banner |
 | Local-dev stuck-batch recovery is manual (Issue #62) | Open | No watcher runs locally; subprocess death leaves `status='running'` forever |
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
-| Chart classifier Tier 1 boundary sensitivity (Issue #64) | Open | HOOD `cm_balance_by_cohort` scores 0.6024 — 0.0024 above the 0.6 gate; silent-regression risk |
 
 ### Partially Resolved
 
@@ -801,32 +800,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 
 ---
 
-## 64. Chart Classifier Tier 1 Boundary Sensitivity
-
-**Status**: Open
-**Severity**: Low — monitoring / silent-regression risk
-**Discovered**: 2026-04-21 (during Issue #54 implementation)
-
-### Problem
-
-`ChartMetricClassifier.classify` returns a score of **0.6024** for the `cm_balance_by_cohort` fixture used in `tests/extraction_v2/chart/test_chart_fact_bridge_stage.py::test_emits_facts_for_classified_chart` — a HOOD-style "Cumulative Net Deposits by Cohort" chart that is a legitimate Tier 1 match. That score is **0.0024 above the 0.6 classification gate**. Any small scoring shift (new keyword, weight rebalance, corpus tuning) could push this and similar Tier 1 matches below the gate and silently regress recall.
-
-Discovered while implementing Issue #54: the issue's suggested default (`chart_metric_min_confidence = 0.70`) would have suppressed this fact. The landed fix set the default to 0.60 (no-op) and left 0.70 as an operator knob.
-
-### Next Steps
-
-- Measure the full distribution of classifier scores across current gold standard Tier 1 chart matches (Farfetch, HOOD, Flywire). Identify how many are within 0.05 of the 0.6 gate.
-- If multiple Tier 1 matches sit at ~0.6, add a unit test that asserts "score floor - classification gate > 0.02" on the fixture set, so any future classifier change that narrows the margin fails loudly.
-- Alternative: widen the classifier scoring function so legitimate Tier 1 matches comfortably exceed the gate, then raise the gate to 0.65+ without regression.
-
-### Cross-References
-
-- Issue #54 — landed `chart_metric_min_confidence` knob; forced to default 0.60 by this sensitivity.
-- `src/extraction_v2/chart/metric_classifier.py::ChartMetricClassifier.classify`
-- `tests/extraction_v2/chart/test_chart_fact_bridge_stage.py::test_emits_facts_for_classified_chart`
-
----
-
 ## 65. Secret-Leak Guard for Mis-Named Env File Duplicates
 
 **Status**: Open
@@ -876,6 +849,18 @@ Discovered while implementing Issue #54: the issue's suggested default (`chart_m
 ---
 
 ## Archive (Resolved Issues)
+
+### Issue #64: Chart Classifier Tier 1 Boundary Sensitivity
+
+**Status**: Resolved (2026-04-21)
+
+`ChartMetricClassifier.classify` scored the HOOD "Cumulative Net Deposits by Cohort" fixture at 0.6024 — only 0.0024 above the 0.6 classification gate — creating a silent-regression risk if any future keyword or weight change narrowed the margin.
+
+Resolved by adding `tests/extraction_v2/chart/test_chart_classifier_margin.py`: a parametrized characterization test that measures empirical scores for three Tier 1 chart fixtures (HOOD `cm_balance_by_cohort` at 0.6024, Farfetch `cm_gross_margin_by_cohort` at 1.0000, FTCH empty-axes `cm_gross_margin_by_cohort` at 0.6627), locks in score floors (measured score − 0.005), and also asserts the 0.60 gate. Any future re-weighting that narrows the margin fails loudly. Classifier itself is untouched.
+
+Cross-references: Issue #54 — `chart_metric_min_confidence` knob; `src/extraction_v2/chart/metric_classifier.py`.
+
+---
 
 ### Issue #1: Metric ID Mismatch Between Gold Standard and System
 
