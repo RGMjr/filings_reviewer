@@ -831,21 +831,26 @@ class V2PersistenceAdapter:
         if not facts:
             return 0
 
+        # chart_only scopes the guard + DELETE to chart facts so text facts
+        # (and their reviewer decisions) survive the DELETE below, which
+        # would otherwise CASCADE through v2_review_decisions.fact_id.
+        params: dict[str, Any] = {"filing_id": filing_id}
+        where_scope = "doc_id = %(filing_id)s"
+        if chart_only:
+            params["source_type"] = SourceType.CHART.value
+            where_scope += " AND source_type = %(source_type)s"
+
         # Guard: refuse to wipe human review decisions without explicit opt-in.
-        # The DELETE below CASCADEs through v2_review_decisions.fact_id FK, so
-        # without this check any re-extraction silently destroys reviewer work.
-        # In chart_only mode, we only count decisions on chart facts — text
-        # facts are not touched, so decisions on them are irrelevant here.
-        guard_sql = """
+        cur.execute(
+            f"""
             SELECT COUNT(*) AS decision_count,
                    COUNT(DISTINCT rd.reviewer_id) AS reviewer_count
               FROM v2_metric_facts mf
               JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
-             WHERE mf.doc_id = %(filing_id)s
-        """
-        if chart_only:
-            guard_sql += "               AND mf.source_type = 'chart'\n"
-        cur.execute(guard_sql, {"filing_id": filing_id})
+             WHERE mf.{where_scope}
+            """,
+            params,
+        )
         row = cur.fetchone()
         decision_count = int(row["decision_count"]) if row else 0
         reviewer_count = int(row["reviewer_count"]) if row else 0
@@ -865,20 +870,9 @@ class V2PersistenceAdapter:
                 chart_only,
             )
 
-        # Delete existing facts for this filing before inserting fresh results.
-        # This is idempotent and handles re-runs correctly without requiring a
-        # complex unique index across nullable expression columns. In
-        # chart_only mode the DELETE is scoped so text facts survive.
-        if chart_only:
-            cur.execute(
-                "DELETE FROM v2_metric_facts WHERE doc_id = %(filing_id)s AND source_type = 'chart'",
-                {"filing_id": filing_id},
-            )
-        else:
-            cur.execute(
-                "DELETE FROM v2_metric_facts WHERE doc_id = %(filing_id)s",
-                {"filing_id": filing_id},
-            )
+        # Delete-then-insert is idempotent and avoids a unique index across
+        # nullable expression columns.
+        cur.execute(f"DELETE FROM v2_metric_facts WHERE {where_scope}", params)
 
         sql = """
             INSERT INTO v2_metric_facts (
