@@ -13,6 +13,7 @@
      - Type: conventional-commit type inferred from the diff (`feat`/`fix`/`refactor`/`chore`/`docs`/`test`).
      - Slug: 3–6 word kebab-case summary of the change (e.g., `pr-workflow-enforcement`).
      - Branch: `claude/<type>-<slug>` (fall back to `claude/$(date +%Y%m%d)-$(git rev-parse --short HEAD)` if inference is uncertain).
+     - **Collision check:** if `git show-ref --verify --quiet "refs/heads/<branch>"` returns true, append `-HHMM` (current-minute timestamp) so the rename is obviously collision-avoidance and survives multi-collision per day. If the suffixed name also collides (vanishingly rare), fail fast with a clear message.
      - Run `git checkout -b <branch>` and announce the branch name in one line.
    - **Otherwise:** stay on the current branch and continue.
 
