@@ -45,6 +45,26 @@ from src.llm.vision_client import VisionResponse
 # =============================================================================
 
 
+@pytest.fixture(autouse=True)
+def _route_image_cache_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Route LocalFilesystemStorage under tmp_path for all tests in this module.
+
+    Tests that seed bytes at ``tmp_path / filename`` can then pass ``file_path=filename``
+    (the storage key) to ImageAsset and the downstream ``storage.get_bytes(key)``
+    reads the correct file.
+    """
+    from src.infra.image_storage import get_image_storage
+    from src.infra.paths import image_cache_dir
+
+    monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+    yield
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+
+
 @dataclass
 class MockPipelineConfig:
     """Mock pipeline config for testing."""
@@ -185,15 +205,19 @@ class TestImageDownloading:
     def _isolate_image_cache(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
+        from src.infra.image_storage import get_image_storage
         from src.infra.paths import image_cache_dir
 
         monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
+        monkeypatch.delenv("R2_BUCKET", raising=False)
         image_cache_dir.cache_clear()
+        get_image_storage.cache_clear()
         yield
         image_cache_dir.cache_clear()
+        get_image_storage.cache_clear()
 
     def test_downloads_images_without_file_path(self, tmp_path: Path) -> None:
-        """Images that passed triage but lack file_path get downloaded."""
+        """Images that passed triage but lack file_path get uploaded to storage."""
         mock_sec = MockSECClient(image_data={"chart1.jpg": b"\xff\xd8\xff\xe0fake_jpeg_data"})
         stage = OCRExtractionStage(sec_client=mock_sec)
 
@@ -214,10 +238,10 @@ class TestImageDownloading:
         downloaded = stage._download_missing_images(context)
 
         assert downloaded == 1
-        assert asset.file_path is not None
-        assert Path(asset.file_path).exists()
-        expected_dir = tmp_path / "pipeline" / "1234567" / "0001234567-24-000001"
-        assert Path(asset.file_path).parent == expected_dir
+        # file_path is now a storage key, not an absolute path
+        assert asset.file_path == "pipeline/1234567/0001234567-24-000001/chart1.jpg"
+        # Underlying bytes live under tmp_path (LocalFilesystemStorage root)
+        assert (tmp_path / asset.file_path).exists()
         assert mock_sec.fetch_calls == [("1234567", "0001234567-24-000001", "chart1.jpg")]
 
     def test_skips_images_with_existing_file_path(self) -> None:
@@ -370,7 +394,7 @@ class TestOCRTableFeeding:
         asset = ImageAsset(
             img_id="img-table-1",
             filename="table.png",
-            file_path=str(image_path),
+            file_path=image_path.name,
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.8,
             processed=False,
@@ -405,7 +429,7 @@ class TestOCRTableFeeding:
         asset = ImageAsset(
             img_id="img-table-2",
             filename="bad_table.png",
-            file_path=str(image_path),
+            file_path=image_path.name,
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.8,
             processed=False,
@@ -453,7 +477,7 @@ class TestOCRTableFeeding:
         asset = ImageAsset(
             img_id="img-fenced-1",
             filename="fenced_table.png",
-            file_path=str(image_path),
+            file_path=image_path.name,
             classification=ImageClassification.TABLE_IMAGE,
             relevance_score=0.8,
             processed=False,
@@ -985,7 +1009,7 @@ class TestChartAnnotationExtraction:
         asset = ImageAsset(
             img_id="img-ann-1",
             filename="chart.jpg",
-            file_path=str(image_path),
+            file_path=image_path.name,
             classification=ImageClassification.CHART,
             relevance_score=0.9,
             processed=False,
@@ -1033,7 +1057,7 @@ class TestChartAnnotationExtraction:
         asset = ImageAsset(
             img_id="img-empty-1",
             filename="empty_chart.jpg",
-            file_path=str(image_path),
+            file_path=image_path.name,
             classification=ImageClassification.CHART,
             relevance_score=0.9,
             processed=False,

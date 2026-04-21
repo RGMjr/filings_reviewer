@@ -42,6 +42,21 @@ from src.extraction_v2.stages.fact_construction import (
     parse_cohort_label,
 )
 
+
+@pytest.fixture(autouse=True)
+def _route_image_cache_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Route LocalFilesystemStorage under tmp_path for all tests in this module."""
+    from src.infra.image_storage import get_image_storage
+    from src.infra.paths import image_cache_dir
+
+    monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+    yield
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -782,7 +797,7 @@ class TestChartEvidenceGeneration:
         asset = ImageAsset(
             img_id="img_001",
             filename="test_chart.png",
-            file_path=str(img_file),
+            file_path=img_file.name,
             classification=ImageClassification.CHART,
             nearby_text="Monthly active users grew 40% year over year.",
         )
@@ -812,7 +827,7 @@ class TestChartEvidenceGeneration:
         asset = ImageAsset(
             img_id="img_002",
             filename="test_chart.png",
-            file_path=str(img_file),
+            file_path=img_file.name,
             classification=ImageClassification.CHART,
         )
 

@@ -99,22 +99,38 @@ ASSET_FILE_PATH_SQL = """
 def _load_missing_files(
     db: DatabaseAdapter, data_dir: Path | None
 ) -> tuple[int, list[dict]]:
-    """Class (C): image rows whose file_path is not resolvable under data/."""
+    """Class (C): image rows whose file_path key is invalid or absent in storage.
+
+    ``data_dir`` is retained as a parameter for CLI compatibility but is no longer
+    used for validation — storage-key shape is enforced by
+    :func:`src.infra.image_storage.validate_key` and presence by the active
+    backend's ``exists()`` method. Legacy absolute-path rows (pre-R2 migration)
+    fail ``validate_key`` and surface as reason=``invalid_key_shape``.
+    """
+    from src.infra.image_storage import (
+        InvalidStorageKeyError,
+        get_image_storage,
+        validate_key,
+    )
+
     rows = db.query(ASSET_FILE_PATH_SQL)
     missing: list[dict] = []
+    storage = get_image_storage()
     for row in rows:
-        path = row.get("file_path")
-        if not path:
+        key = row.get("file_path")
+        if not key:
             continue
-        resolved = Path(str(path)).resolve()
-        if data_dir is not None:
-            try:
-                resolved.relative_to(data_dir)
-            except ValueError:
-                missing.append({**row, "_reason": "outside_data_dir"})
-                continue
-        if not resolved.exists():
-            missing.append({**row, "_reason": "not_on_disk"})
+        try:
+            validate_key(str(key))
+        except InvalidStorageKeyError:
+            missing.append({**row, "_reason": "invalid_key_shape"})
+            continue
+        try:
+            if not storage.exists(str(key)):
+                missing.append({**row, "_reason": "not_in_storage"})
+        except Exception as exc:  # network / auth errors surface as misses
+            logger.warning("Class (C) storage check failed for key=%s: %s", key, exc)
+            missing.append({**row, "_reason": "storage_check_failed"})
     return len(rows), missing
 
 

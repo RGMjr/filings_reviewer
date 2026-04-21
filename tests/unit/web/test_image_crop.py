@@ -1,5 +1,10 @@
 """
 Unit tests for the /v2/review/image_crop/<img_id> endpoint.
+
+Post-R2 migration: `v2_image_assets.file_path` stores opaque storage keys
+(e.g. `pipeline/<cik>/<accession>/<filename>`), not absolute paths. These
+tests run against the LocalFilesystemStorage backend rooted at tmp_path,
+so pytest never touches the real `data/image_cache/` tree.
 """
 
 import io
@@ -16,18 +21,27 @@ from src.web.app import create_app
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _isolate_image_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Route LocalFilesystemStorage under tmp_path for every test in this module."""
+    from src.infra.image_storage import get_image_storage
+    from src.infra.paths import image_cache_dir
+
+    monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
+    monkeypatch.delenv("R2_BUCKET", raising=False)
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+    yield
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+
+
 @pytest.fixture()
-def app(tmp_path):
-    """Create Flask test app with DATA_DIR pointed at tmp_path."""
+def app():
     flask_app = create_app(
         config_name="testing",
         config_override={"DATABASE_URL": "postgresql://test:test@localhost/test"},
     )
-    # Store tmp_path so the security check resolves correctly.
-    # The endpoint resolves project_root from current_app.root_path
-    # (src/web) → ../../ = project root, then appends "data/".
-    # We monkey-patch by stashing the tmp image dir for use in tests.
-    flask_app.config["_test_tmp_path"] = tmp_path
     return flask_app
 
 
@@ -41,46 +55,24 @@ def mock_db():
     return MagicMock()
 
 
-def _make_test_png(directory: Path, filename: str = "chart.png") -> Path:
-    """Create a 20x20 solid-colour PNG in directory and return its path."""
+def _make_png_bytes() -> bytes:
+    """Return bytes of a 20x20 solid-colour PNG."""
     img = Image.new("RGB", (20, 20), color=(100, 150, 200))
-    path = directory / filename
-    img.save(str(path), format="PNG")
-    return path
-
-
-# ---------------------------------------------------------------------------
-# Helper: build a path that passes the data/ security check
-# ---------------------------------------------------------------------------
-
-
-def _data_dir_from_app_root(app) -> Path:
-    """Compute the data/ path the endpoint uses for its security guard."""
-    root_path = Path(app.root_path)          # e.g. .../src/web
-    project_root = root_path.parent.parent   # e.g. .../filings_reviewer
-    return (project_root / "data").resolve()
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 @pytest.fixture()
-def make_png_in_data_dir(app):
-    """
-    Write a throwaway PNG into the real project data/ dir (required by the
-    endpoint's security guard) and delete it on teardown so the working tree
-    stays clean. Returns a factory that records every path it creates.
-    """
-    data_dir = _data_dir_from_app_root(app)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    created: list[Path] = []
+def seed_image():
+    """Factory that uploads a PNG to storage under a given key and returns the key."""
+    from src.infra.image_storage import get_image_storage
 
-    def _factory(filename: str) -> Path:
-        path = _make_test_png(data_dir, filename)
-        created.append(path)
-        return path
+    def _factory(key: str) -> str:
+        get_image_storage().put_bytes(key, _make_png_bytes(), content_type="image/png")
+        return key
 
-    yield _factory
-
-    for path in created:
-        path.unlink(missing_ok=True)
+    return _factory
 
 
 # ---------------------------------------------------------------------------
@@ -89,33 +81,33 @@ def make_png_in_data_dir(app):
 
 
 class TestImageCropSuccess:
-    def test_returns_200(self, client, mock_db, make_png_in_data_dir):
-        img_path = make_png_in_data_dir("test_chart.png")
-
-        mock_db.query.return_value = [{"file_path": str(img_path)}]
+    def test_returns_200(self, client, mock_db, seed_image):
+        key = seed_image("pipeline/1234567/acc-001/chart.png")
+        mock_db.query.return_value = [{"file_path": key}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
             resp = client.get("/v2/review/image_crop/test-img-001?x=0&y=0&w=10&h=10")
-
         assert resp.status_code == 200
 
-    def test_content_type_is_png(self, client, mock_db, make_png_in_data_dir):
-        img_path = make_png_in_data_dir("test_chart2.png")
-
-        mock_db.query.return_value = [{"file_path": str(img_path)}]
+    def test_content_type_is_png(self, client, mock_db, seed_image):
+        key = seed_image("pipeline/1234567/acc-002/chart.png")
+        mock_db.query.return_value = [{"file_path": key}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
             resp = client.get("/v2/review/image_crop/test-img-002?x=0&y=0&w=10&h=10")
-
         assert resp.content_type.startswith("image/png")
 
-    def test_response_body_is_valid_png(self, client, mock_db, make_png_in_data_dir):
-        img_path = make_png_in_data_dir("test_chart3.png")
-
-        mock_db.query.return_value = [{"file_path": str(img_path)}]
+    def test_cache_control_header_set(self, client, mock_db, seed_image):
+        key = seed_image("pipeline/1234567/acc-003/chart.png")
+        mock_db.query.return_value = [{"file_path": key}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
             resp = client.get("/v2/review/image_crop/test-img-003?x=0&y=0&w=10&h=10")
+        assert "max-age" in resp.headers.get("Cache-Control", "")
 
+    def test_response_body_is_valid_png(self, client, mock_db, seed_image):
+        key = seed_image("pipeline/1234567/acc-004/chart.png")
+        mock_db.query.return_value = [{"file_path": key}]
+        with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
+            resp = client.get("/v2/review/image_crop/test-img-004?x=0&y=0&w=10&h=10")
         assert len(resp.data) > 0
-        # Verify it's a valid PNG by parsing it
         parsed = Image.open(io.BytesIO(resp.data))
         assert parsed.format == "PNG"
         assert parsed.size == (10, 10)
@@ -139,21 +131,16 @@ class TestImageCrop404:
             resp = client.get("/v2/review/image_crop/img-null-path?x=0&y=0&w=10&h=10")
         assert resp.status_code == 404
 
-    def test_path_outside_data_dir_returns_404(self, app, client, mock_db, tmp_path):
-        # Point to a file outside the project's data/ directory
-        outside_path = tmp_path / "evil.png"
-        _make_test_png(tmp_path, "evil.png")
-
-        mock_db.query.return_value = [{"file_path": str(outside_path)}]
+    def test_invalid_storage_key_returns_404(self, client, mock_db):
+        """Legacy absolute-path rows fail validate_key and return 404 (not 500)."""
+        mock_db.query.return_value = [{"file_path": "/var/folders/tmpdir/legacy.jpg"}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
-            resp = client.get("/v2/review/image_crop/img-evil?x=0&y=0&w=10&h=10")
+            resp = client.get("/v2/review/image_crop/img-legacy?x=0&y=0&w=10&h=10")
         assert resp.status_code == 404
 
-    def test_nonexistent_file_returns_404(self, app, client, mock_db):
-        data_dir = _data_dir_from_app_root(app)
-        missing = data_dir / "does_not_exist.png"
-
-        mock_db.query.return_value = [{"file_path": str(missing)}]
+    def test_nonexistent_file_returns_404(self, client, mock_db):
+        """Valid-shape key but no object in storage."""
+        mock_db.query.return_value = [{"file_path": "pipeline/9999999/missing-acc/ghost.png"}]
         with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
             resp = client.get("/v2/review/image_crop/img-missing?x=0&y=0&w=10&h=10")
         assert resp.status_code == 404
