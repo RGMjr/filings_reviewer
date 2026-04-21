@@ -10,6 +10,8 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 
 **Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 
+**Analytics surface:** `v_analytics_*` Postgres views (sql/38) are the canonical shape for BI/reporting queries. Add new reporting views as `sql/NN_*.sql` migrations rather than aggregation code in `src/`. See `docs/operations/analytics-ui-runbook.md`.
+
 ## Key Commands
 
 ```bash
