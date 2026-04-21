@@ -265,9 +265,7 @@ def main() -> None:
     logger.info("")
     logger.info("=" * 70)
     if args.dry_run:
-        logger.info(
-            f"Dry run: {success_count} would be applied, {skipped_count} already applied"
-        )
+        logger.info(f"Dry run: {success_count} would be applied, {skipped_count} already applied")
     elif args.mark_all_applied:
         logger.info(f"Marked {success_count} migrations as applied")
     else:

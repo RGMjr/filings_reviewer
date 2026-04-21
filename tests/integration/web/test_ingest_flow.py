@@ -122,7 +122,9 @@ class TestStartFlow:
             "filing_id": [str(seeded_filing)],
             f"bucket_{seeded_filing}": "new",
             "criteria_json": json.dumps({"industries": ["software"], "year": "2024"}),
-            "resolved_json": json.dumps({"sic_codes": ["7372"], "form_types": ["S-1"], "year_min": 2024, "year_max": 2024}),
+            "resolved_json": json.dumps(
+                {"sic_codes": ["7372"], "form_types": ["S-1"], "year_min": 2024, "year_max": 2024}
+            ),
         }
         base.update(overrides)
         return base
@@ -187,16 +189,30 @@ class TestStatusApi:
 
         # Required top-level keys
         for key in (
-            "batch_id", "kind", "status", "reviewer_id", "total_filings",
-            "counts", "created_at", "started_at", "finished_at",
-            "cancelled_at", "error", "filings",
+            "batch_id",
+            "kind",
+            "status",
+            "reviewer_id",
+            "total_filings",
+            "counts",
+            "created_at",
+            "started_at",
+            "finished_at",
+            "cancelled_at",
+            "error",
+            "filings",
         ):
             assert key in body, f"missing {key}"
 
         # Counts contains all 7 enum values
         assert set(body["counts"].keys()) == {
-            "queued", "fetching", "extracting", "persisted",
-            "failed", "skipped", "cancelled",
+            "queued",
+            "fetching",
+            "extracting",
+            "persisted",
+            "failed",
+            "skipped",
+            "cancelled",
         }
         assert body["counts"]["queued"] == 1
 
@@ -297,17 +313,13 @@ class TestPopulateFlow:
         r = client.post("/ingest/populate", data=form, follow_redirects=False)
         assert r.status_code == 400
 
-    def test_populate_status_includes_populate_progress_and_criteria(
-        self, client, db_adapter
-    ):
+    def test_populate_status_includes_populate_progress_and_criteria(self, client, db_adapter):
         form = {"reviewer_name": "popbot", "year": "2024", "form_type": "10-K"}
         r = client.post("/ingest/populate", data=form, follow_redirects=False)
         batch_id = r.location.split("/")[-1]
 
         # Initially populate_progress is null
-        s = client.get(
-            f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH
-        )
+        s = client.get(f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH)
         body = s.get_json()
         assert body["kind"] == "populate"
         assert body["populate_progress"] is None
@@ -324,9 +336,7 @@ class TestPopulateFlow:
             """,
             [json.dumps({"processed": 17, "total": 42}), batch_id],
         )
-        s2 = client.get(
-            f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH
-        )
+        s2 = client.get(f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH)
         body2 = s2.get_json()
         assert body2["populate_progress"] == {"processed": 17, "total": 42}
 
@@ -334,9 +344,7 @@ class TestPopulateFlow:
 
     def test_onboard_status_also_includes_criteria_field(self, client, batch_id):
         """Regression: criteria field must appear for onboard batches too."""
-        r = client.get(
-            f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH
-        )
+        r = client.get(f"/api/v2/ingest/batches/{batch_id}/status", headers=_AUTH)
         body = r.get_json()
         assert "criteria" in body
         assert isinstance(body["criteria"], dict)

@@ -24,7 +24,15 @@ logger = logging.getLogger(__name__)
 register_api_auth(api_ingest_bp)
 
 # All 7 valid filing statuses — always present in counts output
-_FILING_STATUSES = ("queued", "fetching", "extracting", "persisted", "failed", "skipped", "cancelled")
+_FILING_STATUSES = (
+    "queued",
+    "fetching",
+    "extracting",
+    "persisted",
+    "failed",
+    "skipped",
+    "cancelled",
+)
 
 
 def _format_ts(ts) -> str | None:

@@ -241,10 +241,12 @@ def test_detect_gaps_empty_filings_table() -> None:
 
 def test_detect_gaps_partial_coverage() -> None:
     """Only some (year, form_type) combos present → others are gaps."""
-    db = _FakeDB(rows=[
-        {"yr": 2019, "form_type": "S-1"},
-        {"yr": 2020, "form_type": "S-1"},
-    ])
+    db = _FakeDB(
+        rows=[
+            {"yr": 2019, "form_type": "S-1"},
+            {"yr": 2020, "form_type": "S-1"},
+        ]
+    )
     query = _make_query(form_types=["S-1", "10-K"], year_min=2019, year_max=2020)
     gaps = detect_universe_gaps(db, query)
     gap_tuples = {(g.year, g.form_type) for g in gaps}
@@ -258,12 +260,14 @@ def test_detect_gaps_partial_coverage() -> None:
 
 def test_detect_gaps_full_coverage() -> None:
     """All (year, form_type) combos present → no gaps."""
-    db = _FakeDB(rows=[
-        {"yr": 2019, "form_type": "S-1"},
-        {"yr": 2019, "form_type": "10-K"},
-        {"yr": 2020, "form_type": "S-1"},
-        {"yr": 2020, "form_type": "10-K"},
-    ])
+    db = _FakeDB(
+        rows=[
+            {"yr": 2019, "form_type": "S-1"},
+            {"yr": 2019, "form_type": "10-K"},
+            {"yr": 2020, "form_type": "S-1"},
+            {"yr": 2020, "form_type": "10-K"},
+        ]
+    )
     query = _make_query(form_types=["S-1", "10-K"], year_min=2019, year_max=2020)
     gaps = detect_universe_gaps(db, query)
     assert gaps == []
@@ -297,18 +301,18 @@ def test_count_reviewer_work_single_filing_no_decisions() -> None:
 
 
 def test_count_reviewer_work_single_filing_with_decisions() -> None:
-    db = _FakeDB(rows=[
-        {"filing_id": 42, "decision_count": 5, "reviewer_count": 2}
-    ])
+    db = _FakeDB(rows=[{"filing_id": 42, "decision_count": 5, "reviewer_count": 2}])
     result = count_reviewer_work(db, [42])
     assert result == {42: (5, 2)}
 
 
 def test_count_reviewer_work_multi_filing() -> None:
-    db = _FakeDB(rows=[
-        {"filing_id": 1, "decision_count": 3, "reviewer_count": 1},
-        {"filing_id": 2, "decision_count": 0, "reviewer_count": 0},
-    ])
+    db = _FakeDB(
+        rows=[
+            {"filing_id": 1, "decision_count": 3, "reviewer_count": 1},
+            {"filing_id": 2, "decision_count": 0, "reviewer_count": 0},
+        ]
+    )
     result = count_reviewer_work(db, [1, 2, 3])
     # Filing 3 not in DB rows — defaults to (0, 0)
     assert result[1] == (3, 1)
@@ -318,9 +322,7 @@ def test_count_reviewer_work_multi_filing() -> None:
 
 def test_count_reviewer_work_null_counts() -> None:
     """Postgres COUNT() never returns NULL, but defensive None handling tested."""
-    db = _FakeDB(rows=[
-        {"filing_id": 99, "decision_count": None, "reviewer_count": None}
-    ])
+    db = _FakeDB(rows=[{"filing_id": 99, "decision_count": None, "reviewer_count": None}])
     result = count_reviewer_work(db, [99])
     assert result == {99: (0, 0)}
 

@@ -86,9 +86,7 @@ def _insert_batch_filing(
 
 
 def _get_batch(db: DatabaseAdapter, batch_id: str) -> dict[str, Any] | None:
-    rows = db.query(
-        "SELECT * FROM v2_ingest_batches WHERE batch_id = %s", [batch_id]
-    )
+    rows = db.query("SELECT * FROM v2_ingest_batches WHERE batch_id = %s", [batch_id])
     return dict(rows[0]) if rows else None
 
 
