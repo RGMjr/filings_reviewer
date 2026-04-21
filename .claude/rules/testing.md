@@ -7,7 +7,7 @@ paths:
 
 ## Standards
 
-- **Coverage**: 75% minimum (enforced)
+- **Coverage**: 80% minimum (enforced)
 - **Type safety**: `src/review/` passes `mypy --strict`
 
 ## Structure

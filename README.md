@@ -27,7 +27,7 @@ This project supports the Customer Metrics Accounting Standards Board (CMASB) in
 | Human Review System | Complete |
 | Transcripts & Presentations | Complete (beyond SEC) |
 
-**Coverage target:** 75% minimum (enforced per CLAUDE.md).
+**Coverage target:** 80% minimum (enforced per CLAUDE.md).
 
 **Corpus:** ~7,300 in-scope S-1/F-1 filings (2015-2025), plus earnings call transcripts and investor presentations.
 

@@ -102,13 +102,13 @@ Canonical metric IDs can have aliases for gold standard compatibility:
 ### 13. Character Offset Computation Removed (2026-01-07)
 
 `char_start_offset` and `char_end_offset` fields are always NULL:
-- Removed `_compute_element_offsets()` from HTMLSegmenter (INV-1-FIX-v2)
+- Removed `_compute_element_offsets()` from the V1 HTMLSegmenter (INV-1-FIX-v2)
 - Root cause: BeautifulSoup HTML normalization caused O(n*m) performance issues (~105s for large filings)
 - Impact: None - offset data was not used by any feature (review UI uses keyword text matching)
 - Alternative: Use `html_selector` (CSS selector) for source location if needed
 - DB columns retained for schema compatibility
 
-**Implementation**: `src/shared/html_segmenter.py`
+**Implementation**: V1 `src/shared/html_segmenter.py` (deleted 2026-04-20). V2 ingestion stage (`src/extraction_v2/stages/ingestion.py`) does not compute character offsets either.
 
 ---
 
@@ -146,10 +146,10 @@ Tables inside `<div>` wrappers are now handled correctly:
 - Skip `<div>` elements that contain only a `<table>` (no additional text) - prevents duplicate extraction
 - Composite split tables (from divs with text + table) now get `[ROW]`/`[CELL]` markers
 - Fixes cross-row false positives where keywords from one table row matched numbers in another row
-- Implementation: `html_segmenter.py` lines 278-288 (skip logic), 883 (marker extraction), 922-927 (truncation path)
-- Test coverage: `TestDivOnlyTableSkip`, `TestCompositeSplitTableMarkers` in test_html_segmenter.py
+- Implementation: ported into V2 ingestion stage `src/extraction_v2/stages/ingestion.py` (`_should_skip_div_wrapper`, `_extract_table_text_with_markers`). The original V1 `html_segmenter.py` (lines 278-288, 883, 922-927) was deleted 2026-04-20.
+- Test coverage: V2 ingestion tests under `tests/unit/extraction_v2/`.
 
-**Implementation**: `src/shared/html_segmenter.py`
+**Implementation**: V2 ingestion stage `src/extraction_v2/stages/ingestion.py` (V1 `src/shared/html_segmenter.py` deleted 2026-04-20).
 
 ---
 
@@ -179,5 +179,5 @@ YAML exclusion patterns filter numbers followed by non-metric units:
 | Revenue context | candidate_generator.py | Revenue metric patterns |
 | Substring suppression | keyword_matching.py | Overlapping keyword issues |
 | Metric aliases | keyword_config.py | Gold standard validation |
-| Table markers | html_segmenter.py | Table parsing issues |
+| Table markers | extraction_v2/stages/ingestion.py | Table parsing issues |
 | Unit filtering | false_positive_filter.py | Unit-type mismatches |

@@ -68,7 +68,7 @@ the required jobs. At time of writing:
 | Gate | What it enforces |
 |---|---|
 | `Lint` | `ruff check src/ tests/ scripts/` clean |
-| `Unit Tests` | 3000+ tests pass, coverage ≥75% |
+| `Unit Tests` | 3000+ tests pass, coverage ≥80% |
 | `Vulnerability Scan` | `pip-audit` reports no known CVEs |
 | `Integration Tests` | Real Postgres exercise; SQL + migration regressions |
 | `UI E2E (Playwright)` | Review-UI template / route rendering |

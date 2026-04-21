@@ -31,7 +31,7 @@ HTML File → Segmenter → source_segments (DB) → Classifier → Candidate Ge
 
 | If you modify... | You must re-run... |
 |------------------|-------------------|
-| `html_segmenter.py` | Full re-extraction (`scripts/batch_v2_extraction.py`) |
+| `src/extraction_v2/stages/ingestion.py` (V2 segmentation) | Full re-extraction (`scripts/batch_v2_extraction.py`) |
 | `config/metric_keywords.yaml` (keyword patterns) | Delete old candidates, run `generate_review_candidates.py` |
 | `keyword_matching.py` | Delete old candidates, run `generate_review_candidates.py` |
 | LLM prompts | Full re-extraction (`scripts/batch_v2_extraction.py`) |
@@ -81,60 +81,16 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 
 ---
 
-## Procedure 3: Manual Re-segmentation Only
+## Procedure 3: Manual Re-segmentation Only — RETIRED
 
-Use when: You need to re-segment without running LLM extraction (saves cost).
-
-> **Note (V1 workflow):** This procedure uses the V1 `source_segments` table. For V2 pipeline, re-run extraction via `batch_v2_extraction.py --filing-ids <FILING_ID>`.
+The V1 segmenter (`src/shared/html_segmenter.py`) and the V1 `source_segments` table were retired. For the equivalent V2 workflow, use:
 
 ```bash
-# 1. Delete old segments
-PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
-    -c "DELETE FROM source_segments WHERE filing_id = <FILING_ID>;"
-
-# 2. Re-segment using Python
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" python3 << 'EOF'
-from src.shared.html_segmenter import HTMLSegmenter
-from src.infra.db import DatabaseAdapter
-import os
-
-db = DatabaseAdapter(os.environ["DATABASE_URL"])
-filing_id = <FILING_ID>
-
-# Get filing info
-filing = db.query("""
-    SELECT f.filing_id, f.html_storage_path
-    FROM filings f WHERE f.filing_id = %(id)s
-""", {"id": filing_id})[0]
-
-# Run segmentation
-segmenter = HTMLSegmenter()
-segments = segmenter.segment_filing(filing_id, filing['html_storage_path'])
-print(f"Generated {len(segments)} segments")
-
-# Insert segments
-for segment in segments:
-    db.execute("""
-        INSERT INTO source_segments (
-            filing_id, segment_type, section_path, section_heading,
-            sequence_index, raw_text, raw_html,
-            contains_definition_flag, contains_methodology_flag,
-            contains_numeric_disclosure_flag
-        ) VALUES (
-            %(filing_id)s, %(segment_type)s, %(section_path)s, %(section_heading)s,
-            %(sequence_index)s, %(raw_text)s, %(raw_html)s,
-            %(contains_definition_flag)s, %(contains_methodology_flag)s,
-            %(contains_numeric_disclosure_flag)s
-        )
-    """, segment.to_dict())
-
-print(f"Inserted {len(segments)} segments")
-EOF
-
-# 3. Regenerate candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/generate_review_candidates.py --filing-ids <FILING_ID>
+    python3 scripts/batch_v2_extraction.py --filing-ids <FILING_ID>
 ```
+
+The V2 pipeline writes to `v2_segments` (not `source_segments`) and does not require a separate candidate-generation pass.
 
 ---
 

@@ -143,7 +143,7 @@ class TestWhitespaceEdgeCases:
             <tr><td>Revenue</td></tr>
         </table>
         """
-        # HTMLSegmenter: <br/> removed, no space
+        # V2 ingestion stage: <br/> removed, no space
         text = "Six months endedJune 30, Revenue"
 
         parser = TableRowParser(html, text)

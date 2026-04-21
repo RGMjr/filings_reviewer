@@ -1,7 +1,7 @@
 """
 Extraction exceptions.
 
-Custom exception hierarchy for extraction layer modules (html_segmenter, metric_classifier, etc.).
+Custom exception hierarchy for extraction layer modules.
 Provides specific exception types for better error handling and debugging.
 """
 
