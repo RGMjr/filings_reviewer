@@ -560,18 +560,19 @@ test.describe('Correct Form', () => {
   });
 
   test('Enter in correct notes submits the correction', async ({ page }) => {
-    let submitted = false;
-    await page.route('/api/v2/decisions', async route => {
-      submitted = true;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'success' }) });
-    });
+    await page.route('/api/v2/decisions', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'success' }) })
+    );
     await page.goto('/');
     await page.keyboard.press('c');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Enter');
     await page.locator('#correct-notes').fill('test note');
+    const decisionPost = page.waitForRequest(
+      req => req.url().endsWith('/api/v2/decisions') && req.method() === 'POST'
+    );
     await page.keyboard.press('Enter');
-    expect(submitted).toBe(true);
+    await decisionPost;
   });
 });
 
