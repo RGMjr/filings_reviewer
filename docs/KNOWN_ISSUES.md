@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
+**Last Updated**: 2026-04-20 (#46 opened for stale `apply_all_migrations.py`; #47 opened for `data/audit/` not gitignored; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod; #48 opened for `image_crop` auth gap)
 
 ---
 
@@ -272,6 +272,7 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | `_download_missing_images` writes bytes twice (Issue #42) | Open | Low | Low | SECClient already caches the fetched bytes; pipeline writes a second copy that `asset.file_path` references. Point `file_path` at SECClient cache + drop pipeline write |
 | `apply_all_migrations.py` stale (Issue #46) | Open | Low | Low | MIGRATION_ORDER list stops at 31; unregistered-guard aborts on files 32-38. Canonical runner is `apply_migrations.py`; resolve by syncing or deleting the stale variant |
 | `data/audit/` not gitignored (Issue #47) | Open | Low | Low | Runtime JSONL audit output accumulates as untracked files; peer `data/*` subpaths are already gitignored. One-line `.gitignore` addition |
+| `image_crop` unauthenticated (Issue #48) | Open | Medium | Low | No auth guard on `review_unified_bp`; `_check_api_key` used on V2 API blueprint should extend to image endpoints as reviewer pool grows |
 
 ---
 
@@ -1524,6 +1525,32 @@ Other scripts in the project (`batch_v2_extraction.py:48-53`, the new `audit_fil
 Add `from dotenv import load_dotenv` import and `load_dotenv()` call before the `DatabaseAdapter(db_url)` construction. ~3 lines.
 
 Keep the error message when `DATABASE_URL` is still unset after `load_dotenv()` — that branch exists and is correct; this fix just populates the var first when a `.env` is present.
+
+---
+
+## 48. `image_crop` Endpoint Is Unauthenticated
+
+**Status**: Open
+**Severity**: Medium — reviewer workflow exposure; not a data-security issue (SEC filings are public)
+**Discovered**: 2026-04-20 (explicitly flagged as out-of-scope follow-up during Issue #34 Phase 3 R2 migration)
+
+### Problem
+
+`src/web/routes/review_unified.py::image_crop` has no auth guard. Anyone on the internet who knows (or guesses) a filing's `img_id` UUID can fetch the extracted chart from Render. The underlying SEC source images are public anyway, but the endpoint effectively exposes a live inventory of which charts the pipeline has extracted and which filings are currently in review — workflow context that should not leak outside the reviewer pool. Concern grows as the reviewer pool expands.
+
+`_check_api_key` middleware already guards the V2 API blueprint (see `.claude/rules/web.md`), but `review_unified_bp` (the blueprint that owns `image_crop`) does not use it.
+
+### Next Steps
+
+- Decide auth model: API key via the existing `_check_api_key` pattern, session login, or SSO.
+- Apply guard to `image_crop` and (for consistency) all image-related endpoints on `review_unified_bp`.
+- Update `tests/unit/web/test_image_crop.py` to cover the auth-rejected path.
+
+### Cross-References
+
+- `.claude/rules/web.md` — `_check_api_key` convention on the V2 API blueprint
+- `docs/architecture/image-storage.md` — "Security" section flags this as the outstanding gap
+- Issue #34 — R2 migration plan explicitly listed this as out of scope
 
 ---
 
