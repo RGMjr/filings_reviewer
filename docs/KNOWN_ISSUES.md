@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-21, #72 opened for Robinhood Tier 1 gold-standard regression vs. 2026-04-19 baseline (`cm_revenue_by_cohort` extracting quarterly totals instead of per-cohort values; blocks PR merge commits via pre-commit hook; likely introduced by #52 persistence refactor); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; #65 opened for secret-leak guard on mis-named env duplicates (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. #64 opened — chart classifier Tier 1 boundary sensitivity (HOOD `cm_balance_by_cohort` scores 0.6024, 0.0024 above gate). Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -10,7 +10,9 @@ This document tracks known issues, limitations, and planned improvements identif
 
 ### Open — High Severity
 
-_(none currently)_
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Robinhood Tier 1 GS regression vs. 2026-04-19 baseline (Issue #72) | Open | `cm_revenue_by_cohort` extracts `$33,421.5` (qty total) instead of per-cohort values; blocks PR merge-commits via pre-commit hook. Likely introduced in #52 (persistence refactor) |
 
 ### Open — Medium Severity
 
@@ -112,6 +114,7 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #68   | safe     | XS        | `scripts/run_nightly_sweep.sh`                                          | Detect timeout vs gtimeout; fallback path for macOS           |
 | #69   | review   | S         | `Dockerfile.nightly-sweep`                                              | Pin claude + gh versions; needs validation step               |
 | #71   | safe     | XS        | `.github/workflows/ci.yml`                                              | Add path filter to integration-tests, mirroring ui-e2e        |
+| #72   | skip     | M         | —                                                                       | Tier 1 regression; needs bisect + extraction-bug fix + baseline refresh |
 
 ---
 
@@ -979,6 +982,37 @@ The functional behavior is correct — the hook fires and blocks the operation a
 
 ---
 
+## 72. Robinhood Tier 1 Gold-Standard Regression vs. 2026-04-19 Baseline
+
+**Status**: Open
+**Severity**: High (Tier 1 blocker per CLAUDE.md metric tier policy)
+**Discovered**: 2026-04-21 (during PR #72 `git merge origin/main` attempt — local pre-commit hook blocked the merge commit with `has_regression=True, regressed_companies=['Robinhood Markets, Inc.'], regressed_metrics=['recall', 'f1']`)
+
+### Problem
+
+`data/gold_standard/v2_baseline.json` was last refreshed at commit `cdc831f` (2026-04-19, Phase 3 chart bridge). Robinhood baseline: `recall=0.3143, f1=0.4231`. Current main state: `recall=0.171, f1=0.255` (-14pp recall on the single company; -0.009 overall). Per-metric diagnostics (`python3 -m src.gold_standard.v2_validator --companies "Robinhood Markets, Inc." --fn-diagnostics`):
+
+| Metric | Tier | Current P/R/F1 | Notes |
+|---|---|---|---|
+| `cm_balance_by_cohort` | T1 | 0% / 0% / 0% | Boundary-sensitive chart classifier — already tracked in Issue #64 (score 0.6024, 0.0024 above gate) |
+| `cm_customer_acquisition_cost` | T1 | 100% / 50% / 66.7% | 1 FN — dedup collision (`20.0` collapsed into sibling with different value) |
+| `cm_revenue_by_cohort` | T1 | 0% / 0% / 0% | **10 FNs, scale bug**: extracted `$33,421.5` (quarterly total) instead of per-cohort values like `$17/$130/$45`. FP: `cm_revenue_by_cohort: 33421.5 (raw='$33,421.5') src=text conf=0.54 delta=10152%` |
+
+The `cm_revenue_by_cohort` $33,421.5 scale failure is the dominant regression driver (10 of 29 FNs). Most likely suspect in the window between `cdc831f` and the current main tip (`52e61ce`) is `24bfd6b refactor(persistence): unify chart_only SQL branches + dedup test helper (#52)` — the other commits in the window touch universe/CI/docs only, not extraction.
+
+### Why the main branch landed with this regression
+
+CI runs unit + integration tests but not the full gold-standard sweep, so the delta only surfaces when the pre-commit hook executes locally. The PR that introduced the drift (almost certainly #52) passed CI despite affecting Robinhood recall.
+
+### Next Steps
+
+- Bisect between `cdc831f..origin/main` with the validator (`python3 -m src.gold_standard.v2_validator --companies "Robinhood Markets, Inc."`) to pin down which commit dropped `cm_revenue_by_cohort`.
+- Once root cause is isolated, fix the binding/scale bug so Robinhood `cm_revenue_by_cohort` recovers. Then refresh the baseline.
+- Consider adding a CI job that runs the v2 validator on Tier 1 metrics (or at least a fast-path subset) so future Tier 1 regressions are caught pre-merge — closes a hole that only the local hook catches today.
+- Blocks: PR #72 (Snap ingestion) cannot complete its `git merge origin/main` while this regression is live, because the same pre-commit hook fires on any merge commit against current main.
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #60: `detect_universe_gaps` Ignores SIC Filter
@@ -1324,3 +1358,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-21**: Added Issue #67 — `/cleanup` skill step-1 mode-detection (`test -d .claude/worktrees`) is CWD-relative and returns `remote` when invoked from a ccw worktree, silently skipping the step-5 worktree sweep on local machines. Companion to the step-5 `-f -f` fix in commit for `.claude/commands/cleanup.md`.
 - **2026-04-21**: Issue #67 resolved — session-hygiene bundle: (a) `cleanup.md` step 1 re-anchored to `git rev-parse --git-common-dir` so local mode detects from any linked worktree; (b) `ccw` in `~/.zshrc` now writes a PID lockfile on entry and refuses silent second-session occupancy (self-healing via `kill -0`); (c) `ccw-rm` auto-deletes merged branches via `gh pr list --state merged` (offline-safe fallback); (d) `/commit` step 1 appends `-HHMM` timestamp on branch-name collision. Docs updated in `docs/development/claude-sessions-and-worktrees.md`. Summary row removed. Note: `~/.zshrc` edits (b, c) apply manually — patch in PR description.
 - **2026-04-21**: Issue #62 partially resolved — manual stuck-batch recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md`. CLI-flag and SIGTERM-log follow-ups remain open.
+- **2026-04-21**: Added Issue #72 — Robinhood Tier 1 gold-standard regression vs. 2026-04-19 baseline surfaced during PR #72 (Snap ingestion) `git merge origin/main` attempt. Local pre-commit hook reported `recall_delta=-0.009, f1_delta=-0.0015, regressed_companies=['Robinhood Markets, Inc.']`. Per-metric diagnostics show `cm_revenue_by_cohort` (T1) at 0/0/0 with all 10 FNs stemming from a scale bug: extraction binds `$33,421.5` (quarterly total) instead of per-cohort values like `$17/$130/$45`. `cm_customer_acquisition_cost` (T1) has 1 dedup-collision FN; `cm_balance_by_cohort` (T1) at 0/0/0 is the boundary-sensitive case already tracked in Issue #64. Candidate root-cause commit: `24bfd6b refactor(persistence): unify chart_only SQL branches + dedup test helper (#52)` — only extraction-touching commit in the window between `cdc831f` (baseline) and current main tip `52e61ce`. Blocks PR #72's merge commit until fixed + baseline refreshed.
