@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-20 (#32 resolved — `src/shared/html_segmenter.py` deleted as dead V1 code after verifying zero production callers; #33 resolved — `pyproject.toml` `fail_under` raised 75 → 80 in same change; #44 resolved — `_classify_path` decision tree refined with `B_coordinated` sub-path + facts==0 short-circuit; `repair_filing_url_mismatch.py::_eligible_rows` warns on `B_coordinated` rows; 7 unit tests at `tests/unit/scripts/test_audit_filing_url_mismatch.py`; #45 resolved — `validate_database_urls.py` now calls `load_dotenv()`; #46 resolved — `apply_all_migrations.py` `MIGRATION_ORDER` extended with 32-38; #47 resolved — `data/audit/` added to `.gitignore`; #48 resolved — `image_crop` now guarded by `@require_api_key`; new `_verify_api_key` helper + view decorator in `src/web/middleware.py`; 5 new auth test cases in `tests/unit/web/test_image_crop.py`; #49 opened for integration test DB flakiness under full-suite `pytest -x`; #50 opened for missing 401-path test coverage on `api_unified_bp`; #34 Phase 3 resolved — ImageStorage abstraction + Cloudflare R2 backend live; `v2_image_assets.file_path` now stores opaque storage keys validated via `validate_key()`; 7 call sites migrated; #35 fully unblocked — chart-fact backfill viable on both dev and prod)
+**Last Updated**: 2026-04-21 (#56 resolved — `check_docs_sync.py` `import_to_pkg` extended for transitive/case-sensitive imports (`dateutil`, `botocore`, `PIL`); README gains pipeline-stage class mentions + coverage line matching the sync script's regex; #57 resolved — `unified_review.html` gains Bootstrap breadcrumb + accepted/rejected count badges; 2 Playwright selectors updated to match compact-UI refactor; all 151 UI tests pass. Unblocks PR #50 and every future PR. Previously 2026-04-20: #32 resolved; #33 resolved; #44 resolved; #45 resolved; #46 resolved; #47 resolved; #48 resolved; #49 opened; #50 opened; #34 Phase 3 resolved; #35 fully unblocked)
 
 ---
 
@@ -293,6 +293,8 @@ are already listed in `.gitignore` (`data/filings/`, `data/image_cache/`,
 | `image_crop` unauthenticated (Issue #48) | Resolved (2026-04-20) | — | — | `@require_api_key` decorator added in `src/web/middleware.py` (extracts the existing `_check_api_key` body into `_verify_api_key`); applied to `image_crop` in `review_unified.py`; 5 auth tests cover missing / wrong / correct key, same-origin bypass, and misconfig 500 |
 | Integration test DB flakiness under full-suite `pytest -x` (Issue #49) | Open | Low | Medium | First integration test to hit the pool fails with `AdminShutdown` / `the connection is lost` / `deadlock detected`; specific test varies run-to-run; reproduces on clean main. Undermines the `pytest -x -q` pre-commit gate |
 | No 401-path test coverage for `api_unified_bp` (Issue #50) | Open | Low | Low | `register_api_auth(api_unified_bp)` has no auth-rejected test; silent regression of `_verify_api_key` on the V2 API path would not be caught. Mirror `TestImageCropAuth` shape for the V2 API blueprint |
+| `check_docs_sync.py --ci` fails CI on transitive-import warnings (Issue #56) | Resolved (2026-04-21) | — | — | `import_to_pkg` dict extended for `dateutil`, `botocore`, `PIL`; README updated with pipeline-stage class names + coverage line matching `(\d+)%\s*overall` regex. Unblocks every PR |
+| `unified_review.html` missing breadcrumb + count badges broke 7 Playwright tests (Issue #57) | Resolved (2026-04-21) | — | — | Template gained Bootstrap breadcrumb + accepted/rejected count badges; 2 test selectors updated to match compact-UI refactor (`.fact-metric-id` + `.fs-5.fw-bold`). All 151 UI tests pass |
 
 ---
 
@@ -1666,6 +1668,70 @@ would not be caught.
   401, correct key → 200, same-origin Referer → 200, `API_KEY` unset →
   500. Mirror the shape of `TestImageCropAuth` in
   `tests/unit/web/test_image_crop.py` after #48.
+
+---
+
+## 56. `check_docs_sync.py --ci` Fails CI on Transitive-Import Warnings
+
+**Status**: ✅ Resolved (2026-04-21)
+**Severity**: Low
+**Discovered**: 2026-04-21 (while trying to merge PR #50)
+
+### Problem
+
+The `Documentation Freshness` workflow runs `scripts/check_docs_sync.py --ci`, which exits 1 on any warning (line 323-324). The script's `import_to_pkg` dict didn't cover three imports that show up in the `src/` tree but resolve via transitive deps or case-sensitive name mismatches:
+
+- `dateutil` — ships transitively via `boto3 → botocore → python-dateutil` (botocore's `Requires-Dist` explicitly lists `python-dateutil>=2.1`). Not a direct dep, but the script doesn't see that.
+- `botocore` — direct dep of `boto3`; naming scheme differs.
+- `PIL` — imported case-sensitively (`PIL`); the script compared lowercase, but the original dict entries were all lowercase, so no match triggered.
+
+Combined with README drift (3 pipeline-stage class names absent, coverage line missing the `N% overall` phrasing the script greps for), every PR to main — including the chart_only persistence PR (#50 on GitHub) — hit `mergeStateStatus=BLOCKED` with 5 warnings.
+
+### Resolution
+
+`scripts/check_docs_sync.py` `import_to_pkg` dict extended with:
+
+```python
+"dateutil": "boto3",            # python-dateutil ships transitively via boto3 → botocore
+"botocore": "boto3",            # direct boto3 dependency
+"PIL": "pillow",                # Pillow package exposes PIL (case-sensitive import name)
+```
+
+`README.md` updated:
+- Added pipeline-stages line mentioning `CandidateGenerationStage`, `ValueBindingStage`, `DefinitionExtractionStage` alongside the other stage names.
+- Changed "80% minimum" → "80% overall minimum" so the `(\d+)%\s*overall` regex matches.
+
+Verified: `python3 scripts/check_docs_sync.py --ci` now exits 0.
+
+---
+
+## 57. `unified_review.html` Missing Breadcrumb + Count Badges Broke 7 Playwright Tests
+
+**Status**: ✅ Resolved (2026-04-21)
+**Severity**: Low
+**Discovered**: 2026-04-21 (while trying to merge PR #50)
+
+### Problem
+
+The compact-UI refactor that replaced `v2_review.html` with `unified_review.html` dropped two DOM structures that Playwright tests assert against, and changed two selectors. Result: 7 of 151 UI tests failed on every PR:
+
+- **Missing** — `.breadcrumb` nav (2 tests): `v2_review.html:49-54` had a Bootstrap breadcrumb; the new template lacked one entirely.
+- **Missing** — `.badge.bg-success` / `.badge.bg-danger` for accepted/rejected counts in the filing header (2 tests): `tests/ui/test_server.py:289-290` injects `accepted_count` / `rejected_count` context vars, but the template never rendered them.
+- **Selector drift** — metric-ID heading moved from `<h5>` to `<span class="fact-metric-id">` (1 test, line 229).
+- **Selector drift** — value_raw prominent display moved from `.fs-4.fw-bold` to `.fs-5.fw-bold` (1 test, line 253).
+- **Collateral damage** — `Enter in correct notes submits the correction` (line 560) failed because the upstream page-load bugs prevented focus management from working; self-fixed once the template rendered clean.
+
+### Resolution
+
+`src/web/templates/unified_review.html`:
+- Added Bootstrap breadcrumb nav above `.review-sticky-header` linking back to `/` with the company name as the active item.
+- Added `badge bg-success` / `badge bg-danger` spans inside `.review-pill-row` showing `{{ accepted_count|default(0) }} accepted` and `{{ rejected_count|default(0) }} rejected`. The `bg-success` span lands at line ~60, well before the unrelated `bg-success` "Reviewed" badge at line 700 — so `page.locator('.badge.bg-success').first()` resolves to the header badge.
+
+`tests/ui/review.spec.js`:
+- Updated line 229 selector from `#fact-detail h5` to `#fact-detail .fact-metric-id` (matches the compact-UI span).
+- Updated line 253 selector from `.fs-4.fw-bold` to `.fs-5.fw-bold` (matches the compact-UI sizing choice).
+
+Verified: all 151 UI tests pass locally (`npm run test:ui`).
 
 ---
 
