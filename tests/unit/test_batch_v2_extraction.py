@@ -21,6 +21,7 @@ from scripts.batch_v2_extraction import (  # noqa: E402
     BatchConfig,
     BatchStats,
     BatchV2Runner,
+    _load_filing_ids,
     _process_filing_worker,
 )
 
@@ -174,7 +175,10 @@ class TestBatchV2RunnerQueryFilings:
         config = BatchConfig(limit=3)
         _runner = self._make_runner(config)
 
-        all_filings = [{"filing_id": i, "company_name": f"Co{i}", "company_id": i, "cik": str(i)} for i in range(1, 11)]
+        all_filings = [
+            {"filing_id": i, "company_name": f"Co{i}", "company_id": i, "cik": str(i)}
+            for i in range(1, 11)
+        ]
 
         # Test the limit filter (pure Python logic extracted from query_filings)
         result = all_filings[: config.limit]
@@ -233,12 +237,14 @@ class TestBatchV2RunnerCheckpoint:
 class TestGracefulShutdown:
     def test_shutdown_flag_initially_false(self):
         import scripts.batch_v2_extraction as module
+
         # Reset flag
         module._shutdown_requested = False
         assert module._shutdown_requested is False
 
     def test_sigint_handler_sets_flag(self):
         import scripts.batch_v2_extraction as module
+
         module._shutdown_requested = False
 
         # Simulate SIGINT handler
@@ -320,7 +326,9 @@ class TestExecutorLifecycle:
             def as_completed_side_effect(futures):
                 yield from futures.keys()
 
-            with patch("scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect):
+            with patch(
+                "scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect
+            ):
                 with patch.object(runner, "_save_checkpoint"):
                     runner.run(filings)
 
@@ -350,7 +358,9 @@ class TestCircuitBreaker:
             def as_completed_side_effect(futures):
                 yield from futures.keys()
 
-            with patch("scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect):
+            with patch(
+                "scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect
+            ):
                 with patch.object(runner, "_save_checkpoint"):
                     stats = runner.run(filings, max_consecutive_failures=5)
 
@@ -388,7 +398,9 @@ class TestCircuitBreaker:
             mock_ppe_cls.return_value.__exit__ = MagicMock(return_value=False)
             mock_executor.submit.side_effect = submit_side_effect
 
-            with patch("scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect):
+            with patch(
+                "scripts.batch_v2_extraction.as_completed", side_effect=as_completed_side_effect
+            ):
                 with patch.object(runner, "_save_checkpoint"):
                     stats = runner.run(filings, max_consecutive_failures=5)
 
@@ -458,8 +470,22 @@ class TestSummaryJSON:
         stats.failed = 0
         stats.total_facts = 10
         stats.filing_results = [
-            {"filing_id": 1, "company_name": "Acme", "success": True, "fact_count": 5, "error": None, "duration_ms": 100},
-            {"filing_id": 2, "company_name": "Beta", "success": True, "fact_count": 5, "error": None, "duration_ms": 200},
+            {
+                "filing_id": 1,
+                "company_name": "Acme",
+                "success": True,
+                "fact_count": 5,
+                "error": None,
+                "duration_ms": 100,
+            },
+            {
+                "filing_id": 2,
+                "company_name": "Beta",
+                "success": True,
+                "fact_count": 5,
+                "error": None,
+                "duration_ms": 200,
+            },
         ]
 
         with patch("scripts.batch_v2_extraction.LOGS_DIR", tmp_path):
@@ -587,3 +613,67 @@ class TestProcessFilingWorkerHtmlFallback:
 
         assert result["success"] is False
         assert result["filing_id"] == 99
+
+
+class TestLoadFilingIds:
+    def test_parses_one_per_line(self, tmp_path):
+        f = tmp_path / "ids.txt"
+        f.write_text("101\n102\n103\n")
+        assert _load_filing_ids(str(f)) == [101, 102, 103]
+
+    def test_ignores_blank_lines_and_comments(self, tmp_path):
+        f = tmp_path / "ids.txt"
+        f.write_text("# target list\n101\n\n102  # reviewed-safe\n# end\n103\n")
+        assert _load_filing_ids(str(f)) == [101, 102, 103]
+
+    def test_raises_on_non_integer(self, tmp_path):
+        f = tmp_path / "ids.txt"
+        f.write_text("101\nnot-a-number\n103\n")
+        with pytest.raises(ValueError, match="ids.txt:2"):
+            _load_filing_ids(str(f))
+
+    def test_empty_file_returns_empty_list(self, tmp_path):
+        f = tmp_path / "ids.txt"
+        f.write_text("# just comments\n\n")
+        assert _load_filing_ids(str(f)) == []
+
+
+class TestQueryFilingsWhitelist:
+    """Verify --filing-ids-file whitelist branch builds the expected SQL + params."""
+
+    def _runner_with_mock_db(self, config: BatchConfig) -> tuple[BatchV2Runner, MagicMock]:
+        mock_db = MagicMock()
+        mock_db.query.return_value = []
+        runner = BatchV2Runner(config=config, db_url="postgresql://unused", db_adapter=mock_db)
+        return runner, mock_db
+
+    def test_filing_ids_restricts_query(self):
+        runner, db = self._runner_with_mock_db(BatchConfig(filing_ids=[1, 2, 3]))
+        runner.query_filings()
+        sql, params = db.query.call_args.args
+        assert "f.filing_id = ANY(%(filing_ids)s)" in sql
+        assert params == {"filing_ids": [1, 2, 3]}
+        assert "processing_status" not in sql
+
+    def test_filing_ids_takes_precedence_over_status(self):
+        runner, db = self._runner_with_mock_db(BatchConfig(filing_ids=[42], status="fetched"))
+        runner.query_filings()
+        sql, params = db.query.call_args.args
+        assert "f.filing_id = ANY" in sql
+        assert "processing_status" not in sql
+        assert params == {"filing_ids": [42]}
+
+    def test_status_only_branch_unchanged(self):
+        runner, db = self._runner_with_mock_db(BatchConfig(status="fetched"))
+        runner.query_filings()
+        sql, params = db.query.call_args.args
+        assert "f.processing_status = %(status)s" in sql
+        assert "filing_id = ANY" not in sql
+        assert params == {"status": "fetched"}
+
+    def test_no_filters_returns_unfiltered_query(self):
+        runner, db = self._runner_with_mock_db(BatchConfig())
+        runner.query_filings()
+        sql, params = db.query.call_args.args
+        assert "WHERE" not in sql
+        assert params == {}
