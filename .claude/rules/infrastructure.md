@@ -16,7 +16,7 @@ paths:
 ```bash
 docker compose up -d   # Start PostgreSQL on port 5433
 docker compose down    # Stop
-# Connection: postgresql://dev:dev@localhost:5433/filings_analysis
+# Connection: postgresql://dev:dev@localhost:5433/filings_analysis_test
 ```
 
 ## Production (Neon + Render)
@@ -25,14 +25,34 @@ Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmo
 
 `render.yaml` defines: `filings-reviewer` web service + `filings-extraction` cron (daily 6am UTC, runs `batch_v2_extraction.py --status fetched --workers 2 --limit 50`).
 
+## DATABASE_URL vs TEST_DATABASE_URL — IMPORTANT
+
+**In this project's `.env`, `DATABASE_URL` points at the Neon prod database, NOT local Postgres.** The local Docker Postgres is addressed by `TEST_DATABASE_URL`.
+
+| Env var | Points at | Use for |
+|---------|-----------|---------|
+| `DATABASE_URL` | **Neon prod** (`*.neon.tech`) | Prod-facing work ONLY (Phase 5 backfills, prod runbooks). Confirm with user before any write. |
+| `TEST_DATABASE_URL` | **Local Docker** (`localhost:5433/filings_analysis_test`) | All local/dev work: ad-hoc `psql`, diagnostics, pytest, local backfill rehearsals. |
+
+Rules for any DB-touching command in this repo:
+
+1. **Default to `TEST_DATABASE_URL`** for local work. Run the command as
+   `DATABASE_URL="$TEST_DATABASE_URL" <cmd>` or pass
+   `--database-url "$TEST_DATABASE_URL"` where the script supports it.
+2. **Never silently fall back to `$DATABASE_URL`** if `$TEST_DATABASE_URL` is
+   unset. Stop and ask the user, or start Docker with `docker compose up -d`.
+3. **Assume `$DATABASE_URL` is prod** unless you have explicitly verified
+   otherwise for the current shell. Read-only queries against prod still
+   require user confirmation.
+
 ## Environment Variables
 
 | Var | Required | Purpose |
 |-----|----------|---------|
-| `DATABASE_URL` | Yes | PostgreSQL connection (local or Neon) |
+| `DATABASE_URL` | Yes | PostgreSQL connection. **In this project's `.env` this is Neon prod.** Do not use for local dev work — see TEST_DATABASE_URL. |
 | `SEC_USER_AGENT` | Yes | EDGAR API identification ("Name email@example.com") |
 | `FILINGS_API_KEY` | Yes | API auth for web routes |
-| `TEST_DATABASE_URL` | Tests only | Separate test database |
+| `TEST_DATABASE_URL` | Local dev + tests | Local Docker Postgres (`localhost:5433/filings_analysis_test`). **This is the default for any local DB work, not just pytest.** |
 | `OPENAI_API_KEY` | LLM features | OpenAI for vision/LLM calls |
 | `R2_BUCKET` | Prod / persistent envs | Cloudflare R2 bucket for image cache. When set, overrides `IMAGE_CACHE_DIR` |
 | `R2_ACCESS_KEY_ID` | With `R2_BUCKET` | R2 API token access key |

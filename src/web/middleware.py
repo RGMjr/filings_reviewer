@@ -7,14 +7,61 @@ Provides reusable before_request/after_request hooks for:
 - Audit log insertion
 """
 
+import functools
 import hmac
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 from flask import Blueprint, current_app, g, jsonify, request, session
 
 logger = logging.getLogger(__name__)
+
+
+def _verify_api_key() -> Any:
+    """
+    Core API-key check. Returns None to pass, or a Flask response tuple
+    (body, status) to reject. Callable from a before_request hook or a
+    per-route decorator.
+    """
+    if not current_app.config.get("API_KEY_REQUIRED", True):
+        return None
+
+    # Allow browser fetch calls from the same server (same-origin AJAX).
+    # Check Origin first (reliable for POST fetch() calls; scheme-independent comparison
+    # handles HTTPS-terminating proxies where Flask sees http:// but browser sends https://).
+    origin = request.headers.get("Origin", "")
+    if origin and origin.split("://", 1)[-1] == request.host:
+        return None
+
+    # Fallback: Referer header (sent for GET and same-origin navigations)
+    referer = request.headers.get("Referer", "")
+    if referer and referer.startswith(request.host_url):
+        return None
+
+    api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
+    expected_key = current_app.config.get("API_KEY")
+
+    if not expected_key:
+        logger.error("API_KEY_REQUIRED is True but API_KEY is not configured")
+        return jsonify({"status": "error", "message": "Server misconfigured"}), 500
+
+    if not api_key:
+        logger.warning(
+            f"Missing API key for {request.method} {request.path} "
+            f"from {request.remote_addr}"
+        )
+        return jsonify({"status": "error", "message": "API key required"}), 401
+
+    if not hmac.compare_digest(api_key, expected_key):
+        logger.warning(
+            f"Invalid API key for {request.method} {request.path} "
+            f"from {request.remote_addr}"
+        )
+        return jsonify({"status": "error", "message": "Invalid API key"}), 401
+
+    return None
 
 
 def register_api_auth(bp: Blueprint) -> None:
@@ -26,43 +73,24 @@ def register_api_auth(bp: Blueprint) -> None:
     """
     @bp.before_request
     def _check_api_key():
-        if not current_app.config.get("API_KEY_REQUIRED", True):
-            return None
+        return _verify_api_key()
 
-        # Allow browser fetch calls from the same server (same-origin AJAX).
-        # Check Origin first (reliable for POST fetch() calls; scheme-independent comparison
-        # handles HTTPS-terminating proxies where Flask sees http:// but browser sends https://).
-        origin = request.headers.get("Origin", "")
-        if origin and origin.split("://", 1)[-1] == request.host:
-            return None
 
-        # Fallback: Referer header (sent for GET and same-origin navigations)
-        referer = request.headers.get("Referer", "")
-        if referer and referer.startswith(request.host_url):
-            return None
+def require_api_key(view: Callable) -> Callable:
+    """
+    Per-route API-key guard. Use on individual view functions when the
+    containing blueprint is not fully guarded via `register_api_auth`
+    (e.g., a mixed blueprint where HTML pages are intentionally public but
+    specific endpoints need auth).
+    """
+    @functools.wraps(view)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        rejection = _verify_api_key()
+        if rejection is not None:
+            return rejection
+        return view(*args, **kwargs)
 
-        api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
-        expected_key = current_app.config.get("API_KEY")
-
-        if not expected_key:
-            logger.error("API_KEY_REQUIRED is True but API_KEY is not configured")
-            return jsonify({"status": "error", "message": "Server misconfigured"}), 500
-
-        if not api_key:
-            logger.warning(
-                f"Missing API key for {request.method} {request.path} "
-                f"from {request.remote_addr}"
-            )
-            return jsonify({"status": "error", "message": "API key required"}), 401
-
-        if not hmac.compare_digest(api_key, expected_key):
-            logger.warning(
-                f"Invalid API key for {request.method} {request.path} "
-                f"from {request.remote_addr}"
-            )
-            return jsonify({"status": "error", "message": "Invalid API key"}), 401
-
-        return None
+    return wrapper
 
 
 def register_timing(bp: Blueprint) -> None:

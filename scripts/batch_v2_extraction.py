@@ -70,6 +70,23 @@ def _handle_sigint(signum: int, frame: object) -> None:
     _shutdown_requested = True
 
 
+def _load_filing_ids(path: str) -> list[int]:
+    """Parse a filing_ids file: one integer per line, blank lines and '#' comments ignored."""
+    ids: list[int] = []
+    with open(path) as fh:
+        for lineno, raw in enumerate(fh, start=1):
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            try:
+                ids.append(int(line))
+            except ValueError as exc:
+                raise ValueError(
+                    f"{path}:{lineno}: expected integer filing_id, got {raw.rstrip()!r}"
+                ) from exc
+    return ids
+
+
 @dataclass
 class BatchConfig:
     """Configuration for batch extraction."""
@@ -84,6 +101,7 @@ class BatchConfig:
     worker_timeout: int = 300  # Seconds before killing a hung worker
     status: str | None = None  # Filter filings by processing_status (e.g. 'fetched')
     force_reextract: bool = False  # Purge existing human decisions on re-extract
+    filing_ids: list[int] | None = None  # Explicit whitelist of filing_ids to process
 
 
 @dataclass
@@ -342,7 +360,9 @@ class BatchV2Runner:
     using ProcessPoolExecutor.
     """
 
-    def __init__(self, config: BatchConfig, db_url: str, db_adapter: DatabaseAdapter | None = None) -> None:
+    def __init__(
+        self, config: BatchConfig, db_url: str, db_adapter: DatabaseAdapter | None = None
+    ) -> None:
         self.config = config
         self.db_url = db_url
         self._db_adapter = db_adapter
@@ -354,7 +374,10 @@ class BatchV2Runner:
 
         params: dict = {}
         where_clause = ""
-        if self.config.status:
+        if self.config.filing_ids is not None:
+            where_clause = "WHERE f.filing_id = ANY(%(filing_ids)s)"
+            params["filing_ids"] = list(self.config.filing_ids)
+        elif self.config.status:
             where_clause = "WHERE f.processing_status = %(status)s"
             params["status"] = self.config.status
 
@@ -658,7 +681,42 @@ def main() -> None:
             "(counted under 'skipped'); the batch continues."
         ),
     )
+    parser.add_argument(
+        "--filing-ids-file",
+        type=str,
+        default=None,
+        help=(
+            "Path to a file containing filing_ids to process, one per line. "
+            "Blank lines and '#' comments are ignored. Mutually exclusive with "
+            "--filing-id, --status, and --resume-from."
+        ),
+    )
     args = parser.parse_args()
+
+    filing_ids: list[int] | None = None
+    if args.filing_ids_file:
+        conflicts = [
+            name
+            for name, val in (
+                ("--filing-id", args.filing_id),
+                ("--status", args.status),
+                ("--resume-from", args.resume_from),
+            )
+            if val is not None
+        ]
+        if conflicts:
+            print(
+                f"ERROR: --filing-ids-file is mutually exclusive with {', '.join(conflicts)}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        filing_ids = _load_filing_ids(args.filing_ids_file)
+        if not filing_ids:
+            print(
+                f"ERROR: --filing-ids-file {args.filing_ids_file!r} contains no filing_ids",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -682,6 +740,7 @@ def main() -> None:
         worker_timeout=args.worker_timeout,
         status=args.status,
         force_reextract=args.force_reextract,
+        filing_ids=filing_ids,
     )
 
     runner = BatchV2Runner(config=config, db_url=db_url)
