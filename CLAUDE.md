@@ -16,11 +16,17 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 
 **PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit` (project-local): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass.
 
+**Worktree-first.** Run `/commit` (and any HEAD-moving git work) from a `ccw` worktree, not the primary tree — a PreToolUse guard denies `git checkout`/`switch`/`checkout -b` in the primary tree to protect concurrent sessions. Use `EnterWorktree` inside a session or `ccw [branch]` from the shell. See `docs/development/claude-sessions-and-worktrees.md`.
+
+**Planning rule.** For any plan touching 3+ files or new deps / config, make worktree setup (`EnterWorktree` or `ccw <branch>`) the first step. The `/commit` skill assumes you're in one.
+
 Required status checks: **Lint**, **Unit Tests**, **Vulnerability Scan**, **Integration Tests**, **UI E2E (Playwright)**. Use `/ci-fix` when checks fail; `/merge-check` for a manual pre-merge sweep.
 
 Local guards (`.claude/settings.json`): `git push origin main`, `git push --force*`, and `gh pr merge --admin*` are denied. A PreToolUse hook refuses `git commit` on `main`. Pre-commit framework (`make hooks-install`) runs ruff + the Tier-1 regression / docs-folder guard on every commit.
 
 See `docs/development/CONTRIBUTING.md` for the full flow.
+
+**Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 3 issues tagged `Autonomy: safe` from the **Nightly Sweeper Classification** table in `docs/KNOWN_ISSUES.md`, auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Ships paused via `.claude/sweep.pause`. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs.
 
 ## Key Commands
 
