@@ -1,11 +1,26 @@
+envVarGroups:
+  - name: filings-shared-secrets
+    envVars:
+      # Values set manually in the Render dashboard. Linked to every service
+      # that needs Postgres + R2 image-cache access.
+      - key: DATABASE_URL
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_ENDPOINT_URL
+        sync: false
+
 services:
   - type: web
     name: filings-reviewer
     runtime: docker
     dockerfilePath: ./Dockerfile
     envVars:
-      - key: DATABASE_URL
-        sync: false  # set manually — works with Neon or Render Postgres
+      - fromGroup: filings-shared-secrets
       - key: SECRET_KEY
         generateValue: true
       - key: APP_ENV
@@ -14,15 +29,6 @@ services:
         sync: false
       - key: INGEST_SPAWN_SUBPROCESS
         value: "false"  # production drains via filings-onboarding-runner worker
-      # Cloudflare R2 image cache (src/infra/image_storage.py). Values set via Render dashboard.
-      - key: R2_BUCKET
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_ENDPOINT_URL
-        sync: false
 
   - type: cron
     name: filings-extraction
@@ -31,17 +37,7 @@ services:
     dockerCommand: python3 scripts/batch_v2_extraction.py --status fetched --workers 2 --limit 50
     schedule: "0 6 * * *"  # Daily at 6am UTC
     envVars:
-      - key: DATABASE_URL
-        sync: false
-      # Cron writes images to R2 — must share the same bucket credentials as the web service.
-      - key: R2_BUCKET
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_ENDPOINT_URL
-        sync: false
+      - fromGroup: filings-shared-secrets
 
   - type: worker
     name: filings-onboarding-runner
@@ -49,18 +45,8 @@ services:
     dockerfilePath: ./Dockerfile
     dockerCommand: python3 -m src.universe.onboarding_runner --watch --poll-interval 10
     envVars:
-      - key: DATABASE_URL
-        sync: false
+      - fromGroup: filings-shared-secrets
       - key: SEC_USER_AGENT
         sync: false
       - key: OPENAI_API_KEY
-        sync: false
-      # Worker runs V2Pipeline for onboard batches — image OCR writes to R2.
-      - key: R2_BUCKET
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_ENDPOINT_URL
         sync: false
