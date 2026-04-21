@@ -350,12 +350,12 @@ Workflow commands for common tasks:
 | Command | Purpose |
 |---------|---------|
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
-| `/commit` | Safe commit: runs ruff + pytest before committing |
+| `/commit` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/plan-review` | Review and critique a plan before execution |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 
-> **Note:** Only `/doc-audit`, `/metric-lifecycle`, and `/project-tutorial` are project-local command files in `.claude/commands/`. `/commit` and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files, so they won't appear under `.claude/commands/`.
+> **Note:** `/commit`, `/doc-audit`, `/metric-lifecycle`, and `/project-tutorial` are project-local command files under `.claude/commands/`. `/plan-review` is delivered via Claude Code skills/plugins rather than a project-local file.
 
 ### Sub-Agents (`.claude/agents/`)
 
