@@ -129,6 +129,91 @@ def test_parse_form_criteria_multi_industry(app):
 
 
 # ---------------------------------------------------------------------------
+# POST /ingest/preview — validation error re-renders form with preserved state
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_preview_no_criteria_returns_400_with_preserved_state(client):
+    """Missing industry/SIC/company → 400, form re-rendered with typed values preserved."""
+    resp = client.post(
+        "/ingest/preview",
+        data={
+            "year": "2023",
+            "reviewer_name": "Rob",
+            # No industries / SIC / company — triggers the validation error.
+            # Keep a non-default form_types checkbox to prove checkbox state
+            # survives the round-trip.
+            "form_types": ["10k"],
+        },
+    )
+    assert resp.status_code == 400
+    body = resp.get_data(as_text=True)
+    # Flash message rendered
+    assert "industry, SIC code, or company name" in body
+    # Year field repopulated
+    assert 'value="2023"' in body
+    # Reviewer name repopulated
+    assert 'value="Rob"' in body
+
+    # The 10-K checkbox is checked; the default s1f1 is not. The template
+    # renders <input ... id="ft_X" ... {% if ... %}checked{% endif %}>; split
+    # the HTML on `<input` so each chunk is a single input tag.
+    def _input_block(html: str, input_id: str) -> str:
+        for chunk in html.split("<input"):
+            if f'id="{input_id}"' in chunk:
+                return chunk.split(">", 1)[0]
+        raise AssertionError(f"no <input id={input_id!r}> in response body")
+
+    assert "checked" in _input_block(body, "ft_10k")
+    assert "checked" not in _input_block(body, "ft_s1f1")
+
+
+def test_ingest_preview_preserves_sic_and_company_on_error(client):
+    """Typed-but-invalid SIC triggers ValueError; other fields still round-trip."""
+    resp = client.post(
+        "/ingest/preview",
+        data={
+            "year": "2023",
+            "reviewer_name": "Rob",
+            "sic_codes": "73AB",  # invalid → ValueError from resolve_criteria
+            "company_name_ilike": "Chewy",
+        },
+    )
+    assert resp.status_code == 400
+    body = resp.get_data(as_text=True)
+    # Typed SIC preserved verbatim so the user can fix the typo
+    assert 'value="73AB"' in body
+    # Company name preserved
+    assert 'value="Chewy"' in body
+
+
+def test_ingest_preview_company_only_passes_validation(client):
+    """Company name alone (no industry/SIC) satisfies validation and reaches discover()."""
+    from src.universe.onboarding import DiscoveryResult
+
+    mock_db = MagicMock()
+
+    with (
+        patch("src.web.routes.ingest.get_db", return_value=mock_db),
+        patch(
+            "src.web.routes.ingest.discover",
+            return_value=DiscoveryResult(new=[], already_extracted=[], gaps=[]),
+        ),
+    ):
+        resp = client.post(
+            "/ingest/preview",
+            data={
+                "year": "2023",
+                "reviewer_name": "Rob",
+                "company_name_ilike": "Chewy",
+            },
+        )
+    # Success renders the preview template — confirm we didn't get the form
+    # re-render 400.
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # Volume band enforcement
 # ---------------------------------------------------------------------------
 

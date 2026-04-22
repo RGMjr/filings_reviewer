@@ -139,9 +139,22 @@ def test_resolve_criteria_missing_year_raises() -> None:
         resolve_criteria({"industries": ["software"]})
 
 
-def test_resolve_criteria_empty_sic_and_industries_raises() -> None:
-    with pytest.raises(ValueError, match="At least one industry or SIC code"):
+def test_resolve_criteria_empty_sic_industries_and_company_raises() -> None:
+    with pytest.raises(ValueError, match="industry, SIC code, or company name"):
         resolve_criteria({"year": "2020"})
+
+
+def test_resolve_criteria_company_name_only_allowed() -> None:
+    """Company-name filter alone satisfies the narrowing requirement."""
+    q = resolve_criteria({"year": "2020", "company_name_ilike": "Chewy"})
+    assert q.sic_codes == []
+    assert q.company_name_ilike == "Chewy"
+
+
+def test_resolve_criteria_blank_company_name_does_not_satisfy() -> None:
+    """Whitespace-only company_name_ilike does not satisfy the narrowing rule."""
+    with pytest.raises(ValueError, match="industry, SIC code, or company name"):
+        resolve_criteria({"year": "2020", "company_name_ilike": "   "})
 
 
 def test_resolve_criteria_exclude_amendments() -> None:

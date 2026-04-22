@@ -342,8 +342,16 @@ def test_exclude_amendments_filters_slash_a_forms(cli):
     """With --exclude-amendments, s1f1 bundle narrows to S-1 + F-1 only."""
     parser = cli.build_parser()
     args = parser.parse_args(
-        ["discover", "--industry", "software", "--year", "2015",
-         "--form-type", "s1f1", "--exclude-amendments"]
+        [
+            "discover",
+            "--industry",
+            "software",
+            "--year",
+            "2015",
+            "--form-type",
+            "s1f1",
+            "--exclude-amendments",
+        ]
     )
     assert args.exclude_amendments is True
 
@@ -355,9 +363,7 @@ def test_exclude_amendments_filters_slash_a_forms(cli):
 
 def test_exclude_amendments_default_false(cli):
     parser = cli.build_parser()
-    args = parser.parse_args(
-        ["discover", "--industry", "software", "--year", "2015"]
-    )
+    args = parser.parse_args(["discover", "--industry", "software", "--year", "2015"])
     assert args.exclude_amendments is False
 
 
@@ -388,13 +394,13 @@ def test_populate_default_form_type_s1f1(cli):
 
 def test_build_discovery_sql_includes_phase1_for_s1f1(cli):
     """S-1/F-1 requests retain the is_in_scope_phase1 = TRUE filter."""
-    sql = cli._build_discovery_sql(["S-1", "S-1/A", "F-1", "F-1/A"])
+    sql = cli._build_discovery_sql(["S-1", "S-1/A", "F-1", "F-1/A"], ["7372"])
     assert "is_in_scope_phase1 = TRUE" in sql
 
 
 def test_build_discovery_sql_drops_phase1_for_10k(cli):
     """10-K requests omit the Phase-1 gate (10-K is not Phase 1 by design)."""
-    sql = cli._build_discovery_sql(["10-K", "10-K/A"])
+    sql = cli._build_discovery_sql(["10-K", "10-K/A"], ["7372"])
     assert "is_in_scope_phase1" not in sql
 
 
@@ -404,8 +410,24 @@ def test_build_discovery_sql_keeps_phase1_for_mixed_bundle(cli):
     Rationale: the filter is conservative — only drop it when the operator
     is explicitly asking for non-Phase-1 forms only.
     """
-    sql = cli._build_discovery_sql(["S-1", "10-K"])
+    sql = cli._build_discovery_sql(["S-1", "10-K"], ["7372"])
     assert "is_in_scope_phase1 = TRUE" in sql
+
+
+def test_build_discovery_sql_omits_industry_gate_when_sic_codes_empty(cli):
+    """Empty sic_codes → the industry filter clause is not emitted.
+
+    Enables company-name-only discovery: ``= ANY(ARRAY[]::text[])`` would
+    match zero rows, so the clause must be dropped entirely when the caller
+    is filtering by company name alone.
+    """
+    sql = cli._build_discovery_sql(["S-1"], [])
+    assert "c.industry_code = ANY" not in sql
+
+
+def test_build_discovery_sql_includes_industry_gate_when_sic_codes_present(cli):
+    sql = cli._build_discovery_sql(["S-1"], ["7372"])
+    assert "c.industry_code = ANY(%(sic_codes)s)" in sql
 
 
 # ---------------------------------------------------------------------------
