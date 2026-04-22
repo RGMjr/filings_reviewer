@@ -66,7 +66,8 @@ USER root
 COPY --chown=appuser:appuser . .
 
 RUN mkdir -p /app/.claude/worktrees /app/.claude/sweep-digests \
-    && chown -R appuser:appuser /app/.claude
+    && chown -R appuser:appuser /app/.claude \
+    && chown appuser:appuser /app
 
 USER appuser
 
