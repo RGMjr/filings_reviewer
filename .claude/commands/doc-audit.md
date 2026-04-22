@@ -29,10 +29,11 @@
    - Compare against the architecture block in `CLAUDE.md`.
    - Flag any directory present in `src/` but missing from CLAUDE.md, and vice versa.
 
-5. **Check docs/KNOWN_ISSUES.md for resolved items**
-   - Read `docs/KNOWN_ISSUES.md`.
-   - Look for any issues marked as "RESOLVED", "FIXED", or "CLOSED" that have not been archived.
-   - Flag: "The following resolved issues in KNOWN_ISSUES.md should be moved to the archive: [list]."
+5. **Check docs/known-issues/ fragments for resolved items**
+   - Read all fragment files under `docs/known-issues/`.
+   - Look for any fragments with `status: resolved` or `status: closed` that have not been updated to `status: archived`.
+   - Flag: "The following fragment(s) have status resolved/closed and should be updated to `status: archived`: [list of file paths]."
+   - Note: `docs/KNOWN_ISSUES.md` is auto-generated from these fragments — do NOT read or edit it directly for this check.
 
 6. **Output summary report**
    - Print a structured report with one section per check above.

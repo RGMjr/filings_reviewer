@@ -146,14 +146,7 @@ specific files by name.
 
 ## Known-issues triage
 
-New issues surfaced during contribution go into `docs/KNOWN_ISSUES.md` with
-the next available number. See the existing entries for the expected shape
-(Status / Severity / Problem / Resolution or Next Steps).
-
-`docs/KNOWN_ISSUES.md` is auto-generated from fragment files under
-`docs/known-issues/`.  Edit the per-issue fragment, not the rollup directly.
-A pre-commit hook regenerates and re-stages the rollup automatically whenever
-you stage a fragment.
+New issues surfaced during contribution go into a new `docs/known-issues/legacy-NNN-<slug>.md` fragment file (see the frontmatter template in the `/commit` skill or existing fragments for the expected shape). The pre-commit hook regenerates `docs/KNOWN_ISSUES.md` automatically when you stage a fragment — do NOT edit the rollup directly.
 
 ### Merge conflicts on `docs/KNOWN_ISSUES.md`
 
