@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 28 |
+| Open | 27 |
 | Partially Resolved | 3 |
 | Archived | 46 |
-| Resolved | 5 |
+| Resolved | 6 |
 
 
 ## Nightly Sweeper Classification
@@ -634,35 +634,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 - Pin the `claude` installer to a specific version once the installer supports a version argument; otherwise cache a specific binary in the image.
 - Pin `gh` to a specific apt version (`gh=2.X.Y`) or switch to the GitHub Releases tarball.
 - Consider adding a build-time smoke test: `claude --version && gh --version` to fail the build on unexpected drift.
-
-## #70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
-
-> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
-
-This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
-
-The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
-
-### Next Steps
-
-- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
-- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
-
-### Cross-References
-
-- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
-- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
-- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
-- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
 
 ## #74. `.claude/scheduled_tasks.lock` Not Gitignored
 
@@ -1530,6 +1501,35 @@ Remaining narrow gaps (POST stub shape drift; non-rendering template files) are 
 
 - Detect `timeout` vs `gtimeout` vs neither at script start; fall back to `gtimeout` on macOS (via `brew install coreutils`) or to a no-timeout code path with a warning log.
 - Alternatively, install `coreutils` as part of the local-dev setup docs for the `/sweep` skill.
+
+## #70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+
+### Problem
+
+`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
+
+> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
+
+This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
+
+The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
+
+### Next Steps
+
+- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
+- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
+
+### Cross-References
+
+- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
+- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
+- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
+- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
 
 ## #71. Integration Tests Job Has No Path Filter
 
