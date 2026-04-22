@@ -42,7 +42,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # Claude Code CLI. Installs to /usr/local/bin/claude via the official installer.
 # The installer is idempotent and safe to run at build time.
-RUN curl -fsSL https://claude.ai/install.sh | sh
+RUN curl -fsSL https://claude.ai/install.sh | bash
 
 # Non-privileged user (matches main Dockerfile pattern).
 ARG UID=10001
