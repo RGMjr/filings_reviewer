@@ -70,6 +70,15 @@ scikit-learn>=1.4.0
 # OpenAI API - For metric extraction and quality scoring
 openai>=1.0.0
 
+# Google Gemini vision API - used via VisionProvider abstraction (Wave B2).
+# Imported as `from google import genai`. No Vertex/GCP project — uses
+# GOOGLE_API_KEY env var for auth.
+google-genai>=1.0.0
+
+# Anthropic Claude vision API - used via VisionProvider abstraction (Wave B2).
+# Pinned >=0.87.0 for CVE-2026-34450 and CVE-2026-34452 (fixed in 0.87.0).
+anthropic>=0.87.0
+
 # Token counting - For cost tracking and context management
 tiktoken>=0.5.0
 
