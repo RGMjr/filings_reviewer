@@ -74,6 +74,7 @@ require gh
 # history (fetch, checkout, worktree add, push), so bootstrap a minimal repo
 # from origin when running inside a stripped image. Local /sweep invocations
 # already have .git and skip this branch.
+_BOOTSTRAPPED=0
 if [[ ! -d .git ]]; then
   if [[ -z "${GH_TOKEN:-}" ]]; then
     log "FATAL: GH_TOKEN required to bootstrap .git from origin"
@@ -82,6 +83,7 @@ if [[ ! -d .git ]]; then
   log "No .git found — initializing repo from origin..."
   git init --quiet
   git remote add origin "https://github.com/RGMjr/filings_reviewer.git"
+  _BOOTSTRAPPED=1
 fi
 
 # Let gh front github.com auth for git so tokens stay out of .git/config.
@@ -95,8 +97,20 @@ git config --global user.name  "${GIT_AUTHOR_NAME:-Nightly Sweeper}"
 
 log "Fetching origin/main..."
 git fetch origin main --quiet
-git checkout main --quiet 2>/dev/null || git checkout -B main origin/main --quiet
-git reset --hard origin/main --quiet
+
+if [[ "$_BOOTSTRAPPED" == "1" ]]; then
+  # After a fresh `git init`, every file in /app (populated by the Dockerfile's
+  # `COPY . .`) is untracked. `git checkout main` would refuse to overwrite
+  # those paths. Wipe the untracked tree first, then materialize origin/main.
+  # The running bash process keeps executing from its in-memory script copy
+  # even after `scripts/run_nightly_sweep.sh` is removed and recreated.
+  log "Reconciling COPY'd tree with origin/main..."
+  git clean -fdx --quiet
+  git checkout -B main origin/main --quiet
+else
+  git checkout main --quiet 2>/dev/null || git checkout -B main origin/main --quiet
+  git reset --hard origin/main --quiet
+fi
 
 # --- 3. Selector ---
 INCLUDE_REVIEW_FLAG=""
