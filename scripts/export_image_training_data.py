@@ -33,38 +33,43 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = ROOT / "data" / "image_model" / "training_data.csv"
 PRES_DIR = ROOT / "data" / "presentation_gold_standard"
 
+# Keywords used for cohort/retention signal detection in nearby text.
+# Shared between SEC and presentation export paths so both sources produce
+# comparable keyword_count / detected_keywords features.
+COHORT_KEYWORDS = {"cohort", "retention", "vintage", "ltv", "cac", "arr", "mrr", "nrr"}
+
 # Normalized output schema — features useful for relevance modelling
 OUTPUT_COLUMNS = [
     # Identifiers
     "image_id",
-    "source",           # 'sec' or 'pres'
+    "source",  # 'sec' or 'pres'
     "company",
-    "filing_key",       # accession number (SEC) or TICKER_FORM_DATE key (pres)
+    "filing_key",  # accession number (SEC) or TICKER_FORM_DATE key (pres)
     "filename",
     "image_url",
     # Dimensions
     "width",
     "height",
-    "has_dimensions",   # derived: width and height both known
-    "image_area",       # derived: width * height (0 if unknown)
-    "aspect_ratio",     # derived: width / height (0 if unknown or height=0)
+    "has_dimensions",  # derived: width and height both known
+    "image_area",  # derived: width * height (0 if unknown)
+    "aspect_ratio",  # derived: width / height (0 if unknown or height=0)
     # Text signals
     "cohort_keyword_nearby",  # bool: cohort keyword within ~1500 chars
-    "keyword_count",          # derived: number of distinct detected keywords
-    "detected_keywords",      # raw: comma-separated keyword list
-    "preceding_text",         # ~50-500 chars of text before the image
-    "text_length",            # derived: len(preceding_text)
+    "keyword_count",  # derived: number of distinct detected keywords
+    "detected_keywords",  # raw: comma-separated keyword list
+    "preceding_text",  # ~50-500 chars of text before the image
+    "text_length",  # derived: len(preceding_text)
     # Scoring signals
-    "cohort_confidence",      # 0.0-1.0 heuristic score (SEC) or relevance_score (pres)
-    "detection_tier",         # tier_1_cohort, tier_2_large, tier_3_all, seed_list (SEC)
-                              # or inferred from classification (pres)
-    "classification",         # V2 image classification: chart, unknown, decorative, etc.
-    "section_type",           # SEC section: MD&A, BUSINESS, etc. (pres only)
-    "image_index",            # 1-indexed position in filing (SEC only)
+    "cohort_confidence",  # 0.0-1.0 heuristic score (SEC) or relevance_score (pres)
+    "detection_tier",  # tier_1_cohort, tier_2_large, tier_3_all, seed_list (SEC)
+    # or inferred from classification (pres)
+    "classification",  # V2 image classification: chart, unknown, decorative, etc.
+    "section_type",  # SEC section: MD&A, BUSINESS, etc. (pres only)
+    "image_index",  # 1-indexed position in filing (SEC only)
     # Labels
-    "decision",               # 'relevant' or 'not_relevant'
-    "chart_type",             # if relevant: bar_chart, line_chart, cohort_table, etc.
-    "rejection_reason",       # if not_relevant: decorative, not_a_chart, wrong_subject, etc.
+    "decision",  # 'relevant' or 'not_relevant'
+    "chart_type",  # if relevant: bar_chart, line_chart, cohort_table, etc.
+    "rejection_reason",  # if not_relevant: decorative, not_a_chart, wrong_subject, etc.
 ]
 
 
@@ -105,9 +110,11 @@ def export_sec_rows(db) -> list[dict]:
     Export V2 SEC image decisions for training.
 
     V2 does not persist V1's `detected_keywords[]` or `cohort_keyword_nearby`.
-    Synthesize both from V2 fields using the same heuristic the runtime scorer uses:
-      - cohort_keyword_nearby = 1 if relevance_score >= 0.6 (matches bridge logic)
-      - detected_keywords is an empty list (model compensates via semantic text features)
+    Synthesize both from nearby_text using the same COHORT_KEYWORDS set used by
+    the presentation export path:
+      - detected_keywords: COHORT_KEYWORDS members found in nearby_text (sorted)
+      - keyword_count: len(detected_keywords)
+      - cohort_keyword_nearby: 1 if any keyword detected OR relevance_score >= 0.6
     """
     from src.shared.image_features import derive_detection_tier
 
@@ -123,32 +130,37 @@ def export_sec_rows(db) -> list[dict]:
         nearby = r.get("nearby_text") or ""
         relevance = float(r.get("relevance_score") or 0.0)
 
-        out.append({
-            "image_id": f"sec:{r['img_id']}",
-            "source": "sec",
-            "company": r.get("company_name", ""),
-            "filing_key": r.get("accession_number", ""),
-            "filename": r.get("filename", ""),
-            "image_url": r.get("image_url", ""),
-            "width": w if w is not None else "",
-            "height": h if h is not None else "",
-            "has_dimensions": int(has_dim),
-            "image_area": area,
-            "aspect_ratio": round(aspect, 4),
-            "cohort_keyword_nearby": int(relevance >= 0.6),
-            "keyword_count": 0,
-            "detected_keywords": "",
-            "preceding_text": nearby,
-            "text_length": len(nearby),
-            "cohort_confidence": relevance,
-            "detection_tier": derive_detection_tier(r.get("classification"), relevance, w, h),
-            "classification": (r.get("classification") or "").lower(),
-            "section_type": r.get("section_type", "") or "",
-            "image_index": "",  # V2 does not store image_index
-            "decision": r.get("decision", ""),
-            "chart_type": r.get("chart_type") or "",
-            "rejection_reason": r.get("rejection_reason") or "",
-        })
+        nearby_lower = nearby.lower()
+        detected = [kw for kw in COHORT_KEYWORDS if kw in nearby_lower]
+
+        out.append(
+            {
+                "image_id": f"sec:{r['img_id']}",
+                "source": "sec",
+                "company": r.get("company_name", ""),
+                "filing_key": r.get("accession_number", ""),
+                "filename": r.get("filename", ""),
+                "image_url": r.get("image_url", ""),
+                "width": w if w is not None else "",
+                "height": h if h is not None else "",
+                "has_dimensions": int(has_dim),
+                "image_area": area,
+                "aspect_ratio": round(aspect, 4),
+                "cohort_keyword_nearby": int(bool(detected) or relevance >= 0.6),
+                "keyword_count": len(detected),
+                "detected_keywords": ",".join(sorted(detected)),
+                "preceding_text": nearby,
+                "text_length": len(nearby),
+                "cohort_confidence": relevance,
+                "detection_tier": derive_detection_tier(r.get("classification"), relevance, w, h),
+                "classification": (r.get("classification") or "").lower(),
+                "section_type": r.get("section_type", "") or "",
+                "image_index": "",  # V2 does not store image_index
+                "decision": r.get("decision", ""),
+                "chart_type": r.get("chart_type") or "",
+                "rejection_reason": r.get("rejection_reason") or "",
+            }
+        )
     return out
 
 
@@ -207,37 +219,38 @@ def export_pres_rows() -> list[dict]:
         relevance_score = cand.get("relevance_score") or 0.0
 
         # Presence of cohort-adjacent keywords in nearby text
-        cohort_keywords = {"cohort", "retention", "vintage", "ltv", "cac", "arr", "mrr", "nrr"}
         nearby_lower = nearby.lower()
-        cohort_nearby = int(any(kw in nearby_lower for kw in cohort_keywords))
-        detected = [kw for kw in cohort_keywords if kw in nearby_lower]
+        detected = [kw for kw in COHORT_KEYWORDS if kw in nearby_lower]
+        cohort_nearby = int(bool(detected))
 
-        out.append({
-            "image_id": f"pres:{decision_key}",
-            "source": "pres",
-            "company": company,
-            "filing_key": filing_key,
-            "filename": cand.get("filename", ""),
-            "image_url": cand.get("image_url", ""),
-            "width": w if w is not None else "",
-            "height": h if h is not None else "",
-            "has_dimensions": int(has_dim),
-            "image_area": area,
-            "aspect_ratio": round(aspect, 4),
-            "cohort_keyword_nearby": cohort_nearby,
-            "keyword_count": len(detected),
-            "detected_keywords": ",".join(detected),
-            "preceding_text": nearby[:500],
-            "text_length": len(nearby),
-            "cohort_confidence": relevance_score,
-            "detection_tier": CLASSIFICATION_TO_TIER.get(classification, "tier_3_all"),
-            "classification": classification,
-            "section_type": cand.get("section_type", ""),
-            "image_index": "",
-            "decision": dec.get("decision", ""),
-            "chart_type": dec.get("chart_type") or "",
-            "rejection_reason": dec.get("rejection_reason") or "",
-        })
+        out.append(
+            {
+                "image_id": f"pres:{decision_key}",
+                "source": "pres",
+                "company": company,
+                "filing_key": filing_key,
+                "filename": cand.get("filename", ""),
+                "image_url": cand.get("image_url", ""),
+                "width": w if w is not None else "",
+                "height": h if h is not None else "",
+                "has_dimensions": int(has_dim),
+                "image_area": area,
+                "aspect_ratio": round(aspect, 4),
+                "cohort_keyword_nearby": cohort_nearby,
+                "keyword_count": len(detected),
+                "detected_keywords": ",".join(detected),
+                "preceding_text": nearby[:500],
+                "text_length": len(nearby),
+                "cohort_confidence": relevance_score,
+                "detection_tier": CLASSIFICATION_TO_TIER.get(classification, "tier_3_all"),
+                "classification": classification,
+                "section_type": cand.get("section_type", ""),
+                "image_index": "",
+                "decision": dec.get("decision", ""),
+                "chart_type": dec.get("chart_type") or "",
+                "rejection_reason": dec.get("rejection_reason") or "",
+            }
+        )
     skipped = len(decisions) - len(out)
     if skipped > 0:
         logger.warning(
@@ -252,21 +265,27 @@ def export_pres_rows() -> list[dict]:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Export unified image training data for relevance model",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--output", type=str, default=str(DEFAULT_OUTPUT),
+        "--output",
+        type=str,
+        default=str(DEFAULT_OUTPUT),
         help=f"Output CSV path (default: {DEFAULT_OUTPUT})",
     )
     parser.add_argument(
-        "--source", choices=["sec", "pres", "all"], default="all",
+        "--source",
+        choices=["sec", "pres", "all"],
+        default="all",
         help="Which source to export (default: all)",
     )
     parser.add_argument(
-        "--database-url", type=str,
+        "--database-url",
+        type=str,
         help="Database connection string (defaults to DATABASE_URL from .env)",
     )
 
@@ -283,6 +302,7 @@ def main() -> None:
             logger.error("DATABASE_URL not set — cannot export SEC decisions")
             sys.exit(1)
         from src.infra.db import DatabaseAdapter
+
         db = DatabaseAdapter(db_url)
         sec_rows = export_sec_rows(db)
         logger.info("SEC: %d decisions exported", len(sec_rows))
@@ -302,8 +322,11 @@ def main() -> None:
     not_relevant = sum(1 for r in rows if r["decision"] == "not_relevant")
     logger.info(
         "Total: %d rows | relevant=%d (%.1f%%) | not_relevant=%d (%.1f%%)",
-        len(rows), relevant, 100 * relevant / len(rows),
-        not_relevant, 100 * not_relevant / len(rows),
+        len(rows),
+        relevant,
+        100 * relevant / len(rows),
+        not_relevant,
+        100 * not_relevant / len(rows),
     )
 
     output_path = Path(args.output)
@@ -328,7 +351,9 @@ def main() -> None:
     for s, counts in sources.items():
         logger.info(
             "  %s: %d total, %d relevant (%.1f%%)",
-            s, counts["total"], counts["relevant"],
+            s,
+            counts["total"],
+            counts["relevant"],
             100 * counts["relevant"] / counts["total"],
         )
 
