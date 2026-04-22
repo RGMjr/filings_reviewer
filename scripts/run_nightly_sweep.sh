@@ -69,6 +69,17 @@ require python3
 require claude
 require gh
 
+# Detect timeout command. GNU coreutils `timeout` is standard on Linux; macOS
+# ships without it. Install via `brew install coreutils` to get `gtimeout`.
+if command -v timeout >/dev/null 2>&1; then
+  _TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  _TIMEOUT_CMD="gtimeout"
+else
+  _TIMEOUT_CMD=""
+  log "WARNING: neither 'timeout' nor 'gtimeout' found — per-issue budget enforcement disabled (macOS: run 'brew install coreutils' to enable)"
+fi
+
 # Container images built from this repo strip .git via .dockerignore to keep
 # the web/extraction images lean. The sweeper orchestrator needs real git
 # history (fetch, checkout, worktree add, push), so bootstrap a minimal repo
@@ -175,10 +186,20 @@ EOF
 
   local log_file="$worktree/.sweep.log"
   local exit_code=0
+  # </dev/null is load-bearing: this function is called from inside a
+  # `picks | while read` pipeline, so the subshell inherits the pick stream
+  # on stdin. Without the redirect, `claude -p` (or `timeout` forwarding to
+  # it) reads the remaining pick lines from the pipe on its first call,
+  # which drains the iterator and makes the while-loop exit after pick 1
+  # of N. Reproduced locally with `(cat)` in place of claude.
   (
     cd "$worktree"
-    timeout "$PER_ISSUE_BUDGET" claude -p "$prompt" > "$log_file" 2>&1
-  ) || exit_code=$?
+    if [[ -n "$_TIMEOUT_CMD" ]]; then
+      "$_TIMEOUT_CMD" "$PER_ISSUE_BUDGET" claude -p "$prompt" > "$log_file" 2>&1
+    else
+      claude -p "$prompt" > "$log_file" 2>&1
+    fi
+  ) </dev/null || exit_code=$?
 
   local finished="$(date +%H:%M)"
   local pr_url="" pr_number="" abort_reason=""
