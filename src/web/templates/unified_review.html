@@ -219,7 +219,7 @@
       </span>
     </form>
   </div>
-  {% elif active_tab == 'images' and image_candidates and image_candidates|length > 0 %}
+  {% elif active_tab == 'images' and all_image_candidates and all_image_candidates|length > 0 %}
   <div class="review-filter-bar">
     <form method="GET" class="d-flex gap-2 align-items-center flex-wrap">
       <input type="hidden" name="tab" value="images">
@@ -708,6 +708,15 @@
      data-decision-id="{{ current_image.image_decision_id if current_image and current_image.image_decision_id else '' }}">
 
   {% if not image_candidates or image_candidates|length == 0 %}
+  {% if all_image_candidates and all_image_candidates|length > 0 and image_filters.status and image_filters.status != 'all' %}
+  <div class="alert alert-info">
+    <h5>No Images Match Filter</h5>
+    <p>No images match the current filter ({{ image_filters.status|capitalize }}). {{ all_image_candidates|length }} image{{ 's' if all_image_candidates|length != 1 else '' }} total for this filing.</p>
+    <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images', image_status='all') }}" class="btn btn-primary">
+      Clear Filter
+    </a>
+  </div>
+  {% else %}
   <div class="alert alert-info">
     <h5>No Image Candidates</h5>
     <p>No image candidates have been generated for this filing yet.</p>
@@ -715,6 +724,7 @@
       Back to Filing List
     </a>
   </div>
+  {% endif %}
   {% else %}
 
   {# Main 3-Column Layout (filter bar moved to sticky header above) #}
