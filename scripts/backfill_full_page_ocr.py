@@ -133,17 +133,23 @@ def find_candidates(
         rows = cur.fetchall()
         cols = [c.name for c in cur.description]
 
+    def _get(row: Any, key: str) -> Any:
+        """Tolerant accessor for tuple-row and dict-row cursors."""
+        if isinstance(row, dict):
+            return row.get(key)
+        return row[cols.index(key)]
+
     return [
         FilingCandidate(
-            filing_id=r[cols.index("filing_id")],
-            cik=r[cols.index("cik")] or "",
-            company_name=r[cols.index("company_name")] or "",
-            form_type=r[cols.index("form_type")] or "",
-            filing_date=r[cols.index("filing_date")],
-            accession_number=r[cols.index("accession_number")],
-            image_count=int(r[cols.index("image_count")] or 0),
-            segment_char_count=int(r[cols.index("segment_char_count")] or 0),
-            review_decisions=int(r[cols.index("review_decisions")] or 0),
+            filing_id=_get(r, "filing_id"),
+            cik=_get(r, "cik") or "",
+            company_name=_get(r, "company_name") or "",
+            form_type=_get(r, "form_type") or "",
+            filing_date=_get(r, "filing_date"),
+            accession_number=_get(r, "accession_number"),
+            image_count=int(_get(r, "image_count") or 0),
+            segment_char_count=int(_get(r, "segment_char_count") or 0),
+            review_decisions=int(_get(r, "review_decisions") or 0),
         )
         for r in rows
     ]
