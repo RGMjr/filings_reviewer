@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 29 |
+| Open | 28 |
 | Partially Resolved | 3 |
 | Archived | 46 |
-| Resolved | 3 |
+| Resolved | 5 |
 
 
 ## Nightly Sweeper Classification
@@ -41,9 +41,7 @@
 | #62 | review | S | `docs/operations/*` `src/universe/onboarding_runner.py` | Docs + optional admin flag; needs design call |
 | #63 | skip | S | — | Monkey-patch integration test; mid-complexity |
 | #66 | review | S | `render.yaml` `.claude/rules/infrastructure.md` | Wire apply_migrations into Render deploy; infra-change risk |
-| #68 | safe | XS | `scripts/run_nightly_sweep.sh` | Detect timeout vs gtimeout; fallback path for macOS |
 | #69 | review | S | `Dockerfile.nightly-sweep` | Pin claude + gh versions; needs validation step |
-| #71 | safe | XS | `.github/workflows/ci.yml` | Add path filter to integration-tests, mirroring ui-e2e |
 | #72 | review | S | `pyproject.toml` `uv.lock` | Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate fix before baseline refresh |
 | #74 | safe | XS | `.gitignore` | One-line addition to root `.gitignore` |
 | #75 | skip | S | `tests/ui/*.spec.js` `tests/ui/test_server.py` | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
@@ -51,6 +49,7 @@
 | #77 | skip | M | — | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; partial code fix shipped, prod backfill needs explicit auth (R2 + Neon writes) |
 | #79 | safe | XS | `scripts/known_issues_selector.py` | Filter selector picks on status=open or partially-resolved |
 | #80 | review | S | `src/infra/image_storage.py` `src/gold_standard/v2_validator.py` `.claude/rules/infrastructure.md` | Add env-scoped guard against unintended prod R2 writes from CLI tools; design call (storage-layer vs validator-layer) needed |
+| #84 | review | S | `scripts/known_issues_selector.py` `.claude/commands/commit.md` | Cross-reference pr_refs with GitHub API; auto-update status=resolved on merge |
 
 
 ## Open Issues
@@ -619,22 +618,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 
 ---
 
-## #68. Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`scripts/run_nightly_sweep.sh` invokes `timeout "$PER_ISSUE_BUDGET" claude -p "$prompt"` to enforce per-issue wall-clock budgets. `timeout` is GNU coreutils; macOS ships BSD utilities and does not include it by default. Local `/sweep` skill invocations on macOS fail at the `timeout` call. Render's container image is Linux so production is fine.
-
-### Next Steps
-
-- Detect `timeout` vs `gtimeout` vs neither at script start; fall back to `gtimeout` on macOS (via `brew install coreutils`) or to a no-timeout code path with a warning log.
-- Alternatively, install `coreutils` as part of the local-dev setup docs for the `/sweep` skill.
-
 ## #69. `Dockerfile.nightly-sweep` Installs `claude` + `gh` Unpinned
 
 **Status**: Open
@@ -680,23 +663,6 @@ The functional behavior is correct — the hook fires and blocks the operation a
 - `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
 - `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
 - PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
-
-## #71. Integration Tests Job Has No Path Filter
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`.github/workflows/ci.yml` runs the `integration-tests` job on every PR regardless of touched paths. UI E2E already has a conservative path filter (`ci.yml:49-69`) that skips the job when every changed path is under `docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, or `.github/CODEOWNERS`. Integration Tests has no equivalent, so docs-only and `.claude/`-only PRs still spin up Postgres 15, apply migrations, and run the full integration suite (~3–6 min). Net ~3–6 min wall-time save per docs-only PR.
-
-### Next Steps
-
-- Mirror the UI E2E filter structure (`ci.yml:49-69`) on the `integration-tests` job. Same allowlist (`docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, `.github/CODEOWNERS`) — err on the side of running when in doubt.
-- Verify by opening a docs-only PR and confirming `Integration Tests` reports `skipped` in Actions.
-- Do NOT remove Integration Tests from required status checks — a skipped job still counts as passing for branch protection, so the gate stays intact.
 
 ## #74. `.claude/scheduled_tasks.lock` Not Gitignored
 
@@ -810,6 +776,27 @@ Phase-3 unit tests exercise `ImageTriageStage._detect_full_page_scan_filing`, `O
 1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
 2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
 3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
+
+## #84. Fragment Status Drift After PR Merge (Needs Auto-Update Mechanism)
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+Fragment frontmatter's `pr_refs` field lists the PRs expected to resolve each issue, but nothing updates a fragment's `status` from `open` to `resolved` when those PRs merge. Discovered during the 4-phase known-issues migration (PRs #115/#116/#117/#119): #68 and #71 fragments still said `status: open` on `main` two days after their fix-PRs merged (#107, #108), causing the nightly sweeper to re-attempt already-resolved work until someone noticed.
+
+The selector's Phase 3 status filter (issue #79) correctly excludes `status in {resolved, archived}`, but only if something populates those statuses in the first place. Manual bookkeeping is fragile — drift is guaranteed at scale.
+
+### Next Steps
+
+- Option A: A periodic script that scans fragments, pulls `pr_refs` from each frontmatter, queries `gh pr view <ref> --json state` for each, and updates fragments whose referenced PRs are all `MERGED` to `status: resolved` + `autonomy: n/a`. Run it from the nightly sweep cron (pre-selector) or as a GitHub Action on a schedule.
+- Option B: Update the `/commit` skill to accept a `resolves: #N,#M` hint and, on successful merge of the PR, rewrite the referenced fragments via a merge-queue hook. More invasive; ties fragment updates to the `/commit` path.
+- Option C: A pre-commit check that warns (not fails) when a fragment's `pr_refs` all point at merged PRs but `status` is still `open`. Low-cost nudge.
+
+Recommend Option A — simplest, runs outside the happy path, no coupling to `/commit`.
 
 ## #5. Revenue Synonym Context Gating
 
@@ -1526,6 +1513,41 @@ Related surface: the mock also ships stubs for `POST /api/v2/decisions`, `DELETE
 The contract test exposed latent drift already on main — `filing.ticker`, `source_locator.img_id`, fact `confirming_source_types`, fact `_chart_image_status`, image-candidate `image_src_url` were all referenced by production templates but missing from mock context. These were added to the mock dicts in the same commit so the test lands green.
 
 Remaining narrow gaps (POST stub shape drift; non-rendering template files) are out of the contract test's scope — revisit if they become a real source of failure.
+
+## #68. Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+**PR refs**: #107
+
+### Problem
+
+`scripts/run_nightly_sweep.sh` invokes `timeout "$PER_ISSUE_BUDGET" claude -p "$prompt"` to enforce per-issue wall-clock budgets. `timeout` is GNU coreutils; macOS ships BSD utilities and does not include it by default. Local `/sweep` skill invocations on macOS fail at the `timeout` call. Render's container image is Linux so production is fine.
+
+### Next Steps
+
+- Detect `timeout` vs `gtimeout` vs neither at script start; fall back to `gtimeout` on macOS (via `brew install coreutils`) or to a no-timeout code path with a warning log.
+- Alternatively, install `coreutils` as part of the local-dev setup docs for the `/sweep` skill.
+
+## #71. Integration Tests Job Has No Path Filter
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+**PR refs**: #108
+
+### Problem
+
+`.github/workflows/ci.yml` runs the `integration-tests` job on every PR regardless of touched paths. UI E2E already has a conservative path filter (`ci.yml:49-69`) that skips the job when every changed path is under `docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, or `.github/CODEOWNERS`. Integration Tests has no equivalent, so docs-only and `.claude/`-only PRs still spin up Postgres 15, apply migrations, and run the full integration suite (~3–6 min). Net ~3–6 min wall-time save per docs-only PR.
+
+### Next Steps
+
+- Mirror the UI E2E filter structure (`ci.yml:49-69`) on the `integration-tests` job. Same allowlist (`docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, `.github/CODEOWNERS`) — err on the side of running when in doubt.
+- Verify by opening a docs-only PR and confirming `Integration Tests` reports `skipped` in Actions.
+- Do NOT remove Integration Tests from required status checks — a skipped job still counts as passing for branch protection, so the gate stays intact.
 
 
 ## Change Log
