@@ -65,6 +65,12 @@ from src.extraction_v2.stages.value_binding import ValueBindingStage
 
 logger = logging.getLogger(__name__)
 
+
+def _env_truthy(name: str) -> bool:
+    """Return True iff env var ``name`` is set to a truthy value (1/true/yes, case-insensitive)."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
 # Document type constants
 DOC_TYPE_SEC_FILING = "sec_filing"
 DOC_TYPE_TRANSCRIPT = "transcript"
@@ -358,9 +364,29 @@ class V2Pipeline:
             sec_client: Optional SECClient instance for image downloading
         """
         self.config = dataclasses.replace(config) if config is not None else PipelineConfig()
+        self._apply_env_feature_flags(explicit_config=config is not None)
         self._sec_client = sec_client
         self._stages: list[tuple[PipelineStage, StageProcessor]] = []
         self._setup_stages()
+
+    def _apply_env_feature_flags(self, *, explicit_config: bool) -> None:
+        """Enable OCR feature flags from env vars when caller didn't configure them.
+
+        Covers the ingestion-UI / onboarding_runner path, which constructs
+        the pipeline with no explicit ``PipelineConfig`` — without this, the
+        ``FULL_PAGE_OCR_ENABLED`` / ``IMAGE_KEYWORD_PRESCAN_ENABLED`` env
+        vars set on Render services would have no effect on behaviour. The
+        ``explicit_config`` guard preserves the contract that a caller
+        passing their own ``PipelineConfig`` always wins — the env is only
+        consulted for the default case. Tests and the backfill script both
+        pass explicit configs, so they are unaffected.
+        """
+        if explicit_config:
+            return
+        if _env_truthy("FULL_PAGE_OCR_ENABLED"):
+            self.config.enable_full_page_ocr = True
+        if _env_truthy("IMAGE_KEYWORD_PRESCAN_ENABLED"):
+            self.config.enable_image_keyword_prescan = True
 
     def _check_vision_api_availability(self) -> None:
         """Check if OPENAI_API_KEY is set; disable image/chart extraction if not."""

@@ -133,17 +133,23 @@ def find_candidates(
         rows = cur.fetchall()
         cols = [c.name for c in cur.description]
 
+    def _get(row: Any, key: str) -> Any:
+        """Tolerant accessor for tuple-row and dict-row cursors."""
+        if isinstance(row, dict):
+            return row.get(key)
+        return row[cols.index(key)]
+
     return [
         FilingCandidate(
-            filing_id=r[cols.index("filing_id")],
-            cik=r[cols.index("cik")] or "",
-            company_name=r[cols.index("company_name")] or "",
-            form_type=r[cols.index("form_type")] or "",
-            filing_date=r[cols.index("filing_date")],
-            accession_number=r[cols.index("accession_number")],
-            image_count=int(r[cols.index("image_count")] or 0),
-            segment_char_count=int(r[cols.index("segment_char_count")] or 0),
-            review_decisions=int(r[cols.index("review_decisions")] or 0),
+            filing_id=_get(r, "filing_id"),
+            cik=_get(r, "cik") or "",
+            company_name=_get(r, "company_name") or "",
+            form_type=_get(r, "form_type") or "",
+            filing_date=_get(r, "filing_date"),
+            accession_number=_get(r, "accession_number"),
+            image_count=int(_get(r, "image_count") or 0),
+            segment_char_count=int(_get(r, "segment_char_count") or 0),
+            review_decisions=int(_get(r, "review_decisions") or 0),
         )
         for r in rows
     ]
@@ -221,7 +227,7 @@ def process_filings(
         )
         try:
             filing_meta = lookup_filing(db, c.filing_id)
-            html_path = _resolve_html_path(filing_meta)
+            html_path = _resolve_html_path(filing_meta, db)
             result = pipeline.process(
                 html_path=html_path,
                 filing_id=c.filing_id,
@@ -277,21 +283,65 @@ def lookup_filing(db: DatabaseAdapter, filing_id: int) -> dict[str, Any]:
         row = cur.fetchone()
         if row is None:
             raise ValueError(f"filing_id {filing_id} not found")
+        # Project cursors return DictRow (key-accessible). Iterating a dict
+        # yields keys, so `dict(zip(cols, row))` would map col->col. Copy
+        # through key access instead.
+        if isinstance(row, dict):
+            return {k: row.get(k) for k in row}
         cols = [c.name for c in cur.description]
         return dict(zip(cols, row, strict=True))
 
 
-def _resolve_html_path(filing: dict[str, Any]) -> Path:
+def _resolve_html_path(filing: dict[str, Any], db: DatabaseAdapter) -> Path:
+    """Return a local path to the filing's primary HTML, fetching if absent.
+
+    Path A candidates frequently have `html_storage_path=NULL` because the
+    original pre-2024 ingest was parse-only (no HTML retention, no image
+    download). We heal on-demand by calling ``FilingFetcher.fetch_filing``
+    here — it writes `primary.htm` to disk AND updates
+    `filings.html_storage_path` in the DB.
+    """
     stored = filing.get("html_storage_path")
-    if not stored:
-        raise ValueError(
-            f"filing_id {filing['filing_id']} has no html_storage_path; run filing_fetcher first"
+    if stored:
+        path = Path(stored)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+        if path.exists():
+            return path
+
+    # Fall through to fetch: either no stored path, or disk missing.
+    logger.info(
+        "html_storage_path missing for filing_id=%s; fetching from SEC",
+        filing["filing_id"],
+    )
+    from src.filing_fetcher.filing_fetcher import FilingFetcher
+    from src.infra.sec_client import FilingMetadata
+
+    if not filing.get("sec_html_url"):
+        raise ValueError(f"filing_id {filing['filing_id']} has no sec_html_url; cannot fetch")
+
+    metadata = FilingMetadata(
+        cik=filing["cik"],
+        company_name="",  # Not needed for fetch
+        form_type="",
+        filing_date="",
+        accession_number=filing["accession_number"],
+        primary_doc_url=filing["sec_html_url"],
+    )
+    fetcher = FilingFetcher(db=db)
+    content = fetcher.fetch_filing(metadata, fetch_txt=False)
+    if content is None or not content.html_path:
+        raise FileNotFoundError(
+            f"FilingFetcher could not retrieve HTML for filing_id {filing['filing_id']}"
         )
-    path = Path(stored)
+
+    path = Path(content.html_path)
     if not path.is_absolute():
         path = PROJECT_ROOT / path
     if not path.exists():
-        raise FileNotFoundError(f"HTML for filing_id {filing['filing_id']} not at {path}")
+        raise FileNotFoundError(
+            f"HTML for filing_id {filing['filing_id']} not at {path} after fetch"
+        )
     return path
 
 
