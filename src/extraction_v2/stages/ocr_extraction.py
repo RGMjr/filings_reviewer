@@ -155,6 +155,8 @@ class OCRExtractionStage:
         self._chart_call_count = 0
         self._full_page_ocr_call_count = 0
         self._prescan_call_count = 0
+        # A2 observability counters — reset per-document in process().
+        self._parse_failed_count = 0
 
     @property
     def vision_client(self) -> Any:
@@ -409,6 +411,7 @@ class OCRExtractionStage:
             if ocr_data is None:
                 logger.error(f"Failed to parse OCR response as JSON for {asset.img_id}")
                 logger.debug(f"Response content: {response.content[:500]}")
+                self._parse_failed_count += 1
                 asset.ocr_text = response.content
                 asset.processed = True
                 asset.confidence = 0.0
@@ -737,6 +740,7 @@ time periods, or definitions that help interpret the chart's data.
             if chart_response is None:
                 logger.error(f"Failed to parse chart response as JSON for {asset.img_id}")
                 logger.debug(f"Response content: {response.content[:500]}")
+                self._parse_failed_count += 1
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
@@ -1058,10 +1062,17 @@ time periods, or definitions that help interpret the chart's data.
         self._chart_call_count = 0
         self._full_page_ocr_call_count = 0
         self._prescan_call_count = 0
+        self._parse_failed_count = 0
 
         processed_count = 0
         skipped_count = 0
         manual_capture_count = 0
+        # A2 observability counters — surfaced in StageResult.metadata so
+        # downstream benchmark work (B1) can separate failure modes without
+        # re-reading the DB.
+        skipped_for_missing_bytes = 0
+        skipped_by_budget_cap = 0
+        chart_data_none_after_processing = 0
 
         try:
             # Download missing images before processing
@@ -1107,6 +1118,7 @@ time periods, or definitions that help interpret the chart's data.
                             warnings.append(msg)
                             logger.warning(msg)
                         skipped_count += 1
+                        skipped_by_budget_cap += 1
                         continue
                 elif asset.classification == ImageClassification.CHART:
                     if self._chart_call_count >= self.MAX_CHART_CALLS_PER_DOCUMENT:
@@ -1115,6 +1127,7 @@ time periods, or definitions that help interpret the chart's data.
                             warnings.append(msg)
                             logger.warning(msg)
                         skipped_count += 1
+                        skipped_by_budget_cap += 1
                         continue
                 elif asset.classification == ImageClassification.FULL_PAGE_SCAN:
                     if self._full_page_ocr_call_count >= self.MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT:
@@ -1126,6 +1139,7 @@ time periods, or definitions that help interpret the chart's data.
                             warnings.append(msg)
                             logger.warning(msg)
                         skipped_count += 1
+                        skipped_by_budget_cap += 1
                         continue
 
                 # Process based on classification
@@ -1139,6 +1153,9 @@ time periods, or definitions that help interpret the chart's data.
                     elif asset.classification == ImageClassification.CHART:
                         self.process_chart(asset)
                         self._chart_call_count += 1
+                        # Track charts that were processed but yielded no data.
+                        if asset.chart_data is None:
+                            chart_data_none_after_processing += 1
                     elif asset.classification == ImageClassification.FULL_PAGE_SCAN:
                         contains_chart = self.process_full_page_scan(asset, context)
                         self._full_page_ocr_call_count += 1
@@ -1152,6 +1169,8 @@ time periods, or definitions that help interpret the chart's data.
                             self.process_chart(asset)
                             self._chart_call_count += 1
                             self._api_call_count += 1
+                            if asset.chart_data is None:
+                                chart_data_none_after_processing += 1
                     else:
                         # Unknown type - skip
                         logger.debug(
@@ -1166,6 +1185,20 @@ time periods, or definitions that help interpret the chart's data.
                     if asset.requires_manual_capture:
                         manual_capture_count += 1
 
+                except FileNotFoundError:
+                    # Bytes missing from storage — count separately from generic errors.
+                    skipped_for_missing_bytes += 1
+                    skipped_count += 1
+                    asset.requires_manual_capture = True
+                    asset.processed = True
+                    asset.confidence = 0.0
+                    manual_capture_count += 1
+                    logger.warning(
+                        "Missing bytes for image %s (%s) — skipped_for_missing_bytes=%d",
+                        asset.img_id,
+                        asset.file_path,
+                        skipped_for_missing_bytes,
+                    )
                 except Exception as e:
                     # Log error but continue processing other images
                     error_msg = f"Error processing {asset.img_id}: {str(e)}"
@@ -1196,6 +1229,11 @@ time periods, or definitions that help interpret the chart's data.
                     "total_api_calls": self._api_call_count,
                     "manual_capture_count": manual_capture_count,
                     "skipped_count": skipped_count,
+                    # A2 observability counters — separate failure modes for B1 benchmarking.
+                    "skipped_for_missing_bytes": skipped_for_missing_bytes,
+                    "skipped_by_budget_cap": skipped_by_budget_cap,
+                    "parse_failed": self._parse_failed_count,
+                    "chart_data_none_after_processing": chart_data_none_after_processing,
                 },
             )
 
