@@ -43,7 +43,6 @@ This document tracks known issues, limitations, and planned improvements identif
 | `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
 | CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
 | Integration Tests job has no path filter (Issue #71) | Open | Docs-only / `.claude/`-only PRs still spin up Postgres + migrations (~3–6 min); wall-time save |
-| `.github` PR template case collision (Issue #73) | Open | Duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` (identical blobs) trigger fresh-clone warnings on macOS/Windows |
 | `.claude/scheduled_tasks.lock` not gitignored (Issue #74) | Open | Runtime lockfile shows up as untracked in every `git status`; not covered by any `.gitignore` rule |
 
 ### Partially Resolved
@@ -111,7 +110,6 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #69   | review   | S         | `Dockerfile.nightly-sweep`                                              | Pin claude + gh versions; needs validation step               |
 | #71   | safe     | XS        | `.github/workflows/ci.yml`                                              | Add path filter to integration-tests, mirroring ui-e2e        |
 | #72   | review   | S         | `pyproject.toml uv.lock`                                                | Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate fix before baseline refresh |
-| #73   | safe     | XS        | `.github/PULL_REQUEST_TEMPLATE.md .github/pull_request_template.md`     | Delete one of the duplicate templates; pick lowercase per GH convention |
 | #74   | safe     | XS        | `.gitignore`                                                            | One-line addition to root `.gitignore`                        |
 | #75   | skip     | S         | `tests/ui/*.spec.js tests/ui/test_server.py`                            | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
 | #76   | safe     | S         | `tests/integration/test_db_filings_reviewers.py`                        | New integration test for filings-list reviewer aggregate; isolated file |
@@ -1005,6 +1003,12 @@ Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracki
 ---
 
 ## Archive (Resolved Issues)
+
+### Issue #73: `.github` PR Template Case Collision
+
+**Status**: Resolved (2026-04-22)
+
+Removed the uppercase `.github/PULL_REQUEST_TEMPLATE.md` via `git -c core.ignorecase=false rm -f`, keeping the lowercase `pull_request_template.md` (matches GitHub's 2024 convention). Fresh-clone warning on case-insensitive filesystems is gone.
 
 ### Issue #60: `detect_universe_gaps` Ignores SIC Filter
 
