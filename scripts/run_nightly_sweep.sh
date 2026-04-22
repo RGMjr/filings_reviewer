@@ -69,6 +69,30 @@ require python3
 require claude
 require gh
 
+# Container images built from this repo strip .git via .dockerignore to keep
+# the web/extraction images lean. The sweeper orchestrator needs real git
+# history (fetch, checkout, worktree add, push), so bootstrap a minimal repo
+# from origin when running inside a stripped image. Local /sweep invocations
+# already have .git and skip this branch.
+if [[ ! -d .git ]]; then
+  if [[ -z "${GH_TOKEN:-}" ]]; then
+    log "FATAL: GH_TOKEN required to bootstrap .git from origin"
+    exit 1
+  fi
+  log "No .git found — initializing repo from origin..."
+  git init --quiet
+  git remote add origin "https://github.com/RGMjr/filings_reviewer.git"
+fi
+
+# Let gh front github.com auth for git so tokens stay out of .git/config.
+# Idempotent; safe to run on every invocation.
+gh auth setup-git 2>/dev/null || { log "FATAL: gh auth setup-git failed (GH_TOKEN invalid?)"; exit 1; }
+
+# Commit author identity is required downstream — the per-issue Claude session
+# runs /commit, which calls `git commit`, which aborts without user.email/name.
+git config --global user.email "${GIT_AUTHOR_EMAIL:-sweeper@users.noreply.github.com}"
+git config --global user.name  "${GIT_AUTHOR_NAME:-Nightly Sweeper}"
+
 log "Fetching origin/main..."
 git fetch origin main --quiet
 git checkout main --quiet 2>/dev/null || git checkout -B main origin/main --quiet
