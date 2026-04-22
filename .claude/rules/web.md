@@ -24,3 +24,25 @@ paths:
 
 HTML templates in `src/web/templates/`. Base: `base.html`. Unified V2 templates: `unified_filing_list.html`, `unified_review.html`, `unified_stats.html`.
 Static: `src/web/static/js/review_images_v2.js`, `static/css/review.css`.
+
+## Reviewer identity invariant
+
+**Every decision-persisting API endpoint MUST accept and forward `reviewer_id`** to the DB write so per-filing "Reviewed by" aggregation keeps working. Mirror the text-decision pattern at `src/web/routes/api_unified.py:129` (`reviewer_id=data.get("reviewer_id", ...)`). The paired JS client must include `reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous'` in the request payload. Historical bug: image decisions silently persisted `NULL` for months because the endpoint never forwarded the value — resulting in "(unattributed)" rows that can't be filtered. Don't repeat it.
+
+## View persistence (localStorage)
+
+The unified review UI persists filter/sort/tab state client-side via localStorage. Authoritative keys:
+
+| Key                         | Scope         | Shape                               | Owner                    |
+|-----------------------------|---------------|-------------------------------------|--------------------------|
+| `hideCompleted`             | filings list  | `"1"` or absent                     | legacy (keep as-is)      |
+| `reviewer_name`             | global        | string                              | `base.html` reviewer modal |
+| `cmasb:filings:sort`        | filings list  | `{sort_by, sort_dir}` JSON          | `unified_filing_list.html` |
+| `cmasb:filings:doc_type`    | filings list  | `"sec_filing" \| "earnings_call" \| ...` | `unified_filing_list.html` |
+| `cmasb:filings:per_page`    | filings list  | integer string                      | `unified_filing_list.html` |
+| `cmasb:filings:reviewers`   | filings list  | `string[]` JSON                     | `unified_filing_list.html` |
+| `cmasb:review:tab`          | review page   | `"text" \| "images"`                | `unified_review.html`    |
+| `cmasb:review:text_filter`  | review page   | `{status, metric, sort}` JSON       | `unified_review.html`    |
+| `cmasb:review:image_filter` | review page   | `{status}` JSON                     | `unified_review.html`    |
+
+**Pattern**: on page load, URL params win and are written to localStorage; if a param is absent and localStorage has a value, the page redirects once with the stored value applied. This pattern lets server routes stay stateless — do not add server-side session storage for view state. Do NOT rename `hideCompleted` → a `cmasb:` key; that would silently wipe existing users' saved preference.
