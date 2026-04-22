@@ -42,3 +42,36 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-commit]
+
+      # Pre-commit: flag migrations with cluster-scoped DDL (CREATE/ALTER/DROP
+      # on ROLE/USER/TABLESPACE/SUBSCRIPTION) that would race under parallel
+      # migration apply (pytest-xdist per-worker DBs). See Issue #78. Files
+      # containing the marker `-- cluster-ddl-ok: ...` are skipped.
+      - id: cluster-ddl-guard
+        name: cluster-scoped DDL guard (sql/ migrations)
+        entry: bash scripts/pre-commit-cluster-ddl-guard.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^sql/.*\.sql$
+
+      # Pre-commit: validate and regenerate the KNOWN_ISSUES.md rollup whenever
+      # a fragment under docs/known-issues/ is staged.  Validate runs first so
+      # we never regenerate from invalid input.  The regenerator's --stage flag
+      # auto-adds the rollup to the commit, so developers don't need to stage it
+      # manually.  The rollup is byte-deterministic, so the hook never loops.
+      - id: known-issues-validate
+        name: Validate known-issue fragment frontmatter
+        entry: python3 scripts/validate_known_issues_fragments.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: '^docs/known-issues/.*\.md$'
+
+      - id: known-issues-rollup
+        name: Regenerate KNOWN_ISSUES.md rollup from fragments
+        entry: python3 scripts/regenerate_known_issues.py --stage
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: '^docs/known-issues/.*\.md$'

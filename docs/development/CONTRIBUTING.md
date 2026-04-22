@@ -149,3 +149,24 @@ specific files by name.
 New issues surfaced during contribution go into `docs/KNOWN_ISSUES.md` with
 the next available number. See the existing entries for the expected shape
 (Status / Severity / Problem / Resolution or Next Steps).
+
+`docs/KNOWN_ISSUES.md` is auto-generated from fragment files under
+`docs/known-issues/`.  Edit the per-issue fragment, not the rollup directly.
+A pre-commit hook regenerates and re-stages the rollup automatically whenever
+you stage a fragment.
+
+### Merge conflicts on `docs/KNOWN_ISSUES.md`
+
+`docs/KNOWN_ISSUES.md` is auto-generated from `docs/known-issues/*.md`. When
+you hit a merge conflict on the rollup, don't resolve the conflict markers
+by hand — the file is fully deterministic given the fragment set, so:
+
+1. `git merge --abort` if the merge isn't otherwise useful, or just accept
+   either side for this file.
+2. `rm docs/KNOWN_ISSUES.md`
+3. `python3 scripts/regenerate_known_issues.py`
+4. `git add docs/KNOWN_ISSUES.md && git commit`
+
+If the conflict is *also* on `docs/known-issues/legacy-NNN-*.md` fragment
+files, resolve those conflicts normally first (they carry the real
+information) — then regenerate the rollup as above.

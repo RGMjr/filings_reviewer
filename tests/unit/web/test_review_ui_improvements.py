@@ -249,9 +249,7 @@ def test_next_filing_redirect_omits_tab_param(client):
     assert location.startswith("/v2/review/99"), (
         f"Expected redirect to /v2/review/99, got {location!r}"
     )
-    assert "tab=" not in location, (
-        f"next-filing redirect must not hardcode tab=; got {location!r}"
-    )
+    assert "tab=" not in location, f"next-filing redirect must not hardcode tab=; got {location!r}"
 
 
 def test_window_text_pending_exposed_on_images_tab(client):
@@ -267,3 +265,58 @@ def test_window_text_pending_exposed_on_images_tab(client):
     assert "window.TEXT_PENDING = 2" in body, (
         "Expected window.TEXT_PENDING = <pending_count> to be set in the template"
     )
+
+
+def _mock_db_for_filtered_images(all_images: list[dict], filtered_images: list[dict]) -> MagicMock:
+    """Mock that returns different lists for unfiltered vs status-filtered calls.
+
+    Matches the route's two-call pattern at review_unified.py:376-388 — the
+    first (no status=) populates all_image_candidates / the pending badge,
+    the second (with status=) populates image_candidates / the tab body.
+    """
+    mock_db = MagicMock()
+    mock_db.query.return_value = [_FILING]
+    mock_db.get_v2_facts_for_filing.return_value = []
+    mock_db.count_v2_facts_for_filing.return_value = 0
+
+    def _images(*args, **kwargs):
+        return filtered_images if kwargs.get("status") else all_images
+
+    mock_db.get_image_review_candidates_for_filing_v2.side_effect = _images
+    return mock_db
+
+
+def test_images_tab_empty_filter_shows_clear_link(client):
+    # Bug: filing with only pending images, visited with ?image_status=reviewed
+    # rendered "No image candidates have been generated for this filing yet"
+    # and hid the filter bar, leaving the reviewer stuck. The empty-state must
+    # now distinguish "filter excluded everything" from "truly no images".
+    mock_db = _mock_db_for_filtered_images(
+        all_images=[_image("aaaa", status="pending")],
+        filtered_images=[],
+    )
+
+    body = _render_review(client, mock_db, query="tab=images&image_status=reviewed")
+
+    assert "No Images Match Filter" in body
+    assert "No image candidates have been generated for this filing yet" not in body, (
+        "Must NOT claim no images exist when they do — the filter is the reason"
+    )
+    # Clear link routes the user to ?image_status=all, which also overwrites
+    # the sticky localStorage value at unified_review.html:71-76.
+    assert "image_status=all" in body
+    # Filter bar must also be visible so the user can change the filter directly.
+    assert 'id="imgStatusFilter"' in body
+
+
+def test_images_tab_genuinely_empty_keeps_back_to_list(client):
+    # Regression guard: a filing with zero images must still render the
+    # original "No image candidates have been generated for this filing yet"
+    # copy and Back to Filing List button — not the new filter-clear branch.
+    mock_db = _mock_db_for_filtered_images(all_images=[], filtered_images=[])
+
+    body = _render_review(client, mock_db, query="tab=images&image_status=reviewed")
+
+    assert "No image candidates have been generated for this filing yet" in body
+    assert "No Images Match Filter" not in body
+    assert "Back to Filing List" in body
