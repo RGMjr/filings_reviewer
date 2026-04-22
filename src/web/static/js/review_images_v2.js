@@ -206,6 +206,7 @@
             chart_type: state.activeDropdown === 'chart_type' ? selectedValue : null,
             rejection_reason: state.activeDropdown === 'rejection' ? selectedValue : null,
             review_time_seconds: reviewTime,
+            reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
         };
 
         const notesTextarea = document.getElementById('reviewer-notes');

@@ -103,7 +103,9 @@ def test_audit_log_captures_request_context(client, app):
             t.start = MagicMock()
             return t
 
-        with patch("src.web.routes.review_unified.threading.Thread", side_effect=fake_thread) as mock_thread_cls:
+        with patch(
+            "src.web.routes.review_unified.threading.Thread", side_effect=fake_thread
+        ) as mock_thread_cls:
             client.get("/v2/review/filings?page=1")
             call_kwargs = mock_thread_cls.call_args[1]
             assert call_kwargs["daemon"] is True
@@ -123,7 +125,13 @@ def test_filing_list_default_pagination(client, mock_db, mock_render_template):
     client.get("/v2/review/filings")
 
     mock_db.get_unified_filings_for_review.assert_called_once_with(
-        document_type=None, limit=50, offset=0, hide_completed=False, sort_by='date', sort_dir='desc'
+        document_type=None,
+        limit=50,
+        offset=0,
+        hide_completed=False,
+        sort_by="date",
+        sort_dir="desc",
+        reviewer_ids=None,
     )
 
 
@@ -135,7 +143,13 @@ def test_filing_list_custom_page(client, mock_db, mock_render_template):
     client.get("/v2/review/filings?page=2&per_page=25")
 
     mock_db.get_unified_filings_for_review.assert_called_once_with(
-        document_type=None, limit=25, offset=25, hide_completed=False, sort_by='date', sort_dir='desc'
+        document_type=None,
+        limit=25,
+        offset=25,
+        hide_completed=False,
+        sort_by="date",
+        sort_dir="desc",
+        reviewer_ids=None,
     )
 
 
@@ -147,7 +161,13 @@ def test_filing_list_per_page_cap(client, mock_db, mock_render_template):
     client.get("/v2/review/filings?per_page=999")
 
     mock_db.get_unified_filings_for_review.assert_called_once_with(
-        document_type=None, limit=200, offset=0, hide_completed=False, sort_by='date', sort_dir='desc'
+        document_type=None,
+        limit=200,
+        offset=0,
+        hide_completed=False,
+        sort_by="date",
+        sort_dir="desc",
+        reviewer_ids=None,
     )
 
 
@@ -296,8 +316,77 @@ def test_backward_compat_no_limit_facts(mock_db):
 # V2 Index Redirect
 # =============================================================================
 
+
 def test_v2_index_redirects_to_filings(client):
     """Test that /v2/review/ redirects to /v2/review/filings."""
     response = client.get("/v2/review/")
     assert response.status_code == 302
     assert "/v2/review/filings" in response.location
+
+
+# =============================================================================
+# next_filing cross-filing navigation — regression protection for:
+#  - sort/filter context preservation (feat 5f16360, 34ec47e)
+#  - reviewer-scoped auto-advance (new in this PR)
+# =============================================================================
+
+
+def test_next_filing_preserves_sort_order(client, mock_db, mock_render_template):
+    """Sort params passed to /next-filing reach get_next_filing_with_pending_work."""
+    mock_db.get_next_filing_with_pending_work.return_value = 42
+
+    client.get("/v2/review/next-filing?current_filing_id=1&list_sort_by=company&list_sort_dir=asc")
+
+    mock_db.get_next_filing_with_pending_work.assert_called_once_with(
+        current_filing_id=1,
+        document_type=None,
+        hide_completed=False,
+        sort_by="company",
+        sort_dir="asc",
+        reviewer_ids=None,
+    )
+
+
+def test_next_filing_threads_reviewer_filter(client, mock_db, mock_render_template):
+    """list_reviewer_id params are threaded into the DB call so cross-filing
+    advance stays within the reviewer scope."""
+    mock_db.get_next_filing_with_pending_work.return_value = 99
+
+    response = client.get(
+        "/v2/review/next-filing?current_filing_id=1&list_reviewer_id=alice&list_reviewer_id=bob"
+    )
+
+    mock_db.get_next_filing_with_pending_work.assert_called_once_with(
+        current_filing_id=1,
+        document_type=None,
+        hide_completed=False,
+        sort_by="date",
+        sort_dir="desc",
+        reviewer_ids=["alice", "bob"],
+    )
+    # Next filing URL should carry list_reviewer_id forward so the NEXT page
+    # still knows the scope (regression: prior bug reset to full list).
+    assert response.status_code == 302
+    assert "list_reviewer_id=alice" in response.location
+    assert "list_reviewer_id=bob" in response.location
+
+
+def test_next_filing_when_queue_empty_returns_to_list_with_scope(
+    client,
+    mock_db,
+    mock_render_template,
+):
+    """When no next filing exists, redirect to list preserves sort + reviewer filters."""
+    mock_db.get_next_filing_with_pending_work.return_value = None
+
+    response = client.get(
+        "/v2/review/next-filing?"
+        "current_filing_id=1&list_sort_by=company&list_sort_dir=asc"
+        "&list_reviewer_id=alice"
+    )
+
+    assert response.status_code == 302
+    assert "/v2/review/filings" in response.location
+    assert "sort_by=company" in response.location
+    assert "sort_dir=asc" in response.location
+    assert "reviewer_id=alice" in response.location

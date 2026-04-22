@@ -140,10 +140,13 @@ def filing_list():
     raw_sort_dir = request.args.get("sort_dir", "desc")
     sort_dir = "asc" if raw_sort_dir == "asc" else "desc"
 
+    reviewer_ids = [r for r in request.args.getlist("reviewer_id") if r]
+
     try:
         total = db.get_unified_filings_for_review_count(
             document_type=document_type,
             hide_completed=hide_completed,
+            reviewer_ids=reviewer_ids or None,
         )
         filings = db.get_unified_filings_for_review(
             document_type=document_type,
@@ -152,12 +155,15 @@ def filing_list():
             hide_completed=hide_completed,
             sort_by=sort_by,
             sort_dir=sort_dir,
+            reviewer_ids=reviewer_ids or None,
         )
+        all_reviewers = db.get_distinct_reviewers()
     except Exception as e:
         logger.error(f"Database error in unified filing list: {e}")
         flash("Error loading filings.", "danger")
         filings = []
         total = 0
+        all_reviewers = []
 
     total_pages = max(1, -(-total // per_page))  # ceiling division
 
@@ -175,6 +181,8 @@ def filing_list():
         total_pages=total_pages,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        all_reviewers=all_reviewers,
+        selected_reviewers=reviewer_ids,
     )
 
 
@@ -255,15 +263,18 @@ def review_filing(filing_id: int):
             raw_list_doc_type if raw_list_doc_type in VALID_DOCUMENT_TYPES else None
         )
         list_hide_completed = request.args.get("list_hide_completed", "0") == "1"
+        list_reviewer_ids = [r for r in request.args.getlist("list_reviewer_id") if r]
 
-        next_filing_params: dict[str, Any] = {
-            "current_filing_id": filing_id,
-            "list_sort_by": list_sort_by,
-            "list_sort_dir": list_sort_dir,
-            "list_hide_completed": 1 if list_hide_completed else 0,
-        }
+        next_filing_params: list[tuple[str, Any]] = [
+            ("current_filing_id", filing_id),
+            ("list_sort_by", list_sort_by),
+            ("list_sort_dir", list_sort_dir),
+            ("list_hide_completed", 1 if list_hide_completed else 0),
+        ]
         if list_document_type:
-            next_filing_params["list_document_type"] = list_document_type
+            next_filing_params.append(("list_document_type", list_document_type))
+        for rid in list_reviewer_ids:
+            next_filing_params.append(("list_reviewer_id", rid))
         next_filing_url = (
             url_for("review_unified.next_filing") + "?" + urlencode(next_filing_params)
         )
@@ -318,9 +329,7 @@ def review_filing(filing_id: int):
         # Enrich sparse evidence with live segment/table context
         if current_fact:
             current_fact = _enrich_sparse_evidence(db, filing_id, current_fact)
-            current_fact["_chart_image_status"] = _resolve_chart_image_status(
-                db, current_fact
-            )
+            current_fact["_chart_image_status"] = _resolve_chart_image_status(db, current_fact)
 
         # Calculate progress
         pending_count = sum(1 for f in all_facts if f["review_status"] == "pending_review")
@@ -387,9 +396,7 @@ def review_filing(filing_id: int):
             key=lambda c: 0 if c["review_status"] == "pending" else 1,
         )
 
-        current_image = _select_current_image(
-            image_candidates, request.args.get("img_id")
-        )
+        current_image = _select_current_image(image_candidates, request.args.get("img_id"))
 
         # Image progress counts
         image_pending = sum(1 for c in all_image_candidates if c["review_status"] == "pending")
@@ -482,6 +489,7 @@ def next_filing():
         raw_doc_type = request.args.get("list_document_type", "")
         document_type = raw_doc_type if raw_doc_type in VALID_DOCUMENT_TYPES else None
         hide_completed = request.args.get("list_hide_completed", "0") == "1"
+        reviewer_ids = [r for r in request.args.getlist("list_reviewer_id") if r]
 
         next_id = db.get_next_filing_with_pending_work(
             current_filing_id=current_filing_id,
@@ -489,31 +497,34 @@ def next_filing():
             hide_completed=hide_completed,
             sort_by=sort_by,
             sort_dir=sort_dir,
+            reviewer_ids=reviewer_ids or None,
         )
 
         if next_id:
             # Intentionally omit tab= so review_filing() can pick the tab based
             # on which side actually has pending work (text vs images).
-            params = urlencode(
-                {
-                    "status": "pending_review",
-                    "list_sort_by": sort_by,
-                    "list_sort_dir": sort_dir,
-                    "list_hide_completed": 1 if hide_completed else 0,
-                    **({"list_document_type": document_type} if document_type else {}),
-                }
-            )
-            return redirect(f"/v2/review/{next_id}?{params}")
+            params_list: list[tuple[str, Any]] = [
+                ("status", "pending_review"),
+                ("list_sort_by", sort_by),
+                ("list_sort_dir", sort_dir),
+                ("list_hide_completed", 1 if hide_completed else 0),
+            ]
+            if document_type:
+                params_list.append(("list_document_type", document_type))
+            for rid in reviewer_ids:
+                params_list.append(("list_reviewer_id", rid))
+            return redirect(f"/v2/review/{next_id}?{urlencode(params_list)}")
 
         flash("No more filings with pending facts.", "info")
-        list_params = urlencode(
-            {
-                "sort_by": sort_by,
-                "sort_dir": sort_dir,
-                **({"document_type": document_type} if document_type else {}),
-            }
-        )
-        return redirect(url_for("review_unified.filing_list") + "?" + list_params)
+        list_params_list: list[tuple[str, Any]] = [
+            ("sort_by", sort_by),
+            ("sort_dir", sort_dir),
+        ]
+        if document_type:
+            list_params_list.append(("document_type", document_type))
+        for rid in reviewer_ids:
+            list_params_list.append(("reviewer_id", rid))
+        return redirect(url_for("review_unified.filing_list") + "?" + urlencode(list_params_list))
 
     except Exception as e:
         logger.error(f"Error in next_filing: {e}")
@@ -707,9 +718,7 @@ def _select_current_image(candidates: list[dict], requested_img_id: str | None) 
     if not candidates:
         return None
     if requested_img_id:
-        current = next(
-            (c for c in candidates if str(c["img_id"]) == str(requested_img_id)), None
-        )
+        current = next((c for c in candidates if str(c["img_id"]) == str(requested_img_id)), None)
         if current:
             return current
         flash("Image not found, showing first pending", "warning")
