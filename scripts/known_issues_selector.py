@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Known issues selector for the nightly autonomous sweeper.
 
-Parses the "Nightly Sweeper Classification" table in docs/KNOWN_ISSUES.md,
-filters for safe/review items, dedupes against open PRs (via `gh`), picks
-a non-colliding batch of up to N issues, and emits the picks as JSON.
+Reads YAML frontmatter from docs/known-issues/ fragment files, filters for
+safe/review items with open/partially-resolved status, dedupes against open
+PRs (via `gh`), picks a non-colliding batch of up to N issues, and emits the
+picks as JSON.
 
 Usage:
     python3 scripts/known_issues_selector.py [--max N] [--include-review]
-                                             [--known-issues PATH]
+                                             [--fragments-dir PATH]
                                              [--dry-run]
                                              [--no-pr-dedupe]
 
 Exit codes:
     0 — picks emitted (possibly empty array if nothing to do)
-    1 — parse error (malformed classification table)
+    1 — fragment parse error or fragments directory not found
     2 — `gh` call failed and --no-pr-dedupe was not set
 
 The orchestrator (scripts/run_nightly_sweep.sh) consumes the JSON output.
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import importlib.util
 import json
 import re
 import subprocess
@@ -31,8 +33,22 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_KNOWN_ISSUES = REPO_ROOT / "docs" / "KNOWN_ISSUES.md"
-TABLE_HEADING = "## Nightly Sweeper Classification"
+DEFAULT_FRAGMENTS_DIR = REPO_ROOT / "docs" / "known-issues"
+
+# Statuses that indicate a fragment is no longer actionable.
+_INACTIVE_STATUSES = frozenset({"resolved", "archived"})
+
+
+def _load_fragments_module():  # type: ignore[return]
+    """Load validate_known_issues_fragments as a module without requiring __init__.py."""
+    script_dir = Path(__file__).resolve().parent
+    module_path = script_dir / "validate_known_issues_fragments.py"
+    spec = importlib.util.spec_from_file_location("validate_known_issues_fragments", module_path)
+    assert spec is not None and spec.loader is not None, f"Could not load {module_path}"
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["validate_known_issues_fragments"] = mod
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
 
 
 @dataclass(frozen=True)
@@ -49,60 +65,46 @@ class IssueRecord:
         return d
 
 
-def parse_classification_table(md_content: str) -> list[IssueRecord]:
-    """Extract the Nightly Sweeper Classification table rows as IssueRecords.
+def parse_classification_from_fragments(fragments_dir: Path) -> list[IssueRecord]:
+    """Load IssueRecords from YAML frontmatter in docs/known-issues/ fragments.
 
-    Raises ValueError if the table heading is missing or no rows are parsed.
+    Skips fragments where:
+    - autonomy is 'n/a' (not eligible for sweep)
+    - status is 'resolved' or 'archived' (no longer actionable — fixes issue #79)
+
+    Raises FileNotFoundError if fragments_dir does not exist.
+    Raises ValueError on parse errors.
     """
-    heading_idx = md_content.find(TABLE_HEADING)
-    if heading_idx == -1:
-        raise ValueError(
-            f"Missing {TABLE_HEADING!r} heading in KNOWN_ISSUES.md — "
-            "sweeper cannot determine which issues to work."
-        )
-    # The table ends at the next top-level "## " heading after the heading.
-    tail = md_content[heading_idx + len(TABLE_HEADING) :]
-    next_heading = re.search(r"\n## ", tail)
-    table_block = tail[: next_heading.start()] if next_heading else tail
+    _frags = _load_fragments_module()
+    fragments = _frags.load_all_fragments(fragments_dir)
 
     records: list[IssueRecord] = []
-    for line in table_block.splitlines():
-        stripped = line.strip()
-        # Table rows look like "| #60 | safe | XS | glob glob | note |"
-        if not stripped.startswith("| #"):
+    for fragment in fragments:
+        fm = fragment.frontmatter
+        autonomy = str(fm.get("autonomy") or "")
+        status = str(fm.get("status") or "")
+
+        # Skip n/a autonomy (not eligible for sweep).
+        if autonomy == "n/a":
             continue
-        cells = [c.strip() for c in stripped.strip("|").split("|")]
-        if len(cells) < 5:
+
+        # Skip resolved/archived issues — they are no longer actionable.
+        if status in _INACTIVE_STATUSES:
             continue
-        issue_cell, autonomy, estimated, touches_cell, note = cells[:5]
-        m = re.match(r"#(\d+)", issue_cell)
-        if not m:
-            continue
-        issue_num = int(m.group(1))
-        if autonomy not in {"safe", "review", "skip"}:
-            raise ValueError(
-                f"Issue #{issue_num}: unknown Autonomy value {autonomy!r}. "
-                "Must be safe|review|skip."
-            )
-        touches_tuple: tuple[str, ...] = ()
-        if touches_cell and touches_cell not in {"—", "-"}:
-            # Strip backticks the table uses for inline code.
-            cleaned = touches_cell.replace("`", "")
-            touches_tuple = tuple(g for g in cleaned.split() if g)
+
+        touches_raw = fm.get("touches") or []
+        touches: tuple[str, ...] = tuple(touches_raw) if isinstance(touches_raw, list) else ()
+
         records.append(
             IssueRecord(
-                issue=issue_num,
+                issue=int(fm["id"]),
                 autonomy=autonomy,
-                estimated=estimated,
-                touches=touches_tuple,
-                note=note,
+                estimated=str(fm.get("estimated") or "—"),
+                touches=touches,
+                note=str(fm.get("note") or ""),
             )
         )
-    if not records:
-        raise ValueError(
-            "Nightly Sweeper Classification table parsed zero rows — "
-            "check the table format in docs/KNOWN_ISSUES.md."
-        )
+
     return records
 
 
@@ -199,10 +201,10 @@ def main() -> int:
         help="Include Autonomy=review issues in selection (default: safe-only).",
     )
     parser.add_argument(
-        "--known-issues",
+        "--fragments-dir",
         type=Path,
-        default=DEFAULT_KNOWN_ISSUES,
-        help="Path to KNOWN_ISSUES.md (default: docs/KNOWN_ISSUES.md).",
+        default=DEFAULT_FRAGMENTS_DIR,
+        help="Path to the known-issues fragment directory (default: docs/known-issues/).",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Print a human-readable summary instead of JSON."
@@ -215,12 +217,10 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        md = args.known_issues.read_text()
-    except FileNotFoundError:
-        print(f"error: {args.known_issues} not found", file=sys.stderr)
+        records = parse_classification_from_fragments(args.fragments_dir)
+    except FileNotFoundError as e:
+        print(f"error: {e}", file=sys.stderr)
         return 1
-    try:
-        records = parse_classification_table(md)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
