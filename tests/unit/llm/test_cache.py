@@ -21,7 +21,10 @@ class TestCacheConfig:
 
             assert config.enabled is True
             assert config.connection_string == ""
-            assert config.cache_version == "v1"
+            # Bumped to v2 in Wave B2 (provider abstraction) to invalidate
+            # single-provider GPT-4o cached responses under the new multi-
+            # provider dispatch.
+            assert config.cache_version == "v2"
             assert config.max_age_days == 30
 
     def test_config_from_environment(self):
@@ -29,13 +32,13 @@ class TestCacheConfig:
         with pytest.MonkeyPatch.context() as mp:
             mp.setenv("LLM_CACHE_ENABLED", "false")
             mp.setenv("DATABASE_URL", "postgresql://user:pass@localhost/testdb")
-            mp.setenv("LLM_CACHE_VERSION", "v2")
+            mp.setenv("LLM_CACHE_VERSION", "v3")
 
             config = CacheConfig()
 
             assert config.enabled is False
             assert config.connection_string == "postgresql://user:pass@localhost/testdb"
-            assert config.cache_version == "v2"
+            assert config.cache_version == "v3"
 
     def test_config_explicit_values(self):
         """Test explicit configuration values override defaults."""
@@ -167,17 +170,12 @@ class TestLLMCache:
         )
         assert success is True
         # Verify an INSERT ... ON CONFLICT call was made
-        insert_calls = [
-            call for call in mock_conn.execute.call_args_list
-            if "INSERT" in str(call)
-        ]
+        insert_calls = [call for call in mock_conn.execute.call_args_list if "INSERT" in str(call)]
         assert len(insert_calls) >= 1
 
     def test_get_hit_returns_cached_response(self, cache, mock_conn):
         """get() returns CachedResponse when the DB row is found."""
-        mock_conn.execute.return_value = MagicMock(
-            fetchone=MagicMock(return_value=("4", 15, 1))
-        )
+        mock_conn.execute.return_value = MagicMock(fetchone=MagicMock(return_value=("4", 15, 1)))
         result = cache.get(
             model="gpt-4o-mini",
             system_message="You are helpful",
@@ -193,9 +191,7 @@ class TestLLMCache:
 
     def test_get_miss_returns_none(self, cache, mock_conn):
         """get() returns None when the DB row is not found."""
-        mock_conn.execute.return_value = MagicMock(
-            fetchone=MagicMock(return_value=None)
-        )
+        mock_conn.execute.return_value = MagicMock(fetchone=MagicMock(return_value=None))
         result = cache.get(
             model="gpt-4o-mini",
             system_message="",
@@ -225,10 +221,7 @@ class TestLLMCache:
         mock_conn.execute.return_value = mock_cursor
         deleted = cache.cleanup_expired()
         assert deleted == 2
-        delete_calls = [
-            call for call in mock_conn.execute.call_args_list
-            if "DELETE" in str(call)
-        ]
+        delete_calls = [call for call in mock_conn.execute.call_args_list if "DELETE" in str(call)]
         assert len(delete_calls) >= 1
 
     def test_session_hit_miss_counters(self, cache, mock_conn):
@@ -240,9 +233,7 @@ class TestLLMCache:
         assert cache._hits == 0
 
         # Hit
-        mock_conn.execute.return_value = MagicMock(
-            fetchone=MagicMock(return_value=("resp", 5, 3))
-        )
+        mock_conn.execute.return_value = MagicMock(fetchone=MagicMock(return_value=("resp", 5, 3)))
         cache.get(model="m", system_message="", prompt="p", temperature=0.0, max_tokens=10)
         assert cache._hits == 1
 
