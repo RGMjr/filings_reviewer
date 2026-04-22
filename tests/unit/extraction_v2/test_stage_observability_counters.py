@@ -297,24 +297,32 @@ class TestOCRExtractionCounters:
         ):
             assert key in result.metadata, f"Missing A2 counter key: {key}"
 
-    def test_skipped_by_budget_cap_increments_at_chart_limit(self, tmp_path: Path) -> None:
-        """skipped_by_budget_cap must equal number of charts over the cap."""
-        limit = OCRExtractionStage.MAX_CHART_CALLS_PER_DOCUMENT
+    def test_skipped_by_budget_cap_increments_at_chart_dollar_budget(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A3: skipped_by_budget_cap increments when per-filing chart budget is
+        exhausted. Mock returns $0.01/call; with budget $0.10, exactly 10
+        charts process and the remainder skip."""
+        limit = 10
+        monkeypatch.setenv("CHART_BUDGET_PER_FILING_USD", "0.10")
+
         png = tmp_path / "chart.png"
         _write_dummy_png(png)
 
-        # Provide exactly `limit` valid responses; remaining images will be skipped.
+        # Provide exactly `limit` valid responses (each costs $0.01 per mock).
         mock_client = _MockVisionClient(
             responses=[self._make_valid_chart_response() for _ in range(limit)]
         )
         stage = OCRExtractionStage(vision_client=mock_client)
 
         over_limit = 3
+        # Use nearby_text that does NOT match TIER1_KEYWORDS_RE so the Tier-1
+        # bypass does not fire — budget exhaustion must apply.
         images = [
             ImageAsset(
                 img_id=f"c{i}",
                 filename="chart.png",
-                nearby_text="Revenue",
+                nearby_text="Company overview",
                 width=800,
                 height=600,
                 classification=ImageClassification.CHART,
@@ -329,6 +337,104 @@ class TestOCRExtractionCounters:
 
         assert result.metadata["skipped_by_budget_cap"] == over_limit
         assert result.metadata["chart_calls"] == limit
+        assert result.metadata["chart_vision_spend_usd"] == pytest.approx(0.10)
+        assert result.metadata["chart_budget_usd"] == pytest.approx(0.10)
+
+    def test_tier1_keyword_chart_bypasses_budget(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A3: charts whose nearby_text matches TIER1_KEYWORDS_RE process even
+        when the budget is exhausted — CMASB Tier-1 priority metrics."""
+        # Tiny budget that would ordinarily cap us immediately.
+        monkeypatch.setenv("CHART_BUDGET_PER_FILING_USD", "0.005")
+
+        png = tmp_path / "chart.png"
+        _write_dummy_png(png)
+
+        # 3 tier-1 charts + 3 non-tier-1 charts. Tier-1 should all process;
+        # non-tier-1 should all skip (budget exhausted after first tier-1).
+        mock_client = _MockVisionClient(
+            responses=[self._make_valid_chart_response() for _ in range(3)]
+        )
+        stage = OCRExtractionStage(vision_client=mock_client)
+
+        tier1_images = [
+            ImageAsset(
+                img_id=f"t{i}",
+                filename="chart.png",
+                nearby_text="Customer retention rate by cohort",
+                width=800,
+                height=600,
+                classification=ImageClassification.CHART,
+                relevance_score=0.9,
+                processed=False,
+                file_path=png.name,
+            )
+            for i in range(3)
+        ]
+        non_tier1_images = [
+            ImageAsset(
+                img_id=f"n{i}",
+                filename="chart.png",
+                nearby_text="Company overview",
+                width=800,
+                height=600,
+                classification=ImageClassification.CHART,
+                relevance_score=0.9,
+                processed=False,
+                file_path=png.name,
+            )
+            for i in range(3)
+        ]
+
+        ctx = _make_context(tmp_path, tier1_images + non_tier1_images)
+        result = stage.process(ctx)
+
+        assert result.metadata["chart_calls"] == 3  # all three Tier-1 processed
+        assert result.metadata["skipped_by_budget_cap"] == 3  # three non-tier-1 skipped
+
+    def test_charts_processed_in_descending_relevance_order(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A3: when budget is tight, higher-relevance charts process first."""
+        monkeypatch.setenv("CHART_BUDGET_PER_FILING_USD", "0.02")  # exactly 2 calls
+
+        png = tmp_path / "chart.png"
+        _write_dummy_png(png)
+
+        mock_client = _MockVisionClient(
+            responses=[self._make_valid_chart_response() for _ in range(2)]
+        )
+        stage = OCRExtractionStage(vision_client=mock_client)
+
+        # Construct charts with ascending relevance so the natural iteration
+        # order would NOT pick the highest-scoring ones. Sort by -relevance
+        # should surface the two highest (0.9, 0.8) for processing.
+        images = [
+            ImageAsset(
+                img_id=f"c{i}",
+                filename="chart.png",
+                nearby_text="Company overview",
+                width=800,
+                height=600,
+                classification=ImageClassification.CHART,
+                relevance_score=score,
+                processed=False,
+                file_path=png.name,
+            )
+            for i, score in enumerate([0.4, 0.5, 0.6, 0.8, 0.9])
+        ]
+        ctx = _make_context(tmp_path, images)
+        result = stage.process(ctx)
+
+        # Top-2 scored charts (0.9, 0.8) should be processed; bottom-3 skipped.
+        processed_scores = sorted(
+            (a.relevance_score for a in images if a.processed),
+            reverse=True,
+        )
+        assert processed_scores == [0.9, 0.8]
+        assert result.metadata["chart_calls"] == 2
+        assert result.metadata["skipped_by_budget_cap"] == 3
 
     def test_skipped_by_budget_cap_increments_at_ocr_limit(self, tmp_path: Path) -> None:
         """skipped_by_budget_cap must equal number of tables over the OCR cap."""
@@ -551,13 +657,19 @@ class TestCounterReconciliation:
         assert classified_sum == result.metadata["images_seen"]
         assert result.metadata["images_seen"] == result.items_processed
 
-    def test_ocr_budget_cap_accounts_for_over_limit_charts(self, tmp_path: Path) -> None:
+    def test_chart_dollar_budget_accounts_for_over_budget_charts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """processed_count + skipped_by_budget_cap must equal total chart images
-        when every chart has bytes available (no other skip reason)."""
+        when every chart has bytes available (no other skip reason). A3
+        replaced the count cap with a dollar budget; each mock call costs
+        $0.01, so budget $0.10 → exactly 10 processed."""
+        monkeypatch.setenv("CHART_BUDGET_PER_FILING_USD", "0.10")
+
         png = tmp_path / "chart.png"
         _write_dummy_png(png)
 
-        limit = OCRExtractionStage.MAX_CHART_CALLS_PER_DOCUMENT
+        limit = 10  # $0.10 budget / $0.01 per call
         over_limit = 2
         total = limit + over_limit
 
@@ -581,11 +693,12 @@ class TestCounterReconciliation:
         )
         stage = OCRExtractionStage(vision_client=_MockVisionClient(responses=[chart_resp] * limit))
 
+        # nearby_text that does not match TIER1_KEYWORDS_RE so budget applies.
         images = [
             ImageAsset(
                 img_id=f"c{i}",
                 filename="chart.png",
-                nearby_text="Revenue",
+                nearby_text="Company overview",
                 width=800,
                 height=600,
                 classification=ImageClassification.CHART,

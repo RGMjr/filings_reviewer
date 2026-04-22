@@ -99,7 +99,6 @@ class OCRExtractionStage:
 
     # Cost control limits (per document)
     MAX_OCR_CALLS_PER_DOCUMENT: int = 20
-    MAX_CHART_CALLS_PER_DOCUMENT: int = 10
     # Full-page-scan (Path A) cap. Longest known PayPal deck is ~16 pages;
     # 30 gives headroom. Exceeding this halts processing with a warning.
     MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT: int = 30
@@ -107,6 +106,16 @@ class OCRExtractionStage:
     # images only; 10/filing bounds worst-case cost at ~$1 (10 pre-scans +
     # up to 10 follow-on chart/table calls, shared chart budget).
     MAX_PRESCAN_CALLS_PER_DOCUMENT: int = 10
+
+    # A3: chart cost control. Per-filing cumulative-spend ceiling in USD
+    # replaces the prior MAX_CHART_CALLS_PER_DOCUMENT=10 count cap. Charts
+    # are processed in descending relevance_score order; when running-total
+    # vision spend hits CHART_BUDGET_PER_FILING_USD, remaining charts are
+    # skipped EXCEPT when they carry Tier-1 keywords in nearby_text (these
+    # process regardless of budget — CMASB's priority metrics).
+    # Dollar-based (not count-based) so the ceiling adapts when cheaper
+    # providers land in Wave B4.
+    DEFAULT_CHART_BUDGET_PER_FILING_USD: float = 0.25
 
     # Tier-1 keyword regex used by Path B to decide whether an OCR'd
     # ambiguous image should escalate to the chart/table extraction path.
@@ -157,6 +166,8 @@ class OCRExtractionStage:
         self._prescan_call_count = 0
         # A2 observability counters — reset per-document in process().
         self._parse_failed_count = 0
+        # A3: per-filing cumulative chart vision spend (USD).
+        self._chart_vision_spend: float = 0.0
 
     @property
     def vision_client(self) -> Any:
@@ -691,7 +702,7 @@ time periods, or definitions that help interpret the chart's data.
             _grid=grid,
         )
 
-    def process_chart(self, asset: ImageAsset) -> None:
+    def process_chart(self, asset: ImageAsset) -> float:
         """
         Extract labeled values from chart.
 
@@ -707,6 +718,9 @@ time periods, or definitions that help interpret the chart's data.
 
         Args:
             asset: Image asset to process (modified in place)
+
+        Returns:
+            Cost in USD of the vision API call (0.0 if result came from cache).
 
         Raises:
             FileNotFoundError: If image file doesn't exist
@@ -726,6 +740,7 @@ time periods, or definitions that help interpret the chart's data.
             raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
         # Call Vision API with chart extraction prompt (include nearby context)
+        call_cost: float = 0.0
         try:
             response = self.vision_client.analyze_image(
                 image_bytes=image_bytes,
@@ -734,6 +749,7 @@ time periods, or definitions that help interpret the chart's data.
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )
+            call_cost = float(getattr(response, "cost_usd", 0.0))
 
             # Parse JSON response; attempt a best-effort repair before giving up
             chart_response = self._parse_chart_json(response.content)
@@ -744,7 +760,7 @@ time periods, or definitions that help interpret the chart's data.
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                return
+                return call_cost
 
             # Extract chart metadata
             chart_type_str = chart_response.get("chart_type", "unknown")
@@ -791,7 +807,7 @@ time periods, or definitions that help interpret the chart's data.
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                return
+                return call_cost
 
             # Build ChartSeries and DataPoint objects
             chart_series_list: list[ChartSeries] = []
@@ -840,7 +856,7 @@ time periods, or definitions that help interpret the chart's data.
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                return
+                return call_cost
 
             # Build ChartData object
             chart_data = ChartData(
@@ -869,6 +885,7 @@ time periods, or definitions that help interpret the chart's data.
                 f"series={len(chart_series_list)}, points={total_points}, "
                 f"confidence={asset.confidence:.2f}"
             )
+            return call_cost
 
         except Exception as e:
             logger.error(f"Error during chart extraction for {asset.img_id}: {e}", exc_info=True)
@@ -1063,6 +1080,16 @@ time periods, or definitions that help interpret the chart's data.
         self._full_page_ocr_call_count = 0
         self._prescan_call_count = 0
         self._parse_failed_count = 0
+        self._chart_vision_spend = 0.0
+
+        # A3: per-filing chart-spend ceiling. Read env each call so tests
+        # and operators can tune at runtime without reconstructing the stage.
+        chart_budget_usd = float(
+            os.environ.get(
+                "CHART_BUDGET_PER_FILING_USD",
+                str(self.DEFAULT_CHART_BUDGET_PER_FILING_USD),
+            )
+        )
 
         processed_count = 0
         skipped_count = 0
@@ -1102,8 +1129,23 @@ time periods, or definitions that help interpret the chart's data.
             # invocation. Skipped on Path-A filings.
             self._prescan_ambiguous_images(context)
 
+            # A3: process charts in descending relevance_score order so
+            # high-value charts land inside the per-filing dollar budget
+            # before it gets exhausted. Non-chart classifications keep
+            # their original order (tables/full-page have their own caps).
+            # Non-charts run first so table OCR — which feeds candidate
+            # generation downstream — is not starved by chart budget.
+            _charts_sorted = sorted(
+                (a for a in context.images if a.classification == ImageClassification.CHART),
+                key=lambda a: -(a.relevance_score or 0.0),
+            )
+            _non_charts = [
+                a for a in context.images if a.classification != ImageClassification.CHART
+            ]
+            images_in_order = _non_charts + _charts_sorted
+
             # Process each relevant image
-            for asset in context.images:
+            for asset in images_in_order:
                 # Check if should process
                 if not self._should_process(asset):
                     skipped_count += 1
@@ -1121,8 +1163,17 @@ time periods, or definitions that help interpret the chart's data.
                         skipped_by_budget_cap += 1
                         continue
                 elif asset.classification == ImageClassification.CHART:
-                    if self._chart_call_count >= self.MAX_CHART_CALLS_PER_DOCUMENT:
-                        msg = f"Chart call limit ({self.MAX_CHART_CALLS_PER_DOCUMENT}) reached"
+                    # A3: per-filing dollar ceiling. Tier-1 keyword charts
+                    # process regardless of budget (CMASB priority metrics);
+                    # everything else respects the ceiling. Spend is rounded
+                    # to 4 decimals to sidestep float precision (0.01 is not
+                    # exact in binary, so cumulative sums drift).
+                    has_tier1 = bool(self.TIER1_KEYWORDS_RE.search(asset.nearby_text or ""))
+                    if not has_tier1 and round(self._chart_vision_spend, 4) >= chart_budget_usd:
+                        msg = (
+                            f"Chart budget (${chart_budget_usd:.2f}) exhausted "
+                            f"after spending ${self._chart_vision_spend:.4f}"
+                        )
                         if msg not in warnings:
                             warnings.append(msg)
                             logger.warning(msg)
@@ -1151,8 +1202,9 @@ time periods, or definitions that help interpret the chart's data.
                         if asset.ocr_table is not None:
                             context.tables.append(asset.ocr_table)
                     elif asset.classification == ImageClassification.CHART:
-                        self.process_chart(asset)
+                        chart_cost = self.process_chart(asset)
                         self._chart_call_count += 1
+                        self._chart_vision_spend += chart_cost
                         # Track charts that were processed but yielded no data.
                         if asset.chart_data is None:
                             chart_data_none_after_processing += 1
@@ -1161,16 +1213,17 @@ time periods, or definitions that help interpret the chart's data.
                         self._full_page_ocr_call_count += 1
                         # Two-pass: if the page contains a chart, run the
                         # existing chart extraction on the same image.
-                        # Respects the shared chart call budget.
-                        if (
-                            contains_chart
-                            and self._chart_call_count < self.MAX_CHART_CALLS_PER_DOCUMENT
-                        ):
-                            self.process_chart(asset)
-                            self._chart_call_count += 1
-                            self._api_call_count += 1
-                            if asset.chart_data is None:
-                                chart_data_none_after_processing += 1
+                        # Respects the shared chart dollar budget with the
+                        # same Tier-1 bypass as the main chart branch.
+                        if contains_chart:
+                            has_tier1 = bool(self.TIER1_KEYWORDS_RE.search(asset.nearby_text or ""))
+                            if has_tier1 or round(self._chart_vision_spend, 4) < chart_budget_usd:
+                                chart_cost = self.process_chart(asset)
+                                self._chart_call_count += 1
+                                self._chart_vision_spend += chart_cost
+                                self._api_call_count += 1
+                                if asset.chart_data is None:
+                                    chart_data_none_after_processing += 1
                     else:
                         # Unknown type - skip
                         logger.debug(
@@ -1224,6 +1277,8 @@ time periods, or definitions that help interpret the chart's data.
                 metadata={
                     "ocr_calls": self._ocr_call_count,
                     "chart_calls": self._chart_call_count,
+                    "chart_vision_spend_usd": round(self._chart_vision_spend, 4),
+                    "chart_budget_usd": chart_budget_usd,
                     "full_page_ocr_calls": self._full_page_ocr_call_count,
                     "prescan_calls": self._prescan_call_count,
                     "total_api_calls": self._api_call_count,
