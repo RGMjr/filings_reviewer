@@ -7,7 +7,7 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 25 |
+| Open | 26 |
 | Partially Resolved | 2 |
 | Archived | 46 |
 | Resolved | 3 |
@@ -49,6 +49,7 @@
 | #75 | skip | S | `tests/ui/*.spec.js` `tests/ui/test_server.py` | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
 | #76 | safe | S | `tests/integration/test_db_filings_reviewers.py` | New integration test for filings-list reviewer aggregate; isolated file |
 | #77 | skip | M | — | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; needs R2 head-object check + migration or re-ingest |
+| #79 | safe | XS | `scripts/known_issues_selector.py` | Filter selector picks on status=open or partially-resolved |
 
 
 ## Open Issues
@@ -738,6 +739,35 @@ The "auto-advance to next filing when queue empties" behavior is tested at the r
 - Add `tests/integration/test_db_filings_reviewers.py` that seeds a filing with text decisions by Alice + image decisions by Bob, calls `get_unified_filings_for_review`, and asserts `row["reviewers"] == ["alice", "bob"]`.
 - Add a second case: call with `reviewer_ids=["alice"]`, assert the filing is returned; call with `reviewer_ids=["zoe"]`, assert it is not.
 - Add a third case: a filing with only NULL reviewer_id decisions (legacy image rows) returns `reviewers == []`.
+
+## #79. Nightly Sweeper Selector Picks Resolved/Archived Issues
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+`scripts/known_issues_selector.py` filters on `autonomy` (safe/review) and
+dedupes against open PRs, but never checks `status`. When a resolved issue
+remains in the classification table with `autonomy: safe` (either because the
+post-merge cleanup didn't remove it, or because the fragment's `status` was
+updated to `resolved` but its `autonomy` was left as `safe`), the selector
+picks it for nightly attempts.
+
+Baseline selector run against the pre-migration monolith picked #60, #68, #71
+— all three already resolved per PRs #105 / #107 / #108. The sweeper would
+attempt to re-fix issues whose fixes are already in `main`.
+
+### Next Steps
+
+- Naturally subsumed by Phase 3 selector rewrite: when it reads frontmatter
+  directly, filter out fragments whose `status` is `resolved` or `archived`.
+- Add a regression test: fragment with `status: resolved` + `autonomy: safe`
+  must NOT appear in selector picks.
+- Optional: also emit a warning when such a fragment is encountered, so the
+  author knows to set `autonomy: n/a` on resolved entries.
 
 ## #5. Revenue Synonym Context Gating
 
