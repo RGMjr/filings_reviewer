@@ -63,7 +63,7 @@ dev = [
     "pre-commit>=3.7.0",
 ]
 annotation = [
-    "anthropic>=0.30.0",
+    "anthropic>=0.87.0",
 ]
 
 [project.urls]
