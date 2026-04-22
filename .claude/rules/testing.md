@@ -13,7 +13,7 @@ paths:
 ## Structure
 
 - `tests/unit/` - Fast, isolated unit tests (no external dependencies)
-- `tests/integration/` - Requires `TEST_DATABASE_URL` environment variable
+- `tests/integration/` - Requires `TEST_DATABASE_URL` environment variable. Under `pytest-xdist` (`-n auto`), each worker gets its own Postgres DB (`<base>_gw0`, `_gw1`, …) via `tests/integration/conftest.py::_isolate_xdist_worker_database` — the configured role must have `CREATEDB`. Sequential mode is a no-op.
 
 ## Commands
 
