@@ -41,7 +41,6 @@ This document tracks known issues, limitations, and planned improvements identif
 | Cancel-during-populate not integration-tested (Issue #63) | Open | Conditional `_BATCH_COMPLETE_SQL` unit-tested; no end-to-end race-condition test |
 | Nightly sweeper uses GNU `timeout` — macOS incompatible (Issue #68) | Open | Local `/sweep` on Mac fails at the `timeout` call; Render (Linux) production is fine |
 | `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
-| CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
 | Integration Tests job has no path filter (Issue #71) | Open | Docs-only / `.claude/`-only PRs still spin up Postgres + migrations (~3–6 min); wall-time save |
 | `.github` PR template case collision (Issue #73) | Open | Duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` (identical blobs) trigger fresh-clone warnings on macOS/Windows |
 | `.claude/scheduled_tasks.lock` not gitignored (Issue #74) | Open | Runtime lockfile shows up as untracked in every `git status`; not covered by any `.gitignore` rule |
@@ -1005,6 +1004,12 @@ Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracki
 ---
 
 ## Archive (Resolved Issues)
+
+### Issue #70: CONTRIBUTING.md `/commit` Step 1 Stale Post-Worktree-Hook
+
+**Status**: Resolved (2026-04-22)
+
+Rewrote step 1 of the "Committing via `/commit`" section in `docs/development/CONTRIBUTING.md` to reflect the worktree-required model enforced by `~/.claude/hooks/guard-destructive-git.sh`. Cross-links the orchestration pattern in `claude-sessions-and-worktrees.md`.
 
 ### Issue #60: `detect_universe_gaps` Ignores SIC Filter
 
