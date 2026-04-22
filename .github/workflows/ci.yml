@@ -182,7 +182,7 @@ jobs:
 
       - name: Run integration tests
         run: >-
-          uv run pytest tests/integration/ -x -q --tb=short --no-cov
+          uv run pytest tests/integration/ -n auto -x -q --tb=short --no-cov
           --ignore=tests/integration/test_gold_standard_regression.py
           --ignore=tests/integration/test_gold_standard_coverage.py
 
