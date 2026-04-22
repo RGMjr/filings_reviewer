@@ -209,15 +209,24 @@ class OCRExtractionStage:
         Returns:
             Number of images successfully downloaded
         """
-        from src.infra.image_storage import InvalidStorageKeyError, validate_key
+        from src.infra.image_storage import (
+            InvalidStorageKeyError,
+            get_image_storage,
+            validate_key,
+        )
         from src.infra.paths import image_cache_dir
 
         if not context.cik or not context.accession_number:
             return 0
 
         # Lazy-load SECClient with image_cache_dir set so fetch_image writes bytes
-        # directly to the shared cache root.  Storage keys are then derived as
-        # relative paths from that root — no second copy is written.
+        # to the shared cache root; storage keys are derived as relative paths
+        # from that root.  We then explicitly upload via storage.put_bytes so
+        # downstream readers can dereference asset.file_path uniformly across
+        # backends — the disk write alone is only sufficient when the storage
+        # backend is LocalFilesystemStorage rooted at image_cache_dir() (dev);
+        # for R2 (prod), without put_bytes the bytes never leave the local
+        # disk and downstream get_bytes calls fail with FileNotFoundError.
         if self._sec_client is None:
             from src.infra.sec_client import SECClient
 
@@ -261,6 +270,11 @@ class OCRExtractionStage:
                             f"Derived storage key {key!r} failed validation — "
                             f"cache path {cache_path!r} is not under cache root {cache_root!r}"
                         ) from err
+                    get_image_storage().put_bytes(
+                        key,
+                        image_bytes,
+                        content_type="image/jpeg",
+                    )
                     asset.file_path = key
                     downloaded += 1
                     logger.info(f"Downloaded image {asset.filename}: {len(image_bytes)} bytes")
