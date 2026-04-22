@@ -11,6 +11,9 @@
       After previewing the candidate list you can start a batch run.
     </p>
 
+    {% set state = form_state or {} %}
+    {% set selected_industries = state.get('industries') or [] %}
+    {% set selected_form_types = state.get('form_types') or ['s1f1'] %}
     <form method="POST" action="{{ url_for('ingest.ingest_preview') }}">
 
       <!-- Industry multi-select -->
@@ -18,10 +21,10 @@
         <label for="industries" class="form-label fw-semibold">Industries</label>
         <select id="industries" name="industries" class="form-select" multiple size="6">
           {% for ind in industries %}
-          <option value="{{ ind.key }}">{{ ind.label }}</option>
+          <option value="{{ ind.key }}" {% if ind.key in selected_industries %}selected{% endif %}>{{ ind.label }}</option>
           {% endfor %}
         </select>
-        <div class="form-text">Hold Ctrl / Cmd to select multiple industries.</div>
+        <div class="form-text">Hold Ctrl / Cmd to select multiple industries. Provide an industry, SIC code, or company name filter.</div>
       </div>
 
       <!-- Direct SIC codes -->
@@ -29,7 +32,7 @@
         <label for="sic_codes" class="form-label fw-semibold">Direct SIC Codes</label>
         <input type="text" id="sic_codes" name="sic_codes"
                class="form-control" placeholder="e.g. 7372, 5411"
-               value="">
+               value="{{ state.get('sic_codes') or '' }}">
         <div class="form-text">Comma-separated 4-digit SIC codes. Combined (union) with industry selection above.</div>
       </div>
 
@@ -41,7 +44,7 @@
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox"
                    id="ft_{{ ft.key }}" name="form_types" value="{{ ft.key }}"
-                   {% if ft.key == 's1f1' %}checked{% endif %}>
+                   {% if ft.key in selected_form_types %}checked{% endif %}>
             <label class="form-check-label" for="ft_{{ ft.key }}">{{ ft.label }}</label>
           </div>
           {% endfor %}
@@ -53,17 +56,18 @@
         <label for="year" class="form-label fw-semibold">Year or Year Range</label>
         <input type="text" id="year" name="year"
                class="form-control" placeholder="e.g. 2023 or 2020-2024"
-               required>
+               value="{{ state.get('year') or '' }}" required>
         <div class="form-text">Single year (2023) or inclusive range (2020-2024).</div>
       </div>
 
       <!-- Company name filter -->
       <div class="mb-3">
         <label for="company_name_ilike" class="form-label fw-semibold">
-          Company Name Filter <span class="text-muted fw-normal">(optional)</span>
+          Company Name Filter <span class="text-muted fw-normal">(optional if an industry or SIC code is supplied)</span>
         </label>
         <input type="text" id="company_name_ilike" name="company_name_ilike"
-               class="form-control" placeholder="e.g. Chewy">
+               class="form-control" placeholder="e.g. Chewy"
+               value="{{ state.get('company_name_ilike') or '' }}">
         <div class="form-text">Case-insensitive substring match on company name.</div>
       </div>
 

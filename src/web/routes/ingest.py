@@ -112,26 +112,39 @@ def _volume_band_message(band: VolumeBand, total: int) -> str:
     return messages.get(band, f"{total} filings.")
 
 
+_FORM_TYPES_AVAILABLE = [
+    {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)"},
+    {"key": "10k", "label": "10-K (Annual reports)"},
+    {"key": "8k", "label": "8-K (Current reports)"},
+]
+
+
+def _render_ingest_form(form_state: dict[str, Any] | None = None, status: int = 200):
+    """Render the criteria form. When *form_state* is given, the template
+    repopulates fields so a validation error doesn't wipe user input.
+    """
+    state = form_state or {}
+    reviewer_name = state.get("_reviewer_name") or request.cookies.get("ingest_reviewer", "")
+    return (
+        render_template(
+            "ingest_form.html",
+            reviewer_name=reviewer_name,
+            industries=_industry_options(),
+            form_types_available=_FORM_TYPES_AVAILABLE,
+            form_state=state,
+        ),
+        status,
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /ingest/
 # ---------------------------------------------------------------------------
 
 
 @ingest_bp.route("/", methods=["GET"])
-def ingest_form() -> str:
-    reviewer_name = request.cookies.get("ingest_reviewer", "")
-    industries = _industry_options()
-    form_types_available = [
-        {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)"},
-        {"key": "10k", "label": "10-K (Annual reports)"},
-        {"key": "8k", "label": "8-K (Current reports)"},
-    ]
-    return render_template(
-        "ingest_form.html",
-        reviewer_name=reviewer_name,
-        industries=industries,
-        form_types_available=form_types_available,
-    )
+def ingest_form():
+    return _render_ingest_form()
 
 
 # ---------------------------------------------------------------------------
@@ -142,13 +155,14 @@ def ingest_form() -> str:
 @ingest_bp.route("/preview", methods=["POST"])
 def ingest_preview():
     raw = _parse_form_criteria()
-    reviewer_name = raw.pop("_reviewer_name", "")
 
     try:
         query = resolve_criteria(raw)
     except ValueError as exc:
         flash(str(exc), "danger")
-        return redirect(url_for("ingest.ingest_form"))
+        return _render_ingest_form(form_state=raw, status=400)
+
+    reviewer_name = raw.pop("_reviewer_name", "")
 
     db = get_db()
 
