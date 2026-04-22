@@ -1,0 +1,6 @@
+{
+  "_schema": "image_benchmark_manifest_v1",
+  "_generated_by": "scripts/benchmark_vision.py --build-corpus",
+  "_note": "Run `python3 scripts/benchmark_vision.py --build-corpus --database-url $TEST_DATABASE_URL` to populate this file.",
+  "corpus": []
+}
