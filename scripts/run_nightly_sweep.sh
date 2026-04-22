@@ -69,6 +69,17 @@ require python3
 require claude
 require gh
 
+# Detect timeout command. GNU coreutils `timeout` is standard on Linux; macOS
+# ships without it. Install via `brew install coreutils` to get `gtimeout`.
+if command -v timeout >/dev/null 2>&1; then
+  _TIMEOUT_CMD="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  _TIMEOUT_CMD="gtimeout"
+else
+  _TIMEOUT_CMD=""
+  log "WARNING: neither 'timeout' nor 'gtimeout' found — per-issue budget enforcement disabled (macOS: run 'brew install coreutils' to enable)"
+fi
+
 # Container images built from this repo strip .git via .dockerignore to keep
 # the web/extraction images lean. The sweeper orchestrator needs real git
 # history (fetch, checkout, worktree add, push), so bootstrap a minimal repo
@@ -181,9 +192,22 @@ EOF
   # it) reads the remaining pick lines from the pipe on its first call,
   # which drains the iterator and makes the while-loop exit after pick 1
   # of N. Reproduced locally with `(cat)` in place of claude.
+  # --dangerously-skip-permissions: the sweeper runs unattended (no human to
+  # answer permission prompts), and the session is already scoped by the issue
+  # prompt's STRICT rules and by the Nightly Sweeper Classification "Touches"
+  # globs. Without this, `gh pr create` / `git push` get blocked by
+  # .claude/settings.json's default allow list and the session ends with a
+  # committed-but-unpushed branch (or pushed-but-no-PR), as observed on the
+  # 2026-04-22 17:50 UTC run where issues #68 and #71 were fixed correctly
+  # but their PRs had to be opened manually. The kill switch + classification
+  # table + prompt rules + CI checks remain the primary guardrails.
   (
     cd "$worktree"
-    timeout "$PER_ISSUE_BUDGET" claude -p "$prompt" > "$log_file" 2>&1
+    if [[ -n "$_TIMEOUT_CMD" ]]; then
+      "$_TIMEOUT_CMD" "$PER_ISSUE_BUDGET" claude -p --dangerously-skip-permissions "$prompt" > "$log_file" 2>&1
+    else
+      claude -p --dangerously-skip-permissions "$prompt" > "$log_file" 2>&1
+    fi
   ) </dev/null || exit_code=$?
 
   local finished="$(date +%H:%M)"

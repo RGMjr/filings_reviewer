@@ -30,6 +30,10 @@ from src.extraction_v2.models import (
     ChartAnnotation,
     ImageAsset,
     ImageClassification,
+    SectionType,
+    Segment,
+    SegmentSourceType,
+    SegmentType,
     Table,
 )
 
@@ -37,6 +41,43 @@ if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
 
 logger = logging.getLogger(__name__)
+
+
+def _synthesize_ocr_segment(
+    *,
+    image: ImageAsset,
+    context: pipeline.PipelineContext,
+    ocr_text: str,
+) -> Segment:
+    """Build a ``Segment`` from OCR'd image text.
+
+    Shared by Path A (full-page-scan) and Path B (keyword pre-scan
+    promotion). The resulting segment flows through the normal text
+    candidate-generation pipeline, so facts derived from it are
+    indistinguishable from HTML-sourced facts except via the segment's
+    ``source_type='image_ocr'`` + ``source_img_id`` provenance fields.
+
+    - ``section_type`` is set to ``PRESENTATION_SLIDE`` (valid under the
+      live schema's CHECK constraint) so downstream FP rules gated on
+      section context do not mis-fire on UNKNOWN.
+    - ``dom_locator`` uses a synthetic ``image:<img_id>`` form because
+      the image has no HTML DOM position.
+    - ``sequence`` is assigned after the current max so downstream
+      ordering stays monotonic even when multiple OCR'd segments are
+      appended to a filing with existing HTML segments.
+    """
+    next_sequence = max((s.sequence for s in context.segments), default=-1) + 1
+    return Segment(
+        doc_id=str(context.filing_id) if context.filing_id else "",
+        segment_type=SegmentType.PARAGRAPH,
+        text=ocr_text,
+        dom_locator=f"image:{image.img_id}",
+        section_path=list(image.section_path or []),
+        section_type=SectionType.PRESENTATION_SLIDE,
+        sequence=next_sequence,
+        source_type=SegmentSourceType.IMAGE_OCR,
+        source_img_id=image.img_id,
+    )
 
 
 class OCRExtractionStage:
@@ -59,6 +100,39 @@ class OCRExtractionStage:
     # Cost control limits (per document)
     MAX_OCR_CALLS_PER_DOCUMENT: int = 20
     MAX_CHART_CALLS_PER_DOCUMENT: int = 10
+    # Full-page-scan (Path A) cap. Longest known PayPal deck is ~16 pages;
+    # 30 gives headroom. Exceeding this halts processing with a warning.
+    MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT: int = 30
+    # Keyword pre-scan (Path B) cap. Pre-scan runs on ambiguous UNKNOWN
+    # images only; 10/filing bounds worst-case cost at ~$1 (10 pre-scans +
+    # up to 10 follow-on chart/table calls, shared chart budget).
+    MAX_PRESCAN_CALLS_PER_DOCUMENT: int = 10
+
+    # Tier-1 keyword regex used by Path B to decide whether an OCR'd
+    # ambiguous image should escalate to the chart/table extraction path.
+    # Curated from the Tier-1 metric list in CLAUDE.md plus phrases that
+    # appear in ``config/metric_keywords.yaml`` ``patterns``. Kept short
+    # and precision-first — false negatives are tolerable (the image just
+    # stays UNKNOWN), but false positives spend an extra vision call.
+    TIER1_KEYWORDS_RE: re.Pattern[str] = re.compile(
+        r"\b("
+        r"cohort|cohorts"
+        r"|retention\s+rate|customer\s+retention|net\s+revenue\s+retention|nrr"
+        r"|gross\s+revenue\s+retention|grr|dollar\s+retention"
+        r"|lifetime\s+value|ltv"
+        r"|customer\s+acquisition\s+cost|cac"
+        r"|ltv\s*(?:/|to|:)\s*cac"
+        r"|revenue\s+concentration|customer\s+concentration"
+        r"|top\s+\d+\s+customers?"
+        r"|revenue\s+by\s+cohort|cohort\s+revenue"
+        r"|gross\s+margin\s+by\s+cohort"
+        r"|transactions\s+by\s+cohort"
+        r"|balance\s+by\s+cohort"
+        r"|new\s+customers\s+acquired"
+        r"|customers\s+by\s+tenure"
+        r")\b",
+        re.IGNORECASE,
+    )
 
     def __init__(
         self,
@@ -79,6 +153,8 @@ class OCRExtractionStage:
         self._api_call_count = 0
         self._ocr_call_count = 0
         self._chart_call_count = 0
+        self._full_page_ocr_call_count = 0
+        self._prescan_call_count = 0
 
     @property
     def vision_client(self) -> Any:
@@ -797,6 +873,161 @@ time periods, or definitions that help interpret the chart's data.
             asset.requires_manual_capture = True
             raise
 
+    def process_full_page_scan(
+        self,
+        asset: ImageAsset,
+        context: pipeline.PipelineContext,
+    ) -> bool:
+        """Text-OCR a full-page-scan image and append a synthesized segment.
+
+        Used by Path A (full-page-scan filings) and, post-promotion, by
+        Path B (image-level Tier-1 keyword pre-scan). Always writes
+        ``asset.ocr_text``; synthesizes a ``Segment`` and appends it to
+        ``context.segments`` when the OCR returns any text.
+
+        Args:
+            asset: Image to OCR. ``asset.file_path`` must be populated.
+            context: Active pipeline context — segments list and image
+                dimensions used for stable ordering.
+
+        Returns:
+            True if the vision response reported ``contains_chart=true``
+            (caller may then dispatch the existing chart-extraction path
+            on the same asset as a second pass). False otherwise.
+
+        Raises:
+            FileNotFoundError: If image bytes cannot be fetched.
+            ValueError: If ``asset.file_path`` is empty.
+        """
+        from src.infra.image_storage import get_image_storage
+
+        if not asset.file_path:
+            raise ValueError(f"Image {asset.img_id} has no file_path")
+
+        storage = get_image_storage()
+        try:
+            image_bytes = storage.get_bytes(asset.file_path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
+
+        try:
+            extraction = self.vision_client.analyze_image_for_text(image_bytes=image_bytes)
+        except Exception as e:
+            logger.error(f"Error during full-page OCR for {asset.img_id}: {e}", exc_info=True)
+            asset.processed = True
+            asset.confidence = 0.0
+            asset.requires_manual_capture = True
+            return False
+
+        asset.ocr_text = extraction.text or ""
+        asset.processed = True
+
+        if extraction.text.strip():
+            asset.confidence = 1.0
+            asset.requires_manual_capture = False
+            segment = _synthesize_ocr_segment(
+                image=asset,
+                context=context,
+                ocr_text=extraction.text,
+            )
+            context.segments.append(segment)
+            logger.info(
+                "process_full_page_scan: %s -> %d chars, contains_chart=%s",
+                asset.img_id,
+                len(extraction.text),
+                extraction.contains_chart,
+            )
+        else:
+            asset.confidence = 0.0
+            asset.requires_manual_capture = True
+            logger.warning("process_full_page_scan: %s returned empty text", asset.img_id)
+
+        return bool(extraction.contains_chart)
+
+    def _prescan_ambiguous_images(self, context: pipeline.PipelineContext) -> None:
+        """Run a cheap text-OCR pre-scan on ambiguous UNKNOWN images.
+
+        Path B: for filings that did NOT trigger Path A, this escalates
+        embedded image tables that the heuristic triage couldn't classify
+        from filename / nearby_text. Only runs on images where the existing
+        triage already indicated "maybe useful, couldn't tell" — i.e.,
+        ``classification == UNKNOWN`` and ``relevance_score`` in [0.2, 0.3).
+
+        Cost is bounded by ``MAX_PRESCAN_CALLS_PER_DOCUMENT`` (10/filing).
+        """
+        if not context.config or not getattr(context.config, "enable_image_keyword_prescan", False):
+            return
+        if getattr(context, "full_page_scan_mode", False):
+            # Path A already handled the filing; pre-scan would double-bill.
+            return
+
+        for asset in context.images:
+            if self._prescan_call_count >= self.MAX_PRESCAN_CALLS_PER_DOCUMENT:
+                logger.warning(
+                    "Pre-scan call limit (%d) reached",
+                    self.MAX_PRESCAN_CALLS_PER_DOCUMENT,
+                )
+                break
+            if asset.classification != ImageClassification.UNKNOWN:
+                continue
+            if not (0.2 <= (asset.relevance_score or 0.0) < 0.3):
+                continue
+            if not asset.file_path:
+                continue
+
+            from src.infra.image_storage import get_image_storage
+
+            storage = get_image_storage()
+            try:
+                image_bytes = storage.get_bytes(asset.file_path)
+            except FileNotFoundError:
+                logger.debug(
+                    "pre-scan: image file not found for %s (%s)",
+                    asset.img_id,
+                    asset.file_path,
+                )
+                continue
+
+            try:
+                extraction = self.vision_client.analyze_image_for_text(image_bytes=image_bytes)
+            except Exception as e:
+                logger.warning("pre-scan: vision call failed for %s: %s", asset.img_id, e)
+                continue
+
+            self._prescan_call_count += 1
+            self._api_call_count += 1
+
+            text = extraction.text or ""
+            # Always record ocr_text for audit, even when we don't promote.
+            asset.ocr_text = text
+
+            if not text.strip() or not self.TIER1_KEYWORDS_RE.search(text):
+                logger.debug(
+                    "pre-scan: no Tier-1 keyword in %s (len=%d)",
+                    asset.img_id,
+                    len(text),
+                )
+                continue
+
+            # Tier-1 signal found: promote the image and synthesize a
+            # segment so downstream candidate_generation sees the text.
+            if extraction.contains_chart:
+                asset.classification = ImageClassification.CHART
+            else:
+                asset.classification = ImageClassification.TABLE_IMAGE
+            asset.relevance_score = max(asset.relevance_score or 0.0, 0.6)
+            asset.requires_manual_capture = False
+
+            segment = _synthesize_ocr_segment(image=asset, context=context, ocr_text=text)
+            context.segments.append(segment)
+
+            logger.info(
+                "pre-scan: promoted %s to %s (Tier-1 match, %d chars)",
+                asset.img_id,
+                asset.classification.value,
+                len(text),
+            )
+
     def process(self, context: pipeline.PipelineContext) -> pipeline.StageResult:
         """
         Process high-relevance images with OCR/Vision.
@@ -825,6 +1056,8 @@ time periods, or definitions that help interpret the chart's data.
         self._api_call_count = 0
         self._ocr_call_count = 0
         self._chart_call_count = 0
+        self._full_page_ocr_call_count = 0
+        self._prescan_call_count = 0
 
         processed_count = 0
         skipped_count = 0
@@ -852,6 +1085,12 @@ time periods, or definitions that help interpret the chart's data.
                     metadata={"message": "No images to process"},
                 )
 
+            # Path B: image-level Tier-1 keyword pre-scan. Runs BEFORE the
+            # main per-image loop so promoted images are processed under
+            # their new CHART / TABLE_IMAGE classification in the same
+            # invocation. Skipped on Path-A filings.
+            self._prescan_ambiguous_images(context)
+
             # Process each relevant image
             for asset in context.images:
                 # Check if should process
@@ -877,6 +1116,17 @@ time periods, or definitions that help interpret the chart's data.
                             logger.warning(msg)
                         skipped_count += 1
                         continue
+                elif asset.classification == ImageClassification.FULL_PAGE_SCAN:
+                    if self._full_page_ocr_call_count >= self.MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT:
+                        msg = (
+                            f"Full-page OCR call limit "
+                            f"({self.MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT}) reached"
+                        )
+                        if msg not in warnings:
+                            warnings.append(msg)
+                            logger.warning(msg)
+                        skipped_count += 1
+                        continue
 
                 # Process based on classification
                 try:
@@ -889,6 +1139,19 @@ time periods, or definitions that help interpret the chart's data.
                     elif asset.classification == ImageClassification.CHART:
                         self.process_chart(asset)
                         self._chart_call_count += 1
+                    elif asset.classification == ImageClassification.FULL_PAGE_SCAN:
+                        contains_chart = self.process_full_page_scan(asset, context)
+                        self._full_page_ocr_call_count += 1
+                        # Two-pass: if the page contains a chart, run the
+                        # existing chart extraction on the same image.
+                        # Respects the shared chart call budget.
+                        if (
+                            contains_chart
+                            and self._chart_call_count < self.MAX_CHART_CALLS_PER_DOCUMENT
+                        ):
+                            self.process_chart(asset)
+                            self._chart_call_count += 1
+                            self._api_call_count += 1
                     else:
                         # Unknown type - skip
                         logger.debug(
@@ -928,6 +1191,8 @@ time periods, or definitions that help interpret the chart's data.
                 metadata={
                     "ocr_calls": self._ocr_call_count,
                     "chart_calls": self._chart_call_count,
+                    "full_page_ocr_calls": self._full_page_ocr_call_count,
+                    "prescan_calls": self._prescan_call_count,
                     "total_api_calls": self._api_call_count,
                     "manual_capture_count": manual_capture_count,
                     "skipped_count": skipped_count,

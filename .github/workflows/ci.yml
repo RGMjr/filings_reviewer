@@ -161,28 +161,58 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/filings_analysis_test
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check for integration-relevant changes
+        id: filter
+        # Skip Postgres + migrations when EVERY changed path is in the docs/skills/meta
+        # allowlist. Any src/, tests/, config/, sql/, requirements*, pyproject,
+        # uv.lock, or .github/workflows change still runs the full suite.
+        # Conservative — err toward running when in doubt.
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            base="origin/${{ github.base_ref }}"
+          else
+            base="HEAD^"
+          fi
+          if git diff --name-only "$base"...HEAD \
+              | grep -vE '^(docs/|\.claude/|CLAUDE\.md|README\.md|\.gitignore|\.github/CODEOWNERS)' \
+              | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Integration Tests skipped::No integration-relevant paths changed."
+          fi
 
       - uses: astral-sh/setup-uv@v7
+        if: steps.filter.outputs.run == 'true'
 
       - name: Install dependencies
+        if: steps.filter.outputs.run == 'true'
         run: uv sync --extra dev
 
       - name: Apply migrations
+        if: steps.filter.outputs.run == 'true'
         run: uv run python3 scripts/apply_migrations.py --test
 
       - name: Link-integrity check
+        if: steps.filter.outputs.run == 'true'
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: uv run python3 scripts/validate_database_urls.py --fail-on-errors
 
       - name: Chart-image referential integrity
+        if: steps.filter.outputs.run == 'true'
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: uv run python3 scripts/check_image_referential_integrity.py
 
       - name: Run integration tests
+        if: steps.filter.outputs.run == 'true'
         run: >-
-          uv run pytest tests/integration/ -x -q --tb=short --no-cov
+          uv run pytest tests/integration/ -n auto -x -q --tb=short --no-cov
           --ignore=tests/integration/test_gold_standard_regression.py
           --ignore=tests/integration/test_gold_standard_coverage.py
 

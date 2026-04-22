@@ -251,7 +251,9 @@ def create_test_v2_fact(
         "period_end": "2023-12-31",
         "source_type": "html_table",
         "source_locator": _json.dumps({"dom_locator": "/html/body/table[1]"}),
-        "evidence_pack": _json.dumps({"snippet_html": "<td>10,000</td>", "context_before": "We had"}),
+        "evidence_pack": _json.dumps(
+            {"snippet_html": "<td>10,000</td>", "context_before": "We had"}
+        ),
         "confidence": 0.85,
         "extraction_method": "exact_match",
         "requires_review": True,
@@ -331,16 +333,17 @@ FIXTURES_DIR = Path(__file__).parent.parent.parent / "data" / "fixtures"
 
 
 @pytest.fixture(scope="session")
-def test_db_url():
+def test_db_url(_isolate_xdist_worker_database):
     """
     Get test database URL from environment.
 
     Set TEST_DATABASE_URL environment variable to a test database.
     Default: postgresql://localhost/filings_analysis_test
+
+    Depends on ``_isolate_xdist_worker_database`` so the per-worker URL
+    rewrite is guaranteed to have happened before this fixture captures it.
     """
-    return os.getenv(
-        "TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test"
-    )
+    return os.getenv("TEST_DATABASE_URL", "postgresql://localhost/filings_analysis_test")
 
 
 @pytest.fixture(scope="session")
@@ -362,7 +365,46 @@ def test_db_adapter(test_db_url, _terminate_stale_connections):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _terminate_stale_connections():
+def _isolate_xdist_worker_database():
+    """Give each pytest-xdist worker its own Postgres DB so parallel test
+    runs don't share state (TRUNCATEs, FK cascades, fixture seed rows).
+
+    Rewrites ``os.environ["TEST_DATABASE_URL"]`` at session start so the
+    fixture chain and the ~13 call-sites that read the env var directly
+    both pick up the worker-specific URL. No-op in sequential mode
+    (``PYTEST_XDIST_WORKER`` unset). DBs are left on disk between runs so
+    the session migration apply stays cheap on repeat invocations.
+    """
+    base_url = os.getenv("TEST_DATABASE_URL")
+    if not base_url:
+        return
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        return
+
+    from urllib.parse import urlparse, urlunparse
+
+    import psycopg
+
+    parsed = urlparse(base_url)
+    base_db = parsed.path.lstrip("/")
+    worker_db = f"{base_db}_{worker}"
+    admin_url = urlunparse(parsed._replace(path="/postgres"))
+
+    with psycopg.connect(admin_url, autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (worker_db,))
+            if not cur.fetchone():
+                try:
+                    cur.execute(f'CREATE DATABASE "{worker_db}"')
+                except psycopg.errors.DuplicateDatabase:
+                    pass  # racing worker won the create — benign
+
+    os.environ["TEST_DATABASE_URL"] = urlunparse(parsed._replace(path=f"/{worker_db}"))
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _terminate_stale_connections(_isolate_xdist_worker_database):
     """Kill zombie connections from previous test runs to prevent deadlocks.
 
     Terminates connections that have been idle (or idle-in-transaction) for
@@ -376,6 +418,7 @@ def _terminate_stale_connections():
     if not url:
         return
     import psycopg
+
     try:
         conn = psycopg.connect(url)
         conn.autocommit = True
@@ -394,22 +437,45 @@ def _terminate_stale_connections():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _apply_migrations_to_test_db(_terminate_stale_connections):
-    """Apply all migrations to test DB at session start (idempotent)."""
+def _apply_migrations_to_test_db(_isolate_xdist_worker_database, _terminate_stale_connections):
+    """Apply all migrations to test DB at session start (idempotent).
+
+    Under pytest-xdist, multiple workers call this concurrently against
+    their own per-worker DBs. Most migrations only touch per-DB catalogs
+    and are safe to apply in parallel, but migration 37 creates/alters the
+    cluster-level ``metabase_ro`` role and hits ``pg_authid`` — which races
+    across workers as ``tuple concurrently updated``. Serialize apply with
+    a cluster-wide advisory lock held on the ``postgres`` admin DB.
+    """
     url = os.getenv("TEST_DATABASE_URL")
     if not url:
         return  # Skip if no test DB configured
 
+    from urllib.parse import urlparse, urlunparse
+
+    import psycopg
+
     from scripts.apply_migrations import MIGRATIONS, apply_migration, bootstrap_ledger
 
-    db = DatabaseAdapter(url)
-    sql_dir = Path(__file__).parent.parent.parent / "sql"
+    # Lock key is arbitrary but must be stable across workers.
+    MIGRATION_LOCK_KEY = 0x4949_7878_7800_0078  # "II xx ..." — Issue 78
 
-    bootstrap_ledger(db)
-    for migration_name in MIGRATIONS:
-        sql_file = sql_dir / migration_name
-        if sql_file.exists():
-            apply_migration(db, sql_dir, migration_name)
+    admin_url = urlunparse(urlparse(url)._replace(path="/postgres"))
+    lock_conn = psycopg.connect(admin_url, autocommit=True)
+    try:
+        with lock_conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
+
+        db = DatabaseAdapter(url)
+        sql_dir = Path(__file__).parent.parent.parent / "sql"
+
+        bootstrap_ledger(db)
+        for migration_name in MIGRATIONS:
+            sql_file = sql_dir / migration_name
+            if sql_file.exists():
+                apply_migration(db, sql_dir, migration_name)
+    finally:
+        lock_conn.close()  # closing the session releases the advisory lock
 
 
 @pytest.fixture(scope="function")
@@ -604,9 +670,7 @@ def mock_sec_client_with_fixtures(all_fixtures):
     Returns:
         MockSECClient configured with test fixtures
     """
-    filing_metadata_list = [
-        metadata_to_filing_metadata(fixture) for fixture in all_fixtures
-    ]
+    filing_metadata_list = [metadata_to_filing_metadata(fixture) for fixture in all_fixtures]
 
     return MockSECClient(mock_filings=filing_metadata_list)
 
@@ -615,7 +679,9 @@ def mock_sec_client_with_fixtures(all_fixtures):
 # V2 Gold Standard Regression Test Fixtures
 # =============================================================================
 
-V2_BASELINE_PATH = Path(__file__).parent.parent.parent / "data" / "gold_standard" / "v2_baseline.json"
+V2_BASELINE_PATH = (
+    Path(__file__).parent.parent.parent / "data" / "gold_standard" / "v2_baseline.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -696,4 +762,3 @@ def unified_report():
 
     runner = UnifiedComparisonRunner(skip_image_comparison=True)
     return runner.run()
-

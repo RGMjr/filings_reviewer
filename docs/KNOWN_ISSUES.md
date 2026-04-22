@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-22, #77 partial code fix in progress (root cause confirmed: `OCRExtractionStage._download_missing_images` at `src/extraction_v2/stages/ocr_extraction.py:199-274` writes bytes to local disk but never calls `storage.put_bytes` — invisible in dev/LocalFS, broken in prod/R2; ships `put_bytes` call mirroring `ingestion.py:956-969` + new unit test; HOOD prod backfill still pending manual auth-required operation); #79 opened for Chewy GS regression caused by lxml 6.0.2→6.1.0 bump (PRs #81/#82, CVE-2026-41066) — `cm_ltv_to_cac_ratio` drops to 0% on Chewy, P −4.5pp / F1 −1.9pp company-level; bisected by elimination (no extraction code commits since 2026-04-19 baseline date, results bit-identical across runs, identical with R2 on/off); #80 opened for GS validator lacking a safeguard against unintended prod R2 writes (sourcing prod `.env` to run the validator silently triggers `put_bytes` to live R2 via the new OCR-stage upload — surfaced 2026-04-22 when this PR's diagnostic uploaded Chewy bytes by accident). #9 resolved (Snap Filing ID 32/33 — local relabel + real Snap S-1/A re-ingested; FILING_MAP updated; Partially-Resolved row removed; PR #72 replay after post-scrub branch loss); #77 opened earlier 2026-04-22 for R2 chart-image bytes missing on HOOD S-1 (second layer of #72 — all 17 chart images fail with `FileNotFoundError` in OCR stage after PR #87's `boto3` fix unblocked ingestion; either bytes were never uploaded or `pipeline/` key-prefix divergence between `infrastructure.md` and `v2_image_assets.file_path`). #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.) (Renumbered from #78/#79 in this PR to avoid collision with upstream's #78 for the integration-tests xdist blocker, which landed first via merge.) #78 opened for integration-tests xdist fixture isolation blocker (discovered during CI speedup investigation — FK violations + CASCADE collisions prevent `-n auto` parallelization, keeping Integration Tests at ~3.6 min on the required-check critical path); #9 resolved (Snap Filing ID 32/33 — local relabel + real Snap S-1/A re-ingested; FILING_MAP updated; Partially-Resolved row removed; PR #72 replay after post-scrub branch loss); #77 opened for R2 chart-image bytes missing on HOOD S-1 (second layer of #72 — all 17 chart images fail with `FileNotFoundError` in OCR stage after PR #87's `boto3` fix unblocked ingestion; either bytes were never uploaded or `pipeline/` key-prefix divergence between `infrastructure.md` and `v2_image_assets.file_path`). #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-22, #77 partial code fix in PR #102 (root cause confirmed: `OCRExtractionStage._download_missing_images` at `src/extraction_v2/stages/ocr_extraction.py:199-274` writes bytes to local disk but never calls `storage.put_bytes` — invisible in dev/LocalFS, broken in prod/R2; ships `put_bytes` call mirroring `ingestion.py:956-969` + new unit test; HOOD prod backfill still pending manual auth-required operation); #80 opened for GS validator lacking a safeguard against unintended prod R2 writes (sourcing prod `.env` to run the validator silently triggers `put_bytes` to live R2 via the new OCR-stage upload — surfaced 2026-04-22 when PR #102's diagnostic uploaded Chewy bytes by accident); #81 opened for PayPal pre-2024 8-K page-scan coverage (full-page-OCR feature-flagged solution landed, awaiting rollout), #82 opened for missing full-page-OCR pipeline integration test, #83 opened for `TIER1_KEYWORDS_RE` drift risk vs `config/metric_keywords.yaml`; #78 resolved — per-worker Postgres DBs for pytest-xdist workers (advisory-lock around migration 37's cluster-level DDL to avoid `tuple concurrently updated`); Integration Tests now runs `-n auto` at ~55s vs ~3.6 min sequential. #78 opened for integration-tests xdist fixture isolation blocker (discovered during CI speedup investigation — FK violations + CASCADE collisions prevent `-n auto` parallelization, keeping Integration Tests at ~3.6 min on the required-check critical path); #9 resolved (Snap Filing ID 32/33 — local relabel + real Snap S-1/A re-ingested; FILING_MAP updated; Partially-Resolved row removed; PR #72 replay after post-scrub branch loss); #77 opened for R2 chart-image bytes missing on HOOD S-1 (second layer of #72 — all 17 chart images fail with `FileNotFoundError` in OCR stage after PR #87's `boto3` fix unblocked ingestion; either bytes were never uploaded or `pipeline/` key-prefix divergence between `infrastructure.md` and `v2_image_assets.file_path`). #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -21,9 +21,8 @@ This document tracks known issues, limitations, and planned improvements identif
 |-------|--------|-------|
 | Low Farfetch Recall (Issue #2) | Re-diagnosed umbrella | P=50% R=37% F1=42% on 2026-04-18; superseded by sub-issues #14–#19 |
 | Migrations not auto-applied on Render deploy (Issue #66) | Open | PR #48 merged `sql/39` but Render didn't run `apply_migrations.py`; worker crashed with `UndefinedTable` until manual apply |
-| Integration Tests can't run under pytest-xdist — shared Postgres fixtures (Issue #78) | Open | FK violations + CASCADE collisions block `-n auto`; blocks the single biggest remaining CI speedup (~1.5 min off required-check critical path) |
-| Chewy GS regression after lxml 6.0.2→6.1.0 bump (Issue #79) | Open | Tier-1 `cm_ltv_to_cac_ratio` drops to 0% on Chewy; P −4.5pp / F1 −1.9pp company-level. Caused by lxml minor-version bump (PRs #81/#82, CVE-2026-41066), not by extraction code. Blocks next clean GS baseline refresh after #77 prod backfill |
-| GS validator has no safeguard against unintended prod R2 writes (Issue #80) | Open | Sourcing prod `.env` to run the validator triggers `put_bytes` against the live R2 bucket via the OCR stage — silent prod state mutation. No env-scoped guard, no dry-run, no opt-in flag. Surfaced 2026-04-22 when this PR's diagnostic uploaded Chewy bytes by accident |
+| PayPal pre-2024 8-Ks have 0 facts — page-image decks (Issue #81) | Feature-flagged fix landed, awaiting rollout | 12 PayPal 8-Ks with 0 segments / 199 unprocessed JPGs. Full-page-OCR (Path A) + keyword pre-scan (Path B), both default-off. See `docs/operations/full-page-ocr-runbook.md` |
+| GS validator has no safeguard against unintended prod R2 writes (Issue #80) | Open | Sourcing prod `.env` to run the validator triggers `put_bytes` against the live R2 bucket via the OCR stage — silent prod state mutation. No env-scoped guard, no dry-run, no opt-in flag. Surfaced 2026-04-22 when PR #102's diagnostic uploaded Chewy bytes by accident |
 
 ### Open — Low Severity
 
@@ -46,8 +45,9 @@ This document tracks known issues, limitations, and planned improvements identif
 | `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
 | CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
 | Integration Tests job has no path filter (Issue #71) | Open | Docs-only / `.claude/`-only PRs still spin up Postgres + migrations (~3–6 min); wall-time save |
-| `.github` PR template case collision (Issue #73) | Open | Duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` (identical blobs) trigger fresh-clone warnings on macOS/Windows |
 | `.claude/scheduled_tasks.lock` not gitignored (Issue #74) | Open | Runtime lockfile shows up as untracked in every `git status`; not covered by any `.gitignore` rule |
+| Full-page-OCR pipeline integration test missing (Issue #82) | Open | Unit coverage complete; stitched-pipeline test deferred until a real PayPal fixture is available (local test DB empty) |
+| `TIER1_KEYWORDS_RE` drifts from `config/metric_keywords.yaml` (Issue #83) | Open | Hand-curated regex; adding a Tier-1 metric requires two edits in lockstep. Precision-first but invites silent under-match |
 
 ### Partially Resolved
 
@@ -106,7 +106,7 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #55   | skip     | S         | —                                                                       | Data cleanup; needs inspection of stuck filings               |
 | #58   | review   | S         | `src/filing_fetcher/*.py tests/unit/filing_fetcher/*.py`                | 8-K Exhibit 99.1 fetch; feature add, needs validator run      |
 | #59   | review   | S         | `src/extraction_v2/classifier*.py tests/unit/extraction_v2/*classifier*`| New classifier patterns; FP risk                              |
-| #60   | safe     | XS        | `src/universe/onboarding.py tests/unit/universe/test_onboarding.py`     | SIC-filter JOIN in detect_universe_gaps                       |
+| #60   | skip     | XS        | —                                                                       | Resolved 2026-04-21; retained in table as audit trail          |
 | #62   | review   | S         | `docs/operations/* src/universe/onboarding_runner.py`                   | Docs + optional admin flag; needs design call                 |
 | #63   | skip     | S         | —                                                                       | Monkey-patch integration test; mid-complexity                 |
 | #66   | review   | S         | `render.yaml .claude/rules/infrastructure.md`                           | Wire apply_migrations into Render deploy; infra-change risk   |
@@ -114,12 +114,10 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #69   | review   | S         | `Dockerfile.nightly-sweep`                                              | Pin claude + gh versions; needs validation step               |
 | #71   | safe     | XS        | `.github/workflows/ci.yml`                                              | Add path filter to integration-tests, mirroring ui-e2e        |
 | #72   | review   | S         | `pyproject.toml uv.lock`                                                | Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate fix before baseline refresh |
-| #73   | safe     | XS        | `.github/PULL_REQUEST_TEMPLATE.md .github/pull_request_template.md`     | Delete one of the duplicate templates; pick lowercase per GH convention |
 | #74   | safe     | XS        | `.gitignore`                                                            | One-line addition to root `.gitignore`                        |
 | #75   | skip     | S         | `tests/ui/*.spec.js tests/ui/test_server.py`                            | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
 | #76   | safe     | S         | `tests/integration/test_db_filings_reviewers.py`                        | New integration test for filings-list reviewer aggregate; isolated file |
 | #77   | skip     | M         | —                                                                       | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; partial code fix shipped, prod backfill needs explicit auth (R2 + Neon writes) |
-| #79   | skip     | M         | —                                                                       | Chewy lxml regression — needs per-company audit + judgment call on fix vs absorb in next baseline refresh; CVE-2026-41066 means revert is not an option |
 | #80   | review   | S         | `src/infra/image_storage.py src/gold_standard/v2_validator.py .claude/rules/infrastructure.md` | Add env-scoped guard against unintended prod R2 writes from CLI tools; design call (storage-layer vs validator-layer) needed |
 
 ---
@@ -684,6 +682,40 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ---
 
+## 81. PayPal Pre-2024 8-Ks Extract No Facts — Body Is Page-Image Scans
+
+**Status**: Feature-flagged solution landed (`FULL_PAGE_OCR_ENABLED`); awaiting rollout
+**Severity**: Medium — 12 PayPal 8-Ks have 0 facts; also affects any issuer that files 8-Ks as page-image decks
+**Discovered**: 2026-04-22 (investigation triggered by routine PayPal coverage review)
+
+### Problem
+
+PayPal's pre-2024 8-K filings (CIK `0001633917`, 12 filings 2021–2023)
+are submitted as page-image decks: each "page" is a JPG (~1055×1365),
+there is no HTML body text to segment. The existing V2 pipeline
+classifies these images as `UNKNOWN` (below `MIN_RELEVANCE_FOR_PROCESSING=0.3`)
+so they never reach the OCR stage, and `context.segments` is empty
+so `candidate_generation` runs over nothing. DB state: 0 segments,
+199 JPGs unprocessed, 0 facts, 0 review decisions across these 12
+filings.
+
+### Resolution
+
+Full-page-scan OCR (Path A) + image-level Tier-1 keyword pre-scan
+(Path B), both default-off, landed on the `full-page-ocr` branch.
+See `.claude/rules/v2-pipeline.md` for the pipeline-level design and
+`docs/operations/full-page-ocr-runbook.md` for the operator runbook
+(detector thresholds, dry-run/backfill workflow, verification SQL,
+rollback).
+
+### Next Steps
+
+1. Merge the feature branch with both flags default-off; CI green.
+2. Dev smoke test on one PayPal 8-K; eyeball segments + facts.
+3. Enable `FULL_PAGE_OCR_ENABLED=true` in prod; run
+   `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
+4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
+   and re-extract 5 investor-deck-style filings to exercise Path B.
 
 ---
 
@@ -1011,59 +1043,14 @@ This applies to **every** prod filing that went through `_download_missing_image
 1. **R2 `HeadObject` against both prefix variants** — `1783879/000162828021019902/hood-20211008_g6.jpg` AND `pipeline/1783879/000162828021019902/hood-20211008_g6.jpg`. Distinguishes the writer-without-upload bug (this PR's fix) from any residual Case A key-format divergence. Requires real R2 credentials.
 2. **HOOD chart backfill** — `python3 scripts/batch_v2_extraction.py --filing-ids-file <one-line file with HOOD's filing_id> --chart-only` against prod (Neon `$DATABASE_URL` + R2 creds). With this PR's fix, `_download_missing_images` will re-fetch from EDGAR and upload to R2 in the same run. Pre-flight: confirm `chart_decision_count` for HOOD chart facts is zero (otherwise add `--force-reextract` only after explicit confirmation, since it purges reviewer decisions).
 3. **Repo-wide audit** — `scripts/check_image_referential_integrity.py` against prod (Neon) DB, looking for class-C violations beyond HOOD. Every filing routed through `_download_missing_images` since PR #34 likely has the same orphan-key state. Decide between bulk chart-only re-extract vs. a targeted backfill script that walks `v2_image_assets` rows + uploads from local cache where present.
-4. **Refresh the v2 gold-standard baseline** once HOOD `cm_revenue_by_cohort` + `cm_balance_by_cohort` recover chart facts. **Only then** do the regression deltas return to the pre-scrub 0.3143 recall target. (NOTE: a separate Chewy regression has appeared since baseline date — see Issue #79 — which must also be addressed before the next baseline refresh.)
+4. **Refresh the v2 gold-standard baseline** once HOOD `cm_revenue_by_cohort` + `cm_balance_by_cohort` recover chart facts. **Only then** do the regression deltas return to the pre-scrub 0.3143 recall target.
 5. **Investigate Case A (`pipeline/` prefix)** — `data/image_cache/pipeline/` exists locally as a legacy layout, but no live writer code constructs `pipeline/`-prefixed keys. Either dead-code cleanup or a third-party prod path; needs a `git log -S "pipeline/"` archaeology pass. Reconcile `infrastructure.md` and `src/infra/image_storage.py:8` docstrings with whichever convention is canonical (probably remove the `pipeline/` prefix from docs since live code never uses it).
 6. **Hygiene follow-up**: add a CI smoke that runs the chart stage on at least one fixture filing end-to-end under `uv run` against a mock R2 (`moto[s3]` is already in `requirements-dev.txt`). Would have caught both the boto3-missing case AND this writer-without-upload regression at PR-time.
 
-Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracking), #42 (resolved — `_download_missing_images` double-write collapse), #79 (Chewy lxml regression — separate blocker for next baseline refresh). PR #87 fix commit `8713f51`.
+Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracking), #42 (resolved — `_download_missing_images` double-write collapse). PR #87 fix commit `8713f51`.
 
 ---
 
-## 79. Chewy GS Regression After lxml 6.0.2 → 6.1.0 Bump
-
-**Status**: Open
-**Severity**: Medium (Tier 1 metric `cm_ltv_to_cac_ratio` drops to 0% on Chewy; blocks next clean GS baseline refresh; precision −4.5pp / F1 −1.9pp company-level)
-**Discovered**: 2026-04-22 (during Issue #77 PR — `--fail-on-regression` fired on Chewy; bisected to lxml bump in PRs #81/#82)
-
-### Problem
-
-Running `python3 -m src.gold_standard.v2_validator --fail-on-regression` against the 2026-04-19 baseline returns:
-
-```
-ComparisonResult(precision_delta=+0.0118, recall_delta=+0.0210, f1_delta=+0.0180,
-                 has_regression=True,
-                 regressed_companies=['Chewy, Inc.'], regressed_metrics=[])
-```
-
-Overall metrics IMPROVE; only Chewy company-level regresses (P 0.583 → 0.538, R 0.500 → 0.500, F1 0.538 → 0.519). The Tier-1 driver of the F1 drop is `cm_ltv_to_cac_ratio` going to 0% (a chart-source FP `4.0x` mis-bound vs. gold `2.4`); plus text-source FPs in `cm_customers_period_end`, `cm_active_customers_total`, `cm_revenue_per_customer` that look like extraction picking different HTML cells than baseline.
-
-### Root cause
-
-PRs #81 and #82 (`chore(deps): bump lxml to >=6.1.0 (CVE-2026-41066)`) bumped lxml from `6.0.2 → 6.1.0` between the baseline run (2026-04-19) and now (2026-04-22). lxml is core to ingestion (`src/extraction_v2/stages/ingestion.py`) and table reconstruction (`src/extraction_v2/stages/table_reconstruction.py`); a minor-version bump is enough to shift HTML parsing edge cases (whitespace, XPath resolution, table cell promotion). Chewy's regressed FPs are all `src=text` from `candidate_generation` over lxml-parsed segments — exactly the path the bump would affect.
-
-Confirmed by elimination:
-- No commits to `src/extraction_v2/`, `src/gold_standard/`, GS data, or fixtures since baseline date (`git log --since="2026-04-19" -- src/extraction_v2/ src/gold_standard/ data/gold_standard/` is empty modulo this PR's own change).
-- Results are bit-identical across back-to-back runs (no LLM/OCR cache nondeterminism at play).
-- Identical with R2 enabled vs. disabled (Issue #77's fix is provably no-op in local dev — same path, same bytes).
-- The only environmental delta since baseline that touches the extraction pipeline is the lxml version bump.
-
-### Why this matters
-
-- **Blocks the next clean GS baseline refresh.** Issue #77's prod backfill recovers HOOD chart recall; the resulting baseline refresh would lock in this Chewy regression unless it's resolved or absorbed first.
-- **Tier 1 impact is small but real.** `cm_ltv_to_cac_ratio` dropping to 0% on a single fixture is an F1 dent on Chewy specifically; it's not a project-wide Tier-1 collapse, but it is a Tier-1 regression.
-- **Likely affects other companies too.** This investigation only diff'd Chewy; other companies' tier-level metrics may have shifted (the overall numbers improved, so net positive — but a per-company audit hasn't been done).
-
-### Next Steps
-
-1. **Per-company audit.** Run `--companies` for each of the 15 GS companies and diff against baseline `by_company` numbers. Identify everyone affected (positive AND negative). Cheaper than a full bisect.
-2. **Fix or absorb.** Two paths:
-   - **Fix the lxml-compat regression** by hardening `candidate_generation` / `table_reconstruction` / `ingestion` to be lxml-version-stable (probably a small XPath or whitespace-handling tweak). Best for long-term health; effort unknown.
-   - **Absorb in the next baseline refresh** (after Issue #77 prod backfill). Sets a new floor; means accepting Chewy at the new lower numbers permanently. Lowest cost, but it's a precision/F1 give-away that the bump shouldn't really cost us.
-3. **Pin lxml** in `pyproject.toml` if a fix isn't quick. Currently `>=6.1.0`; pinning to `==6.0.2` reverts the CVE fix, which is a security regression — so this is a non-starter unless we can also confirm we're not affected by CVE-2026-41066 (worth checking the CVE scope before deciding).
-
-Cross-references: #77 (R2 image-bytes fix that surfaced this), PRs #81/#82 (lxml bumps).
-
----
 
 ## 80. GS Validator Has No Safeguard Against Unintended Prod R2 Writes
 
@@ -1089,9 +1076,15 @@ Cross-references: #77 (the bug whose fix surfaced this), #34 (R2 backend introdu
 
 ## 78. Integration Tests Cannot Run Under pytest-xdist — Shared Postgres Fixtures
 
-**Status**: Open
-**Severity**: Medium (blocks CI speedup — does not block merges today)
+**Status**: Resolved (2026-04-22)
+**Severity**: Medium (blocked CI speedup — did not block merges)
 **Discovered**: 2026-04-22 (during CI speedup investigation — local flake-check before adding `-n auto` to the `Integration Tests` CI job)
+
+### Resolution
+
+`tests/integration/conftest.py` now gives each pytest-xdist worker its own Postgres database (`filings_analysis_test_gw0`, `_gw1`, …) via a session-autouse fixture that runs before any DB-touching fixture. The fixture rewrites `os.environ["TEST_DATABASE_URL"]` at session start so both the fixture chain and the ~13 direct `os.environ.get()` readers pick up the worker URL automatically — zero application code changes. A Postgres advisory lock in `_apply_migrations_to_test_db` serialises migration 37 (`CREATE ROLE metabase_ro` + `ALTER ROLE`) across workers so concurrent `pg_authid` writes don't trigger `tuple concurrently updated`. CI (`.github/workflows/ci.yml:185`) now runs integration tests with `-n auto`. Verified locally: two back-to-back `pytest tests/integration/ -n auto` runs pass 226/226 in ~55s (vs ~3.6 min sequential on CI).
+
+### Original problem (for reference)
 
 ### Problem
 
@@ -1119,7 +1112,49 @@ Root cause: integration fixtures share Postgres state (fixed CIKs, fixed filing 
 
 ---
 
+## 82. Full-Page-OCR Pipeline Integration Test Missing
+
+**Status**: Open
+**Severity**: Low — unit coverage is comprehensive; gap is at the stitched-pipeline level
+**Discovered**: 2026-04-22 (full-page-OCR feature landing)
+
+### Problem
+
+Phase-3 unit tests exercise `ImageTriageStage._detect_full_page_scan_filing`, `OCRExtractionStage.process_full_page_scan`, and `_prescan_ambiguous_images` individually. No integration test runs the full `V2Pipeline` on a page-scan HTML fixture and asserts that `v2_segments` rows with `source_type='image_ocr'` land, downstream `v2_metric_facts` get produced, and the chart two-pass populates `chart_data` where expected. Local test DB (`filings_analysis_test`) has 0 filings so we couldn't seed from real data.
+
+### Next Steps
+
+1. Create a minimal fixture: a stub HTML document with a handful of `<img>` tags pointing at portrait-page-sized dummy JPGs, seeded under `tests/integration/fixtures/full_page_ocr/`.
+2. Add `tests/integration/extraction_v2/test_full_page_ocr_pipeline.py` that constructs a `PipelineConfig(enable_full_page_ocr=True)`, runs `V2Pipeline.process` with a mocked `VisionClient`, and asserts segment + fact + image-asset state end-to-end.
+3. Alternative: once the prod rollout backfill completes on a real PayPal 8-K, capture its vision responses as VCR cassettes and build the fixture from that.
+
+---
+
+## 83. `TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`
+
+**Status**: Open
+**Severity**: Low — discovered in current work; no immediate impact
+**Discovered**: 2026-04-22 (full-page-OCR feature landing)
+
+### Problem
+
+`OCRExtractionStage.TIER1_KEYWORDS_RE` is a hand-curated regex alternation listing Tier-1 metric phrases (cohort, retention, ltv, cac, etc.). The authoritative source of Tier-1 metrics is `config/metric_keywords.yaml` (`tier: 1` entries' `patterns` + `specific_patterns`). Adding a new Tier-1 metric today requires two edits in lockstep; miss the regex update and Path B silently under-matches.
+
+### Next Steps
+
+1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
+2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
+3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
+
+---
+
 ## Archive (Resolved Issues)
+
+### Issue #73: `.github` PR Template Case Collision
+
+**Status**: Resolved (2026-04-22)
+
+Removed the uppercase `.github/PULL_REQUEST_TEMPLATE.md` via `git -c core.ignorecase=false rm -f`, keeping the lowercase `pull_request_template.md` (matches GitHub's 2024 convention). Fresh-clone warning on case-insensitive filesystems is gone.
 
 ### Issue #60: `detect_universe_gaps` Ignores SIC Filter
 

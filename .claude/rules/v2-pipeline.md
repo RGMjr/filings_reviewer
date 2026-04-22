@@ -27,6 +27,52 @@ result = pipeline.process(html_path=Path("filing.html"), filing_id=123)
 # result.fact_count, result.facts, result.total_duration_ms
 ```
 
+## Full-Page-Scan OCR (Path A + Path B)
+
+Two orthogonal OCR entry points, both default-off, share a single
+primitive: `VisionClient.analyze_image_for_text(image_bytes)` returning
+`{"text", "contains_chart", "chart_hint"}` via `response_format={"type": "json_object"}`.
+Cache key includes the prompt, so these calls don't collide with the
+chart/table cached responses.
+
+**Path A — full-page-scan filing** (`PipelineConfig.enable_full_page_ocr`).
+`ImageTriageStage._detect_full_page_scan_filing` fires when `image_count >= 5`,
+`images_per_page (= image_count / max(1, text_chars/2000)) >= 1.5`, and
+`>=70%` of images are page-shaped (portrait aspect 0.7–0.85, width
+900–1300, or dimensionless-but-large). When fired, page-shaped images
+are reclassified as `ImageClassification.FULL_PAGE_SCAN` and
+`context.full_page_scan_mode` is set to True. `OCRExtractionStage.process_full_page_scan`
+text-OCRs each qualifying image, writes `v2_image_assets.ocr_text`, and
+synthesizes a `Segment` (section_type=`PRESENTATION_SLIDE`,
+source_type=`image_ocr`, source_img_id set) into `context.segments`.
+If `contains_chart=True`, the existing `_process_chart_image` path runs
+on the same image as a second pass (respects `MAX_CHART_CALLS_PER_DOCUMENT=10`).
+Per-doc cap: `MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT=30`.
+
+**Path B — image-level Tier-1 keyword pre-scan**
+(`PipelineConfig.enable_image_keyword_prescan`). Skipped when
+`context.full_page_scan_mode` is True. Runs at the top of
+`OCRExtractionStage.process` on images where `classification == UNKNOWN`
+and `0.2 <= relevance_score < 0.3`. Calls `analyze_image_for_text`; if
+`TIER1_KEYWORDS_RE` matches the OCR text, promotes the image to
+`CHART` (when `contains_chart=True`) or `TABLE_IMAGE`, synthesizes a
+segment via `_synthesize_ocr_segment`, and the main loop then runs the
+existing structured-extraction path on the promoted asset. No match →
+OCR text stored on the asset for audit, no segment appended, image
+stays UNKNOWN. Per-doc cap: `MAX_PRESCAN_CALLS_PER_DOCUMENT=10`.
+
+**Segment provenance invariant.** Every segment synthesized by either
+path carries `source_type='image_ocr'` and a non-null
+`source_img_id` referencing the asset it was OCR'd from. Facts derived
+from these segments flow through `candidate_generation → value_binding
+→ fact_construction` unchanged — they classify as `source_type='text'`
+at the fact level (no `v2_metric_facts.source_type` enum extension
+needed). The image-derived provenance is captured on the segment only.
+Rollback: `DELETE FROM v2_segments WHERE source_type='image_ocr'`
+(cascades to facts via segment→fact FK). See
+`docs/operations/full-page-ocr-runbook.md` for operator workflows and
+verification SQL.
+
 ## Image Asset Identity
 
 `v2_image_assets` is unique on `(doc_id, filename)`; `img_id` is stable across re-extractions because `_persist_images_in_tx` upserts via `ON CONFLICT (doc_id, filename) DO UPDATE` and preserves the existing `img_id` on conflict. `persist_pipeline_result` uses the old→stable img_id map returned by `_persist_images_in_tx` to rewrite in-memory fact `source_locator.img_id` values before fact persistence, keeping metric-fact provenance consistent with the canonical DB row.

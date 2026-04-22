@@ -482,12 +482,14 @@ class V2PersistenceAdapter:
             INSERT INTO v2_segments (
                 segment_id, doc_id, segment_type, segment_text,
                 dom_locator, section_path, section_type, sequence_idx,
-                prev_segment_id, next_segment_id, created_at
+                prev_segment_id, next_segment_id,
+                source_type, source_img_id, created_at
             )
             VALUES (
                 %(segment_id)s, %(doc_id)s, %(segment_type)s, %(segment_text)s,
                 %(dom_locator)s, %(section_path)s, %(section_type)s, %(sequence_idx)s,
-                %(prev_segment_id)s, %(next_segment_id)s, NOW()
+                %(prev_segment_id)s, %(next_segment_id)s,
+                %(source_type)s, %(source_img_id)s, NOW()
             )
             ON CONFLICT (segment_id) DO UPDATE SET
                 segment_type = EXCLUDED.segment_type,
@@ -497,7 +499,9 @@ class V2PersistenceAdapter:
                 section_type = EXCLUDED.section_type,
                 sequence_idx = EXCLUDED.sequence_idx,
                 prev_segment_id = EXCLUDED.prev_segment_id,
-                next_segment_id = EXCLUDED.next_segment_id
+                next_segment_id = EXCLUDED.next_segment_id,
+                source_type = EXCLUDED.source_type,
+                source_img_id = EXCLUDED.source_img_id
         """
 
         params_list = [
@@ -512,6 +516,8 @@ class V2PersistenceAdapter:
                 "sequence_idx": segment.sequence,
                 "prev_segment_id": segment.prev_id,
                 "next_segment_id": segment.next_id,
+                "source_type": segment.source_type.value,
+                "source_img_id": segment.source_img_id,
             }
             for segment in segments
         ]
