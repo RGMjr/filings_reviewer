@@ -1,17 +1,15 @@
 ---
-autonomy: safe
+autonomy: skip
 discovered: '2026-04-22'
 estimated: XS
 id: 60
-note: SIC-filter JOIN in detect_universe_gaps
+note: Resolved 2026-04-21; retained in table as audit trail
 severity: n/a
 slug: detect-universe-gaps-ignores-sic-filter
 source: legacy
 status: archived
 title: '`detect_universe_gaps` Ignores SIC Filter'
-touches:
-- src/universe/onboarding.py
-- tests/unit/universe/test_onboarding.py
+touches: []
 updated: '2026-04-22'
 ---
 

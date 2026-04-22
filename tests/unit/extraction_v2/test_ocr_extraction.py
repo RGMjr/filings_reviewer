@@ -977,7 +977,9 @@ class TestVisionClientApiKeyCheck:
         assert "OPENAI_API_KEY" in str(exc_info.value)
         assert exc_info.value.stage_name == "ocr_chart_extraction"
 
-    def test_vision_client_does_not_raise_when_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_vision_client_does_not_raise_when_key_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """vision_client property should not raise when OPENAI_API_KEY is present."""
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
         stage = OCRExtractionStage()
@@ -993,7 +995,9 @@ class TestVisionClientApiKeyCheck:
         except Exception:
             pass  # Other errors (e.g., OpenAI SDK init) are acceptable
 
-    def test_vision_client_not_checked_when_already_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_vision_client_not_checked_when_already_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Pre-set vision_client should bypass the API key check."""
 
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -1002,3 +1006,536 @@ class TestVisionClientApiKeyCheck:
         # Should return the pre-set client without raising
         result = stage.vision_client
         assert result is mock_client
+
+
+# ============================================================================
+# Full-page-scan OCR (Path A, Phase 2)
+# ============================================================================
+
+
+class MockTextOCRVisionClient:
+    """Vision client that yields PageTextExtraction responses in order.
+
+    Mirrors MockVisionClient but for the analyze_image_for_text path used
+    by the full-page-scan and keyword-pre-scan branches. Also implements
+    analyze_image so the two-pass chart extraction can complete.
+    """
+
+    def __init__(
+        self,
+        text_responses: list,
+        chart_responses: list | None = None,
+    ) -> None:
+        from src.llm.vision_client import VisionResponse
+
+        self.text_responses = text_responses
+        self.chart_responses = chart_responses or []
+        self.text_call_count = 0
+        self.chart_call_count = 0
+        self.model = "gpt-4o-mock"
+        self._VisionResponse = VisionResponse
+
+    def analyze_image_for_text(self, *, image_bytes: bytes, max_tokens: int = 3000):
+        if self.text_call_count >= len(self.text_responses):
+            raise IndexError("No more text responses available")
+        resp = self.text_responses[self.text_call_count]
+        self.text_call_count += 1
+        return resp
+
+    def analyze_image(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        detail: str = "high",
+        max_tokens: int = 2000,
+        response_format: dict[str, str] | None = None,
+    ):
+        """Serve chart/table-prompt responses in chart_call order."""
+        if self.chart_call_count >= len(self.chart_responses):
+            raise IndexError("No more chart responses available")
+        resp = self.chart_responses[self.chart_call_count]
+        self.chart_call_count += 1
+        return resp
+
+
+def _make_page_text_extraction(
+    *, text: str, contains_chart: bool = False, chart_hint: str = "none", cost: float = 0.05
+):
+    from src.llm.vision_client import PageTextExtraction
+
+    return PageTextExtraction(
+        text=text,
+        contains_chart=contains_chart,
+        chart_hint=chart_hint,
+        cost_usd=cost,
+        raw_response="",
+    )
+
+
+def _make_page_scan_asset(img_id: str, tmp_path: Path, filename: str = "p.jpg") -> ImageAsset:
+    """Write a minimal JPEG to tmp_path and return a FULL_PAGE_SCAN asset."""
+    (tmp_path / filename).write_bytes(b"\xff\xd8\xff\xe0fake-jpeg-bytes")
+    return ImageAsset(
+        img_id=img_id,
+        filename=filename,
+        file_path=filename,
+        width=1055,
+        height=1365,
+        classification=ImageClassification.FULL_PAGE_SCAN,
+        relevance_score=0.6,
+    )
+
+
+class TestProcessFullPageScan:
+    """Tests for OCRExtractionStage.process_full_page_scan (Phase 2)."""
+
+    def test_happy_path_appends_segment(self, tmp_path: Path) -> None:
+        from src.extraction_v2.models import SectionType, SegmentSourceType
+
+        asset = _make_page_scan_asset("p1", tmp_path)
+        vision = MockTextOCRVisionClient(
+            text_responses=[
+                _make_page_text_extraction(
+                    text="Q3 revenue reached $100M; active customers grew 12%.",
+                    contains_chart=False,
+                )
+            ]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=42,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = [asset]
+
+        contains_chart = stage.process_full_page_scan(asset, context)
+
+        assert contains_chart is False
+        assert asset.ocr_text.startswith("Q3 revenue reached")
+        assert asset.processed is True
+        assert asset.confidence == 1.0
+        assert len(context.segments) == 1
+        seg = context.segments[0]
+        assert seg.source_type == SegmentSourceType.IMAGE_OCR
+        assert seg.source_img_id == "p1"
+        assert seg.section_type == SectionType.PRESENTATION_SLIDE
+        assert "$100M" in seg.text
+
+    def test_contains_chart_true_returned(self, tmp_path: Path) -> None:
+        asset = _make_page_scan_asset("p1", tmp_path)
+        vision = MockTextOCRVisionClient(
+            text_responses=[
+                _make_page_text_extraction(
+                    text="Retention by cohort (see chart)", contains_chart=True, chart_hint="line"
+                )
+            ]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = [asset]
+
+        assert stage.process_full_page_scan(asset, context) is True
+        assert len(context.segments) == 1
+
+    def test_empty_text_flags_manual_capture_no_segment(self, tmp_path: Path) -> None:
+        asset = _make_page_scan_asset("p1", tmp_path)
+        vision = MockTextOCRVisionClient(text_responses=[_make_page_text_extraction(text="")])
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = [asset]
+
+        stage.process_full_page_scan(asset, context)
+
+        assert asset.processed is True
+        assert asset.requires_manual_capture is True
+        assert asset.confidence == 0.0
+        assert context.segments == []
+
+    def test_vision_exception_marks_manual_capture(self, tmp_path: Path) -> None:
+        asset = _make_page_scan_asset("p1", tmp_path)
+
+        class _RaisingClient:
+            def analyze_image_for_text(self, **_kwargs):
+                raise RuntimeError("OpenAI 503")
+
+        stage = OCRExtractionStage(vision_client=_RaisingClient())
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = [asset]
+
+        result = stage.process_full_page_scan(asset, context)
+
+        assert result is False
+        assert asset.processed is True
+        assert asset.requires_manual_capture is True
+
+    def test_missing_file_path_raises(self, tmp_path: Path) -> None:
+        asset = ImageAsset(
+            img_id="no_path",
+            filename="x.jpg",
+            file_path="",
+            classification=ImageClassification.FULL_PAGE_SCAN,
+        )
+        stage = OCRExtractionStage(vision_client=MockTextOCRVisionClient([]))
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        with pytest.raises(ValueError, match="no file_path"):
+            stage.process_full_page_scan(asset, context)
+
+    def test_segments_append_in_monotonic_sequence(self, tmp_path: Path) -> None:
+        """OCR segments appended after HTML segments take next sequence idx."""
+        from src.extraction_v2.models import Segment, SegmentType
+
+        # Pre-seed context.segments with HTML-derived segments.
+        existing = [
+            Segment(segment_id="s0", segment_type=SegmentType.PARAGRAPH, text="a", sequence=0),
+            Segment(segment_id="s1", segment_type=SegmentType.PARAGRAPH, text="b", sequence=5),
+        ]
+        asset = _make_page_scan_asset("p1", tmp_path)
+        vision = MockTextOCRVisionClient(
+            text_responses=[_make_page_text_extraction(text="OCR page one")]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.segments = list(existing)
+        context.images = [asset]
+
+        stage.process_full_page_scan(asset, context)
+
+        # New OCR segment follows the max prior sequence (5) → 6.
+        assert context.segments[-1].sequence == 6
+
+
+class TestOCRStageFullPageScanBranch:
+    """Tests for the FULL_PAGE_SCAN dispatch inside OCRExtractionStage.process()."""
+
+    def test_full_page_scan_branch_counts_against_its_own_cap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Cap tightened to 2 so the test can hit it with a manageable fixture.
+        monkeypatch.setattr(OCRExtractionStage, "MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT", 2)
+        assets = [_make_page_scan_asset(f"p{i}", tmp_path, filename=f"p{i}.jpg") for i in range(4)]
+        vision = MockTextOCRVisionClient(
+            text_responses=[_make_page_text_extraction(text=f"text {i}") for i in range(4)]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = assets
+
+        result = stage.process(context)
+
+        assert result.metadata["full_page_ocr_calls"] == 2
+        assert vision.text_call_count == 2
+        # Two segments appended for the two processed images.
+        assert len(context.segments) == 2
+
+    def test_two_pass_chart_triggered_when_contains_chart_true(self, tmp_path: Path) -> None:
+        """When the page reports a chart, the existing chart path runs a second time."""
+        asset = _make_page_scan_asset("p1", tmp_path)
+        text_resp = _make_page_text_extraction(
+            text="Revenue retention chart", contains_chart=True, chart_hint="bar"
+        )
+        # A chart-extraction response the chart path will parse as "no usable data".
+        chart_resp = VisionResponse(
+            content=json.dumps(
+                {
+                    "chart_type": "bar",
+                    "title": "",
+                    "x_axis_label": "",
+                    "y_axis_label": "",
+                    "series": [],
+                    "annotations": [],
+                }
+            ),
+            model="gpt-4o-mock",
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost_usd=0.01,
+            latency_ms=10,
+        )
+        vision = MockTextOCRVisionClient(
+            text_responses=[text_resp],
+            chart_responses=[chart_resp],
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = [asset]
+
+        stage.process(context)
+
+        assert vision.text_call_count == 1
+        assert vision.chart_call_count == 1  # Two-pass fired
+
+
+# ============================================================================
+# Keyword pre-scan (Path B, Phase 3)
+# ============================================================================
+
+
+def _make_ambiguous_asset(img_id: str, tmp_path: Path, filename: str = "a.jpg") -> ImageAsset:
+    """Write bytes for an UNKNOWN image with relevance 0.25 (in-band for pre-scan)."""
+    (tmp_path / filename).write_bytes(b"\xff\xd8\xff\xe0fake")
+    return ImageAsset(
+        img_id=img_id,
+        filename=filename,
+        file_path=filename,
+        width=800,
+        height=600,
+        classification=ImageClassification.UNKNOWN,
+        relevance_score=0.25,
+    )
+
+
+class TestPrescanAmbiguousImages:
+    """Tests for Path B image-level Tier-1 keyword pre-scan."""
+
+    def test_tier1_keyword_promotes_to_table_image(self, tmp_path: Path) -> None:
+        from src.extraction_v2.models import SegmentSourceType
+
+        asset = _make_ambiguous_asset("a1", tmp_path)
+        vision = MockTextOCRVisionClient(
+            text_responses=[
+                _make_page_text_extraction(
+                    text=("Net revenue retention by cohort: 2020: 115%, 2021: 118%, 2022: 122%"),
+                    contains_chart=False,
+                )
+            ]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=True),
+        )
+        context.images = [asset]
+
+        stage._prescan_ambiguous_images(context)
+
+        assert asset.classification == ImageClassification.TABLE_IMAGE
+        assert asset.relevance_score >= 0.6
+        assert len(context.segments) == 1
+        assert context.segments[0].source_type == SegmentSourceType.IMAGE_OCR
+
+    def test_tier1_keyword_with_chart_promotes_to_chart(self, tmp_path: Path) -> None:
+        asset = _make_ambiguous_asset("a1", tmp_path)
+        vision = MockTextOCRVisionClient(
+            text_responses=[
+                _make_page_text_extraction(
+                    text="LTV/CAC ratio by tenure bucket",
+                    contains_chart=True,
+                    chart_hint="bar",
+                )
+            ]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=True),
+        )
+        context.images = [asset]
+
+        stage._prescan_ambiguous_images(context)
+
+        assert asset.classification == ImageClassification.CHART
+
+    def test_no_tier1_keyword_leaves_image_unknown(self, tmp_path: Path) -> None:
+        asset = _make_ambiguous_asset("a1", tmp_path)
+        vision = MockTextOCRVisionClient(
+            text_responses=[
+                _make_page_text_extraction(
+                    text="This is a generic product photo caption.",
+                    contains_chart=False,
+                )
+            ]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=True),
+        )
+        context.images = [asset]
+
+        stage._prescan_ambiguous_images(context)
+
+        assert asset.classification == ImageClassification.UNKNOWN
+        # OCR text is recorded for audit but no segment is appended.
+        assert "product photo" in (asset.ocr_text or "")
+        assert context.segments == []
+
+    def test_page_scan_mode_skips_prescan(self, tmp_path: Path) -> None:
+        """Path A already handled the filing — pre-scan must not double-bill."""
+        asset = _make_ambiguous_asset("a1", tmp_path)
+        vision = MockTextOCRVisionClient(text_responses=[])
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=True),
+        )
+        context.full_page_scan_mode = True  # pretend Path A fired
+        context.images = [asset]
+
+        stage._prescan_ambiguous_images(context)
+
+        assert vision.text_call_count == 0
+        assert asset.classification == ImageClassification.UNKNOWN
+
+    def test_flag_off_skips_prescan(self, tmp_path: Path) -> None:
+        asset = _make_ambiguous_asset("a1", tmp_path)
+        vision = MockTextOCRVisionClient(text_responses=[])
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=False),
+        )
+        context.images = [asset]
+
+        stage._prescan_ambiguous_images(context)
+
+        assert vision.text_call_count == 0
+        assert asset.classification == ImageClassification.UNKNOWN
+
+    def test_only_ambiguous_images_processed(self, tmp_path: Path) -> None:
+        """Pre-scan skips images outside the [0.2, 0.3) relevance band."""
+        chart_img = _make_ambiguous_asset("chart_img", tmp_path, filename="chart.jpg")
+        chart_img.classification = ImageClassification.CHART  # already classified
+        chart_img.relevance_score = 0.5
+
+        logo = _make_ambiguous_asset("logo", tmp_path, filename="logo.jpg")
+        logo.classification = ImageClassification.LOGO  # already-low path
+        logo.relevance_score = 0.0
+
+        below = _make_ambiguous_asset("low", tmp_path, filename="low.jpg")
+        below.relevance_score = 0.15  # below the pre-scan band
+
+        eligible = _make_ambiguous_asset("elig", tmp_path, filename="elig.jpg")
+        # default relevance 0.25 — in band
+
+        vision = MockTextOCRVisionClient(
+            text_responses=[
+                _make_page_text_extraction(
+                    text="Customer retention rate up 3 points year over year."
+                )
+            ]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=True),
+        )
+        context.images = [chart_img, logo, below, eligible]
+
+        stage._prescan_ambiguous_images(context)
+
+        # Only one image was pre-scanned (the in-band UNKNOWN one).
+        assert vision.text_call_count == 1
+        # That image got promoted.
+        assert eligible.classification in {
+            ImageClassification.CHART,
+            ImageClassification.TABLE_IMAGE,
+        }
+        # Others untouched.
+        assert chart_img.classification == ImageClassification.CHART
+        assert logo.classification == ImageClassification.LOGO
+        assert below.classification == ImageClassification.UNKNOWN
+
+    def test_call_cap_enforced(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(OCRExtractionStage, "MAX_PRESCAN_CALLS_PER_DOCUMENT", 2)
+        assets = [_make_ambiguous_asset(f"a{i}", tmp_path, filename=f"a{i}.jpg") for i in range(5)]
+        # None match Tier-1 — pre-scan will call each image but not promote.
+        vision = MockTextOCRVisionClient(
+            text_responses=[_make_page_text_extraction(text="generic caption") for _ in range(5)]
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=True),
+        )
+        context.images = assets
+
+        stage._prescan_ambiguous_images(context)
+
+        assert stage._prescan_call_count == 2
+        assert vision.text_call_count == 2
+
+    def test_process_end_to_end_prescan_promotes_then_extracts(self, tmp_path: Path) -> None:
+        """End-to-end: process() runs pre-scan first, then the main loop
+        processes the promoted image via the existing TABLE_IMAGE branch."""
+        asset = _make_ambiguous_asset("a1", tmp_path)
+        text_resp = _make_page_text_extraction(
+            text="Retention rate: 2021 92%, 2022 94%",
+            contains_chart=False,
+        )
+        # process_table_image will call analyze_image with a table prompt
+        # and expect JSON with cells. We hand it a minimal-valid response
+        # so the second-pass call completes without errors.
+        table_resp = VisionResponse(
+            content=json.dumps(
+                {
+                    "cells": [
+                        {"row": 0, "col": 0, "text": "Year", "is_header": True},
+                        {"row": 0, "col": 1, "text": "Retention", "is_header": True},
+                        {"row": 1, "col": 0, "text": "2021", "is_header": False},
+                        {"row": 1, "col": 1, "text": "92%", "is_header": False},
+                    ],
+                    "confidence": 0.85,
+                }
+            ),
+            model="gpt-4o-mock",
+            prompt_tokens=80,
+            completion_tokens=60,
+            cost_usd=0.01,
+            latency_ms=10,
+        )
+        vision = MockTextOCRVisionClient(
+            text_responses=[text_resp],
+            chart_responses=[table_resp],
+        )
+        stage = OCRExtractionStage(vision_client=vision)
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_image_keyword_prescan=True),
+        )
+        context.images = [asset]
+
+        result = stage.process(context)
+
+        # Pre-scan ran once; main loop ran the table-image path once.
+        assert result.metadata["prescan_calls"] == 1
+        assert vision.chart_call_count == 1  # second-pass (table)
+        # Segment synthesized from the pre-scan.
+        assert len(context.segments) == 1
+        assert asset.classification == ImageClassification.TABLE_IMAGE

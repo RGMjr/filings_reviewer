@@ -42,3 +42,15 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-commit]
+
+      # Pre-commit: flag migrations with cluster-scoped DDL (CREATE/ALTER/DROP
+      # on ROLE/USER/TABLESPACE/SUBSCRIPTION) that would race under parallel
+      # migration apply (pytest-xdist per-worker DBs). See Issue #78. Files
+      # containing the marker `-- cluster-ddl-ok: ...` are skipped.
+      - id: cluster-ddl-guard
+        name: cluster-scoped DDL guard (sql/ migrations)
+        entry: bash scripts/pre-commit-cluster-ddl-guard.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^sql/.*\.sql$

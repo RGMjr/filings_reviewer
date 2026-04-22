@@ -8,6 +8,11 @@
 -- Operator note: The password is NOT stored in this migration. Set it via:
 --     ALTER ROLE metabase_ro PASSWORD '<value from env METABASE_DB_PASSWORD>';
 -- immediately after applying. Rotate by repeating that ALTER.
+--
+-- cluster-ddl-ok: CREATE/ALTER ROLE hits cluster-scoped pg_authid; under
+-- pytest-xdist this serialises via the Postgres advisory lock in
+-- tests/integration/conftest.py::_apply_migrations_to_test_db. See also
+-- scripts/pre-commit-cluster-ddl-guard.sh.
 
 DO $$
 BEGIN

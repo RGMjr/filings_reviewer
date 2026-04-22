@@ -7,8 +7,8 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 26 |
-| Partially Resolved | 2 |
+| Open | 29 |
+| Partially Resolved | 3 |
 | Archived | 46 |
 | Resolved | 3 |
 
@@ -37,7 +37,7 @@
 | #55 | skip | S | — | Data cleanup; needs inspection of stuck filings |
 | #58 | review | S | `src/filing_fetcher/*.py` `tests/unit/filing_fetcher/*.py` | 8-K Exhibit 99.1 fetch; feature add, needs validator run |
 | #59 | review | S | `src/extraction_v2/classifier*.py` `tests/unit/extraction_v2/*classifier*` | New classifier patterns; FP risk |
-| #60 | safe | XS | `src/universe/onboarding.py` `tests/unit/universe/test_onboarding.py` | SIC-filter JOIN in detect_universe_gaps |
+| #60 | skip | XS | — | Resolved 2026-04-21; retained in table as audit trail |
 | #62 | review | S | `docs/operations/*` `src/universe/onboarding_runner.py` | Docs + optional admin flag; needs design call |
 | #63 | skip | S | — | Monkey-patch integration test; mid-complexity |
 | #66 | review | S | `render.yaml` `.claude/rules/infrastructure.md` | Wire apply_migrations into Render deploy; infra-change risk |
@@ -48,8 +48,9 @@
 | #74 | safe | XS | `.gitignore` | One-line addition to root `.gitignore` |
 | #75 | skip | S | `tests/ui/*.spec.js` `tests/ui/test_server.py` | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
 | #76 | safe | S | `tests/integration/test_db_filings_reviewers.py` | New integration test for filings-list reviewer aggregate; isolated file |
-| #77 | skip | M | — | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; needs R2 head-object check + migration or re-ingest |
+| #77 | skip | M | — | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; partial code fix shipped, prod backfill needs explicit auth (R2 + Neon writes) |
 | #79 | safe | XS | `scripts/known_issues_selector.py` | Filter selector picks on status=open or partially-resolved |
+| #80 | review | S | `src/infra/image_storage.py` `src/gold_standard/v2_validator.py` `.claude/rules/infrastructure.md` | Add env-scoped guard against unintended prod R2 writes from CLI tools; design call (storage-layer vs validator-layer) needed |
 
 
 ## Open Issues
@@ -106,54 +107,6 @@ After the boto3 fix, all 17 HOOD chart images now run through OCR but fail with 
 3. **Do NOT refresh the baseline until the R2 layer is resolved** — refreshing over zero chart recall locks in the bug.
 4. Consider adding a CI job that exercises `uv sync` + a smoke extraction so pip/pyproject manifest drift gets caught pre-merge.
 5. Blocks: PR merge commits against current main will keep failing the pre-commit Tier-1 guard until HOOD chart recall recovers (both this fix AND the R2 fix are required).
-
-## #77. R2 Chart-Image Bytes Missing for HOOD S-1 (Second Layer of #72)
-
-**Status**: Open
-**Severity**: high
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-After PR #87 restored `boto3` to `pyproject.toml`/`uv.lock`, `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` runs the full V2 pipeline on HOOD's S-1 (22 images parsed, 16 text/html_table facts produced) — but **all 17 chart-classified images** then fail in the OCR stage with:
-
-```
-FileNotFoundError: Image file not found: 1783879/000162828021019902/hood-20211008_g<N>.jpg
-```
-
-for `N` in `{2, 3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}`. All 17 images end the run marked `processed=True` but with `ocr_text IS NULL` and `chart_data IS NULL`, so `cm_revenue_by_cohort` and `cm_balance_by_cohort` remain at 0/0/0 P/R/F1 on HOOD. This is the reason Issue #72's Tier 1 regression persists even after #87.
-
-### Two candidate causes (not yet distinguished)
-
-1. **Bytes never uploaded to R2 for HOOD S-1.** HOOD S-1 (`filing_id=1545`) was ingested before PR #34's R2 migration landed. Ingestion of pre-R2 filings may not have re-uploaded image bytes to R2 under the new `v2_image_assets.file_path` keys.
-2. **Key-format divergence.** `.claude/rules/infrastructure.md` documents the canonical storage key as `pipeline/<cik>/<accession>/<filename>`. The keys actually stored in `v2_image_assets.file_path` for HOOD's S-1 omit the `pipeline/` prefix — the failed lookups are at `1783879/000162828021019902/hood-20211008_g<N>.jpg`. If bytes are in R2 at the prefixed keys but the DB/lookup path is missing the prefix (or vice versa), a backfill write won't help until the mismatch is reconciled.
-
-### Evidence from Neon (2026-04-22)
-
-| Fact | Observation |
-|---|---|
-| Cohort image `img_id=e5f65961-f33f-44db-9fd0-5f3b61dae987` | `classification='chart', relevance_score=0.66, processed=True` (post-#87 re-run); `ocr_text IS NULL`, `chart_data IS NULL`, `file_path='1783879/000162828021019902/hood-20211008_g6.jpg'` |
-| Cumulative-Net-Deposits image `img_id=44e035d8-2302-40bb-ab40-01c8fec41665` | Same state; `file_path='1783879/000162828021019902/hood-20211008_g5.jpg'`. Also has a human `relevant` decision in `v2_image_review_decisions`. |
-| 15 other chart-classified images on `doc_id=1545` | All `processed=True`, 0 OCR, 0 chart_data, `file_path` without `pipeline/` prefix |
-| Pre-#87 chart fact `$130 cm_revenue_by_cohort` | Orphan — references `img_id=c8da02f5-227c-4830-94d9-c45944d45e7f` which does not exist in `v2_image_assets`. Stranded from a pre-`d94acab` run. Preserved by chart-only mode's reviewer-guard path (did not get deleted in the #87 verification run because 0 new chart facts were produced). |
-
-### Why this matters
-
-- **Blocks Issue #72 closure and Tier-1 baseline refresh.** PR #87 is a *partial* fix — it restores the ability to run the pipeline, but HOOD chart recall cannot recover without image bytes reaching the OCR stage.
-- **Blocks any merge commit against current main.** The pre-commit Tier-1 guard keeps firing on HOOD until `cm_revenue_by_cohort` recovers.
-- **Risk of quietly affecting other pre-R2 filings** beyond HOOD — worth checking whether any non-S-1 filings with chart-sourced gold standard values show the same `FileNotFoundError` pattern when their chart stage runs.
-
-### Next Steps
-
-1. **Reproduce and classify.** Try a direct R2 `HeadObject` via the AWS CLI / boto3 on both `1783879/000162828021019902/hood-20211008_g6.jpg` and `pipeline/1783879/000162828021019902/hood-20211008_g6.jpg`. Whichever (if either) exists tells us whether we have a key-format issue (rename / rewrite `file_path` values) vs. a missing-upload issue (backfill).
-2. **Case A — bytes present under `pipeline/` prefix**: write a one-shot migration that updates `v2_image_assets.file_path` for the affected rows (or fix the R2 lookup path to prepend `pipeline/`, whichever is canonical per the architecture doc). Reconcile `infrastructure.md` with the actual code path.
-3. **Case B — bytes not present anywhere**: re-run ingestion for HOOD S-1 from source HTML so the modern ingestion path re-fetches + re-uploads images. If the R2 write is wired into `SECClient.fetch_image` / `OCRExtractionStage._download_missing_images`, this will populate the bucket. Requires `--force-reextract` on HOOD S-1 but chart-only mode still preserves the 9 text-review + 3 image-review decisions.
-4. **Scope check.** Query `v2_image_assets` for other filings with `classification='chart'`, `processed=False OR chart_data IS NULL`, and a `file_path` not starting with `pipeline/`. If there's a broader pre-migration cohort, the remediation should cover them in one pass rather than one-filing-at-a-time.
-5. **Refresh the v2 gold-standard baseline** once HOOD `cm_revenue_by_cohort` + `cm_balance_by_cohort` recover chart facts. **Only then** do the regression deltas return to the pre-scrub 0.3143 recall target.
-6. **Hygiene follow-up**: consider adding a CI smoke that runs the chart stage on at least one fixture filing end-to-end under `uv run` against a mock R2 (`moto[s3]` is already in `requirements-dev.txt`). Would have caught both the boto3-missing case AND a hypothetical key-format regression.
-
-Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracking), #42 (resolved — `_download_missing_images` double-write collapse). PR #87 fix commit `8713f51`.
 
 ## #2. Low Farfetch Recall
 
@@ -241,6 +194,63 @@ Issue #2 is now an umbrella. Individual gaps are tracked in sub-issues #14–#19
 - `scripts/apply_migrations.py` — migration runner (idempotent via `schema_migrations` ledger)
 - `sql/39_v2_ingest_batches.sql` — the migration that triggered this discovery
 - `render.yaml` — pre-deploy hook would attach to the web service entry
+
+## #80. GS Validator Has No Safeguard Against Unintended Prod R2 Writes
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+`python3 -m src.gold_standard.v2_validator` reads its environment uncritically. If `R2_BUCKET` (and the rest of the R2 creds) are set when the validator runs, the chart pipeline's `OCRExtractionStage._download_missing_images` will issue `storage.put_bytes` calls against the live R2 backend — a production write — for every chart-classified image whose asset row lacks a `file_path`. There is no warning, no dry-run mode, no env-scoped guardrail. A contributor who sources prod `.env` to make `psql` / `boto3` work for one CLI step (e.g. probing a key with `HeadObject`) and then runs the validator gets a silent prod state mutation.
+
+The same risk applies to any code path that calls `storage.put_bytes` without an env-scoped sanity check (currently `OCRExtractionStage._download_missing_images` and `IngestionStage._extract_image_assets` both qualify).
+
+### Next Steps
+
+- Add an env-scoped safeguard to `get_image_storage()` (or wrap `put_bytes` itself): when the active backend is `R2Storage` AND the process was started without an explicit "I intend prod writes" opt-in (e.g., a `FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` env var), refuse `put_bytes` and surface a clear error pointing at the cause. Reads (`get_bytes`, `exists`) stay open so diagnostics remain possible.
+- Alternative: add a startup check in `v2_validator.py __main__` that warns (or aborts) when `R2_BUCKET` matches the prod bucket name unless `--allow-prod-writes` is passed. Narrower scope than the storage-layer guard but catches the validator-specific foot-gun.
+- Document the foot-gun in `.claude/rules/infrastructure.md` under image-storage so future contributors are aware before the safeguard lands.
+
+Cross-references: #77 (the bug whose fix surfaced this), #34 (R2 backend introduction).
+
+## #81. PayPal Pre-2024 8-Ks Extract No Facts — Body Is Page-Image Scans
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+PayPal's pre-2024 8-K filings (CIK `0001633917`, 12 filings 2021–2023)
+are submitted as page-image decks: each "page" is a JPG (~1055×1365),
+there is no HTML body text to segment. The existing V2 pipeline
+classifies these images as `UNKNOWN` (below `MIN_RELEVANCE_FOR_PROCESSING=0.3`)
+so they never reach the OCR stage, and `context.segments` is empty
+so `candidate_generation` runs over nothing. DB state: 0 segments,
+199 JPGs unprocessed, 0 facts, 0 review decisions across these 12
+filings.
+
+### Resolution
+
+Full-page-scan OCR (Path A) + image-level Tier-1 keyword pre-scan
+(Path B), both default-off, landed on the `full-page-ocr` branch.
+See `.claude/rules/v2-pipeline.md` for the pipeline-level design and
+`docs/operations/full-page-ocr-runbook.md` for the operator runbook
+(detector thresholds, dry-run/backfill workflow, verification SQL,
+rollback).
+
+### Next Steps
+
+1. Merge the feature branch with both flags default-off; CI green.
+2. Dev smoke test on one PayPal 8-K; eyeball segments + facts.
+3. Enable `FULL_PAGE_OCR_ENABLED=true` in prod; run
+   `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
+4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
+   and re-extract 5 investor-deck-style filings to exercise Path B.
 
 ## #4. Spelled-Out Number Parsing Limitations
 
@@ -591,8 +601,6 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 3. Validate against the Phase 0 candidate set (Chewy, DoorDash, Robinhood, Snowflake 8-Ks) — expect >=30% of segments to land on non-COVER sections.
 4. Audit existing FP rules for section-gated behavior that might fire differently once 8-K segments are correctly typed.
 
----
-
 ## #63. Cancel-During-Populate Not Exercised by Integration Test
 
 **Status**: Open
@@ -769,6 +777,40 @@ attempt to re-fix issues whose fixes are already in `main`.
 - Optional: also emit a warning when such a fragment is encountered, so the
   author knows to set `autonomy: n/a` on resolved entries.
 
+## #82. Full-Page-OCR Pipeline Integration Test Missing
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+Phase-3 unit tests exercise `ImageTriageStage._detect_full_page_scan_filing`, `OCRExtractionStage.process_full_page_scan`, and `_prescan_ambiguous_images` individually. No integration test runs the full `V2Pipeline` on a page-scan HTML fixture and asserts that `v2_segments` rows with `source_type='image_ocr'` land, downstream `v2_metric_facts` get produced, and the chart two-pass populates `chart_data` where expected. Local test DB (`filings_analysis_test`) has 0 filings so we couldn't seed from real data.
+
+### Next Steps
+
+1. Create a minimal fixture: a stub HTML document with a handful of `<img>` tags pointing at portrait-page-sized dummy JPGs, seeded under `tests/integration/fixtures/full_page_ocr/`.
+2. Add `tests/integration/extraction_v2/test_full_page_ocr_pipeline.py` that constructs a `PipelineConfig(enable_full_page_ocr=True)`, runs `V2Pipeline.process` with a mocked `VisionClient`, and asserts segment + fact + image-asset state end-to-end.
+3. Alternative: once the prod rollout backfill completes on a real PayPal 8-K, capture its vision responses as VCR cassettes and build the fixture from that.
+
+## #83. `TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+`OCRExtractionStage.TIER1_KEYWORDS_RE` is a hand-curated regex alternation listing Tier-1 metric phrases (cohort, retention, ltv, cac, etc.). The authoritative source of Tier-1 metrics is `config/metric_keywords.yaml` (`tier: 1` entries' `patterns` + `specific_patterns`). Adding a new Tier-1 metric today requires two edits in lockstep; miss the regex update and Path B silently under-matches.
+
+### Next Steps
+
+1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
+2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
+3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
+
 ## #5. Revenue Synonym Context Gating
 
 **Status**: Open
@@ -795,6 +837,64 @@ Some valid per-customer GMV values may not have context keywords nearby, causing
 Review rejection rates for revenue synonyms to determine if context gating is too strict.
 
 ## Partially Resolved Issues
+
+## #77. R2 Chart-Image Bytes Missing for HOOD S-1 (Second Layer of #72)
+
+**Status**: Partially Resolved
+**Severity**: high
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+After PR #87 restored `boto3` to `pyproject.toml`/`uv.lock`, `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` runs the full V2 pipeline on HOOD's S-1 (22 images parsed, 16 text/html_table facts produced) — but **all 17 chart-classified images** then fail in the OCR stage with:
+
+```
+FileNotFoundError: Image file not found: 1783879/000162828021019902/hood-20211008_g<N>.jpg
+```
+
+for `N` in `{2, 3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}`. All 17 images end the run marked `processed=True` but with `ocr_text IS NULL` and `chart_data IS NULL`, so `cm_revenue_by_cohort` and `cm_balance_by_cohort` remain at 0/0/0 P/R/F1 on HOOD. This is the reason Issue #72's Tier 1 regression persists even after #87.
+
+### Root cause confirmed (one concrete writer-without-upload bug; second cause still open)
+
+**Confirmed (2026-04-22, this PR's investigation):**
+
+`OCRExtractionStage._download_missing_images()` at `src/extraction_v2/stages/ocr_extraction.py:199-274` calls `SECClient.fetch_image()` (which writes bytes to the local disk cache rooted at `image_cache_dir()`), assigns `asset.file_path = key` (the cache-relative path), and increments `downloaded` — but **never calls `storage.put_bytes(key, bytes)` to upload those bytes to the active storage backend**. In dev (`LocalFilesystemStorage` rooted at `image_cache_dir()`), this is invisible because the disk write IS the storage write. In prod (`R2Storage`), the bytes never leave the local disk; the DB row's `file_path` then points at an R2 key that was never PUT, and downstream `process_chart_image` / `process_table_image` calls fail with `FileNotFoundError`. Compare with the correct upload pattern at `src/extraction_v2/stages/ingestion.py:956-969`, which DOES call `storage.put_bytes` after assigning the key.
+
+This applies to **every** prod filing that went through `_download_missing_images` since PR #34 — not just HOOD. HOOD is the most visible victim (Tier 1 chart-only metrics).
+
+**Still open:** the original entry's Case A (key-format divergence between `pipeline/<cik>/<accession>/<filename>` per docs vs. `<cik>/<accession>/<filename>` per DB rows) is **separate** from the writer-without-upload bug. My investigation surfaced that `data/image_cache/pipeline/` exists locally as a legacy layout, suggesting the `pipeline/` prefix WAS used by some other code path historically. Whether any prod R2 keys live under the `pipeline/` prefix is unverified — distinguishing requires R2 `HeadObject` against both layouts (deferred to manual prod op; see Next Steps).
+
+### Evidence from Neon (2026-04-22)
+
+| Fact | Observation |
+|---|---|
+| Cohort image `img_id=e5f65961-f33f-44db-9fd0-5f3b61dae987` | `classification='chart', relevance_score=0.66, processed=True` (post-#87 re-run); `ocr_text IS NULL`, `chart_data IS NULL`, `file_path='1783879/000162828021019902/hood-20211008_g6.jpg'` |
+| Cumulative-Net-Deposits image `img_id=44e035d8-2302-40bb-ab40-01c8fec41665` | Same state; `file_path='1783879/000162828021019902/hood-20211008_g5.jpg'`. Also has a human `relevant` decision in `v2_image_review_decisions`. |
+| 15 other chart-classified images on `doc_id=1545` | All `processed=True`, 0 OCR, 0 chart_data, `file_path` without `pipeline/` prefix |
+| Pre-#87 chart fact `$130 cm_revenue_by_cohort` | Orphan — references `img_id=c8da02f5-227c-4830-94d9-c45944d45e7f` which does not exist in `v2_image_assets`. Stranded from a pre-`d94acab` run. Preserved by chart-only mode's reviewer-guard path (did not get deleted in the #87 verification run because 0 new chart facts were produced). |
+
+### Why this matters
+
+- **Blocks Issue #72 closure and Tier-1 baseline refresh.** PR #87 is a *partial* fix — it restores the ability to run the pipeline, but HOOD chart recall cannot recover without image bytes reaching the OCR stage.
+- **Blocks any merge commit against current main.** The pre-commit Tier-1 guard keeps firing on HOOD until `cm_revenue_by_cohort` recovers.
+- **Risk of quietly affecting other pre-R2 filings** beyond HOOD — worth checking whether any non-S-1 filings with chart-sourced gold standard values show the same `FileNotFoundError` pattern when their chart stage runs.
+
+### Status
+
+- **Code fix landed** in this PR (`src/extraction_v2/stages/ocr_extraction.py` adds `storage.put_bytes` mirroring `ingestion.py:956-969`). New unit test `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading::test_uploads_bytes_to_storage` locks in the invariant.
+- **Prod backfill still pending.** From now on, any new prod filing that goes through `_download_missing_images` will upload bytes to R2 correctly. But the historical filings (including HOOD's 17 chart images) are still in the broken state — their bytes need to be re-uploaded via a chart-only re-extract or a targeted backfill script.
+
+### Next Steps (deferred to a separate manual prod operation)
+
+1. **R2 `HeadObject` against both prefix variants** — `1783879/000162828021019902/hood-20211008_g6.jpg` AND `pipeline/1783879/000162828021019902/hood-20211008_g6.jpg`. Distinguishes the writer-without-upload bug (this PR's fix) from any residual Case A key-format divergence. Requires real R2 credentials.
+2. **HOOD chart backfill** — `python3 scripts/batch_v2_extraction.py --filing-ids-file <one-line file with HOOD's filing_id> --chart-only` against prod (Neon `$DATABASE_URL` + R2 creds). With this PR's fix, `_download_missing_images` will re-fetch from EDGAR and upload to R2 in the same run. Pre-flight: confirm `chart_decision_count` for HOOD chart facts is zero (otherwise add `--force-reextract` only after explicit confirmation, since it purges reviewer decisions).
+3. **Repo-wide audit** — `scripts/check_image_referential_integrity.py` against prod (Neon) DB, looking for class-C violations beyond HOOD. Every filing routed through `_download_missing_images` since PR #34 likely has the same orphan-key state. Decide between bulk chart-only re-extract vs. a targeted backfill script that walks `v2_image_assets` rows + uploads from local cache where present.
+4. **Refresh the v2 gold-standard baseline** once HOOD `cm_revenue_by_cohort` + `cm_balance_by_cohort` recover chart facts. **Only then** do the regression deltas return to the pre-scrub 0.3143 recall target.
+5. **Investigate Case A (`pipeline/` prefix)** — `data/image_cache/pipeline/` exists locally as a legacy layout, but no live writer code constructs `pipeline/`-prefixed keys. Either dead-code cleanup or a third-party prod path; needs a `git log -S "pipeline/"` archaeology pass. Reconcile `infrastructure.md` and `src/infra/image_storage.py:8` docstrings with whichever convention is canonical (probably remove the `pipeline/` prefix from docs since live code never uses it).
+6. **Hygiene follow-up**: add a CI smoke that runs the chart stage on at least one fixture filing end-to-end under `uv run` against a mock R2 (`moto[s3]` is already in `requirements-dev.txt`). Would have caught both the boto3-missing case AND this writer-without-upload regression at PR-time.
+
+Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracking), #42 (resolved — `_download_missing_images` double-write collapse). PR #87 fix commit `8713f51`.
 
 ## #35. Pre-2026-04-17 Filings Missing Chart-Sourced Facts
 

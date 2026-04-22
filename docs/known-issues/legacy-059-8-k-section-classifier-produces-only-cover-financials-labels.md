@@ -25,5 +25,3 @@ updated: '2026-04-20'
 2. Add pattern list entries for common 8-K headings: `Financial Highlights`, `Key Business Metrics`, `Q[1-4]\s*\d{4}\s*Highlights`, `Results of Operations`, `Business Highlights`.
 3. Validate against the Phase 0 candidate set (Chewy, DoorDash, Robinhood, Snowflake 8-Ks) — expect >=30% of segments to land on non-COVER sections.
 4. Audit existing FP rules for section-gated behavior that might fire differently once 8-K segments are correctly typed.
-
----
