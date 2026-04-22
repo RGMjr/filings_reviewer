@@ -85,6 +85,19 @@ class ImageClassification(str, Enum):
     LOGO = "logo"
     SIGNATURE = "signature"
     UNKNOWN = "unknown"
+    FULL_PAGE_SCAN = "full_page_scan"  # Filing-as-page-image (e.g. PayPal 8-Ks)
+
+
+class SegmentSourceType(str, Enum):
+    """How a segment was produced.
+
+    Distinct from ``SourceType`` (which applies to facts): a segment may be
+    synthesized from OCR'd image text even though the facts derived from it
+    still classify as ``SourceType.TEXT`` downstream.
+    """
+
+    TEXT = "text"  # Parsed from HTML
+    IMAGE_OCR = "image_ocr"  # Synthesized from OCR of a full-page-scan or pre-scan-promoted image
 
 
 class ChartType(str, Enum):
@@ -352,7 +365,9 @@ class MetricFact:
 
     def identity_tuple(
         self,
-    ) -> tuple[str, date | None, date | None, Unit, float | None, Scope, str | None, str | None, SourceType]:
+    ) -> tuple[
+        str, date | None, date | None, Unit, float | None, Scope, str | None, str | None, SourceType
+    ]:
         """
         Identity tuple for deduplication.
 
@@ -636,6 +651,10 @@ class Segment:
     # Context links (for retrieval)
     prev_id: str | None = None
     next_id: str | None = None
+
+    # Source provenance
+    source_type: SegmentSourceType = SegmentSourceType.TEXT
+    source_img_id: str | None = None  # Set when source_type == IMAGE_OCR
 
 
 # ============================================================================

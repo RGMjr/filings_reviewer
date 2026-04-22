@@ -112,6 +112,16 @@ class PipelineConfig:
     min_image_relevance: float = 0.30  # Process images above this relevance
     max_images_per_document: int = 50  # Limit OCR/vision calls
 
+    # Full-page-scan OCR (Path A: filing-wide opt-in for issuers that file
+    # 8-Ks as page-image decks, e.g. PayPal). Default off. Env callers can
+    # read FULL_PAGE_OCR_ENABLED themselves and set this flag explicitly.
+    enable_full_page_ocr: bool = False
+
+    # Image-level Tier-1 keyword pre-scan (Path B: per-image opt-in for
+    # filings with text AND embedded image-tables that current filename /
+    # aspect heuristics miss). Skipped on Path-A filings. Default off.
+    enable_image_keyword_prescan: bool = False
+
     # Performance
     batch_size: int = 10  # Segments per batch for LLM calls
     max_llm_calls_per_document: int = 100  # Cost control
@@ -310,6 +320,11 @@ class PipelineContext:
     llm_calls: int = 0
     ocr_calls: int = 0
     vision_calls: int = 0
+
+    # Set by ImageTriageStage when the full-page-scan detector fires.
+    # Downstream stages (OCR, pre-scan) gate behavior on this flag so
+    # Path A and Path B do not run on the same filing.
+    full_page_scan_mode: bool = False
 
     @cached_property
     def segment_by_id(self) -> dict[str, Segment]:

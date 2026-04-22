@@ -724,3 +724,236 @@ class TestPatternMatching:
         )
         result = stage.classify_image(asset)
         assert result == ImageClassification.UNKNOWN
+
+
+# ============================================================================
+# Full-page-scan detection (Path A, Phase 2)
+# ============================================================================
+
+
+class TestIsPageShaped:
+    """Tests for ImageTriageStage._is_page_shaped dimensional heuristic."""
+
+    @pytest.fixture
+    def stage(self) -> ImageTriageStage:
+        return ImageTriageStage()
+
+    def test_portrait_page_sized_jpeg_is_page_shaped(self, stage: ImageTriageStage) -> None:
+        asset = ImageAsset(img_id="1", filename="p1.jpg", width=1055, height=1365)
+        assert stage._is_page_shaped(asset) is True
+
+    def test_narrow_portrait_still_in_bounds(self, stage: ImageTriageStage) -> None:
+        # Aspect 0.72 is inside [0.7, 0.85], width 1000 inside [900, 1300]
+        asset = ImageAsset(img_id="1", filename="p1.jpg", width=1000, height=1388)
+        assert stage._is_page_shaped(asset) is True
+
+    def test_too_wide_aspect_rejected(self, stage: ImageTriageStage) -> None:
+        # Aspect 1.33 — landscape, not page-shaped
+        asset = ImageAsset(img_id="1", filename="wide.jpg", width=1200, height=900)
+        assert stage._is_page_shaped(asset) is False
+
+    def test_too_narrow_width_rejected(self, stage: ImageTriageStage) -> None:
+        # Width 500 — below the 900 floor
+        asset = ImageAsset(img_id="1", filename="small.jpg", width=500, height=700)
+        assert stage._is_page_shaped(asset) is False
+
+    def test_missing_dimensions_defer_to_true(self, stage: ImageTriageStage) -> None:
+        # SEC filings often omit width/height on scanned exhibits. Defer
+        # to the filing-wide ratio gate — don't pre-filter on dimensions.
+        asset = ImageAsset(img_id="1", filename="no_dims.jpg", width=0, height=0)
+        assert stage._is_page_shaped(asset) is True
+
+
+class TestFullPageScanDetection:
+    """Tests for the filing-wide _detect_full_page_scan_filing gate."""
+
+    @pytest.fixture
+    def stage(self) -> ImageTriageStage:
+        return ImageTriageStage()
+
+    def _make_context(
+        self,
+        *,
+        segments: list,
+        images: list[ImageAsset],
+        flag_on: bool = True,
+    ):
+        """Build a PipelineContext with the full-page-OCR flag explicitly set."""
+        from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
+
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=flag_on),
+        )
+        context.segments = segments
+        context.images = images
+        return context
+
+    def _paypal_like_images(self, count: int = 16) -> list[ImageAsset]:
+        return [
+            ImageAsset(
+                img_id=f"page_{i}",
+                filename=f"page_{i}.jpg",
+                width=1055,
+                height=1365,
+            )
+            for i in range(count)
+        ]
+
+    def test_paypal_like_fires(self, stage: ImageTriageStage) -> None:
+        """0 segments, 16 portrait page JPGs: detector fires."""
+        context = self._make_context(segments=[], images=self._paypal_like_images(16))
+        assert stage._detect_full_page_scan_filing(context) is True
+
+    def test_normal_10k_does_not_fire(self, stage: ImageTriageStage) -> None:
+        """250k chars of HTML + 40 images: ratio 0.32 → does NOT fire."""
+        from src.extraction_v2.models import Segment, SegmentType
+
+        segments = [
+            Segment(segment_id=f"s{i}", segment_type=SegmentType.PARAGRAPH, text="x" * 1000)
+            for i in range(250)  # 250k chars total
+        ]
+        images = self._paypal_like_images(40)
+        context = self._make_context(segments=segments, images=images)
+        assert stage._detect_full_page_scan_filing(context) is False
+
+    def test_text_dense_s1_with_product_photos_does_not_fire(self, stage: ImageTriageStage) -> None:
+        """100k chars + 30 portrait images: ratio 0.6 → does NOT fire."""
+        from src.extraction_v2.models import Segment, SegmentType
+
+        segments = [
+            Segment(segment_id=f"s{i}", segment_type=SegmentType.PARAGRAPH, text="y" * 1000)
+            for i in range(100)
+        ]
+        images = self._paypal_like_images(30)
+        context = self._make_context(segments=segments, images=images)
+        assert stage._detect_full_page_scan_filing(context) is False
+
+    def test_mixed_investor_deck_fires(self, stage: ImageTriageStage) -> None:
+        """20k chars + 25 portrait page images: ratio 2.5 → fires."""
+        from src.extraction_v2.models import Segment, SegmentType
+
+        segments = [
+            Segment(segment_id=f"s{i}", segment_type=SegmentType.PARAGRAPH, text="z" * 1000)
+            for i in range(20)
+        ]
+        images = self._paypal_like_images(25)
+        context = self._make_context(segments=segments, images=images)
+        assert stage._detect_full_page_scan_filing(context) is True
+
+    def test_below_min_images_does_not_fire(self, stage: ImageTriageStage) -> None:
+        """4 images with 0 segments: below the 5-image floor → does NOT fire."""
+        context = self._make_context(segments=[], images=self._paypal_like_images(4))
+        assert stage._detect_full_page_scan_filing(context) is False
+
+    def test_mostly_non_page_shaped_does_not_fire(self, stage: ImageTriageStage) -> None:
+        """16 images but only 40% page-shaped → does NOT fire even with 0 segments."""
+        page_shaped = [
+            ImageAsset(img_id=f"p{i}", filename=f"p{i}.jpg", width=1055, height=1365)
+            for i in range(6)
+        ]
+        landscape = [
+            ImageAsset(img_id=f"l{i}", filename=f"l{i}.jpg", width=1600, height=900)
+            for i in range(10)
+        ]
+        context = self._make_context(segments=[], images=page_shaped + landscape)
+        assert stage._detect_full_page_scan_filing(context) is False
+
+
+class TestPromoteToFullPageScan:
+    """Tests for promotion behavior after the detector fires."""
+
+    @pytest.fixture
+    def stage(self) -> ImageTriageStage:
+        return ImageTriageStage()
+
+    def test_promotes_page_shaped_overrides_prior_classification(
+        self, stage: ImageTriageStage
+    ) -> None:
+        from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
+
+        page = ImageAsset(
+            img_id="p1",
+            filename="page_1.jpg",
+            width=1055,
+            height=1365,
+            classification=ImageClassification.UNKNOWN,
+            relevance_score=0.2,
+        )
+        small_logo = ImageAsset(
+            img_id="logo",
+            filename="company_logo.png",
+            width=100,
+            height=60,
+            classification=ImageClassification.LOGO,
+            relevance_score=0.0,
+        )
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = [page, small_logo]
+
+        promoted = stage._promote_to_full_page_scan(context)
+
+        # Page-shaped image gets promoted; logo is left alone.
+        assert promoted == [page]
+        assert page.classification == ImageClassification.FULL_PAGE_SCAN
+        assert page.relevance_score == 0.6
+        assert small_logo.classification == ImageClassification.LOGO
+
+    def test_process_with_flag_off_does_not_promote(self, stage: ImageTriageStage) -> None:
+        """When the feature flag is off, page-shaped images retain their UNKNOWN class."""
+        from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
+
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=False),
+        )
+        context.images = [
+            ImageAsset(img_id=f"p{i}", filename=f"p{i}.jpg", width=1055, height=1365)
+            for i in range(16)
+        ]
+
+        result = stage.process(context)
+
+        assert result.metadata["full_page_scan_mode"] is False
+        for img in context.images:
+            assert img.classification != ImageClassification.FULL_PAGE_SCAN
+
+    def test_process_with_flag_on_and_paypal_fixture_promotes_all(
+        self, stage: ImageTriageStage
+    ) -> None:
+        """End-to-end: flag on + PayPal-like fixture → all page-shaped images promoted."""
+        from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
+
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/x.html"),
+            config=PipelineConfig(enable_full_page_ocr=True),
+        )
+        context.images = [
+            ImageAsset(img_id=f"p{i}", filename=f"p{i}.jpg", width=1055, height=1365)
+            for i in range(16)
+        ]
+
+        result = stage.process(context)
+
+        assert result.metadata["full_page_scan_mode"] is True
+        assert all(
+            img.classification == ImageClassification.FULL_PAGE_SCAN for img in context.images
+        )
+        # All 16 get queued for downstream OCR processing.
+        assert result.items_output == 16
+        assert context.full_page_scan_mode is True
