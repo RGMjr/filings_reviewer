@@ -1,17 +1,17 @@
 ---
-autonomy: safe
+autonomy: n/a
 discovered: '2026-04-21'
-estimated: S
+estimated: —
 id: 76
-note: New integration test for filings-list reviewer aggregate; isolated file
+note: Resolved in fresh-branch replay of PR #109
+pr_refs: []
 severity: low
 slug: missing-integration-test-for-filings-list-reviewer-aggregate
 source: legacy
-status: open
+status: resolved
 title: Missing Integration Test for Filings-List Reviewer Aggregate
-touches:
-- tests/integration/test_db_filings_reviewers.py
-updated: '2026-04-21'
+touches: []
+updated: '2026-04-22'
 ---
 
 ### Problem
