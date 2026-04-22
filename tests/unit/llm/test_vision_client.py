@@ -13,8 +13,10 @@ import pytest
 
 from src.llm.vision_client import (
     IMAGE_SIGNATURES,
+    PageTextExtraction,
     VisionClient,
     VisionResponse,
+    _repair_truncated_json_object,
     detect_mime_type,
 )
 
@@ -969,3 +971,150 @@ class TestVisionClientCaching:
         # because the cache is disabled — so the API path was followed.
         # This confirms the cache integration code path is exercised without DB access.
         mock_cache.get.assert_called_once()
+
+
+def _mock_vision_client(monkeypatch, response_content: str) -> tuple[VisionClient, MagicMock]:
+    """Build a VisionClient whose underlying OpenAI call returns ``response_content``.
+
+    Returns (client, mock_openai_instance) so tests can assert on the call args.
+    """
+    mock_usage = MagicMock()
+    mock_usage.prompt_tokens = 1200
+    mock_usage.completion_tokens = 400
+
+    mock_message = MagicMock()
+    mock_message.content = response_content
+
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+    mock_response.usage = mock_usage
+    mock_response.model = "gpt-4o"
+
+    mock_instance = MagicMock()
+    mock_instance.chat.completions.create.return_value = mock_response
+
+    monkeypatch.setattr("src.llm.vision_client.OpenAI", lambda *a, **kw: mock_instance)
+    return VisionClient(), mock_instance
+
+
+class TestAnalyzeImageForText:
+    """Tests for VisionClient.analyze_image_for_text (Phase 1: full-page-OCR)."""
+
+    def test_happy_path_returns_parsed_extraction(self, monkeypatch):
+        payload = (
+            '{"text": "Q3 Revenue: $100M\\nActive customers: 1.2M",'
+            ' "contains_chart": true, "chart_hint": "bar"}'
+        )
+        client, _ = _mock_vision_client(monkeypatch, payload)
+
+        result = client.analyze_image_for_text(b"\xff\xd8\xff\xe0fake_jpeg_bytes")
+
+        assert isinstance(result, PageTextExtraction)
+        assert "Q3 Revenue: $100M" in result.text
+        assert result.contains_chart is True
+        assert result.chart_hint == "bar"
+        assert result.cost_usd > 0  # Uncached response
+
+    def test_passes_json_object_response_format(self, monkeypatch):
+        payload = '{"text": "hello", "contains_chart": false, "chart_hint": "none"}'
+        client, mock_openai = _mock_vision_client(monkeypatch, payload)
+
+        client.analyze_image_for_text(b"\xff\xd8\xff\xe0fake")
+
+        call_kwargs = mock_openai.chat.completions.create.call_args.kwargs
+        assert call_kwargs["response_format"] == {"type": "json_object"}
+        # Prompt must include "JSON" (OpenAI requirement when json_object mode is on)
+        prompt_text = call_kwargs["messages"][0]["content"][0]["text"]
+        assert "JSON" in prompt_text
+
+    def test_contains_chart_false_normalizes_hint_to_none(self, monkeypatch):
+        # Model says no chart, but sends a hint anyway — caller should see 'none'.
+        payload = '{"text": "prose only", "contains_chart": false, "chart_hint": "bar"}'
+        client, _ = _mock_vision_client(monkeypatch, payload)
+
+        result = client.analyze_image_for_text(b"\xff\xd8\xff\xe0fake")
+
+        assert result.contains_chart is False
+        assert result.chart_hint == "none"
+
+    def test_invalid_chart_hint_coerced_to_none(self, monkeypatch):
+        payload = '{"text": "x", "contains_chart": true, "chart_hint": "wordcloud"}'
+        client, _ = _mock_vision_client(monkeypatch, payload)
+
+        result = client.analyze_image_for_text(b"\xff\xd8\xff\xe0fake")
+
+        # Invalid hint falls back to "none" even though contains_chart is True.
+        assert result.chart_hint == "none"
+
+    def test_truncated_json_repaired(self, monkeypatch):
+        # Missing closing brace + trailing garbage — repairer trims to the last
+        # balanced brace of a valid prefix and succeeds.
+        truncated = (
+            '{"text": "abc", "contains_chart": false, "chart_hint": "none"}'
+            " stray garbage not part of the JSON object"
+        )
+        client, _ = _mock_vision_client(monkeypatch, truncated)
+
+        result = client.analyze_image_for_text(b"\xff\xd8\xff\xe0fake")
+
+        assert result.text == "abc"
+        assert result.contains_chart is False
+
+    def test_unparseable_returns_empty_extraction(self, monkeypatch):
+        client, _ = _mock_vision_client(monkeypatch, "definitely not json at all")
+
+        result = client.analyze_image_for_text(b"\xff\xd8\xff\xe0fake")
+
+        # Fallback: empty text, no chart, cost still reported.
+        assert result.text == ""
+        assert result.contains_chart is False
+        assert result.chart_hint == "none"
+        assert result.raw_response == "definitely not json at all"
+
+    def test_cache_hit_returns_zero_cost(self, monkeypatch):
+        # Simulate a cache hit by patching the underlying LLMCache.get
+        client, mock_openai = _mock_vision_client(
+            monkeypatch,
+            '{"text": "ignored", "contains_chart": false, "chart_hint": "none"}',
+        )
+
+        cached = MagicMock()
+        cached.content = '{"text": "from cache", "contains_chart": false, "chart_hint": "none"}'
+        cached.input_tokens = 800
+        cached.output_tokens = 200
+        monkeypatch.setattr(client._cache, "get", lambda **kw: cached)
+
+        result = client.analyze_image_for_text(b"\xff\xd8\xff\xe0fake")
+
+        assert result.text == "from cache"
+        assert result.cost_usd == 0.0
+        # API should NOT have been called on a cache hit.
+        mock_openai.chat.completions.create.assert_not_called()
+
+
+class TestRepairTruncatedJsonObject:
+    """Pure-function tests for the shared truncation repair helper."""
+
+    def test_valid_object_unchanged(self):
+        assert _repair_truncated_json_object('{"a": 1}') == '{"a": 1}'
+
+    def test_trailing_garbage_trimmed(self):
+        assert _repair_truncated_json_object('{"a": 1} trailing') == '{"a": 1}'
+
+    def test_nested_object(self):
+        text = '{"a": {"b": 2}, "c": 3}'
+        assert _repair_truncated_json_object(text) == text
+
+    def test_strings_with_braces_ignored(self):
+        # Brace inside a string should not affect depth tracking.
+        text = r'{"a": "hello {world}", "b": 1}'
+        assert _repair_truncated_json_object(text) == text
+
+    def test_no_opening_brace_returns_none(self):
+        assert _repair_truncated_json_object("no object here") is None
+
+    def test_empty_string_returns_none(self):
+        assert _repair_truncated_json_object("") is None

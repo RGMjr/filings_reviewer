@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-22, #9 resolved (Snap Filing ID 32/33 — local relabel + real Snap S-1/A re-ingested; FILING_MAP updated; Partially-Resolved row removed; PR #72 replay after post-scrub branch loss); #77 opened for R2 chart-image bytes missing on HOOD S-1 (second layer of #72 — all 17 chart images fail with `FileNotFoundError` in OCR stage after PR #87's `boto3` fix unblocked ingestion; either bytes were never uploaded or `pipeline/` key-prefix divergence between `infrastructure.md` and `v2_image_assets.file_path`). #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-22, #78 opened for PayPal pre-2024 8-K page-scan coverage (full-page-OCR feature-flagged solution landed, awaiting rollout); #9 resolved (Snap Filing ID 32/33 — local relabel + real Snap S-1/A re-ingested; FILING_MAP updated; Partially-Resolved row removed; PR #72 replay after post-scrub branch loss); #77 opened for R2 chart-image bytes missing on HOOD S-1 (second layer of #72 — all 17 chart images fail with `FileNotFoundError` in OCR stage after PR #87's `boto3` fix unblocked ingestion; either bytes were never uploaded or `pipeline/` key-prefix divergence between `infrastructure.md` and `v2_image_assets.file_path`). #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -21,6 +21,7 @@ This document tracks known issues, limitations, and planned improvements identif
 |-------|--------|-------|
 | Low Farfetch Recall (Issue #2) | Re-diagnosed umbrella | P=50% R=37% F1=42% on 2026-04-18; superseded by sub-issues #14–#19 |
 | Migrations not auto-applied on Render deploy (Issue #66) | Open | PR #48 merged `sql/39` but Render didn't run `apply_migrations.py`; worker crashed with `UndefinedTable` until manual apply |
+| PayPal pre-2024 8-Ks have 0 facts — page-image decks (Issue #78) | Feature-flagged fix landed, awaiting rollout | 12 PayPal 8-Ks with 0 segments / 199 unprocessed JPGs. Full-page-OCR (Path A) + keyword pre-scan (Path B), both default-off. See `docs/operations/full-page-ocr-runbook.md` |
 
 ### Open — Low Severity
 
@@ -679,6 +680,40 @@ Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the origin
 
 ---
 
+## 78. PayPal Pre-2024 8-Ks Extract No Facts — Body Is Page-Image Scans
+
+**Status**: Feature-flagged solution landed (`FULL_PAGE_OCR_ENABLED`); awaiting rollout
+**Severity**: Medium — 12 PayPal 8-Ks have 0 facts; also affects any issuer that files 8-Ks as page-image decks
+**Discovered**: 2026-04-22 (investigation triggered by routine PayPal coverage review)
+
+### Problem
+
+PayPal's pre-2024 8-K filings (CIK `0001633917`, 12 filings 2021–2023)
+are submitted as page-image decks: each "page" is a JPG (~1055×1365),
+there is no HTML body text to segment. The existing V2 pipeline
+classifies these images as `UNKNOWN` (below `MIN_RELEVANCE_FOR_PROCESSING=0.3`)
+so they never reach the OCR stage, and `context.segments` is empty
+so `candidate_generation` runs over nothing. DB state: 0 segments,
+199 JPGs unprocessed, 0 facts, 0 review decisions across these 12
+filings.
+
+### Resolution
+
+Full-page-scan OCR (Path A) + image-level Tier-1 keyword pre-scan
+(Path B), both default-off, landed on the `full-page-ocr` branch.
+See `.claude/rules/v2-pipeline.md` for the pipeline-level design and
+`docs/operations/full-page-ocr-runbook.md` for the operator runbook
+(detector thresholds, dry-run/backfill workflow, verification SQL,
+rollback).
+
+### Next Steps
+
+1. Merge the feature branch with both flags default-off; CI green.
+2. Dev smoke test on one PayPal 8-K; eyeball segments + facts.
+3. Enable `FULL_PAGE_OCR_ENABLED=true` in prod; run
+   `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
+4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
+   and re-extract 5 investor-deck-style filings to exercise Path B.
 
 ---
 

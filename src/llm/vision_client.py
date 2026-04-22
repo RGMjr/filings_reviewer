@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 
@@ -93,6 +95,54 @@ class VisionResponse:
     completion_tokens: int
     cost_usd: float
     latency_ms: int
+
+
+@dataclass
+class PageTextExtraction:
+    """Parsed output of ``VisionClient.analyze_image_for_text``.
+
+    Attributes:
+        text: Paragraph / table-cell text in reading order (may be empty).
+        contains_chart: True iff a chart/graph is visually present on the page.
+        chart_hint: Best-guess chart type; one of the ``ChartType`` values or
+            ``"none"`` if no chart present.
+        cost_usd: Cost of the underlying vision call (0.0 for cache hits).
+        raw_response: The unparsed content string (for audit / debugging).
+    """
+
+    text: str
+    contains_chart: bool
+    chart_hint: str
+    cost_usd: float
+    raw_response: str
+
+
+# Prompt for text-mode OCR of a full page image.
+# The word "JSON" is required by OpenAI's response_format=json_object mode.
+_PAGE_TEXT_PROMPT = """\
+You are extracting content from a single page of a company's SEC filing. \
+The page is supplied as an image.
+
+Extract:
+1. All paragraph text and table-cell text visible on the page, in reading order, \
+joined with single newline characters between blocks. Preserve numeric values, dates, \
+percentages, and cell text exactly as shown. Skip page numbers, headers, footers, \
+watermarks, and legal boilerplate unless that is the entire page.
+2. Whether the page contains a chart or graph (bar, line, pie, area, stacked bar, \
+scatter), as distinct from a text-only page or a table-only page.
+3. If a chart is present, the best-guess chart type.
+
+Return ONLY a valid JSON object with exactly this schema:
+{
+  "text": "...",
+  "contains_chart": true|false,
+  "chart_hint": "bar" | "line" | "pie" | "area" | "stacked_bar" | "scatter" | "none"
+}
+
+Do not include any commentary outside the JSON."""
+
+
+_VALID_CHART_HINTS = frozenset({"bar", "line", "pie", "area", "stacked_bar", "scatter", "none"})
 
 
 class VisionClient:
@@ -175,9 +225,7 @@ class VisionClient:
         image_sha256 = hashlib.sha256(image_bytes).hexdigest()
 
         # Serialize response_format for cache key (None and json_object must produce distinct keys)
-        response_format_key = (
-            response_format.get("type", "none") if response_format else "none"
-        )
+        response_format_key = response_format.get("type", "none") if response_format else "none"
 
         # Cache lookup — returns immediately with zero cost if entry exists
         cached = self._cache.get(
@@ -322,3 +370,136 @@ class VisionClient:
         if last_exception:
             raise last_exception
         raise RuntimeError("Unexpected state: no response and no exception")
+
+    def analyze_image_for_text(
+        self,
+        image_bytes: bytes,
+        *,
+        max_tokens: int = 3000,
+    ) -> PageTextExtraction:
+        """Extract paragraph text from a page-sized image and flag chart presence.
+
+        Targets the full-page-scan and ambiguous-image-pre-scan use cases:
+        returns OCR'd paragraph text plus a flag indicating whether the same
+        page also contains a chart (so callers can decide whether to run a
+        second, chart-specific vision call on the same asset).
+
+        Args:
+            image_bytes: Raw JPEG/PNG/GIF/WebP bytes.
+            max_tokens: Ceiling on output tokens. Default 3000 comfortably fits
+                a dense slide; bump only if truncation becomes a problem.
+
+        Returns:
+            PageTextExtraction with parsed ``text``, ``contains_chart``,
+            ``chart_hint``, and the underlying cost.
+
+        Notes:
+            - Uses ``response_format={"type": "json_object"}`` to force valid
+              JSON out of gpt-4o. ``_parse_text_ocr_json`` repairs the rare
+              truncated response (mirrors ``OCRExtractionStage._parse_chart_json``).
+            - Cache key includes the prompt, so this call never collides with
+              cached chart/table responses.
+        """
+        response = self.analyze_image(
+            image_bytes=image_bytes,
+            prompt=_PAGE_TEXT_PROMPT,
+            detail="high",
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+
+        parsed = self._parse_text_ocr_json(response.content)
+        if parsed is None:
+            logger.warning(
+                "analyze_image_for_text: failed to parse JSON response (len=%d, first_80=%r)",
+                len(response.content),
+                response.content[:80],
+            )
+            return PageTextExtraction(
+                text="",
+                contains_chart=False,
+                chart_hint="none",
+                cost_usd=response.cost_usd,
+                raw_response=response.content,
+            )
+
+        text = str(parsed.get("text", "") or "")
+        contains_chart = bool(parsed.get("contains_chart", False))
+        chart_hint_raw = str(parsed.get("chart_hint", "none") or "none").lower()
+        chart_hint = chart_hint_raw if chart_hint_raw in _VALID_CHART_HINTS else "none"
+
+        # If the model said no chart, normalize the hint so callers don't see
+        # stale hints from a flipped-flag response.
+        if not contains_chart:
+            chart_hint = "none"
+
+        return PageTextExtraction(
+            text=text,
+            contains_chart=contains_chart,
+            chart_hint=chart_hint,
+            cost_usd=response.cost_usd,
+            raw_response=response.content,
+        )
+
+    @staticmethod
+    def _parse_text_ocr_json(content: str) -> dict | None:
+        """Parse the JSON body of an ``analyze_image_for_text`` response.
+
+        Strips markdown code fences (rarely present under json_object mode but
+        cheap to handle) and attempts a single balanced-brace repair if the
+        raw content is truncated. Returns None if no balanced object is found.
+        """
+        stripped = re.sub(r"^```(?:json)?\s*\n?", "", content.strip(), flags=re.MULTILINE)
+        stripped = stripped.rstrip("`").strip()
+        if not stripped:
+            return None
+
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+
+        repaired = _repair_truncated_json_object(stripped)
+        if repaired is None:
+            return None
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            return None
+
+
+def _repair_truncated_json_object(text: str) -> str | None:
+    """Return the shortest prefix forming a balanced top-level JSON object.
+
+    Mirrors ``OCRExtractionStage._repair_truncated_json`` so we do not take
+    a cross-module dependency from ``vision_client`` into the extraction stage.
+    """
+    if not text or not text.lstrip().startswith("{"):
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    last_balanced = -1
+    start = text.find("{")
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                last_balanced = i
+                break
+    if last_balanced < 0:
+        return None
+    return text[start : last_balanced + 1]

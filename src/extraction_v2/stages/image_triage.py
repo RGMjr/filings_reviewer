@@ -141,7 +141,35 @@ class ImageTriageStage:
         ImageClassification.DECORATIVE: 0.0,
         ImageClassification.LOGO: 0.0,
         ImageClassification.SIGNATURE: 0.0,
+        ImageClassification.FULL_PAGE_SCAN: 0.6,
     }
+
+    # ------------------------------------------------------------------
+    # Full-page-scan detection (Path A)
+    # Fires when a filing is mostly page-image scans rather than HTML text
+    # (PayPal-style 8-Ks, some investor-day 8-K decks). See plan file
+    # Risk callout "Detector precision" for tuning rationale.
+    # ------------------------------------------------------------------
+    # Estimated characters per "page" of HTML body text, used to convert
+    # total text volume into a page-equivalent count for the ratio gate.
+    FULL_PAGE_SCAN_CHARS_PER_PAGE: int = 2000
+
+    # Minimum absolute image count before the detector fires. Prevents
+    # trivial filings (one cover image on a tiny 8-K) from tripping.
+    FULL_PAGE_SCAN_MIN_IMAGES: int = 5
+
+    # images_per_page gate. A filing qualifies when image_count /
+    # max(1, total_text_chars/CHARS_PER_PAGE) >= this value.
+    FULL_PAGE_SCAN_MIN_RATIO: float = 1.5
+
+    # Fraction of images that must be "page-shaped" to qualify the filing.
+    FULL_PAGE_SCAN_MIN_PAGE_SHAPED_FRACTION: float = 0.70
+
+    # Page-shape bounds (portrait US Letter / A4 approximate).
+    PAGE_SHAPED_ASPECT_MIN: float = 0.7
+    PAGE_SHAPED_ASPECT_MAX: float = 0.85
+    PAGE_SHAPED_WIDTH_MIN: int = 900
+    PAGE_SHAPED_WIDTH_MAX: int = 1300
 
     def __init__(self) -> None:
         """Initialize the image triage stage."""
@@ -441,6 +469,86 @@ class ImageTriageStage:
         # Cap at 1.0
         return min(1.0, score)
 
+    def _is_page_shaped(self, asset: ImageAsset) -> bool:
+        """Return True if an image has the aspect/width of a scanned page.
+
+        Accepts images with explicit dimensions matching the portrait-page
+        window, OR images with no declared dimensions (SEC filings often
+        omit width/height on ``<img>`` tags for scanned exhibits) — the
+        enclosing detector's ratio gate will still reject filings that
+        aren't really page-scan decks.
+        """
+        width = asset.width
+        height = asset.height
+        if width <= 0 or height <= 0:
+            # No dimensions: defer judgment to the filing-wide detector.
+            return True
+        aspect = width / height
+        return (
+            self.PAGE_SHAPED_ASPECT_MIN <= aspect <= self.PAGE_SHAPED_ASPECT_MAX
+            and self.PAGE_SHAPED_WIDTH_MIN <= width <= self.PAGE_SHAPED_WIDTH_MAX
+        )
+
+    def _detect_full_page_scan_filing(self, context: pipeline.PipelineContext) -> bool:
+        """Return True if this filing is a page-image deck.
+
+        All three conditions must hold:
+          1. ``image_count >= FULL_PAGE_SCAN_MIN_IMAGES``
+          2. ``image_count / max(1, text_chars / CHARS_PER_PAGE) >=
+             FULL_PAGE_SCAN_MIN_RATIO``
+          3. ``page_shaped_fraction >= FULL_PAGE_SCAN_MIN_PAGE_SHAPED_FRACTION``
+
+        This is intentionally strict — detector false positives would
+        spend vision calls on normal filings. See plan file risk callout
+        "Detector precision" for the rationale behind each threshold.
+        """
+        images = context.images
+        image_count = len(images)
+        if image_count < self.FULL_PAGE_SCAN_MIN_IMAGES:
+            return False
+
+        total_text_chars = sum(len(s.text or "") for s in context.segments)
+        pages_of_text = max(1.0, total_text_chars / self.FULL_PAGE_SCAN_CHARS_PER_PAGE)
+        images_per_page = image_count / pages_of_text
+        if images_per_page < self.FULL_PAGE_SCAN_MIN_RATIO:
+            return False
+
+        page_shaped_count = sum(1 for img in images if self._is_page_shaped(img))
+        page_shaped_fraction = page_shaped_count / image_count
+        if page_shaped_fraction < self.FULL_PAGE_SCAN_MIN_PAGE_SHAPED_FRACTION:
+            return False
+
+        logger.info(
+            "Full-page-scan detector fired: %d images, %d text chars "
+            "(%.2f images/page, %.0f%% page-shaped)",
+            image_count,
+            total_text_chars,
+            images_per_page,
+            100 * page_shaped_fraction,
+        )
+        return True
+
+    def _promote_to_full_page_scan(self, context: pipeline.PipelineContext) -> list[ImageAsset]:
+        """Reclassify page-shaped images to FULL_PAGE_SCAN and queue them.
+
+        Called only after ``_detect_full_page_scan_filing`` returns True.
+        Overrides prior triage verdicts (UNKNOWN / CHART / TABLE_IMAGE /
+        etc.) on page-shaped images only — logos and very small images
+        keep their heuristic classification.
+        """
+        promoted: list[ImageAsset] = []
+        for asset in context.images:
+            if not self._is_page_shaped(asset):
+                continue
+            asset.classification = ImageClassification.FULL_PAGE_SCAN
+            asset.relevance_score = max(
+                asset.relevance_score,
+                self.CLASSIFICATION_BASE_SCORES[ImageClassification.FULL_PAGE_SCAN],
+            )
+            asset.requires_manual_capture = False
+            promoted.append(asset)
+        return promoted
+
     def triage_images(self, images: list[ImageAsset]) -> list[ImageAsset]:
         """
         Process a batch of images: classify, score, and mark for processing.
@@ -462,9 +570,7 @@ class ImageTriageStage:
         # times are decorative repeating elements (headers, footers, watermarks).
         filename_counts = Counter(a.filename for a in images if a.filename)
         repeated_filenames = {
-            fn
-            for fn, count in filename_counts.items()
-            if count > self.REPEATED_FILENAME_THRESHOLD
+            fn for fn, count in filename_counts.items() if count > self.REPEATED_FILENAME_THRESHOLD
         }
 
         for asset in images:
@@ -537,6 +643,27 @@ class ImageTriageStage:
             # Triage all images
             images_for_processing = self.triage_images(context.images)
 
+            # Path A: full-page-scan detection. Runs after per-image triage
+            # because it may override prior classifications on page-shaped
+            # images when the filing-wide pattern matches. ``context.config``
+            # is typed as required but some test fixtures omit it, so we
+            # defensively default to off when it's absent.
+            full_page_scan_fired = False
+            full_page_ocr_enabled = bool(
+                getattr(context, "config", None)
+                and getattr(context.config, "enable_full_page_ocr", False)
+            )
+            if full_page_ocr_enabled and self._detect_full_page_scan_filing(context):
+                full_page_scan_fired = True
+                promoted = self._promote_to_full_page_scan(context)
+                # Merge promoted images into the to-process list, preserving
+                # order and de-duplicating by identity.
+                existing_ids = {id(img) for img in images_for_processing}
+                for asset in promoted:
+                    if id(asset) not in existing_ids:
+                        images_for_processing.append(asset)
+                context.full_page_scan_mode = True
+
             # Compute statistics
             classification_counts: dict[str, int] = {}
             for asset in context.images:
@@ -560,6 +687,7 @@ class ImageTriageStage:
                     "manual_capture_count": sum(
                         1 for img in context.images if img.requires_manual_capture
                     ),
+                    "full_page_scan_mode": full_page_scan_fired,
                 },
             )
 
