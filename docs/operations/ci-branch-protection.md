@@ -31,8 +31,12 @@ Five jobs from `.github/workflows/ci.yml` are consistent enough to gate on:
 
 - `Docker Build & Smoke` — long-running; duplicates integration-tests signal.
 - `Post-Deploy Smoke Test` — only runs on push to `main`, not on PRs.
-- `Gold Standard Validation` — requires `OPENAI_API_KEY`; runs on a schedule
-  rather than per-PR.
+- `Gold Standard Regression Check` — lives in `.github/workflows/gold-standard.yml`
+  (its own workflow, not `ci.yml`). Triggered only on PRs that touch
+  `src/extraction_v2/**` or `config/metric_keywords*` paths. Uses
+  `continue-on-error: true`, so it reports regressions as a PR warning without
+  blocking merge. `OPENAI_API_KEY` is wired in via repo secrets for the live
+  V2 extraction run against `data/gold_standard/v2_baseline.json`.
 
 ### Current configuration
 

@@ -175,10 +175,16 @@ EOF
 
   local log_file="$worktree/.sweep.log"
   local exit_code=0
+  # </dev/null is load-bearing: this function is called from inside a
+  # `picks | while read` pipeline, so the subshell inherits the pick stream
+  # on stdin. Without the redirect, `claude -p` (or `timeout` forwarding to
+  # it) reads the remaining pick lines from the pipe on its first call,
+  # which drains the iterator and makes the while-loop exit after pick 1
+  # of N. Reproduced locally with `(cat)` in place of claude.
   (
     cd "$worktree"
     timeout "$PER_ISSUE_BUDGET" claude -p "$prompt" > "$log_file" 2>&1
-  ) || exit_code=$?
+  ) </dev/null || exit_code=$?
 
   local finished="$(date +%H:%M)"
   local pr_url="" pr_number="" abort_reason=""
