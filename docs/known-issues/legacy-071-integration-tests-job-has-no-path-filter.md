@@ -1,17 +1,18 @@
 ---
-autonomy: safe
+autonomy: n/a
 discovered: '2026-04-21'
-estimated: XS
+estimated: —
 id: 71
-note: Add path filter to integration-tests, mirroring ui-e2e
+note: Resolved in PR #108; retained for audit trail
+pr_refs:
+- 108
 severity: low
 slug: integration-tests-job-has-no-path-filter
 source: legacy
-status: open
+status: resolved
 title: Integration Tests Job Has No Path Filter
-touches:
-- .github/workflows/ci.yml
-updated: '2026-04-21'
+touches: []
+updated: '2026-04-22'
 ---
 
 ### Problem
