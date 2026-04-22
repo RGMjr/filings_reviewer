@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-22, #77 opened for R2 chart-image bytes missing on HOOD S-1 (second layer of #72 — all 17 chart images fail with `FileNotFoundError` in OCR stage after PR #87's `boto3` fix unblocked ingestion; either bytes were never uploaded or `pipeline/` key-prefix divergence between `infrastructure.md` and `v2_image_assets.file_path`). #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-22, #9 resolved (Snap Filing ID 32/33 — local relabel + real Snap S-1/A re-ingested; FILING_MAP updated; Partially-Resolved row removed; PR #72 replay after post-scrub branch loss); #77 opened for R2 chart-image bytes missing on HOOD S-1 (second layer of #72 — all 17 chart images fail with `FileNotFoundError` in OCR stage after PR #87's `boto3` fix unblocked ingestion; either bytes were never uploaded or `pipeline/` key-prefix divergence between `infrastructure.md` and `v2_image_assets.file_path`). #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -50,7 +50,6 @@ This document tracks known issues, limitations, and planned improvements identif
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| Snap Filing (ID 32/33) — Mislabeled Data (Issue #9) | Partially resolved | Snap not yet in gold standard; validation DB no longer required |
 | Pre-2026-04-17 filings missing chart facts (Issue #35) | Partially resolved | `chart_only` mode landed (PR #50); full 8-filing backfill deferred (#53, #54) |
 | Local-Dev Stuck-Batch Recovery (Issue #62) | Partially resolved | Manual recovery SQL documented in TICKER_ONBOARDING.md; `--cleanup-stuck` CLI flag + SIGTERM log deferred |
 
@@ -117,55 +116,6 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #75   | skip     | S         | `tests/ui/*.spec.js tests/ui/test_server.py`                            | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
 | #76   | safe     | S         | `tests/integration/test_db_filings_reviewers.py`                        | New integration test for filings-list reviewer aggregate; isolated file |
 | #77   | skip     | M         | —                                                                       | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; needs R2 head-object check + migration or re-ingest |
-
----
-
-## 9. Snap Filing (ID 32/33) — Mislabeled Data (Validation DB Dependency Resolved)
-
-**Status**: Partially resolved — validation DB dependency eliminated; Snap CIK fix still pending
-**Severity**: Low (Snap not yet in gold standard; gold standard validation no longer DB-dependent)
-**Discovered**: 2025-12-27 (HRV-5)
-**Investigated**: 2026-03-19
-**Updated**: 2026-03-19
-
-### Problem
-
-Filing ID 33 (and later reorganized to ID 32 in `gi3_richness_analysis.py`) is labeled "Snap"
-but the CIK on record (`0001644378`) belongs to **RMR Group Inc.** (a REIT management company),
-confirmed via SEC EDGAR API.
-
-The local dev DB validation dataset was found to be **empty** as of 2026-03-19. The backup file
-`filings_backup.dump` contains only schema, not data.
-
-### Confirmed Facts
-
-- Filing 33 CIK `0001644378` = RMR Group Inc. (confirmed 2026-03-19 via SEC API)
-- Snap's correct CIK = `0001564408`, form S-1/A, filed 2017-02-27, accession `0001193125-17-056992`
-- `gi3_richness_analysis.py` FILING_MAP comment was stale (said "IDs 31/33" were wrong; actually
-  IDs 32/34 had RLX Technology / Vodka Brands data per GR-FINAL_VALIDATION.md 2025-12-26)
-
-### Root Cause
-
-CIK `0001644378` was mistakenly used for Snap instead of `0001564408` when originally ingested.
-
-### Resolution (2026-03-19)
-
-The empty local validation DB is no longer a blocker. Gold standard validation now runs in
-**fresh mode** (`pytest -m gold_standard --gold-standard-mode=fresh -v`), which re-extracts
-candidates directly from locally cached HTML files without requiring a populated database.
-
-`test_gold_standard_regression.py` now supports `--gold-standard-mode=fresh`, making the
-validation reproducible without any database setup. The `*.dump` pattern is now in `.gitignore`
-to prevent accidentally committing production database dumps.
-
-### Remaining (Low Priority)
-
-- Re-ingest the actual Snap S-1/A (CIK `0001564408`, accession `0001193125-17-056992`, filed 2017-02-27) and add to the gold standard. **This is not a simple `companies.cik` column update** — filing 32 in the local DB (labeled "Snap") contains RMR Group content, so changing the CIK alone would leave the extracted facts pointing at the wrong company. A correct fix deletes or archives the orphaned filing 32 row, then runs the normal ingestion pipeline against the real Snap S-1/A URL. Track this as a separate workstream; not blocking.
-
-### Partial Fix Applied (2026-03-19)
-
-- Corrected stale comment in `gi3_richness_analysis.py` FILING_MAP
-- Added inline note on Snap CIK pending fix
 
 ---
 
@@ -1150,6 +1100,20 @@ Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, val
 
 The "1 remaining" test tied to archived Issue #10 no longer exists; `tests/integration/test_gold_standard_coverage.py` was deleted in commit `03a8a20` ("refactor(v1): retire review_candidates + source_segments + suppressed_candidates"). The 11/12 → 12/12 finish line was reached implicitly. See archive entry for Issue #10.
 
+### Issue #9: Snap Filing (ID 32/33) — Mislabeled Data
+
+**Status**: Resolved (2026-04-22)
+
+Filing 32 was labelled "Snap" but the CIK on record (`0001644378`) belongs to RMR Group Inc.; no Snap content had ever been ingested. Resolution:
+
+1. Relabeled the local `companies` row for CIK `0001644378` to `'RMR Group Inc.'` (preserves the already-extracted RMR content under the correct issuer name; no CASCADE through `v2_segments`/`v2_metric_facts`/`v2_review_decisions`).
+2. Seeded `Snap Inc.` (CIK `0001564408`) + its real S-1/A (accession `0001193125-17-056992`, filed 2017-02-27, primary doc `d270216ds1a.htm`) via `sql/seed_snap_s1a.sql` (unnumbered, one-off — follows `sql/register_gold_standard_filings.sql` precedent; not registered in `scripts/apply_migrations.py`).
+3. Fetched HTML via `FilingFetcher.fetch_filing` (2.3 MB into `data/filings/0001564408/000119312517056992/primary.htm`).
+4. Ran V2 extraction — 8 facts across `cm_daily_active_users`, `cm_revenue_per_customer`, `cm_active_customers_total` (1724 segments, 547 tables, 40 images persisted).
+5. Updated `scripts/gi3_richness_analysis.py` FILING_MAP (id 32 → `"RMR Group Inc."`; comment shortened).
+
+Scope limited to local (`$TEST_DATABASE_URL`). Neon prod mirror is a separate workstream. Adding Snap's new filing_id to gold-standard coverage is also out of scope — owned by the gold-standard workflow. Previously attempted as PR #72 on 2026-04-21; that branch was closed during the #65 history scrub and this is the replay.
+
 ### Issue #12: `test_image_crop.py` Pollutes Working Tree with Test PNGs
 
 **Status**: Resolved (2026-04-18)
@@ -1443,3 +1407,4 @@ New `PipelineConfig.chart_metric_min_confidence` knob (Guard 6 on `ChartFactBrid
 - **2026-04-21**: Added Issue #72 — Robinhood Tier 1 gold-standard regression vs. 2026-04-19 baseline surfaced during PR #72 (Snap ingestion) `git merge origin/main` attempt. Local pre-commit hook reported `recall_delta=-0.009, f1_delta=-0.0015, regressed_companies=['Robinhood Markets, Inc.']`. Per-metric diagnostics show `cm_revenue_by_cohort` (T1) at 0/0/0 with all 10 FNs stemming from a scale bug: extraction binds `$33,421.5` (quarterly total) instead of per-cohort values like `$17/$130/$45`. `cm_customer_acquisition_cost` (T1) has 1 dedup-collision FN; `cm_balance_by_cohort` (T1) at 0/0/0 is the boundary-sensitive case already tracked in Issue #64. Candidate root-cause commit: `24bfd6b refactor(persistence): unify chart_only SQL branches + dedup test helper (#52)` — only extraction-touching commit in the window between `cdc831f` (baseline) and current main tip `52e61ce`. Blocks PR #72's merge commit until fixed + baseline refreshed.
 - **2026-04-22**: Issue #72 diagnosis corrected. Direct Neon investigation showed: (a) the `$33,421.5` scale-bug framing was wrong — no such value exists in HOOD's facts; (b) #52 is a persistence-only refactor with no extraction code touched, ruled out as root cause; (c) HOOD S-1 has 17 chart-classified images with 0 `ocr_text` / 0 `chart_data`, cohort image `e5f65961` unprocessed; (d) the single `$130` chart fact is an orphan pointing at a vanished img_id. Real cause: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` extraction crashed at stage 1 with `ModuleNotFoundError`. Fix bundled with this entry: `boto3` added to `pyproject.toml`; `uv.lock` regenerated. Verified locally: `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` now runs full pipeline (22 images parsed, 16 text/html_table facts produced; previously died on import). Chart-only mode safely preserved all 12 reviewer decisions. A second-layer issue surfaced during verification — 17/17 chart images now hit `FileNotFoundError` in R2 at keys like `1783879/000162828021019902/hood-20211008_g6.jpg` — will be tracked as a separate follow-up. Baseline refresh gated on the R2 fix landing too.
 - **2026-04-22**: Added Issue #77 — R2 chart-image bytes missing / mis-keyed on HOOD S-1 (second layer of #72). Post-PR-#87 run confirmed all 17 chart images fail in OCR with `FileNotFoundError` at keys like `1783879/000162828021019902/hood-20211008_g<N>.jpg` (N in 2,3,5-20). Two candidate causes not yet distinguished: (a) bytes never uploaded to R2 for this pre-migration filing, or (b) `pipeline/` prefix divergence between `infrastructure.md` (canonical keys are `pipeline/<cik>/<accession>/<filename>`) and the `v2_image_assets.file_path` values stored without that prefix. Remediation path depends on which: a one-shot R2 `HeadObject` check against both key variants will distinguish, then either migrate `file_path` values / fix the lookup path (Case A) or re-ingest HOOD S-1 from source HTML (Case B). Also worth a scope check across other pre-migration filings with chart-sourced gold values. Blocks HOOD chart recall recovery + v2 baseline refresh. §72's "open a separate issue" Next Step is now tracked here.
+- **2026-04-22**: Issue #9 resolved (local) — replay of the lost PR #72 (closed during #65 history scrub). `sql/seed_snap_s1a.sql` (unnumbered, follows `register_gold_standard_filings.sql` precedent) relabels CIK `0001644378` row to `RMR Group Inc.` and seeds Snap Inc. (CIK `0001564408`) + its real S-1/A (accession `0001193125-17-056992`, primary doc `d270216ds1a.htm`). `FilingFetcher.fetch_filing` pulled 2.3 MB into `data/filings/0001564408/000119312517056992/primary.htm`; `batch_v2_extraction.py --filing-id 22267` persisted 8 facts / 1724 segments / 547 tables / 40 images (DAU 153M/158M, revenue-per-user $2.15 — matches Snap's public disclosures). `scripts/gi3_richness_analysis.py` FILING_MAP entry for id 32 corrected to `"RMR Group Inc."`. Partially-Resolved summary row removed; body moved to Archive §9. Scope: local (`$TEST_DATABASE_URL`) only — Neon prod mirror and gold-standard coverage addition remain separate workstreams. Merged fine this time because the commit only touches `sql/`, `scripts/`, `docs/` — none of the paths that trigger the `pre-commit-extraction-guard.sh` gold-standard check, so the Issue #72 / #77 chart-pipeline stall is orthogonal to this merge.
