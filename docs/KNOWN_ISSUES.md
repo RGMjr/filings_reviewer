@@ -114,7 +114,6 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #73   | safe     | XS        | `.github/PULL_REQUEST_TEMPLATE.md .github/pull_request_template.md`     | Delete one of the duplicate templates; pick lowercase per GH convention |
 | #74   | safe     | XS        | `.gitignore`                                                            | One-line addition to root `.gitignore`                        |
 | #75   | skip     | S         | `tests/ui/*.spec.js tests/ui/test_server.py`                            | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
-| #76   | safe     | S         | `tests/integration/test_db_filings_reviewers.py`                        | New integration test for filings-list reviewer aggregate; isolated file |
 | #77   | skip     | M         | —                                                                       | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; needs R2 head-object check + migration or re-ingest |
 
 ---
@@ -1005,6 +1004,12 @@ Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracki
 ---
 
 ## Archive (Resolved Issues)
+
+### Issue #76: Missing Integration Test for Filings-List Reviewer Aggregate
+
+**Status**: Resolved (2026-04-22)
+
+Added `tests/integration/test_db_filings_reviewers.py` with three cases: text+image reviewer UNION aggregation, `reviewer_ids=[…] &&` overlap filter positive+negative, and NULL-reviewer legacy-row empty-list. Guards `get_unified_filings_for_review` in `src/infra/db.py` against future CTE refactors silently dropping a reviewer source.
 
 ### Issue #60: `detect_universe_gaps` Ignores SIC Filter
 
