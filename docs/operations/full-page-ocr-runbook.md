@@ -57,10 +57,14 @@ PipelineConfig(
 )
 ```
 
-Env-driven opt-in is explicitly handled by the backfill script and can
-be plumbed into CLI runners via an `os.environ.get("FULL_PAGE_OCR_ENABLED")`
-check. The `PipelineConfig` dataclass itself is pure data — it does not
-read environment variables.
+Env-driven opt-in is wired at the `V2Pipeline` orchestrator. When a
+caller constructs `V2Pipeline()` without an explicit `PipelineConfig`
+(the common ingestion-UI / `onboarding_runner` path),
+`V2Pipeline._apply_env_feature_flags` lifts `FULL_PAGE_OCR_ENABLED=true`
+/ `IMAGE_KEYWORD_PRESCAN_ENABLED=true` into the default config. Callers
+that pass an explicit `PipelineConfig` (the backfill script, unit tests)
+always win — their configured values are never overridden by env, which
+keeps GS validation and unit tests deterministic.
 
 Recommended rollout (matches the feature-branch plan):
 

@@ -265,6 +265,32 @@ class TestV2Pipeline:
         assert PipelineStage.IMAGE_TRIAGE not in stage_ids
         assert PipelineStage.OCR_CHART_EXTRACTION not in stage_ids
 
+    def test_full_page_ocr_env_flag_lifts_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """FULL_PAGE_OCR_ENABLED env var enables the flag when no config passed."""
+        monkeypatch.setenv("FULL_PAGE_OCR_ENABLED", "true")
+        pipeline = V2Pipeline()  # config=None → env applies
+        assert pipeline.config.enable_full_page_ocr is True
+
+    def test_keyword_prescan_env_flag_lifts_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """IMAGE_KEYWORD_PRESCAN_ENABLED env var enables the flag when no config passed."""
+        monkeypatch.setenv("IMAGE_KEYWORD_PRESCAN_ENABLED", "1")
+        pipeline = V2Pipeline()
+        assert pipeline.config.enable_image_keyword_prescan is True
+
+    def test_explicit_config_overrides_env_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Explicit PipelineConfig() wins over env var (keeps tests/backfill deterministic)."""
+        monkeypatch.setenv("FULL_PAGE_OCR_ENABLED", "true")
+        pipeline = V2Pipeline(config=PipelineConfig(enable_full_page_ocr=False))
+        assert pipeline.config.enable_full_page_ocr is False
+
+    def test_env_flag_off_by_default_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Both flags stay False when env is unset (GS baseline preservation)."""
+        monkeypatch.delenv("FULL_PAGE_OCR_ENABLED", raising=False)
+        monkeypatch.delenv("IMAGE_KEYWORD_PRESCAN_ENABLED", raising=False)
+        pipeline = V2Pipeline()
+        assert pipeline.config.enable_full_page_ocr is False
+        assert pipeline.config.enable_image_keyword_prescan is False
+
     def test_pipeline_process_basic(self, tmp_path: Path) -> None:
         """Test basic pipeline execution."""
         # Create a minimal test HTML file
@@ -524,7 +550,9 @@ class TestPipelineReturnsDedupFacts:
         context.facts = [fact]
         context.deduplicated_facts = None  # None = dedup didn't run
 
-        output_facts = context.deduplicated_facts if context.deduplicated_facts is not None else context.facts
+        output_facts = (
+            context.deduplicated_facts if context.deduplicated_facts is not None else context.facts
+        )
         assert len(output_facts) == 1
         assert output_facts[0].fact_id == "raw-1"
 
@@ -779,7 +807,9 @@ class TestRetainContext:
 class TestPipelineApiKeyCheck:
     """Tests for automatic disabling of chart/image extraction when API key is missing."""
 
-    def test_chart_extraction_disabled_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_chart_extraction_disabled_when_no_api_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Pipeline should auto-disable chart and image extraction when OPENAI_API_KEY is unset."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
@@ -792,7 +822,9 @@ class TestPipelineApiKeyCheck:
         assert PipelineStage.IMAGE_TRIAGE not in stage_ids
         assert PipelineStage.OCR_CHART_EXTRACTION not in stage_ids
 
-    def test_chart_extraction_enabled_when_api_key_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_chart_extraction_enabled_when_api_key_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Pipeline should keep chart extraction enabled when OPENAI_API_KEY is set."""
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-12345")
         config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
@@ -803,7 +835,9 @@ class TestPipelineApiKeyCheck:
         assert PipelineStage.IMAGE_TRIAGE in stage_ids
         assert PipelineStage.OCR_CHART_EXTRACTION in stage_ids
 
-    def test_no_warning_when_chart_extraction_already_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_warning_when_chart_extraction_already_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """No warning should be issued when chart extraction is already disabled."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         # When chart extraction is already disabled, no warning needed

@@ -35,6 +35,13 @@ primitive: `VisionClient.analyze_image_for_text(image_bytes)` returning
 Cache key includes the prompt, so these calls don't collide with the
 chart/table cached responses.
 
+**Env-var wiring.** When `V2Pipeline()` is constructed without an explicit
+`PipelineConfig`, `V2Pipeline._apply_env_feature_flags` lifts `FULL_PAGE_OCR_ENABLED=true`
+and `IMAGE_KEYWORD_PRESCAN_ENABLED=true` into the default config. Explicit
+configs always win over env (keeps GS validator and unit tests deterministic).
+The ingestion UI → `onboarding_runner` → `process_filing(config=None)` path
+relies on this; the backfill script passes an explicit config.
+
 **Path A — full-page-scan filing** (`PipelineConfig.enable_full_page_ocr`).
 `ImageTriageStage._detect_full_page_scan_filing` fires when `image_count >= 5`,
 `images_per_page (= image_count / max(1, text_chars/2000)) >= 1.5`, and
