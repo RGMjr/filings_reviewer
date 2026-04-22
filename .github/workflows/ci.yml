@@ -27,6 +27,9 @@ jobs:
       - name: Type check (mypy)
         run: uv run mypy src/review/ --strict
 
+      - name: Known-issues rollup is in sync with fragments
+        run: python3 scripts/regenerate_known_issues.py --check
+
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
