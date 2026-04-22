@@ -23,7 +23,13 @@ docker compose down    # Stop
 
 Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmode=require`
 
-`render.yaml` defines: `filings-reviewer` web service + `filings-extraction` cron (daily 6am UTC, runs `batch_v2_extraction.py --status fetched --workers 2 --limit 50`).
+`render.yaml` defines 4 services, all pinned to Ohio region via `region: ohio`:
+- `filings-reviewer` — web service (URL: `filings-reviewer.onrender.com`)
+- `filings-extraction` — cron, daily 6am UTC (`batch_v2_extraction.py --status fetched --workers 2 --limit 50`)
+- `filings-onboarding-runner` — background worker (`src.universe.onboarding_runner --watch`)
+- `filings-nightly-sweep` — cron, daily 6am UTC (autonomous KNOWN_ISSUES sweeper; gated by `.claude/sweep.pause`)
+
+Region is pinned so blueprint re-deploys do not scatter services across regions. Render will ignore `region` changes on existing services — if you need to move a service to a different region you must delete and recreate it (env groups `filings-shared-secrets` and `filings-claude-secrets` persist across deletion, so secrets are inherited on recreate).
 
 ### pg_dump client version
 

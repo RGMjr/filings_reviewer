@@ -1,7 +1,7 @@
 # Cloud Deployment Runbook
 
-**Infrastructure:** Render (web service) + Neon (PostgreSQL)
-**Last updated:** 2026-04-18
+**Infrastructure:** Render (web service + worker + 2 crons, all Ohio region) + Neon (PostgreSQL)
+**Last updated:** 2026-04-22
 
 ---
 
@@ -12,6 +12,7 @@
 | Item | Detail |
 |------|--------|
 | Service URL | https://filings-reviewer.onrender.com |
+| Region | Ohio — pinned in `render.yaml` via `region: ohio` on every service |
 | Live since | 2026-04-08 |
 | Pre-cutover checklist | Complete |
 | DB | Production Neon — all 21 migrations applied; `html_content` and `image_cache` populated |

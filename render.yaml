@@ -27,6 +27,7 @@ envVarGroups:
 services:
   - type: web
     name: filings-reviewer
+    region: ohio
     runtime: docker
     dockerfilePath: ./Dockerfile
     envVars:
@@ -42,6 +43,7 @@ services:
 
   - type: cron
     name: filings-extraction
+    region: ohio
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerCommand: python3 scripts/batch_v2_extraction.py --status fetched --workers 2 --limit 50
@@ -51,6 +53,7 @@ services:
 
   - type: worker
     name: filings-onboarding-runner
+    region: ohio
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerCommand: python3 -m src.universe.onboarding_runner --watch --poll-interval 10
@@ -71,6 +74,7 @@ services:
   # Remove that file to activate the sweeper.
   - type: cron
     name: filings-nightly-sweep
+    region: ohio
     runtime: docker
     dockerfilePath: ./Dockerfile.nightly-sweep
     dockerCommand: bash scripts/run_nightly_sweep.sh
