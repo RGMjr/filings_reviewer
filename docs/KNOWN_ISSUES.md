@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #72 opened for Robinhood Tier 1 gold-standard regression vs. 2026-04-19 baseline (`cm_revenue_by_cohort` extracting quarterly totals instead of per-cohort values; blocks PR merge commits via pre-commit hook; likely introduced by #52 persistence refactor); #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-22, #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 opened for Robinhood Tier 1 gold-standard regression vs. 2026-04-19 baseline (`cm_revenue_by_cohort` extracting quarterly totals instead of per-cohort values; blocks PR merge commits via pre-commit hook; likely introduced by #52 persistence refactor); #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -42,6 +42,8 @@ This document tracks known issues, limitations, and planned improvements identif
 | `Dockerfile.nightly-sweep` installs `claude` + `gh` unpinned (Issue #69) | Open | Version drift between builds could silently change sweeper behaviour |
 | CONTRIBUTING.md `/commit` step 1 wording stale post-worktree-hook (Issue #70) | Open | Step 1 implies `/commit` can run from primary tree on `main`; hook now blocks that path |
 | Integration Tests job has no path filter (Issue #71) | Open | Docs-only / `.claude/`-only PRs still spin up Postgres + migrations (~3–6 min); wall-time save |
+| `.github` PR template case collision (Issue #73) | Open | Duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` (identical blobs) trigger fresh-clone warnings on macOS/Windows |
+| `.claude/scheduled_tasks.lock` not gitignored (Issue #74) | Open | Runtime lockfile shows up as untracked in every `git status`; not covered by any `.gitignore` rule |
 
 ### Partially Resolved
 
@@ -109,6 +111,8 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #69   | review   | S         | `Dockerfile.nightly-sweep`                                              | Pin claude + gh versions; needs validation step               |
 | #71   | safe     | XS        | `.github/workflows/ci.yml`                                              | Add path filter to integration-tests, mirroring ui-e2e        |
 | #72   | skip     | M         | —                                                                       | Tier 1 regression; needs bisect + extraction-bug fix + baseline refresh |
+| #73   | safe     | XS        | `.github/PULL_REQUEST_TEMPLATE.md .github/pull_request_template.md`     | Delete one of the duplicate templates; pick lowercase per GH convention |
+| #74   | safe     | XS        | `.gitignore`                                                            | One-line addition to root `.gitignore`                        |
 
 ---
 
@@ -904,6 +908,40 @@ CI runs unit + integration tests but not the full gold-standard sweep, so the de
 
 ---
 
+## 73. `.github` PR Template Case Collision — Duplicate Files
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-22 (during Issue #65 history scrub — fresh-clone verification emitted `case-insensitive filesystem` warning)
+
+### Problem
+
+`.github/PULL_REQUEST_TEMPLATE.md` and `.github/pull_request_template.md` both exist at HEAD with identical blob SHAs (`db60c8b`). On case-insensitive filesystems (macOS default, Windows NTFS default) `git clone` checks out only one of the colliding paths and emits a warning; `git status` may subsequently report the other as "would be deleted" depending on which casing the OS resolved. GitHub itself is case-insensitive for this path and still applies the template to PRs, so the impact is limited to fresh-clone hygiene noise — but it pollutes output for every new contributor.
+
+### Next Steps
+
+- Remove one of the two files (GitHub's 2024 docs use `pull_request_template.md` lowercase; keeping lowercase matches that convention). On macOS, the removal must be done with `git -c core.ignorecase=false rm` or from a case-sensitive environment (Linux, a Docker container) since the filesystem can't disambiguate the two paths directly.
+- Verify a fresh macOS clone no longer emits the warning.
+
+---
+
+## 74. `.claude/scheduled_tasks.lock` Not Gitignored
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-22 (during Issue #65 history scrub — file consistently appeared under "Untracked files" across sessions)
+
+### Problem
+
+`.claude/scheduled_tasks.lock` is created at runtime by the Claude Code scheduled-tasks system but is not covered by any `.gitignore` rule — `git check-ignore -v .claude/scheduled_tasks.lock` returns no match. Every `git status` run in an active session lists it as untracked, which inflates status output and creates a small risk of accidental staging if someone invokes `git add -A` or `git add .` (already an anti-pattern per CLAUDE.md, but worth hardening against).
+
+### Next Steps
+
+- Add `.claude/scheduled_tasks.lock` (or a broader `.claude/*.lock` glob) to the root `.gitignore`.
+- Quick audit of `.claude/` for other runtime-only files (e.g., `.claude/sweep-digests/` is already tracked separately — confirm nothing else needs ignoring).
+
+---
+
 ## Archive (Resolved Issues)
 
 ### Issue #60: `detect_universe_gaps` Ignores SIC Filter
@@ -935,12 +973,27 @@ Cross-references: Issue #54 — `chart_metric_min_confidence` knob; `src/extract
 
 ### Issue #65: Secret-Leak Guard for Mis-Named Env Duplicates
 
-**Status**: Resolved (2026-04-21)
+**Status**: Resolved (2026-04-22)
 
 Broadened `.gitignore` to `.env*` with `!.env.template` allowlist; added
 `gitleaks` pre-commit hook at the repo-wide level. Forward-looking defense
-only — historical audit surfaced one real OpenAI key (rotated; history
-scrub deferred to a separate task).
+plus historical cleanup — the OpenAI key found during audit has been rotated,
+and on 2026-04-22 `git filter-repo --invert-paths --path data_preprocessing.py`
+was run against a fresh mirror clone to strip the file (the only artifact
+that ever held the key) from all of history. Force-push rewrote 1,066
+commits on `main` (new tip after scrub vs. the pre-scrub tip differ by SHA
+only; merge topology and file contents are otherwise identical). Tainted
+refs also purged on origin: tag `backup-before-history-rewrite`, branches
+`worktree-fix-issue-9-snap-ingestion` and `worktree-review-ui-improvements`.
+`main` branch protection (`allow_force_pushes: false`, `enforce_admins: true`,
+required PR + 5 status checks) was restored immediately after the push.
+
+Known residue: four **merged** PRs (`refs/pull/1/head`, `refs/pull/9/head`,
+`refs/pull/10/head`, `refs/pull/11/head`) still hold the tainted blob in
+GitHub's read-only PR refs. These cannot be rewritten via push — only GitHub
+Support can purge them via the [sensitive-data removal process](https://docs.github.com/en/code-security/secret-scanning/removing-sensitive-data-from-a-repository).
+The key is rotated, so exposure risk is historical only; filing a support
+request is optional.
 
 ---
 
