@@ -291,16 +291,20 @@ def ingest_start():
             400,
         )
 
-    # Determine per-filing bucket and reextract flag
+    # Determine per-filing bucket and reextract flag.
+    # Inclusion is signalled by the filing_id checkbox being submitted (preview
+    # template — only checked rows reach us). The bucket hidden field carries
+    # the filing's classification; for the two "reextract*" buckets inclusion
+    # implies re-extraction, so we derive the decision from bucket rather than
+    # from a redundant per-row reextract checkbox.
     filing_buckets: dict[int, str] = {}
     reextract_decisions: dict[int, bool] = {}
     has_reviewed_reextract = False
 
     for fid in filing_ids:
-        reextract_cb = request.form.get(f"reextract_{fid}") == "on"
         bucket_hidden = request.form.get(f"bucket_{fid}", "new")
         filing_buckets[fid] = bucket_hidden
-        if reextract_cb:
+        if bucket_hidden in ("reextract", "reextract_reviewed"):
             reextract_decisions[fid] = True
             if bucket_hidden == "reextract_reviewed":
                 has_reviewed_reextract = True

@@ -3,13 +3,15 @@ autonomy: n/a
 discovered: '2026-04-21'
 estimated: —
 id: 70
+note: Resolved in fresh-branch replay of PR #105
+pr_refs: []
 severity: low
 slug: contributing-md-commit-step-1-wording-is-stale-post-worktree
 source: legacy
-status: open
+status: resolved
 title: CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
 touches: []
-updated: '2026-04-21'
+updated: '2026-04-22'
 ---
 
 ### Problem
