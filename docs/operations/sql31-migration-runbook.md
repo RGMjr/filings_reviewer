@@ -1,8 +1,10 @@
 # SQL/31 Production Migration Deployment Plan
 
+> **Note (2026-04-22):** Commit SHAs in this runbook were refreshed after the 2026-04-22 history scrub (Issue #65) rewrote all commits on `main`. Cited SHAs — `27c2f52`, `f253568`, `ec430dd` — are post-scrub identifiers and are reachable from current `origin/main`. The pre-scrub SHAs (`03a8a20`, `afa6cb9`, `9f31e86`) still exist in local object databases via reflog but have been purged from origin.
+
 ## Context
 
-The V1 retirement code changes (commits `03a8a20 refactor(v1): retire review_candidates...` and `afa6cb9 docs: Phase 5 V1 retirement sweep`) landed on `main` and deployed to production as of 2026-04-18. The final step — applying `sql/31_drop_v1_review_tables.sql` to the production database — has not been executed. This migration drops six V1 tables (`review_candidates`, `review_decisions`, `suppressed_candidates`, `review_audit_log`, `learned_patterns`, `source_segments`) and creates `v2_audit_log` as a V2-native replacement. It is destructive; rollback requires restoring from backup.
+The V1 retirement code changes (commits `27c2f52 refactor(v1): retire review_candidates...` and `f253568 docs: Phase 5 V1 retirement sweep`) landed on `main` and deployed to production as of 2026-04-18. The final step — applying `sql/31_drop_v1_review_tables.sql` to the production database — has not been executed. This migration drops six V1 tables (`review_candidates`, `review_decisions`, `suppressed_candidates`, `review_audit_log`, `learned_patterns`, `source_segments`) and creates `v2_audit_log` as a V2-native replacement. It is destructive; rollback requires restoring from backup.
 
 **Goal:** Apply migration 31 safely to the Neon production database with zero data loss and minimal user disruption.
 
@@ -16,11 +18,11 @@ The V1 retirement code changes (commits `03a8a20 refactor(v1): retire review_can
 
 | Item | Status |
 |---|---|
-| Code merged + deployed to Render | ✅ commit `afa6cb9` live in production |
-| Pre-drop data archive committed | ✅ commit `9f31e86` — 49 rows from each of `review_candidates`, `review_decisions` in `data/archive/` |
+| Code merged + deployed to Render | ✅ commit `f253568` live in production |
+| Pre-drop data archive committed | ✅ commit `ec430dd` — 49 rows from each of `review_candidates`, `review_decisions` in `data/archive/` |
 | Migration file on `main` | ✅ `sql/31_drop_v1_review_tables.sql` + registered in `scripts/apply_all_migrations.py` `MIGRATION_ORDER` |
 | Staging dry-run | ❌ not attempted |
-| Production deploy cooldown (≥3 days post-`afa6cb9`) | ❌ deploy was today, 2026-04-18 |
+| Production deploy cooldown (≥3 days post-`f253568`) | ❌ deploy was today, 2026-04-18 |
 | External consumer audit | ⚠️ your judgment — no action taken |
 
 ---
@@ -31,7 +33,7 @@ The V1 retirement code changes (commits `03a8a20 refactor(v1): retire review_can
 
 ### Gate A — Code stability window
 
-- At least **3 calendar days** have elapsed since `afa6cb9` was deployed to Render (earliest: **2026-04-21**).
+- At least **3 calendar days** have elapsed since `f253568` was deployed to Render (earliest: **2026-04-21**).
 - The daily extraction cron (`0 6 * * *` UTC in `render.yaml`) has completed ≥ 2 runs against the deployed code without errors.
 - Production logs (Render dashboard → logs tab) show **zero** occurrences of `AttributeError` on any of the deleted db.py methods. Grep the log stream for:
   - `insert_review_candidate`
@@ -51,7 +53,7 @@ ls -la data/archive/
 # review_candidates_pre_drop_2026-04-18.sql (88 lines, 49 INSERTs)
 # review_decisions_pre_drop_2026-04-18.sql  (88 lines, 49 INSERTs)
 git log --oneline data/archive/
-# expect: 9f31e86 chore(archive): pg_dump review_candidates + review_decisions pre-sql/31
+# expect: ec430dd chore(archive): pg_dump review_candidates + review_decisions pre-sql/31
 ```
 
 ### Gate C — Staging dry-run (can run in parallel with Gate D)
@@ -120,8 +122,8 @@ Confirm nothing outside this repo reads the dropped tables. Check each category:
 Add to this document or a follow-up commit message:
 ```
 All four gates confirmed at <timestamp>.
-Gate A: Deploy afa6cb9 live since <date>; N cron runs clean; zero AttributeError hits in logs.
-Gate B: data/archive/ committed at 9f31e86.
+Gate A: Deploy f253568 live since <date>; N cron runs clean; zero AttributeError hits in logs.
+Gate B: data/archive/ committed at ec430dd.
 Gate C: Neon branch 'migration-31-dry-run' migration applied cleanly on <date>; smoke + dry-run pass.
 Gate D: External consumer audit complete: <result>.
 ```
@@ -222,7 +224,7 @@ Diagnose the error, fix the migration file (if structural issue), re-apply.
      ```sql
      DELETE FROM schema_migrations WHERE id = '31_drop_v1_review_tables.sql';
      ```
-   - Revert commits `03a8a20` and `afa6cb9` on `main` (adds back all V1 code), redeploy, verify.
+   - Revert commits `27c2f52` and `f253568` on `main` (adds back all V1 code), redeploy, verify.
 
 ### Scenario C: App keeps running but downstream breaks (unknown consumer)
 
@@ -234,8 +236,8 @@ If Gate D missed something, the downstream tool will start erroring. Restore tha
 
 | Milestone | Date | Status |
 |---|---|---|
-| Code merged (`03a8a20`, `afa6cb9`) | 2026-04-18 | ✅ |
-| Pre-drop archive committed (`9f31e86`) | 2026-04-18 | ✅ |
+| Code merged (`27c2f52`, `f253568`) | 2026-04-18 | ✅ |
+| Pre-drop archive committed (`ec430dd`) | 2026-04-18 | ✅ |
 | Gate A cooldown earliest end | 2026-04-21 | ⏳ |
 | Gate C staging dry-run | 2026-04-21 (after Gate A) | ⏳ |
 | Gate D external audit | 2026-04-21 | ⏳ |

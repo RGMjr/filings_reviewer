@@ -101,7 +101,7 @@ Before promoting V2 to primary, validate extraction quality against the gold sta
 | Recall | 55% | 63.4% |
 | F1 Score | 65% | 65.6% |
 
-> **Note**: Current Baseline values are V2 SEC methodology (15 gold standard companies, V2 pipeline only), as of 2026-04-16 (commit `09a8f64`). These differ from the original V1 GR methodology numbers (P=92.8%, R=77.6%, F1=84.5%) which used a different validation approach. V2 baseline is stored in `data/gold_standard/v2_baseline.json`.
+> **Note**: Current Baseline values are V2 SEC methodology (15 gold standard companies, V2 pipeline only), as of 2026-04-16 (commit `4820f50`, `feat: add specific_patterns to cm_ltv_to_cac_ratio`). These differ from the original V1 GR methodology numbers (P=92.8%, R=77.6%, F1=84.5%) which used a different validation approach. V2 baseline is stored in `data/gold_standard/v2_baseline.json` — refer to that file for the authoritative current values.
 
 ### Run Gold Standard Validation
 
