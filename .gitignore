@@ -1,5 +1,6 @@
-# Environment variables
-.env
+# Environment variables — any file starting with .env
+.env*
+!.env.template
 
 # Python
 __pycache__/

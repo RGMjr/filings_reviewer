@@ -119,7 +119,7 @@
     - Otherwise: `gh pr create --fill` (auto-title from commit subject, auto-body from commit body + PR template). Capture the URL.
     - On `gh` failure (auth, rate-limit, etc.): report the exact error and stop. Do NOT fall back to any other form of merge.
 
-16. **Enable auto-merge.** `--auto` enqueues the PR into the GitHub merge queue; GitHub handles up-to-date-with-main automatically. `gh pr merge --auto --squash` (idempotent — no-op if already enabled). `--squash` keeps main's history linear, matching the repo's existing pattern. Never use `--admin`.
+16. **Enable auto-merge.** `gh pr merge --auto --squash` (idempotent — no-op if already enabled). `--squash` keeps main's history linear, matching the repo's existing pattern. Never use `--admin`.
 
 17. **Report.** Final one-line summary to the user:
     ```
