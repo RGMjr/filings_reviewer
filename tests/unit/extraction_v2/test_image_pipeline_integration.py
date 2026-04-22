@@ -269,6 +269,51 @@ class TestImageDownloading:
         ).exists()
         assert mock_sec.fetch_calls == [("1234567", "0001234567-24-000001", "chart1.jpg")]
 
+    def test_uploads_bytes_to_storage(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Issue #77: in dev, LocalFilesystemStorage hides the bug because
+        # SECClient.fetch_image already wrote bytes to image_cache_dir() — the
+        # same path get_bytes later reads from. In prod (R2) the SECClient
+        # disk-write is not visible to the storage backend, so without an
+        # explicit put_bytes call, downstream readers hit FileNotFoundError.
+        from src.infra import image_storage
+
+        fake_bytes = b"\xff\xd8\xff\xe0fake_jpeg_data"
+        mock_sec = MockSECClient(
+            image_data={"chart1.jpg": fake_bytes},
+            cache_root=tmp_path,
+        )
+        stage = OCRExtractionStage(sec_client=mock_sec)
+
+        context = MockPipelineContext(
+            cik="1234567",
+            accession_number="0001234567-24-000001",
+        )
+        asset = ImageAsset(
+            img_id="img-1",
+            filename="chart1.jpg",
+            file_path=None,
+            classification=ImageClassification.CHART,
+            relevance_score=0.8,
+            processed=False,
+        )
+        context.images = [asset]
+
+        mock_storage = MagicMock()
+        monkeypatch.setattr(image_storage, "get_image_storage", lambda: mock_storage)
+
+        downloaded = stage._download_missing_images(context)
+
+        assert downloaded == 1
+        expected_key = "1234567/000123456724000001/chart1.jpg"
+        mock_storage.put_bytes.assert_called_once_with(
+            expected_key,
+            fake_bytes,
+            content_type="image/jpeg",
+        )
+        assert asset.file_path == expected_key
+
     def test_skips_images_with_existing_file_path(self) -> None:
         """Images that already have file_path are not re-downloaded."""
         mock_sec = MockSECClient()
