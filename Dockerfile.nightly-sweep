@@ -40,20 +40,28 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI. Installs to /usr/local/bin/claude via the official installer.
-# The installer is idempotent and safe to run at build time.
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# Non-privileged user (matches main Dockerfile pattern).
+# Non-privileged user (matches main Dockerfile pattern). Created before the
+# Claude install so the installer drops the binary into appuser's $HOME.
 ARG UID=10001
 RUN adduser --disabled-password --gecos "" \
         --home "/home/appuser" --shell "/bin/bash" --uid "${UID}" appuser
 
 # Python dependencies — same lockfile as the main image so pytest works inside
-# sweep worktrees without a separate install step.
+# sweep worktrees without a separate install step. Installed as root into the
+# system site-packages so both root and appuser can import them.
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.lock,target=requirements.lock \
     python -m pip install -r requirements.lock
+
+# Claude Code CLI. The official installer drops a native binary into
+# $HOME/.local/bin and explicitly warns it does not touch PATH. Installing
+# as appuser lands it at /home/appuser/.local/bin/claude; we prepend that
+# dir to the image PATH so `scripts/run_nightly_sweep.sh` (runs as appuser)
+# can resolve `claude` via `command -v`.
+ENV PATH="/home/appuser/.local/bin:${PATH}"
+USER appuser
+RUN curl -fsSL https://claude.ai/install.sh | bash
+USER root
 
 COPY --chown=appuser:appuser . .
 
