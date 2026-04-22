@@ -682,8 +682,18 @@ class ImageTriageStage:
                 warnings=warnings,
                 metadata={
                     "total_images": len(context.images),
+                    "images_seen": len(context.images),
                     "images_for_processing": len(images_for_processing),
                     "classification_counts": classification_counts,
+                    # Per-classification counters for downstream benchmark use (A2).
+                    # Names mirror ImageClassification enum values.
+                    "classified_chart": classification_counts.get("chart", 0),
+                    "classified_table": classification_counts.get("table_image", 0),
+                    "classified_decorative": classification_counts.get("decorative", 0),
+                    "classified_logo": classification_counts.get("logo", 0),
+                    "classified_signature": classification_counts.get("signature", 0),
+                    "classified_unknown": classification_counts.get("unknown", 0),
+                    "classified_full_page_scan": classification_counts.get("full_page_scan", 0),
                     "manual_capture_count": sum(
                         1 for img in context.images if img.requires_manual_capture
                     ),
