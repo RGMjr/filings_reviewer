@@ -102,7 +102,7 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #55   | skip     | S         | —                                                                       | Data cleanup; needs inspection of stuck filings               |
 | #58   | review   | S         | `src/filing_fetcher/*.py tests/unit/filing_fetcher/*.py`                | 8-K Exhibit 99.1 fetch; feature add, needs validator run      |
 | #59   | review   | S         | `src/extraction_v2/classifier*.py tests/unit/extraction_v2/*classifier*`| New classifier patterns; FP risk                              |
-| #60   | safe     | XS        | `src/universe/onboarding.py tests/unit/universe/test_onboarding.py`     | SIC-filter JOIN in detect_universe_gaps                       |
+| #60   | skip     | XS        | —                                                                       | Resolved 2026-04-21; retained in table as audit trail          |
 | #62   | review   | S         | `docs/operations/* src/universe/onboarding_runner.py`                   | Docs + optional admin flag; needs design call                 |
 | #63   | skip     | S         | —                                                                       | Monkey-patch integration test; mid-complexity                 |
 | #66   | review   | S         | `render.yaml .claude/rules/infrastructure.md`                           | Wire apply_migrations into Render deploy; infra-change risk   |
