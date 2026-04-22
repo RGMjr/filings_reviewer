@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-21, #72 opened for Robinhood Tier 1 gold-standard regression vs. 2026-04-19 baseline (`cm_revenue_by_cohort` extracting quarterly totals instead of per-cohort values; blocks PR merge commits via pre-commit hook; likely introduced by #52 persistence refactor); #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-22, #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #72 opened for Robinhood Tier 1 gold-standard regression vs. 2026-04-19 baseline (`cm_revenue_by_cohort` extracting quarterly totals instead of per-cohort values; blocks PR merge commits via pre-commit hook; likely introduced by #52 persistence refactor); #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -935,12 +935,27 @@ Cross-references: Issue #54 — `chart_metric_min_confidence` knob; `src/extract
 
 ### Issue #65: Secret-Leak Guard for Mis-Named Env Duplicates
 
-**Status**: Resolved (2026-04-21)
+**Status**: Resolved (2026-04-22)
 
 Broadened `.gitignore` to `.env*` with `!.env.template` allowlist; added
 `gitleaks` pre-commit hook at the repo-wide level. Forward-looking defense
-only — historical audit surfaced one real OpenAI key (rotated; history
-scrub deferred to a separate task).
+plus historical cleanup — the OpenAI key found during audit has been rotated,
+and on 2026-04-22 `git filter-repo --invert-paths --path data_preprocessing.py`
+was run against a fresh mirror clone to strip the file (the only artifact
+that ever held the key) from all of history. Force-push rewrote 1,066
+commits on `main` (new tip after scrub vs. the pre-scrub tip differ by SHA
+only; merge topology and file contents are otherwise identical). Tainted
+refs also purged on origin: tag `backup-before-history-rewrite`, branches
+`worktree-fix-issue-9-snap-ingestion` and `worktree-review-ui-improvements`.
+`main` branch protection (`allow_force_pushes: false`, `enforce_admins: true`,
+required PR + 5 status checks) was restored immediately after the push.
+
+Known residue: four **merged** PRs (`refs/pull/1/head`, `refs/pull/9/head`,
+`refs/pull/10/head`, `refs/pull/11/head`) still hold the tainted blob in
+GitHub's read-only PR refs. These cannot be rewritten via push — only GitHub
+Support can purge them via the [sensitive-data removal process](https://docs.github.com/en/code-security/secret-scanning/removing-sensitive-data-from-a-repository).
+The key is rotated, so exposure risk is historical only; filing a support
+request is optional.
 
 ---
 
