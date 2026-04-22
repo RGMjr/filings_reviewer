@@ -317,6 +317,89 @@ def test_ingest_start_reviewed_filing_with_ack_proceeds(client):
 
 
 # ---------------------------------------------------------------------------
+# Selective inclusion — only filing_ids submitted via checkbox reach the batch
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_start_creates_batch_row_per_submitted_filing_id(client):
+    """Only the filing_ids that were submitted (checkbox-checked) get batch rows.
+
+    Regression test for the bug where the preview template always emitted a
+    hidden filing_id per candidate, so users who intended to pick one filing
+    ingested every candidate in the preview list.
+    """
+    form_data = {
+        # Only 1 filing submitted — simulates user unchecking 3 of 4 candidates
+        "filing_id": ["1748"],
+        "bucket_1748": "new",
+        "reviewer_name": "Rob",
+        "criteria_json": json.dumps({"year": "2023", "sic_codes": "7372"}),
+        "resolved_json": json.dumps({}),
+    }
+    mock_db = _make_db_mock(batch_id="bbbbbbbb-cccc-dddd-eeee-000000000001")
+
+    # Capture per-filing INSERTs into v2_ingest_batch_filings.
+    mock_cur = mock_db.transaction.return_value.__enter__.return_value.cursor.return_value
+    executed_sql: list[str] = []
+
+    def _record(sql, params=None):
+        executed_sql.append(str(sql))
+        return None
+
+    mock_cur.execute.side_effect = _record
+
+    with patch("src.web.routes.ingest.get_db", return_value=mock_db):
+        resp = client.post("/ingest/start", data=form_data)
+
+    assert resp.status_code == 302
+    per_filing_inserts = [s for s in executed_sql if "v2_ingest_batch_filings" in s]
+    assert len(per_filing_inserts) == 1, (
+        f"expected 1 filing row, got {len(per_filing_inserts)} — batch ingested unchecked candidates"
+    )
+
+
+def test_ingest_start_derives_reextract_from_bucket(client):
+    """bucket=reextract on a submitted filing implies reextract_decisions[fid]=True.
+
+    The preview template dropped the redundant per-row reextract checkbox —
+    inclusion of an already-extracted filing now implies re-extraction,
+    derived from the bucket classification.
+    """
+    form_data = {
+        "filing_id": ["99"],
+        "bucket_99": "reextract",  # user checked an already-extracted filing
+        "reviewer_name": "Rob",
+        "criteria_json": json.dumps({"year": "2023", "sic_codes": "7372"}),
+        "resolved_json": json.dumps({}),
+        # No reextract_99 field — the template no longer emits one
+    }
+    mock_db = _make_db_mock()
+    with patch("src.web.routes.ingest.get_db", return_value=mock_db):
+        resp = client.post("/ingest/start", data=form_data)
+    # Proceeds to batch creation — bucket-derived reextract is sufficient.
+    assert resp.status_code == 302
+    assert "/ingest/batch/" in resp.headers["Location"]
+
+
+def test_ingest_start_bucket_reextract_reviewed_without_ack_still_blocked(client):
+    """bucket=reextract_reviewed + submitted filing_id requires the ack checkbox.
+
+    Derived-from-bucket re-extract must not bypass the reviewed-filing guard.
+    """
+    form_data = {
+        "filing_id": ["42"],
+        "bucket_42": "reextract_reviewed",
+        "reviewer_name": "Rob",
+        "criteria_json": json.dumps({"year": "2023", "sic_codes": "7372"}),
+        "resolved_json": json.dumps({}),
+        # reextract_reviewed_ack intentionally omitted
+        # No reextract_42 — new template doesn't emit it
+    }
+    resp = client.post("/ingest/start", data=form_data)
+    assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # Missing fields
 # ---------------------------------------------------------------------------
 
