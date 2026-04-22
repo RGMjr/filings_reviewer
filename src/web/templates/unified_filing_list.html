@@ -3,6 +3,18 @@
 {% block title %}Review Filings - {{ super() }}{% endblock %}
 
 {% block content %}
+{# -- URL helpers: thread every current filter/sort through generated URLs. --#}
+{%- set reviewers = selected_reviewers or [] -%}
+{%- macro list_url(doc_type='__keep__', sort_by_=None, sort_dir_=None, page_=None, include_reviewers=True, extra=None) -%}
+  {%- set dt = (current_document_type if doc_type == '__keep__' else doc_type) -%}
+  {%- set kwargs = {'sort_by': sort_by_ or sort_by, 'sort_dir': sort_dir_ or sort_dir} -%}
+  {%- if dt and dt != 'all' %}{% set _ = kwargs.update({'document_type': dt}) %}{% endif -%}
+  {%- if hide_completed %}{% set _ = kwargs.update({'hide_completed': 1}) %}{% endif -%}
+  {%- if page_ %}{% set _ = kwargs.update({'page': page_, 'per_page': per_page}) %}{% endif -%}
+  {%- if include_reviewers and reviewers %}{% set _ = kwargs.update({'reviewer_id': reviewers}) %}{% endif -%}
+  {%- if extra %}{% for k, v in extra.items() %}{% set _ = kwargs.update({k: v}) %}{% endfor %}{% endif -%}
+  {{ url_for('review_unified.filing_list', **kwargs) }}
+{%- endmacro -%}
 <div class="review-sticky-header">
   <div class="row">
     <div class="col-12">
@@ -10,27 +22,60 @@
     </div>
   </div>
 
-  {# Document type filter tabs #}
+  {# Document type filter tabs + Reviewed-by filter + Hide-completed #}
   <div class="row align-items-center">
     <div class="col-auto">
       <div class="btn-group btn-group-sm" role="group" aria-label="Document type filter">
-        <a href="{{ url_for('review_unified.filing_list', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+        <a href="{{ list_url(doc_type=None) }}"
            class="btn {% if current_document_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
           All
         </a>
-        <a href="{{ url_for('review_unified.filing_list', document_type='sec_filing', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+        <a href="{{ list_url(doc_type='sec_filing') }}"
            class="btn {% if current_document_type == 'sec_filing' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
           SEC Filings
         </a>
-        <a href="{{ url_for('review_unified.filing_list', document_type='earnings_call', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+        <a href="{{ list_url(doc_type='earnings_call') }}"
            class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
           Earnings Calls
         </a>
-        <a href="{{ url_for('review_unified.filing_list', document_type='investor_presentation', hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}"
+        <a href="{{ list_url(doc_type='investor_presentation') }}"
            class="btn {% if current_document_type == 'investor_presentation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
           Presentations
         </a>
       </div>
+    </div>
+    <div class="col-auto ms-3">
+      <details class="filing-reviewer-dropdown">
+        <summary class="btn btn-sm btn-outline-secondary" style="list-style: none; user-select: none;">
+          Reviewed by{% if reviewers %} <span class="badge bg-primary ms-1">{{ reviewers|length }}</span>{% endif %} &#9662;
+        </summary>
+        <div class="filing-reviewer-menu" style="position: absolute; z-index: 1000; background: white; border: 1px solid #dee2e6; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.1); padding: 10px; margin-top: 4px; min-width: 220px; max-height: 320px; overflow-y: auto;">
+          {% if all_reviewers %}
+          <form method="get">
+            {% if current_document_type and current_document_type != 'all' %}<input type="hidden" name="document_type" value="{{ current_document_type }}">{% endif %}
+            {% if hide_completed %}<input type="hidden" name="hide_completed" value="1">{% endif %}
+            <input type="hidden" name="sort_by" value="{{ sort_by }}">
+            <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+            <input type="hidden" name="per_page" value="{{ per_page }}">
+            {% for r in all_reviewers %}
+            <label class="d-block mb-1" style="font-size: 0.875rem;">
+              <input type="checkbox" name="reviewer_id" value="{{ r }}"
+                     {% if r in reviewers %}checked{% endif %}>
+              {{ r }}
+            </label>
+            {% endfor %}
+            <div class="d-flex gap-2 mt-2">
+              <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+              {% if reviewers %}
+              <a href="{{ list_url(include_reviewers=False) }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+              {% endif %}
+            </div>
+          </form>
+          {% else %}
+          <em class="text-muted small">No reviewers on record yet.</em>
+          {% endif %}
+        </div>
+      </details>
     </div>
     <div class="col-auto ms-3">
       <div class="form-check form-check-inline mb-0">
@@ -52,7 +97,7 @@
             {% macro sort_th(col_key, label) %}
             {% set next_dir = 'asc' if (sort_by == col_key and sort_dir == 'desc') else 'desc' %}
             <th style="white-space: nowrap; cursor: pointer;">
-              <a href="{{ url_for('review_unified.filing_list', page=1, per_page=per_page, document_type=current_document_type, hide_completed=1 if hide_completed else None, sort_by=col_key, sort_dir=next_dir) }}"
+              <a href="{{ list_url(sort_by_=col_key, sort_dir_=next_dir, page_=1) }}"
                  style="text-decoration: none; color: inherit;">
                 {{ label }}
                 {% if sort_by == col_key %}
@@ -66,6 +111,7 @@
             <th>Type</th>
             <th>Form</th>
             {{ sort_th('date', 'Date') }}
+            <th>Reviewers</th>
             {{ sort_th('text_progress', 'Text Progress') }}
             {{ sort_th('image_progress', 'Image Progress') }}
             <th></th>
@@ -101,6 +147,18 @@
               {% else %}
               N/A
               {% endif %}
+            </td>
+            <td>
+              {%- set revs = f.reviewers or [] -%}
+              {%- if revs -%}
+                {%- if revs|length <= 2 -%}
+                  <small>{{ revs|join(', ') }}</small>
+                {%- else -%}
+                  <small title="{{ revs|join(', ') }}">{{ revs[0] }} <span class="text-muted">(+{{ revs|length - 1 }} more)</span></small>
+                {%- endif -%}
+              {%- else -%}
+                <span class="text-muted">&#8212;</span>
+              {%- endif -%}
             </td>
             <td>
               {% if fact_total > 0 %}
@@ -146,7 +204,20 @@
               {% endif %}
             </td>
             <td>
-              <a href="{{ url_for('review_unified.review_filing', filing_id=f.filing_id) }}?status=pending_review&list_sort_by={{ sort_by }}&list_sort_dir={{ sort_dir }}&list_document_type={{ current_document_type if current_document_type != 'all' else '' }}&list_hide_completed={{ 1 if hide_completed else 0 }}"
+              {%- set review_kwargs = {
+                'filing_id': f.filing_id,
+                'status': 'pending_review',
+                'list_sort_by': sort_by,
+                'list_sort_dir': sort_dir,
+                'list_hide_completed': 1 if hide_completed else 0
+              } -%}
+              {%- if current_document_type and current_document_type != 'all' -%}
+                {% set _ = review_kwargs.update({'list_document_type': current_document_type}) %}
+              {%- endif -%}
+              {%- if reviewers -%}
+                {% set _ = review_kwargs.update({'list_reviewer_id': reviewers}) %}
+              {%- endif -%}
+              <a href="{{ url_for('review_unified.review_filing', **review_kwargs) }}"
                  class="btn btn-sm btn-outline-primary">
                 Review
               </a>
@@ -167,8 +238,7 @@
       <ul class="pagination justify-content-center">
         <li class="page-item {% if page <= 1 %}disabled{% endif %}">
           {% if page > 1 %}
-          <a class="page-link"
-             href="{{ url_for('review_unified.filing_list', page=page - 1, per_page=per_page, document_type=current_document_type, hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}">
+          <a class="page-link" href="{{ list_url(page_=page - 1) }}">
             &laquo; Previous
           </a>
           {% else %}
@@ -179,8 +249,7 @@
         {% for page_num in range(1, total_pages + 1) %}
           {% if page_num == 1 or page_num == total_pages or (page_num >= page - 2 and page_num <= page + 2) %}
           <li class="page-item {% if page_num == page %}active{% endif %}">
-            <a class="page-link"
-               href="{{ url_for('review_unified.filing_list', page=page_num, per_page=per_page, document_type=current_document_type, hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}">
+            <a class="page-link" href="{{ list_url(page_=page_num) }}">
               {{ page_num }}
             </a>
           </li>
@@ -193,8 +262,7 @@
 
         <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
           {% if page < total_pages %}
-          <a class="page-link"
-             href="{{ url_for('review_unified.filing_list', page=page + 1, per_page=per_page, document_type=current_document_type, hide_completed=1 if hide_completed else None, sort_by=sort_by, sort_dir=sort_dir) }}">
+          <a class="page-link" href="{{ list_url(page_=page + 1) }}">
             Next &raquo;
           </a>
           {% else %}
@@ -223,65 +291,121 @@
 
 {% block scripts %}
 <script>
+// Filings-list preference persistence. localStorage is the source of truth
+// across sessions/tabs; URL params are authoritative within a single request.
+// Write: URL params -> localStorage. Read: missing URL param + stored value
+// -> redirect once with the stored value applied. hideCompleted keeps its
+// legacy (un-namespaced) key so existing users' saved preference survives.
 (function () {
-  var HIDE_KEY = 'hideCompleted';
-  var SORT_KEY = 'filingSort';
+  var KEYS = {
+    SORT:      'cmasb:filings:sort',      // {sort_by, sort_dir}
+    DOC_TYPE:  'cmasb:filings:doc_type',  // string
+    PER_PAGE:  'cmasb:filings:per_page',  // integer string
+    REVIEWERS: 'cmasb:filings:reviewers', // string[]
+    HIDE:      'hideCompleted'            // legacy "1"
+  };
+  var VALID_SORT_COLS = ['company', 'date', 'text_progress', 'image_progress'];
+  var VALID_DOC_TYPES = ['sec_filing', 'earnings_call', 'investor_presentation'];
 
-  var urlParams = new URLSearchParams(window.location.search);
-  var hideParam = urlParams.get('hide_completed');
-  var sortByParam = urlParams.get('sort_by');
-  var sortDirParam = urlParams.get('sort_dir');
+  var url = new URL(window.location.href);
+  var params = url.searchParams;
+  var dirty = false; // did we change url — triggers a redirect-once
 
-  // --- Sort persistence via sessionStorage ---
-  if (sortByParam) {
-    // Sort params present in URL — save them.
-    sessionStorage.setItem(SORT_KEY, JSON.stringify({sort_by: sortByParam, sort_dir: sortDirParam}));
-  } else {
-    // No sort params — check for saved preference and redirect.
-    var savedSort = sessionStorage.getItem(SORT_KEY);
-    if (savedSort) {
-      try {
-        var pref = JSON.parse(savedSort);
-        var validCols = ['company', 'date', 'text_progress', 'image_progress'];
-        if (!pref.sort_by || !validCols.includes(pref.sort_by)) throw new Error('invalid');
-        var url = new URL(window.location.href);
-        url.searchParams.set('sort_by', pref.sort_by);
-        url.searchParams.set('sort_dir', pref.sort_dir === 'asc' ? 'asc' : 'desc');
-        url.searchParams.set('page', '1');
-        window.location.replace(url.toString());
-        return; // Stop — page will reload with sort params.
-      } catch (e) {
-        sessionStorage.removeItem(SORT_KEY);
-      }
-    }
+  function getJSON(key) {
+    try { var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }
+    catch (e) { localStorage.removeItem(key); return null; }
   }
 
-  // --- Hide-completed persistence via localStorage ---
-  document.addEventListener('DOMContentLoaded', function () {
-    if (hideParam === '1') {
-      localStorage.setItem(HIDE_KEY, '1');
-    } else if (hideParam === null && localStorage.getItem(HIDE_KEY) === '1') {
-      var url = new URL(window.location.href);
-      url.searchParams.set('hide_completed', '1');
-      url.searchParams.set('page', '1');
-      window.location.replace(url.toString());
-      return;
-    }
+  // --- Write: URL wins and is persisted ---
+  var sortBy = params.get('sort_by');
+  var sortDir = params.get('sort_dir');
+  if (sortBy && VALID_SORT_COLS.includes(sortBy)) {
+    localStorage.setItem(KEYS.SORT, JSON.stringify({
+      sort_by: sortBy,
+      sort_dir: sortDir === 'asc' ? 'asc' : 'desc'
+    }));
+  }
+  var docType = params.get('document_type');
+  if (docType && VALID_DOC_TYPES.includes(docType)) {
+    localStorage.setItem(KEYS.DOC_TYPE, docType);
+  } else if (params.has('document_type') && !docType) {
+    // Explicit "All" — clear stored doc_type.
+    localStorage.removeItem(KEYS.DOC_TYPE);
+  }
+  var perPage = params.get('per_page');
+  if (perPage && /^\d+$/.test(perPage)) {
+    localStorage.setItem(KEYS.PER_PAGE, perPage);
+  }
+  var reviewerIds = params.getAll('reviewer_id');
+  if (reviewerIds.length > 0) {
+    localStorage.setItem(KEYS.REVIEWERS, JSON.stringify(reviewerIds));
+  }
+  var hideParam = params.get('hide_completed');
+  if (hideParam === '1') {
+    localStorage.setItem(KEYS.HIDE, '1');
+  }
 
+  // --- Read: if URL omits a pref and storage has one, apply and redirect once ---
+  // Only redirect if we actually applied something (prevents infinite loop).
+  if (!sortBy) {
+    var savedSort = getJSON(KEYS.SORT);
+    if (savedSort && VALID_SORT_COLS.includes(savedSort.sort_by)) {
+      params.set('sort_by', savedSort.sort_by);
+      params.set('sort_dir', savedSort.sort_dir === 'asc' ? 'asc' : 'desc');
+      dirty = true;
+    }
+  }
+  // For document_type: only apply stored value if URL completely omits it.
+  // An empty `document_type=` param means "All" and must not be overridden.
+  if (!params.has('document_type')) {
+    var savedDocType = localStorage.getItem(KEYS.DOC_TYPE);
+    if (savedDocType && VALID_DOC_TYPES.includes(savedDocType)) {
+      params.set('document_type', savedDocType);
+      dirty = true;
+    }
+  }
+  if (!perPage) {
+    var savedPerPage = localStorage.getItem(KEYS.PER_PAGE);
+    if (savedPerPage && /^\d+$/.test(savedPerPage)) {
+      params.set('per_page', savedPerPage);
+      dirty = true;
+    }
+  }
+  if (reviewerIds.length === 0) {
+    var savedReviewers = getJSON(KEYS.REVIEWERS);
+    if (Array.isArray(savedReviewers) && savedReviewers.length > 0) {
+      savedReviewers.forEach(function (r) { params.append('reviewer_id', r); });
+      dirty = true;
+    }
+  }
+  if (hideParam === null && localStorage.getItem(KEYS.HIDE) === '1') {
+    params.set('hide_completed', '1');
+    dirty = true;
+  }
+
+  if (dirty) {
+    params.set('page', '1');
+    window.location.replace(url.toString());
+    return; // Redirecting — stop further init.
+  }
+
+  // --- Live UI bindings ---
+  document.addEventListener('DOMContentLoaded', function () {
     var cb = document.getElementById('hideCompleted');
-    if (!cb) return;
-    cb.addEventListener('change', function () {
-      var url = new URL(window.location.href);
-      if (this.checked) {
-        localStorage.setItem(HIDE_KEY, '1');
-        url.searchParams.set('hide_completed', '1');
-      } else {
-        localStorage.removeItem(HIDE_KEY);
-        url.searchParams.delete('hide_completed');
-      }
-      url.searchParams.set('page', '1');
-      window.location.href = url.toString();
-    });
+    if (cb) {
+      cb.addEventListener('change', function () {
+        var u = new URL(window.location.href);
+        if (this.checked) {
+          localStorage.setItem(KEYS.HIDE, '1');
+          u.searchParams.set('hide_completed', '1');
+        } else {
+          localStorage.removeItem(KEYS.HIDE);
+          u.searchParams.delete('hide_completed');
+        }
+        u.searchParams.set('page', '1');
+        window.location.href = u.toString();
+      });
+    }
   });
 }());
 </script>

@@ -36,6 +36,7 @@ def mock_db(app):
     app.config["_test_db"] = db
     with app.app_context():
         from src.web import app as app_module
+
         app_module.get_db = lambda: db
     return db
 
@@ -49,18 +50,23 @@ class TestCreateImageDecisionV2:
         mock_db = MagicMock()
         _patch_get_db(monkeypatch, mock_db)
         mock_db.get_image_review_candidate_v2.return_value = {
-            "img_id": IMG_ID, "filing_id": 5, "review_status": "pending", "decision": None,
+            "img_id": IMG_ID,
+            "filing_id": 5,
+            "review_status": "pending",
+            "decision": None,
         }
         mock_db.insert_image_review_decision_v2.return_value = 456
         mock_db.get_next_pending_image_candidate_v2.return_value = None
 
         resp = client.post(
             "/api/v2/image-decisions",
-            data=json.dumps({
-                "img_id": IMG_ID,
-                "decision": "relevant",
-                "chart_type": "cohort_table",
-            }),
+            data=json.dumps(
+                {
+                    "img_id": IMG_ID,
+                    "decision": "relevant",
+                    "chart_type": "cohort_table",
+                }
+            ),
             content_type="application/json",
         )
 
@@ -69,6 +75,63 @@ class TestCreateImageDecisionV2:
         assert body["status"] == "success"
         assert body["decision_id"] == 456
         mock_db.insert_image_review_decision_v2.assert_called_once()
+
+    def test_reviewer_id_is_persisted(self, client, monkeypatch):
+        mock_db = MagicMock()
+        _patch_get_db(monkeypatch, mock_db)
+        mock_db.get_image_review_candidate_v2.return_value = {
+            "img_id": IMG_ID,
+            "filing_id": 5,
+            "review_status": "pending",
+            "decision": None,
+        }
+        mock_db.insert_image_review_decision_v2.return_value = 789
+        mock_db.get_next_pending_image_candidate_v2.return_value = None
+
+        resp = client.post(
+            "/api/v2/image-decisions",
+            data=json.dumps(
+                {
+                    "img_id": IMG_ID,
+                    "decision": "relevant",
+                    "chart_type": "cohort_table",
+                    "reviewer_id": "alice@example.com",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 201
+        call_kwargs = mock_db.insert_image_review_decision_v2.call_args.kwargs
+        assert call_kwargs["reviewer_id"] == "alice@example.com"
+
+    def test_reviewer_id_defaults_to_anonymous(self, client, monkeypatch):
+        mock_db = MagicMock()
+        _patch_get_db(monkeypatch, mock_db)
+        mock_db.get_image_review_candidate_v2.return_value = {
+            "img_id": IMG_ID,
+            "filing_id": 5,
+            "review_status": "pending",
+            "decision": None,
+        }
+        mock_db.insert_image_review_decision_v2.return_value = 790
+        mock_db.get_next_pending_image_candidate_v2.return_value = None
+
+        resp = client.post(
+            "/api/v2/image-decisions",
+            data=json.dumps(
+                {
+                    "img_id": IMG_ID,
+                    "decision": "relevant",
+                    "chart_type": "cohort_table",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 201
+        call_kwargs = mock_db.insert_image_review_decision_v2.call_args.kwargs
+        assert call_kwargs["reviewer_id"] == "anonymous"
 
     def test_missing_img_id_returns_400(self, client, monkeypatch):
         mock_db = MagicMock()
@@ -88,11 +151,13 @@ class TestCreateImageDecisionV2:
 
         resp = client.post(
             "/api/v2/image-decisions",
-            data=json.dumps({
-                "img_id": "not-a-uuid",
-                "decision": "relevant",
-                "chart_type": "cohort_table",
-            }),
+            data=json.dumps(
+                {
+                    "img_id": "not-a-uuid",
+                    "decision": "relevant",
+                    "chart_type": "cohort_table",
+                }
+            ),
             content_type="application/json",
         )
         assert resp.status_code == 400
@@ -105,11 +170,13 @@ class TestCreateImageDecisionV2:
 
         resp = client.post(
             "/api/v2/image-decisions",
-            data=json.dumps({
-                "img_id": IMG_ID,
-                "decision": "relevant",
-                "chart_type": "cohort_table",
-            }),
+            data=json.dumps(
+                {
+                    "img_id": IMG_ID,
+                    "decision": "relevant",
+                    "chart_type": "cohort_table",
+                }
+            ),
             content_type="application/json",
         )
         assert resp.status_code == 404
@@ -118,16 +185,21 @@ class TestCreateImageDecisionV2:
         mock_db = MagicMock()
         _patch_get_db(monkeypatch, mock_db)
         mock_db.get_image_review_candidate_v2.return_value = {
-            "img_id": IMG_ID, "filing_id": 5, "review_status": "reviewed", "decision": "relevant",
+            "img_id": IMG_ID,
+            "filing_id": 5,
+            "review_status": "reviewed",
+            "decision": "relevant",
         }
 
         resp = client.post(
             "/api/v2/image-decisions",
-            data=json.dumps({
-                "img_id": IMG_ID,
-                "decision": "relevant",
-                "chart_type": "cohort_table",
-            }),
+            data=json.dumps(
+                {
+                    "img_id": IMG_ID,
+                    "decision": "relevant",
+                    "chart_type": "cohort_table",
+                }
+            ),
             content_type="application/json",
         )
         assert resp.status_code == 409
@@ -138,7 +210,9 @@ class TestSkipImageCandidateV2:
         mock_db = MagicMock()
         _patch_get_db(monkeypatch, mock_db)
         mock_db.get_image_review_candidate_v2.return_value = {
-            "img_id": IMG_ID, "filing_id": 5, "review_status": "pending",
+            "img_id": IMG_ID,
+            "filing_id": 5,
+            "review_status": "pending",
         }
         mock_db.skip_image_candidate_v2.return_value = True
         mock_db.get_next_pending_image_candidate_v2.return_value = None
@@ -164,7 +238,9 @@ class TestUnskipImageCandidateV2:
         mock_db = MagicMock()
         _patch_get_db(monkeypatch, mock_db)
         mock_db.get_image_review_candidate_v2.return_value = {
-            "img_id": IMG_ID, "filing_id": 5, "review_status": "skipped",
+            "img_id": IMG_ID,
+            "filing_id": 5,
+            "review_status": "skipped",
         }
         mock_db.unskip_image_candidate_v2.return_value = True
 
@@ -180,7 +256,9 @@ class TestUnskipImageCandidateV2:
         mock_db = MagicMock()
         _patch_get_db(monkeypatch, mock_db)
         mock_db.get_image_review_candidate_v2.return_value = {
-            "img_id": IMG_ID, "filing_id": 5, "review_status": "reviewed",
+            "img_id": IMG_ID,
+            "filing_id": 5,
+            "review_status": "reviewed",
         }
 
         resp = client.post(f"/api/v2/image-candidates/{IMG_ID}/unskip")

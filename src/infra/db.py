@@ -744,6 +744,7 @@ class DatabaseAdapter:
         hide_completed: bool = False,
         sort_by: str = "date",
         sort_dir: str = "desc",
+        reviewer_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Get filings combining V2 text fact counts and image candidate counts.
@@ -758,9 +759,13 @@ class DatabaseAdapter:
             offset: Number of rows to skip (for pagination).
             hide_completed: If True, exclude filings with 0 pending text facts
                             and 0 pending image candidates.
+            reviewer_ids: If non-empty, restrict to filings where any listed
+                          reviewer touched at least one text or image decision.
 
         Returns:
-            List of dicts with filing metadata and combined review stats.
+            List of dicts with filing metadata and combined review stats. Each
+            row includes a `reviewers` list of distinct reviewer_ids across
+            text + image decisions (empty list = no reviewer yet).
         """
         sort_map = {
             "company": "c.company_name",
@@ -775,6 +780,7 @@ class DatabaseAdapter:
 
         doc_type_filter = ""
         completed_filter = ""
+        reviewer_filter = ""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if document_type is not None:
             doc_type_filter = "AND d.document_type = %(document_type)s"
@@ -783,6 +789,11 @@ class DatabaseAdapter:
             completed_filter = (
                 "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
             )
+        if reviewer_ids:
+            reviewer_filter = (
+                "AND COALESCE(rp.reviewers, ARRAY[]::text[]) && %(reviewer_ids)s::text[]"
+            )
+            params["reviewer_ids"] = list(reviewer_ids)
 
         sql = f"""
             WITH text_progress AS (
@@ -805,6 +816,24 @@ class DatabaseAdapter:
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
                 GROUP BY v.doc_id
+            ),
+            reviewer_progress AS (
+                SELECT
+                    filing_id,
+                    ARRAY(SELECT DISTINCT r FROM UNNEST(array_agg(reviewer_id)) r
+                          WHERE r IS NOT NULL ORDER BY r) AS reviewers
+                FROM (
+                    SELECT mf.doc_id AS filing_id, rd.reviewer_id
+                    FROM v2_review_decisions rd
+                    JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+                    WHERE rd.reviewer_id IS NOT NULL
+                    UNION ALL
+                    SELECT va.doc_id AS filing_id, ird.reviewer_id
+                    FROM v2_image_review_decisions ird
+                    JOIN v2_image_assets va ON va.img_id = ird.img_id
+                    WHERE ird.reviewer_id IS NOT NULL
+                ) AS combined
+                GROUP BY filing_id
             )
             SELECT
                 f.filing_id,
@@ -821,15 +850,18 @@ class DatabaseAdapter:
                 COALESCE(tp.facts_rejected,  0) AS facts_rejected,
                 COALESCE(ip.image_count,     0) AS image_count,
                 COALESCE(ip.images_pending,  0) AS images_pending,
-                COALESCE(ip.images_reviewed, 0) AS images_reviewed
+                COALESCE(ip.images_reviewed, 0) AS images_reviewed,
+                COALESCE(rp.reviewers, ARRAY[]::text[]) AS reviewers
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
             JOIN v2_documents d ON d.filing_id = f.filing_id
-            LEFT JOIN text_progress  tp ON tp.filing_id = f.filing_id
-            LEFT JOIN image_progress ip ON ip.filing_id = f.filing_id
+            LEFT JOIN text_progress     tp ON tp.filing_id = f.filing_id
+            LEFT JOIN image_progress    ip ON ip.filing_id = f.filing_id
+            LEFT JOIN reviewer_progress rp ON rp.filing_id = f.filing_id
             WHERE (f.is_spac IS NOT TRUE)
             {doc_type_filter}
             {completed_filter}
+            {reviewer_filter}
             ORDER BY {order_col} {order_dir} NULLS LAST{secondary}
             LIMIT %(limit)s OFFSET %(offset)s
         """
@@ -839,6 +871,7 @@ class DatabaseAdapter:
         self,
         document_type: str | None = None,
         hide_completed: bool = False,
+        reviewer_ids: list[str] | None = None,
     ) -> int:
         """Return total count of filings eligible for unified review.
 
@@ -846,12 +879,17 @@ class DatabaseAdapter:
             document_type: Optional filter — "sec_filing" or "earnings_call".
             hide_completed: If True, exclude filings with 0 pending text facts
                             and 0 pending image candidates.
+            reviewer_ids: If non-empty, restrict to filings touched by any
+                          listed reviewer. Must mirror
+                          `get_unified_filings_for_review` so pagination totals
+                          match the visible result set.
 
         Returns:
             Total number of matching filings.
         """
         doc_type_filter = ""
         completed_filter = ""
+        reviewer_filter = ""
         params: dict[str, Any] = {}
         if document_type is not None:
             doc_type_filter = "AND d.document_type = %(document_type)s"
@@ -860,6 +898,11 @@ class DatabaseAdapter:
             completed_filter = """
                 AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)
             """
+        if reviewer_ids:
+            reviewer_filter = (
+                "AND COALESCE(rp.reviewers, ARRAY[]::text[]) && %(reviewer_ids)s::text[]"
+            )
+            params["reviewer_ids"] = list(reviewer_ids)
 
         sql = f"""
             WITH text_progress AS (
@@ -877,15 +920,35 @@ class DatabaseAdapter:
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
                 GROUP BY v.doc_id
+            ),
+            reviewer_progress AS (
+                SELECT
+                    filing_id,
+                    ARRAY(SELECT DISTINCT r FROM UNNEST(array_agg(reviewer_id)) r
+                          WHERE r IS NOT NULL) AS reviewers
+                FROM (
+                    SELECT mf.doc_id AS filing_id, rd.reviewer_id
+                    FROM v2_review_decisions rd
+                    JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+                    WHERE rd.reviewer_id IS NOT NULL
+                    UNION ALL
+                    SELECT va.doc_id AS filing_id, ird.reviewer_id
+                    FROM v2_image_review_decisions ird
+                    JOIN v2_image_assets va ON va.img_id = ird.img_id
+                    WHERE ird.reviewer_id IS NOT NULL
+                ) AS combined
+                GROUP BY filing_id
             )
             SELECT COUNT(*) AS cnt
             FROM filings f
             JOIN v2_documents d ON d.filing_id = f.filing_id
-            LEFT JOIN text_progress  tp ON tp.filing_id = f.filing_id
-            LEFT JOIN image_progress ip ON ip.filing_id = f.filing_id
+            LEFT JOIN text_progress     tp ON tp.filing_id = f.filing_id
+            LEFT JOIN image_progress    ip ON ip.filing_id = f.filing_id
+            LEFT JOIN reviewer_progress rp ON rp.filing_id = f.filing_id
             WHERE (f.is_spac IS NOT TRUE)
             {doc_type_filter}
             {completed_filter}
+            {reviewer_filter}
         """
         result = self.query(sql, params if params else None)
         return result[0]["cnt"] if result else 0
@@ -897,6 +960,7 @@ class DatabaseAdapter:
         hide_completed: bool = False,
         sort_by: str = "date",
         sort_dir: str = "desc",
+        reviewer_ids: list[str] | None = None,
     ) -> int | None:
         """Return the filing_id of the next filing with pending review work.
 
@@ -912,6 +976,9 @@ class DatabaseAdapter:
             hide_completed: If True, restrict candidates to filings with pending work.
             sort_by: Column to sort by (same options as get_unified_filings_for_review).
             sort_dir: "asc" or "desc".
+            reviewer_ids: If non-empty, restrict to filings touched by any
+                          listed reviewer. Mirrors the filings-list filter so
+                          cross-filing advance stays within the reviewer scope.
 
         Returns:
             filing_id of the next eligible filing, or None if none exists.
@@ -927,6 +994,7 @@ class DatabaseAdapter:
 
         doc_type_filter = ""
         completed_filter = ""
+        reviewer_filter = ""
         params: dict[str, Any] = {"current_filing_id": current_filing_id}
         if document_type is not None:
             doc_type_filter = "AND d.document_type = %(document_type)s"
@@ -935,6 +1003,11 @@ class DatabaseAdapter:
             completed_filter = (
                 "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
             )
+        if reviewer_ids:
+            reviewer_filter = (
+                "AND COALESCE(rp.reviewers, ARRAY[]::text[]) && %(reviewer_ids)s::text[]"
+            )
+            params["reviewer_ids"] = list(reviewer_ids)
 
         sql = f"""
             WITH text_progress AS (
@@ -958,6 +1031,24 @@ class DatabaseAdapter:
                   AND v.filename IS NOT NULL AND v.filename != ''
                 GROUP BY v.doc_id
             ),
+            reviewer_progress AS (
+                SELECT
+                    filing_id,
+                    ARRAY(SELECT DISTINCT r FROM UNNEST(array_agg(reviewer_id)) r
+                          WHERE r IS NOT NULL) AS reviewers
+                FROM (
+                    SELECT mf.doc_id AS filing_id, rd.reviewer_id
+                    FROM v2_review_decisions rd
+                    JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+                    WHERE rd.reviewer_id IS NOT NULL
+                    UNION ALL
+                    SELECT va.doc_id AS filing_id, ird.reviewer_id
+                    FROM v2_image_review_decisions ird
+                    JOIN v2_image_assets va ON va.img_id = ird.img_id
+                    WHERE ird.reviewer_id IS NOT NULL
+                ) AS combined
+                GROUP BY filing_id
+            ),
             candidates AS (
                 SELECT
                     f.filing_id,
@@ -967,11 +1058,13 @@ class DatabaseAdapter:
                 FROM filings f
                 JOIN companies c ON f.company_id = c.company_id
                 JOIN v2_documents d ON d.filing_id = f.filing_id
-                LEFT JOIN text_progress tp ON tp.filing_id = f.filing_id
-                LEFT JOIN image_progress ip ON ip.filing_id = f.filing_id
+                LEFT JOIN text_progress     tp ON tp.filing_id = f.filing_id
+                LEFT JOIN image_progress    ip ON ip.filing_id = f.filing_id
+                LEFT JOIN reviewer_progress rp ON rp.filing_id = f.filing_id
                 WHERE (f.is_spac IS NOT TRUE)
                 {doc_type_filter}
                 {completed_filter}
+                {reviewer_filter}
             ),
             current_rn AS (
                 SELECT rn FROM candidates WHERE filing_id = %(current_filing_id)s
@@ -985,6 +1078,27 @@ class DatabaseAdapter:
         """
         result = self.query(sql, params)
         return result[0]["filing_id"] if result else None
+
+    def get_distinct_reviewers(self) -> list[str]:
+        """Return the sorted list of distinct reviewer_ids across all V2
+        decision tables.
+
+        Used to populate the "Reviewed by" filter dropdown on the unified
+        filings list. Cheap — both source columns have partial indexes on
+        reviewer_id and the result set is tiny (bounded by the number of
+        distinct reviewers).
+        """
+        sql = """
+            SELECT reviewer_id
+            FROM v2_review_decisions
+            WHERE reviewer_id IS NOT NULL
+            UNION
+            SELECT reviewer_id
+            FROM v2_image_review_decisions
+            WHERE reviewer_id IS NOT NULL
+            ORDER BY 1
+        """
+        return [row["reviewer_id"] for row in self.query(sql)]
 
     def get_v2_facts_for_filing(
         self,
