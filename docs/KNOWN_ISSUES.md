@@ -2,7 +2,7 @@
 
 This document tracks known issues, limitations, and planned improvements identified during extraction system development.
 
-**Last Updated**: 2026-04-22, #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix in this PR unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
+**Last Updated**: 2026-04-22, #75 and #76 opened during post-scrub replay of lost PR #79 (Playwright E2E gap on cross-filing auto-advance; missing integration test on filings-list reviewer aggregate — originally filed as #73/#74 before the scrub, renumbered to avoid collision with current post-scrub #73/#74). #65 history scrub completed (`git filter-repo --invert-paths --path data_preprocessing.py` rewrote 1,066 commits on main; tainted tag + two worktree-* branches purged on origin; BP restored post-push; four merged-PR refs retain residue — GH Support only); #73 opened for `.github` PR template case-collision (duplicate `PULL_REQUEST_TEMPLATE.md` + `pull_request_template.md` produce fresh-clone warnings on case-insensitive filesystems); #74 opened for `.claude/scheduled_tasks.lock` not covered by `.gitignore` (appears as untracked in every `git status`); #72 corrected on 2026-04-22 — chart pipeline stalled on HOOD S-1 cohort image (17/17 chart images have null OCR/chart_data; `$130` chart fact is orphan of a vanished img_id; #52 ruled out as root cause). Real code regression identified: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` venvs had no `boto3` and extraction crashed at stage 1 with `ModuleNotFoundError`. Pyproject + lockfile fix landed in PR #87 (`8713f51`) unblocks ingestion; a second-layer issue (chart-image bytes not found in R2 at expected keys) remains. Blocks PR merge commits via pre-commit hook; #65 resolved (env-variant gitignore + gitleaks pre-commit hook); #28 resolved (Python contract test renders 7 smoke routes with `jinja2.StrictUndefined` in <1s via Flask test_client; drift now fails the Unit Tests job in seconds instead of as cascading 500s in UI E2E); #64 resolved (characterization test locks in Tier 1 chart classifier score floors); #71 opened for Integration Tests job lacking a path filter (docs-only PRs still trigger full Postgres + migration run); #70 opened for stale CONTRIBUTING.md `/commit` step 1 wording post-worktree-hook (doc-only; functional behavior correct); #61 resolved (integration coverage for `/ingest/preview`); added Nightly Sweeper Classification table (see below for the autonomous-merge / morning-review / skip tags used by `scripts/known_issues_selector.py`); #68 opened for macOS `timeout` incompatibility in the sweeper orchestrator; #69 opened for unpinned `claude`/`gh` installs in `Dockerfile.nightly-sweep`. #60 resolved (`detect_universe_gaps` now filters by SIC via `companies JOIN`); #67 resolved (cleanup-skill mode detection re-anchored to `git-common-dir`; companion session-hygiene safeguards for ccw + `/commit` also landed); #66 opened for Render deploys skipping `apply_migrations.py`; (Five-issue follow-up bundle landed in commit `7848605` — #42 `_download_missing_images` double-write collapsed; #50 new `tests/unit/web/test_api_unified_auth.py` covers blueprint-wide 401 path; #51 grep-the-source tests rewritten as behavioral mock-cursor assertions; #52 new `scripts/check_pg_client_version.py` pre-flight; #54 new `chart_metric_min_confidence` operator knob, default 0.60 to avoid Tier 1 regression. Archive cleanup collapsed 29 resolved issues into Archive section; rewrote Summary table to foreground open items. Also landed (from `origin/main` Wave B/C/D batch-ingest-ui follow-ups): #58 for 8-K Exhibit 99.1 fetching; #59 for 8-K section classifier patterns; #60 for `detect_universe_gaps` SIC-blindness; #61 for `/ingest/preview` integration coverage; #62 for local-dev stuck-batch recovery runbook; #63 for cancel-during-populate integration test.)
 
 ---
 
@@ -113,6 +113,8 @@ Source of truth for `scripts/known_issues_selector.py` — the nightly autonomou
 | #72   | review   | S         | `pyproject.toml uv.lock`                                                | Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate fix before baseline refresh |
 | #73   | safe     | XS        | `.github/PULL_REQUEST_TEMPLATE.md .github/pull_request_template.md`     | Delete one of the duplicate templates; pick lowercase per GH convention |
 | #74   | safe     | XS        | `.gitignore`                                                            | One-line addition to root `.gitignore`                        |
+| #75   | skip     | S         | `tests/ui/*.spec.js tests/ui/test_server.py`                            | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
+| #76   | safe     | S         | `tests/integration/test_db_filings_reviewers.py`                        | New integration test for filings-list reviewer aggregate; isolated file |
 
 ---
 
@@ -962,6 +964,42 @@ After the boto3 fix, all 17 HOOD chart images now run through OCR but fail with 
 
 - Add `.claude/scheduled_tasks.lock` (or a broader `.claude/*.lock` glob) to the root `.gitignore`.
 - Quick audit of `.claude/` for other runtime-only files (e.g., `.claude/sweep-digests/` is already tracked separately — confirm nothing else needs ignoring).
+
+---
+
+## 75. Missing Playwright E2E for Cross-Filing Auto-Advance
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-21 (during review-UI improvements PR; originally filed as #73 pre-scrub, renumbered to #75 during post-scrub replay to avoid collision with current #73)
+
+### Problem
+
+The "auto-advance to next filing when queue empties" behavior is tested at the route-plumbing layer (`tests/unit/web/test_review_v2_routes.py::test_next_filing_preserves_sort_order` and siblings) but not at the browser layer. A regression in `unified_review.html:~1047` (text completion) or `review_images_v2.js:navigateAfterQueueEmpty` would slip past current CI. Prior regressions of this behavior (commits `5f16360`, `34ec47e`) are the reason this PR exists.
+
+### Next Steps
+
+- Add a Playwright spec in `tests/ui/` that seeds two filings with pending facts, sets sort to `company asc` on the list, approves the last pending fact in filing A, and asserts the browser lands on filing B (not the list, not default date-desc order).
+- Repeat the assertion with image-queue completion as the trigger (relevant → non-relevant → skip the last image).
+- Reuse the stub-server pattern in `tests/ui/test_server.py`; extend it with a `/filings-list-stub` route that renders `unified_filing_list.html` with two seeded filings.
+
+---
+
+## 76. Missing Integration Test for Filings-List Reviewer Aggregate
+
+**Status**: Open
+**Severity**: Low
+**Discovered**: 2026-04-21 (during review-UI improvements PR; originally filed as #74 pre-scrub, renumbered to #76 during post-scrub replay to avoid collision with current #74)
+
+### Problem
+
+`get_unified_filings_for_review` now UNIONs text + image decision tables and projects a `reviewers` array per filing, plus an optional `reviewer_ids` filter using `ARRAY_AGG(...) && ...`. Unit tests cover the route layer threading this kwarg, but there's no integration test asserting: (a) mixed-reviewer filings return distinct reviewers from both text and image sources; (b) the `&&` overlap filter correctly narrows the list without false positives; (c) filings with only NULL reviewer_ids render as an empty array. Without this test, a future CTE refactor could silently lose reviewers from one source.
+
+### Next Steps
+
+- Add `tests/integration/test_db_filings_reviewers.py` that seeds a filing with text decisions by Alice + image decisions by Bob, calls `get_unified_filings_for_review`, and asserts `row["reviewers"] == ["alice", "bob"]`.
+- Add a second case: call with `reviewer_ids=["alice"]`, assert the filing is returned; call with `reviewer_ids=["zoe"]`, assert it is not.
+- Add a third case: a filing with only NULL reviewer_id decisions (legacy image rows) returns `reviewers == []`.
 
 ---
 

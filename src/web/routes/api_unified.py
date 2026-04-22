@@ -290,6 +290,7 @@ def create_image_decision():
         rejection_reason = data.get("rejection_reason")
         reviewer_notes = data.get("reviewer_notes")
         review_time_seconds = data.get("review_time_seconds")
+        reviewer_id = data.get("reviewer_id", "anonymous")
 
         # Validate candidate exists
         candidate = db.get_image_review_candidate_v2(img_id)
@@ -304,9 +305,7 @@ def create_image_decision():
         if candidate.get("decision"):
             logger.warning(f"V2 image {img_id} already has decision")
             return (
-                jsonify(
-                    {"status": "error", "message": "Candidate already has a decision"}
-                ),
+                jsonify({"status": "error", "message": "Candidate already has a decision"}),
                 409,
             )
 
@@ -316,13 +315,12 @@ def create_image_decision():
             decision=decision,
             chart_type=chart_type,
             rejection_reason=rejection_reason,
+            reviewer_id=reviewer_id,
             reviewer_notes=reviewer_notes,
             review_time_seconds=review_time_seconds,
         )
 
-        logger.info(
-            f"Created v2 image decision {decision_id} for img_id={img_id}: {decision}"
-        )
+        logger.info(f"Created v2 image decision {decision_id} for img_id={img_id}: {decision}")
 
         # Get next candidate for navigation
         filing_id = candidate["filing_id"]
@@ -344,13 +342,9 @@ def create_image_decision():
         return jsonify({"status": "error", "message": str(e)}), 400
 
     except psycopg.errors.UniqueViolation:
-        logger.warning(
-            f"Duplicate decision for v2 image {data.get('img_id')}"
-        )
+        logger.warning(f"Duplicate decision for v2 image {data.get('img_id')}")
         return (
-            jsonify(
-                {"status": "error", "message": "Candidate already has a decision"}
-            ),
+            jsonify({"status": "error", "message": "Candidate already has a decision"}),
             409,
         )
 
@@ -373,9 +367,7 @@ def create_image_decision():
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
-@api_unified_bp.route(
-    "/image-candidates/<uuid:img_id>/skip", methods=["POST"]
-)
+@api_unified_bp.route("/image-candidates/<uuid:img_id>/skip", methods=["POST"])
 def skip_image_candidate(img_id):
     """
     Skip a V2 image without making a decision.
@@ -410,11 +402,13 @@ def skip_image_candidate(img_id):
         filing_id = candidate["filing_id"]
         next_cand = _get_next_image_candidate_info(db, filing_id, img_id_str)
 
-        return jsonify({
-            "status": "success",
-            "skipped_img_id": img_id_str,
-            "next_candidate": next_cand,
-        }), 200
+        return jsonify(
+            {
+                "status": "success",
+                "skipped_img_id": img_id_str,
+                "next_candidate": next_cand,
+            }
+        ), 200
 
     except psycopg.DatabaseError as e:
         logger.error(f"Database error skipping v2 image: {e}", exc_info=True)
@@ -428,9 +422,7 @@ def skip_image_candidate(img_id):
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
-@api_unified_bp.route(
-    "/image-candidates/<uuid:img_id>/unskip", methods=["POST"]
-)
+@api_unified_bp.route("/image-candidates/<uuid:img_id>/unskip", methods=["POST"])
 def unskip_image_candidate(img_id):
     """
     Undo a skip — revert v2_image_assets.review_status back to 'pending'.
@@ -458,11 +450,13 @@ def unskip_image_candidate(img_id):
         filing_id = candidate["filing_id"]
         logger.info(f"Unskipped v2 image {img_id_str}")
 
-        return jsonify({
-            "status": "success",
-            "img_id": img_id_str,
-            "url": f"/v2/review/{filing_id}?img_id={img_id_str}&tab=images",
-        }), 200
+        return jsonify(
+            {
+                "status": "success",
+                "img_id": img_id_str,
+                "url": f"/v2/review/{filing_id}?img_id={img_id_str}&tab=images",
+            }
+        ), 200
 
     except psycopg.DatabaseError as e:
         logger.error(f"Database error unskipping v2 image: {e}", exc_info=True)

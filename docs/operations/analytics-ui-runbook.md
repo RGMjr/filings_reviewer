@@ -143,6 +143,38 @@ read-only + query timeouts:
 - **Metabase shows stale data** — Metabase caches. In the admin panel,
   "Sync database schema now" / "Re-scan field values now" force refresh.
 
+## Reviewer rollup pattern
+
+The unified review UI surfaces a distinct-reviewer list per filing via the
+`ARRAY(SELECT DISTINCT UNNEST(...))` pattern in `get_unified_filings_for_review`
+(`src/infra/db.py`). Future per-filing reviewer analytics views should reuse
+this shape rather than picking a single "primary reviewer":
+
+```sql
+-- Text decisions contribute mf.doc_id + rd.reviewer_id; image decisions
+-- contribute va.doc_id + ird.reviewer_id. UNION ALL then array_agg + DISTINCT.
+SELECT
+  filing_id,
+  ARRAY(SELECT DISTINCT r FROM UNNEST(array_agg(reviewer_id)) r
+        WHERE r IS NOT NULL) AS reviewers
+FROM (
+  SELECT mf.doc_id AS filing_id, rd.reviewer_id
+  FROM v2_review_decisions rd
+  JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+  WHERE rd.reviewer_id IS NOT NULL
+  UNION ALL
+  SELECT va.doc_id, ird.reviewer_id
+  FROM v2_image_review_decisions ird
+  JOIN v2_image_assets va ON va.img_id = ird.img_id
+  WHERE ird.reviewer_id IS NOT NULL
+) combined
+GROUP BY filing_id;
+```
+
+Pre-fix image decisions (before the API bug fix that populates `reviewer_id`)
+have `reviewer_id = NULL` and are excluded from the rollup — render as `—` in
+the UI; do not backfill historical rows.
+
 ## Related files
 
 - `sql/37_create_analytics_role.sql`
