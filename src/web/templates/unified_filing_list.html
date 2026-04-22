@@ -11,7 +11,8 @@
   {%- if dt and dt != 'all' %}{% set _ = kwargs.update({'document_type': dt}) %}{% endif -%}
   {%- if hide_completed %}{% set _ = kwargs.update({'hide_completed': 1}) %}{% endif -%}
   {%- if page_ %}{% set _ = kwargs.update({'page': page_, 'per_page': per_page}) %}{% endif -%}
-  {%- if include_reviewers and reviewers %}{% set _ = kwargs.update({'reviewer_id': reviewers}) %}{% endif -%}
+  {%- if include_reviewers and reviewers %}{% set _ = kwargs.update({'reviewer_id': reviewers}) %}
+  {%- elif not include_reviewers %}{% set _ = kwargs.update({'reviewer_id': ['']}) %}{% endif -%}
   {%- if extra %}{% for k, v in extra.items() %}{% set _ = kwargs.update({k: v}) %}{% endfor %}{% endif -%}
   {{ url_for('review_unified.filing_list', **kwargs) }}
 {%- endmacro -%}
@@ -57,6 +58,8 @@
             <input type="hidden" name="sort_by" value="{{ sort_by }}">
             <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
             <input type="hidden" name="per_page" value="{{ per_page }}">
+            {# Sentinel: "this form was submitted". Distinguishes a cleared filter from a fresh visit in the JS read-back below. Backend strips empty values. #}
+            <input type="hidden" name="reviewer_id" value="">
             {% for r in all_reviewers %}
             <label class="d-block mb-1" style="font-size: 0.875rem;">
               <input type="checkbox" name="reviewer_id" value="{{ r }}"
@@ -336,9 +339,15 @@
   if (perPage && /^\d+$/.test(perPage)) {
     localStorage.setItem(KEYS.PER_PAGE, perPage);
   }
-  var reviewerIds = params.getAll('reviewer_id');
-  if (reviewerIds.length > 0) {
-    localStorage.setItem(KEYS.REVIEWERS, JSON.stringify(reviewerIds));
+  // Reviewer presence (even empty-string sentinel) signals "form was submitted".
+  // Filter out the sentinel before persisting; an explicit empty submission clears storage.
+  var reviewerIds = params.getAll('reviewer_id').filter(function (r) { return r; });
+  if (params.has('reviewer_id')) {
+    if (reviewerIds.length > 0) {
+      localStorage.setItem(KEYS.REVIEWERS, JSON.stringify(reviewerIds));
+    } else {
+      localStorage.removeItem(KEYS.REVIEWERS);
+    }
   }
   var hideParam = params.get('hide_completed');
   if (hideParam === '1') {
@@ -371,7 +380,10 @@
       dirty = true;
     }
   }
-  if (reviewerIds.length === 0) {
+  // Only restore from storage when the URL *completely omits* reviewer_id
+  // (fresh visit). An empty `reviewer_id=` param is the "explicitly cleared"
+  // sentinel and must not be overridden.
+  if (!params.has('reviewer_id')) {
     var savedReviewers = getJSON(KEYS.REVIEWERS);
     if (Array.isArray(savedReviewers) && savedReviewers.length > 0) {
       savedReviewers.forEach(function (r) { params.append('reviewer_id', r); });
