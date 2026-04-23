@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -711,7 +711,7 @@ class V2PersistenceAdapter:
                 classification, relevance_score,
                 ocr_text, ocr_table_id, chart_type, chart_data,
                 processed, confidence, requires_manual,
-                detected_keywords, created_at
+                detected_keywords, detected_metrics, created_at
             )
             VALUES (
                 %(img_id)s, %(doc_id)s, %(filename)s, %(file_path)s,
@@ -720,7 +720,7 @@ class V2PersistenceAdapter:
                 %(classification)s, %(relevance_score)s,
                 %(ocr_text)s, %(ocr_table_id)s, %(chart_type)s, %(chart_data)s,
                 %(processed)s, %(confidence)s, %(requires_manual)s,
-                %(detected_keywords)s, NOW()
+                %(detected_keywords)s, %(detected_metrics)s, NOW()
             )
             ON CONFLICT (doc_id, filename) DO UPDATE SET
                 file_path = EXCLUDED.file_path,
@@ -739,7 +739,8 @@ class V2PersistenceAdapter:
                 processed = EXCLUDED.processed,
                 confidence = EXCLUDED.confidence,
                 requires_manual = EXCLUDED.requires_manual,
-                detected_keywords = EXCLUDED.detected_keywords
+                detected_keywords = EXCLUDED.detected_keywords,
+                detected_metrics = EXCLUDED.detected_metrics
             RETURNING img_id
         """
 
@@ -768,6 +769,7 @@ class V2PersistenceAdapter:
                     ((image.nearby_text or "") + " " + (image.ocr_text or "")).strip()
                 )
                 or None,
+                "detected_metrics": json.dumps([asdict(d) for d in image.detected_metrics]),
             }
             for image in images
         ]

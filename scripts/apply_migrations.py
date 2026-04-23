@@ -82,6 +82,7 @@ MIGRATIONS = [
     "38_create_analytics_views.sql",
     "39_v2_ingest_batches.sql",
     "40_full_page_scan_and_ocr_provenance.sql",
+    "42_add_detected_metrics_to_v2_image_assets.sql",
 ]
 
 BOOTSTRAP_DDL = """

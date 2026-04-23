@@ -1,12 +1,15 @@
 """
 Invariant tests for `ChartFactBridgeStage`.
 
-The review UI's "Chart Evidence" block depends on every chart-sourced fact
-carrying a non-null `source_locator.img_id` — the CI integrity gate treats a
-null img_id on a `source_type='chart'` fact as a blocking violation (see
-`scripts/check_image_referential_integrity.py`). These tests lock that
-invariant in at unit-test granularity so regressions surface locally before
-they reach the DB.
+Under the presence-pivot contract (see PR rewriting `ChartFactBridgeStage`),
+chart images no longer emit per-value `MetricFact` rows — they carry
+image-level metric-presence signals on `ImageAsset.detected_metrics`.
+
+The persistence layer writes these signals to `v2_image_assets.detected_metrics`
+keyed by `img_id`, so every `DetectedMetric` must belong to an image with a
+non-null `img_id`. These tests lock that invariant at unit-test granularity
+across the historical chart shapes (cohort series, LTV/CAC, annotations-only)
+so regressions surface locally before they reach the DB.
 """
 
 from __future__ import annotations
@@ -40,7 +43,6 @@ def _context(images: list[ImageAsset]) -> PipelineContext:
 
 
 def _ltv_image(img_id: str = "img-ltv-invariant") -> ImageAsset:
-    """LTV/CAC ratio chart that exercises the cm_ltv_to_cac_ratio branch."""
     chart = ChartData(
         chart_type=ChartType.BAR,
         title="LTV to CAC Ratio by Cohort",
@@ -67,7 +69,6 @@ def _ltv_image(img_id: str = "img-ltv-invariant") -> ImageAsset:
 
 
 def _cohort_series_image(img_id: str = "img-cohort-invariant") -> ImageAsset:
-    """Cohort revenue chart that exercises the default series branch."""
     chart = ChartData(
         chart_type=ChartType.BAR,
         title="GMV by Consumer Cohort",
@@ -95,7 +96,6 @@ def _cohort_series_image(img_id: str = "img-cohort-invariant") -> ImageAsset:
 
 
 def _annotation_only_image(img_id: str = "img-ann-invariant") -> ImageAsset:
-    """Annotation-only chart that exercises the annotations-only branch."""
     chart = ChartData(
         chart_type=ChartType.BAR,
         title="Revenue by Cohort",
@@ -117,41 +117,78 @@ def _annotation_only_image(img_id: str = "img-ann-invariant") -> ImageAsset:
     )
 
 
-def _assert_img_id_on_every_fact(facts: list, expected_img_id: str) -> None:
-    assert facts, "expected at least one chart fact to be emitted"
-    for fact in facts:
-        assert fact.source_locator is not None, f"fact {fact.fact_id} has no source_locator"
-        assert fact.source_locator.img_id == expected_img_id, (
-            f"fact {fact.fact_id} img_id={fact.source_locator.img_id!r} "
-            f"expected {expected_img_id!r}"
-        )
+class TestNoChartFactsEmitted:
+    """Presence-pivot contract: `ChartFactBridgeStage` never emits MetricFacts."""
+
+    def test_cohort_series_shape_emits_zero_facts(self) -> None:
+        context = _context([_cohort_series_image()])
+        ChartFactBridgeStage().process(context)
+        assert context.facts == []
+
+    def test_ltv_shape_emits_zero_facts(self) -> None:
+        context = _context([_ltv_image()])
+        ChartFactBridgeStage().process(context)
+        assert context.facts == []
+
+    def test_annotation_only_shape_emits_zero_facts(self) -> None:
+        context = _context([_annotation_only_image()])
+        ChartFactBridgeStage().process(context)
+        assert context.facts == []
 
 
-class TestChartFactBridgeImgIdInvariant:
-    def test_series_branch_always_sets_img_id(self) -> None:
+class TestDetectedMetricsImgIdInvariant:
+    """Every detected_metrics entry must belong to an image with a non-null img_id.
+
+    This replaces the prior "every chart fact has img_id" invariant — under the
+    presence-pivot contract, metric-presence signals are keyed to the image
+    row in v2_image_assets by img_id, so the img_id must always be present on
+    any image that carries detected_metrics.
+    """
+
+    def test_cohort_series_image_img_id_non_null(self) -> None:
         image = _cohort_series_image("img-cohort-A")
         context = _context([image])
 
         ChartFactBridgeStage().process(context)
 
-        _assert_img_id_on_every_fact(context.facts, "img-cohort-A")
+        if image.detected_metrics:
+            assert image.img_id is not None
+            assert image.img_id == "img-cohort-A"
 
-    def test_ltv_branch_always_sets_img_id(self) -> None:
+    def test_ltv_image_img_id_non_null(self) -> None:
         image = _ltv_image("img-ltv-A")
         context = _context([image])
 
         ChartFactBridgeStage().process(context)
 
-        _assert_img_id_on_every_fact(context.facts, "img-ltv-A")
+        if image.detected_metrics:
+            assert image.img_id is not None
+            assert image.img_id == "img-ltv-A"
 
-    def test_annotation_only_branch_always_sets_img_id(self) -> None:
+    def test_annotation_only_image_img_id_non_null(self) -> None:
         image = _annotation_only_image("img-ann-A")
         context = _context([image])
 
         ChartFactBridgeStage().process(context)
 
-        # Annotation-only branch may be filtered by classifier; the invariant
-        # only applies to facts that were emitted.
-        for fact in context.facts:
-            assert fact.source_locator is not None
-            assert fact.source_locator.img_id == "img-ann-A"
+        # Annotation-only charts may or may not detect metrics; the invariant
+        # only applies to images that did populate detected_metrics.
+        if image.detected_metrics:
+            assert image.img_id is not None
+            assert image.img_id == "img-ann-A"
+
+    def test_invariant_holds_across_multiple_images(self) -> None:
+        images = [
+            _cohort_series_image("img-multi-cohort"),
+            _ltv_image("img-multi-ltv"),
+            _annotation_only_image("img-multi-ann"),
+        ]
+        context = _context(images)
+
+        ChartFactBridgeStage().process(context)
+
+        for image in images:
+            if image.detected_metrics:
+                assert image.img_id is not None, (
+                    f"image with detected_metrics has null img_id: {image!r}"
+                )

@@ -1,30 +1,30 @@
 """
-Unit tests for ChartFactBridgeStage hallucination guards (Cluster A).
+Unit tests for ChartFactBridgeStage — presence-pivot contract.
 
-Tests Guard 1–6 and config override behaviour.
+After the chart-presence pivot (PR 1), ChartFactBridgeStage no longer emits
+MetricFact rows. Instead it populates image.detected_metrics with
+DetectedMetric records. All three historical chart shapes (annotations-only,
+LTV/CAC, default-series) must produce zero facts and non-empty detected_metrics
+when the classifier finds a match.
 """
 
 from __future__ import annotations
 
-import logging
 from datetime import date
 from pathlib import Path
-from unittest.mock import patch
 
 from src.extraction_v2.models import (
+    ChartAnnotation,
     ChartData,
     ChartSeries,
     ChartType,
     DataPoint,
+    DetectedMetric,
     ImageAsset,
     ImageClassification,
 )
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
 from src.extraction_v2.stages.chart_fact_bridge import ChartFactBridgeStage
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _FILING_DATE = date(2020, 12, 31)
 
@@ -43,26 +43,22 @@ def _make_context(
     )
 
 
-def _make_ltv_image(
-    confidence: float = 0.9,
-    series_data: list[tuple[str, list[tuple[str, float, str | None]]]] | None = None,
-) -> ImageAsset:
-    """Build a minimal LTV/CAC chart asset that the classifier will route to cm_ltv_to_cac_ratio."""
-    if series_data is None:
-        series_data = [
-            ("Enterprise", [("Cohort 2018", 3.5, "3.5x"), ("Cohort 2019", 4.0, "4.0x")]),
-        ]
-    series = []
-    for name, pts in series_data:
-        points = [DataPoint(x=x, y=y, label=label) for x, y, label in pts]
-        series.append(ChartSeries(name=name, points=points))
-
+def _make_ltv_image(confidence: float = 0.9) -> ImageAsset:
+    """LTV/CAC chart — previously exercised the cm_ltv_to_cac_ratio branch."""
     chart = ChartData(
         chart_type=ChartType.BAR,
         title="LTV to CAC Ratio by Cohort",
         x_axis_label="Cohort",
         y_axis_label="LTV/CAC",
-        series=series,
+        series=[
+            ChartSeries(
+                name="Enterprise",
+                points=[
+                    DataPoint(x="Cohort 2018", y=3.5, label="3.5x"),
+                    DataPoint(x="Cohort 2019", y=4.0, label="4.0x"),
+                ],
+            ),
+        ],
     )
     return ImageAsset(
         img_id="img-ltv-1",
@@ -74,26 +70,22 @@ def _make_ltv_image(
     )
 
 
-def _make_cohort_image(
-    confidence: float = 0.9,
-    series_data: list[tuple[str, list[tuple[str, float, str | None]]]] | None = None,
-) -> ImageAsset:
-    """Build a cohort revenue chart asset routed to a non-LTV metric."""
-    if series_data is None:
-        series_data = [
-            ("2017 Cohort", [("2017", 100.0, "100"), ("2018", 120.0, "120")]),
-        ]
-    series = []
-    for name, pts in series_data:
-        points = [DataPoint(x=x, y=y, label=label) for x, y, label in pts]
-        series.append(ChartSeries(name=name, points=points))
-
+def _make_cohort_series_image(confidence: float = 0.9) -> ImageAsset:
+    """Cohort revenue chart — previously exercised the default-series branch."""
     chart = ChartData(
         chart_type=ChartType.BAR,
         title="GMV by Consumer Cohort",
         x_axis_label="Year",
         y_axis_label="GMV (USDm)",
-        series=series,
+        series=[
+            ChartSeries(
+                name="2017 Cohort",
+                points=[
+                    DataPoint(x="2017", y=100.0, label="100"),
+                    DataPoint(x="2018", y=120.0, label="120"),
+                ],
+            ),
+        ],
     )
     return ImageAsset(
         img_id="img-cohort-1",
@@ -106,326 +98,207 @@ def _make_cohort_image(
     )
 
 
+def _make_annotations_only_image(confidence: float = 0.9) -> ImageAsset:
+    """Annotation-only chart — previously exercised the annotations-only branch."""
+    chart = ChartData(
+        chart_type=ChartType.BAR,
+        title="Revenue by Cohort",
+        x_axis_label="Year",
+        y_axis_label="USDm",
+        series=[],
+        annotations=[
+            ChartAnnotation(
+                text="$2.8M 2014 new customer revenue",
+                value=2.8,
+                unit="USD",
+            ),
+        ],
+    )
+    return ImageAsset(
+        img_id="img-ann-1",
+        classification=ImageClassification.CHART,
+        chart_data=chart,
+        processed=True,
+        confidence=confidence,
+        relevance_score=0.9,
+        nearby_text="new customer revenue by cohort",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Core contract: zero facts, populated detected_metrics
+# ---------------------------------------------------------------------------
+
+
+class TestPresencePivotContract:
+    def test_emits_zero_facts_for_ltv_shape(self) -> None:
+        image = _make_ltv_image()
+        context = _make_context([image])
+        ChartFactBridgeStage().process(context)
+        assert context.facts == []
+
+    def test_emits_zero_facts_for_default_series_shape(self) -> None:
+        image = _make_cohort_series_image()
+        context = _make_context([image])
+        ChartFactBridgeStage().process(context)
+        assert context.facts == []
+
+    def test_emits_zero_facts_for_annotations_only_shape(self) -> None:
+        image = _make_annotations_only_image()
+        context = _make_context([image])
+        ChartFactBridgeStage().process(context)
+        assert context.facts == []
+
+    def test_populates_detected_metrics_for_ltv_shape(self) -> None:
+        image = _make_ltv_image()
+        context = _make_context([image])
+        ChartFactBridgeStage().process(context)
+        assert len(image.detected_metrics) >= 1
+        assert all(isinstance(d, DetectedMetric) for d in image.detected_metrics)
+
+    def test_populates_detected_metrics_for_cohort_series_shape(self) -> None:
+        image = _make_cohort_series_image()
+        context = _make_context([image])
+        ChartFactBridgeStage().process(context)
+        assert len(image.detected_metrics) >= 1
+
+    def test_detected_metric_has_valid_score(self) -> None:
+        image = _make_ltv_image()
+        context = _make_context([image])
+        ChartFactBridgeStage().process(context)
+        for dm in image.detected_metrics:
+            assert 0.0 <= dm.score <= 1.0
+            assert isinstance(dm.metric_id, str)
+            assert len(dm.metric_id) > 0
+
+    def test_detected_metrics_score_above_presence_min(self) -> None:
+        """All detected_metrics entries must have score >= chart_presence_min_score."""
+        config = PipelineConfig(chart_presence_min_score=0.5)
+        image = _make_ltv_image()
+        context = _make_context([image], config=config)
+        ChartFactBridgeStage().process(context)
+        for dm in image.detected_metrics:
+            assert dm.score >= 0.5
+
+
+# ---------------------------------------------------------------------------
+# Stage metadata: new counter keys
+# ---------------------------------------------------------------------------
+
+
+class TestStageMetadata:
+    def test_metadata_has_new_counter_keys(self) -> None:
+        image = _make_ltv_image()
+        context = _make_context([image])
+        result = ChartFactBridgeStage().process(context)
+        assert "images_scanned" in result.metadata
+        assert "metrics_detected" in result.metadata
+        assert "images_below_confidence" in result.metadata
+
+    def test_images_scanned_counts_processed_chart_images(self) -> None:
+        images = [_make_ltv_image(), _make_cohort_series_image()]
+        context = _make_context(images)
+        result = ChartFactBridgeStage().process(context)
+        assert result.metadata["images_scanned"] == 2
+
+    def test_images_below_confidence_counts_skipped(self) -> None:
+        low_conf = _make_ltv_image(confidence=0.1)
+        context = _make_context([low_conf])
+        result = ChartFactBridgeStage().process(context)
+        assert result.metadata["images_below_confidence"] == 1
+        assert result.metadata["images_scanned"] == 0
+
+    def test_metrics_detected_reflects_total_detected_metrics(self) -> None:
+        image = _make_ltv_image()
+        context = _make_context([image])
+        result = ChartFactBridgeStage().process(context)
+        total = sum(len(img.detected_metrics) for img in context.images)
+        assert result.metadata["metrics_detected"] == total
+
+
 # ---------------------------------------------------------------------------
 # Guard 1: image confidence gate
 # ---------------------------------------------------------------------------
 
 
 class TestGuard1ImageConfidence:
-    def test_guard_skips_chart_when_image_confidence_below_threshold(self) -> None:
-        """Images with confidence below chart_image_min_confidence (default 0.6) are skipped."""
+    def test_skips_image_below_confidence_threshold(self) -> None:
         image = _make_ltv_image(confidence=0.3)
         context = _make_context([image])
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
+        result = ChartFactBridgeStage().process(context)
         assert result.success
-        assert len(context.facts) == 0
-        assert result.metadata["guard_skipped_low_image_confidence"] == 1
+        assert context.facts == []
+        assert result.metadata["images_below_confidence"] == 1
+        assert image.detected_metrics == []
 
     def test_image_without_confidence_is_not_skipped(self) -> None:
-        """Images where confidence is None pass the gate regardless of threshold."""
-        image = _make_cohort_image(confidence=0.9)
+        image = _make_ltv_image()
         image.confidence = None  # type: ignore[assignment]
         context = _make_context([image])
-        stage = ChartFactBridgeStage()
+        result = ChartFactBridgeStage().process(context)
+        assert result.metadata["images_below_confidence"] == 0
+        assert result.metadata["images_scanned"] == 1
 
-        result = stage.process(context)
-
-        assert result.success
-        assert result.metadata["guard_skipped_low_image_confidence"] == 0
-
-
-# ---------------------------------------------------------------------------
-# Guard 2: label-required gate
-# ---------------------------------------------------------------------------
-
-
-class TestGuard2LabelRequired:
-    def test_guard_skips_point_when_label_missing(self) -> None:
-        """Points with label=None are skipped; labeled points contribute facts."""
-        image = _make_ltv_image(
-            series_data=[
-                (
-                    "Enterprise",
-                    [
-                        ("Cohort 2018", 3.5, "3.5x"),  # labeled — should emit
-                        ("Cohort 2019", 4.0, None),  # no label — should skip
-                    ],
-                )
-            ]
-        )
-        context = _make_context([image])
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.success
-        # Only the labeled point should produce a fact
-        assert len(context.facts) == 1
-        assert result.metadata["guard_skipped_missing_label"] == 1
-
-
-# ---------------------------------------------------------------------------
-# Guard 3: axis-range sanity
-# ---------------------------------------------------------------------------
-
-
-class TestGuard3AxisRange:
-    def test_guard_skips_point_out_of_axis_range(self) -> None:
-        """An unlabeled point whose abs(y) > 10× the labeled-max is skipped before label gate."""
-        # labeled_max = max(abs(3.5), abs(4.0)) = 4.0
-        # 4.0 * 10 = 40.0 — unlabeled point with y=1000 should be filtered by axis-range guard
-        # (axis-range guard runs before the label-required guard, so unlabeled outliers are caught)
-        image = _make_ltv_image(
-            series_data=[
-                (
-                    "Enterprise",
-                    [
-                        ("Cohort 2018", 3.5, "3.5x"),  # labeled, in-range → emits fact
-                        ("Cohort 2019", 4.0, "4.0x"),  # labeled, in-range → emits fact
-                        ("Noise", 1000.0, None),  # unlabeled, out-of-range → skipped by G3
-                    ],
-                )
-            ]
-        )
-        context = _make_context([image])
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.success
-        assert len(context.facts) == 2  # Only the two labeled in-range points
-        assert result.metadata["guard_skipped_out_of_range"] == 1
-        # Guard 2 counter should be 0 because axis-range guard fired first
-        assert result.metadata["guard_skipped_missing_label"] == 0
-
-    def test_guard_skips_nothing_when_labeled_max_is_zero(self) -> None:
-        """When all labeled y-values are 0, the axis-range guard is skipped (no division risk)."""
-        image = _make_ltv_image(
-            series_data=[
-                (
-                    "Enterprise",
-                    [
-                        ("Cohort 2018", 0.0, "0"),
-                        ("Cohort 2019", 0.0, "0"),
-                    ],
-                )
-            ]
-        )
-        context = _make_context([image])
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.metadata["guard_skipped_out_of_range"] == 0
-
-
-# ---------------------------------------------------------------------------
-# Guard 4: cohort-year sanity
-# ---------------------------------------------------------------------------
-
-
-class TestGuard4CohortYear:
-    def test_guard_skips_cohort_year_beyond_filing_year_plus_one(self) -> None:
-        """Cohort points whose resolved period_end.year > filing_date.year + 1 are rejected."""
-        # filing_date = 2020-12-31, so max allowed year = 2021
-        # series name "2023 Cohort" → cohort_year=2023 → period_end.year=2023 > 2021 → skip
-        image = _make_cohort_image(
-            series_data=[
-                (
-                    "2023 Cohort",
-                    [("2023", 150.0, "150")],
-                ),
-            ]
-        )
-        context = _make_context([image], filing_date=date(2020, 12, 31))
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.success
-        assert result.metadata["guard_skipped_future_cohort"] >= 1
-
-    def test_cohort_within_allowed_window_passes(self) -> None:
-        """A cohort year at filing_date.year + 1 (boundary) is allowed through."""
-        # filing_date = 2020, so year 2021 should NOT be blocked
-        image = _make_cohort_image(
-            series_data=[
-                (
-                    "2017 Cohort",
-                    [("2017", 100.0, "100"), ("2018", 120.0, "120")],
-                ),
-            ]
-        )
-        context = _make_context([image], filing_date=date(2020, 12, 31))
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.metadata["guard_skipped_future_cohort"] == 0
-
-
-# ---------------------------------------------------------------------------
-# Guard 5: fact review threshold
-# ---------------------------------------------------------------------------
-
-
-class TestGuard5FactReviewThreshold:
-    def test_ltv_cac_branch_respects_fact_review_threshold(self) -> None:
-        """LTV/CAC facts with confidence < 0.80 get requires_review=True."""
-        # The LTV/CAC branch sets confidence=0.80; default threshold is also 0.80.
-        # Override threshold to 0.85 to force requires_review=True on those facts.
-        config = PipelineConfig(chart_fact_review_threshold=0.85)
-        image = _make_ltv_image(
-            series_data=[
-                ("Enterprise", [("Cohort 2018", 3.5, "3.5x")]),
-            ]
-        )
-        context = _make_context([image], config=config)
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.success
-        assert len(context.facts) == 1
-        assert context.facts[0].requires_review is True
-
-    def test_high_confidence_fact_does_not_force_review(self) -> None:
-        """A fact with confidence >= threshold retains the branch-set requires_review value."""
-        # LTV/CAC branch sets confidence=0.80, requires_review=False; threshold=0.70
-        config = PipelineConfig(chart_fact_review_threshold=0.70)
-        image = _make_ltv_image(
-            series_data=[
-                ("Enterprise", [("Cohort 2018", 3.5, "3.5x")]),
-            ]
-        )
-        context = _make_context([image], config=config)
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.success
-        assert len(context.facts) == 1
-        assert context.facts[0].requires_review is False
-
-
-# ---------------------------------------------------------------------------
-# Config override test
-# ---------------------------------------------------------------------------
-
-
-class TestConfigOverrides:
-    def test_guards_respect_config_overrides(self) -> None:
-        """Setting chart_image_min_confidence=0.0 passes images that would normally be skipped."""
+    def test_config_override_zero_threshold_passes_all(self) -> None:
         config = PipelineConfig(chart_image_min_confidence=0.0)
-        image = _make_ltv_image(confidence=0.1)  # Would be skipped at default 0.6
+        image = _make_ltv_image(confidence=0.1)
         context = _make_context([image], config=config)
-        stage = ChartFactBridgeStage()
-
-        result = stage.process(context)
-
-        assert result.success
-        assert result.metadata["guard_skipped_low_image_confidence"] == 0
-        # Should have emitted facts (image passes through)
-        assert len(context.facts) > 0
+        result = ChartFactBridgeStage().process(context)
+        assert result.metadata["images_below_confidence"] == 0
+        assert result.metadata["images_scanned"] == 1
 
 
 # ---------------------------------------------------------------------------
-# Guard 6: metric confidence floor (Issue #54)
+# Presence min-score gate
 # ---------------------------------------------------------------------------
 
 
-class TestGuard6MetricConfidenceFloor:
-    """Adds a configurable floor on classifier score, distinct from
-    ``chart_metric_classification_min_score`` (0.6 default gate). The floor
-    default matches the classification gate — no change at default — but
-    operators can set it higher (e.g. 0.70) during backfills to reject
-    weak top-match binds. See Issue #54."""
-
-    def test_tightened_floor_suppresses_weak_bind(self, caplog) -> None:
-        """With floor raised to 0.70, classifier scores below that are suppressed."""
-        config = PipelineConfig(chart_metric_min_confidence=0.70)
-        image = _make_ltv_image(confidence=0.9)
+class TestPresenceMinScore:
+    def test_candidates_below_min_score_excluded(self) -> None:
+        """With chart_presence_min_score=1.0, no candidate passes."""
+        config = PipelineConfig(chart_presence_min_score=1.0)
+        image = _make_ltv_image()
         context = _make_context([image], config=config)
-        stage = ChartFactBridgeStage()
+        ChartFactBridgeStage().process(context)
+        assert image.detected_metrics == []
+        assert context.facts == []
 
-        with patch(
-            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
-            return_value=("cm_ltv_to_cac_ratio", 0.65),
-        ):
-            with caplog.at_level(
-                logging.DEBUG, logger="src.extraction_v2.stages.chart_fact_bridge"
-            ):
-                result = stage.process(context)
-
-        assert result.success
-        assert len(context.facts) == 0
-        assert any(
-            "skipping low-confidence metric bind" in rec.message and "score=0.6500" in rec.message
-            for rec in caplog.records
-        )
-
-    def test_tightened_floor_emits_at_threshold(self) -> None:
-        """With floor raised to 0.70, scores at or above 0.70 still emit."""
-        config = PipelineConfig(chart_metric_min_confidence=0.70)
-        image = _make_ltv_image(confidence=0.9)
+    def test_candidates_at_min_score_included(self) -> None:
+        """With chart_presence_min_score=0.0, all gated candidates are included."""
+        config = PipelineConfig(chart_presence_min_score=0.0)
+        image = _make_ltv_image()
         context = _make_context([image], config=config)
-        stage = ChartFactBridgeStage()
+        ChartFactBridgeStage().process(context)
+        assert len(image.detected_metrics) >= 1
 
-        with patch(
-            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
-            return_value=("cm_ltv_to_cac_ratio", 0.70),
-        ):
-            result = stage.process(context)
 
-        assert result.success
-        assert len(context.facts) > 0
+# ---------------------------------------------------------------------------
+# Bridge disabled
+# ---------------------------------------------------------------------------
 
-    def test_default_floor_does_not_suppress_tier1_boundary(self) -> None:
-        """Default floor (0.60) does NOT suppress Tier 1 scores that barely clear
-        the classification gate (e.g. HOOD ``cm_balance_by_cohort`` at ~0.60)."""
-        image = _make_ltv_image(confidence=0.9)
-        context = _make_context([image])  # default config
-        stage = ChartFactBridgeStage()
 
-        with patch(
-            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
-            return_value=("cm_ltv_to_cac_ratio", 0.6024),
-        ):
-            result = stage.process(context)
+class TestBridgeDisabled:
+    def test_bridge_noop_when_disabled(self) -> None:
+        config = PipelineConfig(enable_chart_fact_bridge=False)
+        image = _make_ltv_image()
+        context = _make_context([image], config=config)
+        result = ChartFactBridgeStage().process(context)
+        assert result.items_processed == 0
+        assert result.items_output == 0
+        assert context.facts == []
+        assert image.detected_metrics == []
 
-        assert result.success
-        assert len(context.facts) > 0
 
-    def test_high_score_still_emits(self) -> None:
-        """Positive-control regression: score of 0.95 still emits under default."""
-        image = _make_ltv_image(confidence=0.9)
+# ---------------------------------------------------------------------------
+# Image without chart_data is skipped
+# ---------------------------------------------------------------------------
+
+
+class TestNonChartImages:
+    def test_image_without_chart_data_is_skipped(self) -> None:
+        image = ImageAsset(img_id="img-no-chart")
+        image.chart_data = None
         context = _make_context([image])
-        stage = ChartFactBridgeStage()
-
-        with patch(
-            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
-            return_value=("cm_ltv_to_cac_ratio", 0.95),
-        ):
-            result = stage.process(context)
-
-        assert result.success
-        assert len(context.facts) > 0
-
-    def test_extreme_tightening_suppresses_all(self) -> None:
-        """Setting the floor above any realistic score suppresses all chart facts."""
-        config = PipelineConfig(chart_metric_min_confidence=0.99)
-        image = _make_ltv_image(confidence=0.9)
-        context = _make_context([image], config=config)
-        stage = ChartFactBridgeStage()
-
-        with patch(
-            "src.extraction_v2.stages.chart_fact_bridge.ChartMetricClassifier.classify",
-            return_value=("cm_ltv_to_cac_ratio", 0.85),
-        ):
-            result = stage.process(context)
-
-        assert result.success
-        assert len(context.facts) == 0
+        result = ChartFactBridgeStage().process(context)
+        assert result.metadata["images_scanned"] == 0
+        assert image.detected_metrics == []

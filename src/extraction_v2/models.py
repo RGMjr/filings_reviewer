@@ -663,6 +663,14 @@ class Segment:
 
 
 @dataclass
+class DetectedMetric:
+    """Metric-presence signal detected on a chart image by the classifier."""
+
+    metric_id: str
+    score: float
+
+
+@dataclass
 class DataPoint:
     """Single data point extracted from a chart."""
 
@@ -748,6 +756,10 @@ class ImageAsset:
 
     # ML triage score (populated by learned gate when USE_LEARNED_TRIAGE=true)
     predicted_relevance: float | None = None
+
+    # Metric-presence signals detected by ChartMetricClassifier (chart images only).
+    # Populated by ChartFactBridgeStage; persisted to v2_image_assets.detected_metrics.
+    detected_metrics: list[DetectedMetric] = field(default_factory=list)
 
     def is_relevant(self, threshold: float = 0.3) -> bool:
         """Check if image is relevant for metric extraction."""

@@ -686,13 +686,18 @@ class TestChartScanning:
             ), f"Confidence too low: {[c.confidence for c in candidates]}"
 
     def test_chart_candidates_in_pipeline_context(self, stage: CandidateGenerationStage) -> None:
-        """Chart candidates are added to context.candidates during process()."""
+        """Chart candidates are added to context.candidates during process() when the
+        chart-candidate-emission flag is explicitly enabled. The flag defaults to False
+        under the chart-presence pivot (`PipelineConfig.enable_chart_candidate_emission`);
+        this test continues to cover the debug/comparison code path.
+        """
         asset = _make_chart_asset(
             title="Annual Recurring Revenue by Cohort",
             y_axis_label="ARR ($M)",
         )
 
         context = MockPipelineContext()
+        context.config = PipelineConfig(enable_chart_candidate_emission=True)
         context.images = [asset]
 
         result = stage.process(context)
@@ -700,6 +705,23 @@ class TestChartScanning:
         assert result.success
         chart_candidates = [c for c in context.candidates if c.source_type == SourceType.CHART]
         assert len(chart_candidates) >= 1
+
+    def test_chart_candidates_gated_off_by_default(self, stage: CandidateGenerationStage) -> None:
+        """Under the chart-presence pivot default, chart candidates are not emitted."""
+        asset = _make_chart_asset(
+            title="Annual Recurring Revenue by Cohort",
+            y_axis_label="ARR ($M)",
+        )
+
+        context = MockPipelineContext()
+        context.config = PipelineConfig()  # enable_chart_candidate_emission=False (default)
+        context.images = [asset]
+
+        result = stage.process(context)
+
+        assert result.success
+        chart_candidates = [c for c in context.candidates if c.source_type == SourceType.CHART]
+        assert len(chart_candidates) == 0
 
 
 # =============================================================================

@@ -167,6 +167,18 @@ class PipelineConfig:
     Tier 1 recall because legitimate cohort charts (e.g. HOOD ``cm_balance_by_cohort``)
     classify barely above the 0.6 gate."""
 
+    # Chart metric-presence (pivot: charts emit presence signals, not per-value facts)
+    chart_presence_min_score: float = 0.5
+    """Minimum classifier score for a metric to appear in image.detected_metrics.
+    Lower than chart_image_min_confidence (0.6) to allow secondary candidates onto
+    the reviewer checklist; reviewers adjudicate. Tune via PR 2 baseline sweep."""
+
+    # Candidate generation from chart text
+    enable_chart_candidate_emission: bool = False
+    """When False (default), CandidateGenerationStage._scan_chart is suppressed:
+    chart-sourced text candidates no longer enter the text pipeline. Set True
+    for debug/comparison runs only."""
+
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
         """Create a config tuned for earnings call transcripts."""
