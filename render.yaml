@@ -90,3 +90,42 @@ services:
         value: "2700"  # 45 minutes total
       - key: SWEEP_PER_ISSUE
         value: "900"   # 15 minutes per issue
+
+  # Self-hosted Metabase for browser-based query / visualization.
+  # Points at Neon via the metabase_ro read-only role (sql/37_create_analytics_role.sql).
+  # DB credentials (Neon URL + metabase_ro password) are configured inside the
+  # Metabase admin UI after first login — NOT via env vars on this service —
+  # so a shell on this container can't read them in plaintext.
+  # See docs/operations/analytics-ui-runbook.md for setup + upgrade procedure.
+  - type: web
+    name: filings-metabase
+    region: ohio
+    runtime: image
+    image:
+      url: docker.io/metabase/metabase:v0.59.8
+    # Standard (2 GB RAM) required — Metabase's JVM needs ~1 GB heap minimum;
+    # Starter (512 MB) OOMs during the first-boot schema migration.
+    plan: standard
+    autoDeploy: false  # upgrades are deliberate; don't restart on every main push
+    healthCheckPath: /api/health
+    disk:
+      name: metabase-data
+      mountPath: /metabase-data
+      sizeGB: 1
+    envVars:
+      - key: MB_DB_TYPE
+        value: h2
+      - key: MB_DB_FILE
+        value: /metabase-data/metabase.db
+      # Encrypts connection credentials at rest inside the H2 app DB. Must stay
+      # stable across deploys — if rotated, stored Neon creds become unreadable
+      # and must be re-entered in the Metabase admin UI.
+      - key: MB_ENCRYPTION_SECRET_KEY
+        generateValue: true
+      # Set to the Render-assigned URL after first deploy (e.g.
+      # https://filings-metabase.onrender.com). Required so Metabase emits
+      # correct links in emails and share URLs.
+      - key: MB_SITE_URL
+        sync: false
+      - key: MB_JETTY_PORT
+        value: "3000"

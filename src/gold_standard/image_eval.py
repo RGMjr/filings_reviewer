@@ -110,6 +110,20 @@ class ImageRunRecord:
     latency_ms: int = 0
     raw_output: str = ""
     provider: str = "unknown"
+    # Wave B5.x — per-image chart-DATA fidelity (chart-read mode only).
+    # ``extracted_points`` holds the flattened numeric payload that the
+    # model returned (series points + annotations, normalised to
+    # ``{"value": float, "period": str|None, "source": "series"|"annotation"}``);
+    # ``reference_points`` holds the ground-truth rows pulled from
+    # ``data/gold_standard/<company>/extracted_values.csv`` for entries
+    # carrying a ``ground_truth_value_ids`` manifest field. TP/FP/FN are
+    # the per-record match counters computed by the harness before the
+    # record is constructed.
+    extracted_points: list[dict[str, Any]] = field(default_factory=list)
+    reference_points: list[dict[str, Any]] = field(default_factory=list)
+    data_value_tp: int = 0
+    data_value_fp: int = 0
+    data_value_fn: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +164,15 @@ class ImageEvalResult:
     n_images: int
     n_relevant: int  # ground-truth relevant
     n_not_relevant: int
+
+    # Wave B5.x — chart-DATA fidelity (chart-read mode only). Micro-averaged
+    # TP/FP/FN over records that carry ``reference_points``; unscored
+    # records do not contribute. ``n_images_scored_on_data`` is how many
+    # records had non-empty ``reference_points``.
+    data_value_precision: float = 0.0
+    data_value_recall: float = 0.0
+    data_value_f1: float = 0.0
+    n_images_scored_on_data: int = 0
 
     # Extra diagnostics
     extra: dict[str, Any] = field(default_factory=dict)
@@ -284,6 +307,98 @@ def parse_failure_rate(records: list[ImageRunRecord]) -> float:
     return sum(1 for r in records if r.parse_failed) / len(records)
 
 
+def data_value_match(
+    extracted: list[dict[str, Any]],
+    reference: list[dict[str, Any]],
+    rel_tol: float = 0.02,
+) -> tuple[int, int, int]:
+    """Compare extracted chart data against ground-truth values.
+
+    Used by the Wave B5.x chart-read harness to score per-point fidelity
+    for corpus entries that have an explicit ``ground_truth_value_ids``
+    mapping to CSV chart rows.
+
+    Parameters
+    ----------
+    extracted
+        Flattened model output. Each dict must carry a numeric ``"value"``;
+        other keys are ignored.
+    reference
+        Ground-truth rows. Each dict must carry a numeric ``"value"``
+        (already cast to float); other keys are ignored.
+    rel_tol
+        Relative tolerance for a numeric match. Two values ``a`` and ``b``
+        match when ``abs(a - b) <= rel_tol * max(abs(a), abs(b), 1.0)``.
+        The ``max(..., 1.0)`` floor keeps very small values (e.g. 0.0)
+        from demanding absurd precision.
+
+    Returns
+    -------
+    tuple[int, int, int]
+        ``(tp, fp, fn)`` counted greedily: every reference point is
+        matched against at most one extracted point (first hit wins), so
+        duplicates in the extracted list do not inflate TP. Unmatched
+        extracted → FP; unmatched reference → FN.
+    """
+    if not reference and not extracted:
+        return 0, 0, 0
+
+    def _coerce(d: dict[str, Any]) -> float | None:
+        v = d.get("value")
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    extracted_values: list[float] = []
+    for d in extracted:
+        v = _coerce(d)
+        if v is not None:
+            extracted_values.append(v)
+    reference_values: list[float] = []
+    for d in reference:
+        v = _coerce(d)
+        if v is not None:
+            reference_values.append(v)
+
+    used: set[int] = set()
+    tp = 0
+    for ref_val in reference_values:
+        for i, ext_val in enumerate(extracted_values):
+            if i in used:
+                continue
+            denom = max(abs(ref_val), abs(ext_val), 1.0)
+            if abs(ref_val - ext_val) <= rel_tol * denom:
+                used.add(i)
+                tp += 1
+                break
+
+    fn = len(reference_values) - tp
+    fp = len(extracted_values) - len(used)
+    return tp, fp, fn
+
+
+def data_value_scores(records: list[ImageRunRecord]) -> tuple[float, float, float, int]:
+    """Micro-average chart-data TP/FP/FN across records and compute P/R/F1.
+
+    Only records with a non-empty ``reference_points`` contribute to the
+    aggregates. Returns ``(precision, recall, f1, n_scored)``. When no
+    record carries reference points, every number is 0.0 / 0.
+    """
+    scored = [r for r in records if r.reference_points]
+    if not scored:
+        return 0.0, 0.0, 0.0, 0
+    tp = sum(r.data_value_tp for r in scored)
+    fp = sum(r.data_value_fp for r in scored)
+    fn = sum(r.data_value_fn for r in scored)
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    return precision, recall, f1, len(scored)
+
+
 # ---------------------------------------------------------------------------
 # Aggregate function
 # ---------------------------------------------------------------------------
@@ -323,6 +438,7 @@ def aggregate_results(records: list[ImageRunRecord]) -> ImageEvalResult:
 
     n = len(records)
     prec, rec, f1 = chart_detection_metrics(records)
+    dv_p, dv_r, dv_f1, dv_n = data_value_scores(records)
 
     return ImageEvalResult(
         chart_detection_precision=prec,
@@ -339,6 +455,10 @@ def aggregate_results(records: list[ImageRunRecord]) -> ImageEvalResult:
         n_images=n,
         n_relevant=sum(1 for r in records if r.reviewer_decision == "relevant"),
         n_not_relevant=sum(1 for r in records if r.reviewer_decision != "relevant"),
+        data_value_precision=dv_p,
+        data_value_recall=dv_r,
+        data_value_f1=dv_f1,
+        n_images_scored_on_data=dv_n,
     )
 
 
