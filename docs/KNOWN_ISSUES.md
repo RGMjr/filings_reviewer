@@ -7,7 +7,7 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 26 |
+| Open | 29 |
 | Partially Resolved | 2 |
 | Archived | 46 |
 | Resolved | 14 |
@@ -362,6 +362,42 @@ integration jobs + local integration runs.
 - Could also add a `conftest.py` pre-check that drops the
   `schema_migrations` row for a modified migration before re-applying,
   scoped to test DBs only. More invasive.
+
+## #91. gemini-pro Returns Empty Content on vision + response_format=json_object
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+### Problem
+
+In the 2026-04-23 metric-classify bake-off
+(`docs/operations/vision-bakeoff-metric-classify-2026-04-23.md`),
+`gemini-pro` (`gemini-2.5-pro`) returned an empty `content` field
+(`""`) for every one of the 7 images when called via
+`VisionClient.analyze_image(image_bytes, prompt, response_format={"type":
+"json_object"})`. This drove parse failure rate to 1.0, tag F1 to 0.0,
+and auto-disposition to 0.0 for that provider. The same corpus + prompt
+works cleanly on `gemini-2.5-flash-lite`, so the quirk is specific to
+the Pro model path — likely the combination of vision input and the
+JSON response-format hint.
+
+Not reproducing on any other provider in `PROVIDER_CONFIGS`.
+
+### Next Steps
+
+- Reproduce with a minimal repro (one image, direct `google-genai`
+  call) to confirm it's upstream behaviour and not something the
+  vision adapter is stripping.
+- If confirmed upstream: drop the JSON response-format hint for the
+  Gemini Pro adapter path in `src/llm/vision_client.py` and parse
+  free-text back into the four-field classify schema.
+- Or route Pro through a non-JSON code path when the harness calls
+  `analyze_image` so other downstream callers are unaffected.
+- Until resolved, omit `gemini-pro` from the classify bake-off order
+  (`BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY`) — current ordering
+  already excludes `two-stage` for a similar reason.
 
 ## #4. Spelled-Out Number Parsing Limitations
 
@@ -778,6 +814,78 @@ The selector's Phase 3 status filter (issue #79) correctly excludes `status in {
 - Option C: A pre-commit check that warns (not fails) when a fragment's `pr_refs` all point at merged PRs but `status` is still `open`. Low-cost nudge.
 
 Recommend Option A — simplest, runs outside the happy path, no coupling to `/commit`.
+
+## #92. CLASSIFY_PROMPT Lives in Bake-off Harness — Move to VisionClient When Classify Lands in Prod
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+### Problem
+
+`CLASSIFY_PROMPT` (the per-image metric-disclosure classification
+prompt) is defined inline in `scripts/benchmark_vision.py` rather than
+in `src/llm/vision_client.py`. This was intentional for the 2026-04-23
+bake-off (PR B5.x.1) — validating the approach before touching prod
+routing. But if / when classify is adopted as a prod extraction gate,
+two prompt copies will exist and will drift. The harness has a `TODO`
+comment flagging the eventual home (next to the constant).
+
+### Next Steps
+
+- Promote `CLASSIFY_PROMPT` + `_build_classify_prompt` +
+  `_parse_classify_response` into a new
+  `VisionClient.analyze_image_for_metric_classification` helper
+  (alongside the existing `analyze_image_for_text` / `_targeted`
+  helpers).
+- Update `scripts/benchmark_vision.py::_run_provider_metric_classify`
+  to call the new helper instead of re-implementing the API wrapping +
+  parsing.
+- Coordinate with the full-page-OCR work (PRs #110 / #114 / #139)
+  which owns `analyze_image_for_text` — the two helpers should share
+  the `VisionClient` lifecycle and cache key style.
+- Expected to land alongside the `v2_image_classifications`
+  table/surface PR (tracked separately in
+  `project_image_extraction_program.md` follow-up #2).
+
+## #93. v2_image_review_decisions.rejection_reason Enum Lacks "table_handled_elsewhere"
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+### Problem
+
+When the metric-classify harness (PR B5.x.1) sees a table-in-image it
+returns `predicted_metrics=[]` + `rejection_reason="other"` because the
+existing enum on `v2_image_review_decisions.rejection_reason`
+(migration 29: `decorative`, `not_a_chart`, `wrong_subject`,
+`duplicate`, `unreadable`, `other`) has no "table" bucket. The detail
+is carried in the `reasoning` free-text field, but the bucketing is
+blurry — `"other"` mixes genuine unknowns with routed-elsewhere
+tables, which hurts downstream analytics.
+
+Tables are handled by the separate full-page-OCR pipeline
+(`VisionClient.analyze_image_for_text`, PRs #110 / #114 / #139), so a
+dedicated enum value would let reviewers + analytics distinguish
+"classifier chose not to classify — route elsewhere" from "classifier
+genuinely unsure".
+
+### Next Steps
+
+- Add a migration extending the enum:
+  `ALTER TYPE rejection_reason ADD VALUE 'table_handled_elsewhere';`
+  (or the Postgres check-constraint form, depending on how the enum
+  is modelled — check `sql/29_v2_image_review_decisions.sql`).
+- Update `REJECTION_REASONS` in `src/gold_standard/image_eval.py` and
+  `CLASSIFY_REJECTION_REASONS` in `scripts/benchmark_vision.py` to
+  include the new value.
+- Update the review UI surface so reviewers can pick the value
+  manually (and so the classifier's emission maps cleanly).
+- Back-fill any existing `"other"` rows whose `reasoning` references
+  a table — optional, tracked separately if useful.
 
 ## #5. Revenue Synonym Context Gating
 
