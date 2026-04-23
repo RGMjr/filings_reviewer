@@ -103,7 +103,9 @@ services:
     runtime: image
     image:
       url: docker.io/metabase/metabase:v0.59.8
-    plan: starter
+    # Standard (2 GB RAM) required — Metabase's JVM needs ~1 GB heap minimum;
+    # Starter (512 MB) OOMs during the first-boot schema migration.
+    plan: standard
     autoDeploy: false  # upgrades are deliberate; don't restart on every main push
     healthCheckPath: /api/health
     disk:

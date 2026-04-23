@@ -117,14 +117,16 @@ Metabase runs as the `filings-metabase` service defined in `render.yaml`:
 - **Image:** `docker.io/metabase/metabase:v0.59.8` (pinned; see "Upgrade
   procedure" below for bumping).
 - **Region:** `ohio` (matches the other services).
-- **Plan:** Render Starter. Disk: 1 GB at `/metabase-data`.
+- **Plan:** Render Standard (2 GB RAM). Disk: 1 GB at `/metabase-data`.
+  Starter (512 MB) is not enough — Metabase's JVM OOMs during first-boot
+  schema migration with ~124 MB of available heap.
 - **App DB:** H2 file at `/metabase-data/metabase.db` (persistent). Upgrade to
   Postgres before opening to a wider audience — see "On-ramp to public access".
 - **Autodeploy:** off. Upgrades happen manually from the Render dashboard to
   avoid restarting Metabase (and dropping in-progress dashboard edits) on every
   `main` push.
 - **Health check:** `/api/health`.
-- **Cost:** ~$7/mo (Starter) + ~$0.25/mo (1 GB disk).
+- **Cost:** ~$25/mo (Standard) + ~$0.25/mo (1 GB disk).
 
 ### Env vars on the Metabase service
 
