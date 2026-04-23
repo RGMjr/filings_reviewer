@@ -84,6 +84,7 @@ class DocsChecker:
             "dateutil": "boto3",  # python-dateutil ships transitively via boto3 → botocore
             "botocore": "boto3",  # botocore is a direct boto3 dependency
             "PIL": "pillow",  # Pillow package exposes the PIL module (case-sensitive import)
+            "google": "google_genai",  # google-genai SDK is imported as `from google import genai`
         }
 
         # Find all imports in src/

@@ -11,6 +11,8 @@ Tests:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.extraction_v2.models import (
@@ -957,3 +959,128 @@ class TestPromoteToFullPageScan:
         # All 16 get queued for downstream OCR processing.
         assert result.items_output == 16
         assert context.full_page_scan_mode is True
+
+
+class TestLearnedTriageGate:
+    """Tests for the USE_LEARNED_TRIAGE feature-flag gate (Wave B3 Stage 1).
+
+    The gate is a module-level flag evaluated at import, so tests patch the
+    module attribute directly rather than setting env and reloading.
+    """
+
+    @pytest.fixture
+    def stage(self) -> ImageTriageStage:
+        return ImageTriageStage()
+
+    def _make_chart_asset(self, relevance_hint: float = 0.6) -> ImageAsset:
+        """Build a chart-ish asset whose heuristic score will be roughly the hint."""
+        return ImageAsset(
+            img_id=f"test_{relevance_hint}",
+            filename="chart.png",
+            nearby_text="Customer retention cohort",
+            width=800,
+            height=600,
+        )
+
+    def test_gate_off_by_default_matches_heuristic(
+        self, stage: ImageTriageStage, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """USE_LEARNED_TRIAGE=false (default): behavior matches heuristic path."""
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
+            False,
+        )
+
+        asset = self._make_chart_asset()
+        result = stage.triage_images([asset])
+
+        # Heuristic should classify this as a chart and queue it.
+        assert asset.classification == ImageClassification.CHART
+        # predicted_relevance should NOT be set — the ML gate didn't run.
+        assert asset.predicted_relevance is None
+        assert len(result) == 1
+
+    def test_gate_on_but_model_absent_falls_back_to_heuristic(
+        self,
+        stage: ImageTriageStage,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """USE_LEARNED_TRIAGE=true + no model file: queueing uses heuristic.
+
+        This is the critical fallback path — if the model artifact never ships
+        or fails to load, the pipeline must not crash or silently drop images.
+        """
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
+            True,
+        )
+        # Point the loader at a non-existent path so predict_relevance returns None.
+        monkeypatch.setattr(
+            "src.shared.image_features.DEFAULT_MODEL_PATH",
+            tmp_path / "absent.joblib",
+        )
+        # Clear the module cache to avoid a cached result from a prior test.
+        from src.shared import image_features
+
+        image_features._MODEL_CACHE.clear()
+
+        asset = self._make_chart_asset()
+        result = stage.triage_images([asset])
+
+        # Heuristic should still queue it since the chart is classified and
+        # relevance meets MIN_RELEVANCE_FOR_PROCESSING.
+        assert asset.classification == ImageClassification.CHART
+        assert len(result) == 1
+        # predicted_relevance stays None (fallback path, no model score).
+        assert asset.predicted_relevance is None
+
+    def test_gate_on_with_model_uses_predicted_relevance(
+        self,
+        stage: ImageTriageStage,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """USE_LEARNED_TRIAGE=true + model present: queueing uses predicted_relevance.
+
+        Mocks predict_relevance to return 0.8 (above default LEARNED_TRIAGE_MIN=0.4);
+        asset should be queued regardless of its heuristic relevance_score and
+        predicted_relevance should land on the asset.
+        """
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
+            True,
+        )
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.image_triage.predict_relevance",
+            lambda features: 0.8,
+        )
+
+        asset = self._make_chart_asset()
+        result = stage.triage_images([asset])
+
+        assert asset.predicted_relevance == 0.8
+        assert len(result) == 1
+
+    def test_gate_on_below_min_threshold_skips(
+        self,
+        stage: ImageTriageStage,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """USE_LEARNED_TRIAGE=true + predicted_relevance < LEARNED_TRIAGE_MIN: skip."""
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
+            True,
+        )
+        # Default LEARNED_TRIAGE_MIN is 0.4; 0.2 is below threshold.
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.image_triage.predict_relevance",
+            lambda features: 0.2,
+        )
+
+        asset = self._make_chart_asset()
+        result = stage.triage_images([asset])
+
+        assert asset.predicted_relevance == 0.2
+        # Asset was classified but not queued (below learned threshold).
+        assert asset.classification == ImageClassification.CHART
+        assert len(result) == 0

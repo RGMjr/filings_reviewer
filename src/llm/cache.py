@@ -26,15 +26,10 @@ class CacheConfig:
     """Configuration for LLM response cache."""
 
     enabled: bool = field(
-        default_factory=lambda: os.environ.get("LLM_CACHE_ENABLED", "true").lower()
-        == "true"
+        default_factory=lambda: os.environ.get("LLM_CACHE_ENABLED", "true").lower() == "true"
     )
-    connection_string: str = field(
-        default_factory=lambda: os.environ.get("DATABASE_URL", "")
-    )
-    cache_version: str = field(
-        default_factory=lambda: os.environ.get("LLM_CACHE_VERSION", "v1")
-    )
+    connection_string: str = field(default_factory=lambda: os.environ.get("DATABASE_URL", ""))
+    cache_version: str = field(default_factory=lambda: os.environ.get("LLM_CACHE_VERSION", "v2"))
     max_age_days: int = 30
 
 

@@ -21,9 +21,84 @@ Expected row dict keys (common format):
 
 from __future__ import annotations
 
+import logging
 import re
+import threading
+from pathlib import Path
+from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Cached model loader
+# ---------------------------------------------------------------------------
+
+_MODEL_LOCK = threading.Lock()
+_MODEL_CACHE: dict[str, Any] = {}  # path → loaded pipeline (or sentinel None)
+_MODEL_ABSENT: object = object()  # sentinel: model file was not found
+
+DEFAULT_MODEL_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "data"
+    / "image_model"
+    / "relevance_model.joblib"
+)
+
+
+def _load_model(model_path: Path | None = None) -> Any | None:
+    """Load (and cache) the sklearn pipeline from disk.
+
+    Returns the fitted pipeline, or None if the file is missing or fails to
+    load.  The result is cached per resolved path so subsequent calls are
+    free of I/O.
+    """
+    resolved = str((model_path or DEFAULT_MODEL_PATH).resolve())
+    with _MODEL_LOCK:
+        if resolved in _MODEL_CACHE:
+            cached = _MODEL_CACHE[resolved]
+            return None if cached is _MODEL_ABSENT else cached
+        path = Path(resolved)
+        if not path.exists():
+            logger.debug(
+                "Image relevance model not found at %s — falling back to heuristic", resolved
+            )
+            _MODEL_CACHE[resolved] = _MODEL_ABSENT
+            return None
+        try:
+            import joblib  # optional heavy import; only at prediction time
+
+            pipeline = joblib.load(path)
+            _MODEL_CACHE[resolved] = pipeline
+            logger.info("Loaded image relevance model from %s", resolved)
+            return pipeline
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to load image relevance model from %s: %s", resolved, exc)
+            _MODEL_CACHE[resolved] = _MODEL_ABSENT
+            return None
+
+
+def predict_relevance(features: dict, *, model_path: Path | None = None) -> float | None:
+    """Return a predicted relevance score (0–1) for a single image feature dict.
+
+    ``features`` must be in the same format accepted by ``engineer_features``
+    (i.e. the keys listed in the module docstring).
+
+    Returns ``None`` when the model is absent or fails — callers should fall
+    back to the heuristic relevance score in that case.
+    """
+    pipeline = _load_model(model_path)
+    if pipeline is None:
+        return None
+    try:
+        X = engineer_features([features])
+        prob: float = float(pipeline.predict_proba(X)[0, 1])
+        return prob
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("predict_relevance failed: %s", exc)
+        return None
+
 
 # Filename patterns common in SEC auto-generated chart images.
 # e.g. g665122g20q37.jpg, g468383g1r55k94.jpg — letter 'g' prefix followed by digits.
@@ -41,19 +116,39 @@ SEC_CHART_FILENAME_RE = re.compile(r"^g\d+", re.IGNORECASE)
 
 SEMANTIC_CATEGORIES: dict[str, list[str]] = {
     "text_cohort_terms": [
-        "cohort", "cohorts", "vintage", "vintages",
+        "cohort",
+        "cohorts",
+        "vintage",
+        "vintages",
     ],
     "text_retention_terms": [
-        "retention", "churn", "retain", "attrition",
+        "retention",
+        "churn",
+        "retain",
+        "attrition",
     ],
     "text_unit_econ_terms": [
-        "ltv", "cac", "lifetime value", "acquisition cost", "payback", "arpu",
+        "ltv",
+        "cac",
+        "lifetime value",
+        "acquisition cost",
+        "payback",
+        "arpu",
     ],
     "text_temporal_terms": [
-        "year", "quarter", "month", "annual", "fiscal", "period",
+        "year",
+        "quarter",
+        "month",
+        "annual",
+        "fiscal",
+        "period",
     ],
     "text_growth_terms": [
-        "growth", "increase", "grow", "expanding", "expansion",
+        "growth",
+        "increase",
+        "grow",
+        "expanding",
+        "expansion",
     ],
 }
 
@@ -75,10 +170,7 @@ def count_semantic_terms(text: str | None) -> dict[str, int]:
     """
     if not text:
         return {cat: 0 for cat in SEMANTIC_CATEGORIES}
-    return {
-        cat: len(pattern.findall(text))
-        for cat, pattern in _CATEGORY_PATTERNS.items()
-    }
+    return {cat: len(pattern.findall(text)) for cat, pattern in _CATEGORY_PATTERNS.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -87,28 +179,28 @@ def count_semantic_terms(text: str | None) -> dict[str, int]:
 
 FEATURE_NAMES: list[str] = [
     # --- original 16 features ---
-    "cohort_confidence",           # 0
-    "cohort_keyword_nearby",       # 1  (strongest signal)
-    "keyword_count",               # 2  (strong signal)
-    "text_long",                   # 3
-    "text_medium",                 # 4
-    "text_short",                  # 5
-    "has_dimensions",              # 6
-    "image_area_clipped",          # 7
-    "is_chart_classification",     # 8
-    "is_unknown_classification",   # 9
-    "is_tier_1",                   # 10
-    "is_tier_2",                   # 11
-    "filename_has_chart_hint",     # 12
-    "is_source_sec",               # 13
+    "cohort_confidence",  # 0
+    "cohort_keyword_nearby",  # 1  (strongest signal)
+    "keyword_count",  # 2  (strong signal)
+    "text_long",  # 3
+    "text_medium",  # 4
+    "text_short",  # 5
+    "has_dimensions",  # 6
+    "image_area_clipped",  # 7
+    "is_chart_classification",  # 8
+    "is_unknown_classification",  # 9
+    "is_tier_1",  # 10
+    "is_tier_2",  # 11
+    "filename_has_chart_hint",  # 12
+    "is_source_sec",  # 13
     "is_table_image_classification",  # 14
-    "log_keyword_count",           # 15
+    "log_keyword_count",  # 15
     # --- 5 semantic text features (positions 16-20) ---
-    "text_cohort_terms",           # 16
-    "text_retention_terms",        # 17
-    "text_unit_econ_terms",        # 18
-    "text_temporal_terms",         # 19
-    "text_growth_terms",           # 20
+    "text_cohort_terms",  # 16
+    "text_retention_terms",  # 17
+    "text_unit_econ_terms",  # 18
+    "text_temporal_terms",  # 19
+    "text_growth_terms",  # 20
 ]
 
 
@@ -216,27 +308,29 @@ def engineer_features(rows: list[dict]) -> np.ndarray:
         # Semantic text features
         semantic = count_semantic_terms(r.get("preceding_text"))
 
-        X.append([
-            cohort_confidence,                    # 0
-            cohort_keyword_nearby,                # 1
-            keyword_count,                        # 2
-            text_long,                            # 3
-            text_medium,                          # 4
-            text_short,                           # 5
-            has_dimensions,                       # 6
-            image_area_clipped,                   # 7
-            is_chart_classification,              # 8
-            is_unknown_classification,            # 9
-            is_tier_1,                            # 10
-            is_tier_2,                            # 11
-            filename_has_chart_hint,              # 12
-            is_source_sec,                        # 13
-            is_table_image_classification,        # 14
-            log_keyword_count,                    # 15
-            semantic["text_cohort_terms"],        # 16
-            semantic["text_retention_terms"],     # 17
-            semantic["text_unit_econ_terms"],     # 18
-            semantic["text_temporal_terms"],      # 19
-            semantic["text_growth_terms"],        # 20
-        ])
+        X.append(
+            [
+                cohort_confidence,  # 0
+                cohort_keyword_nearby,  # 1
+                keyword_count,  # 2
+                text_long,  # 3
+                text_medium,  # 4
+                text_short,  # 5
+                has_dimensions,  # 6
+                image_area_clipped,  # 7
+                is_chart_classification,  # 8
+                is_unknown_classification,  # 9
+                is_tier_1,  # 10
+                is_tier_2,  # 11
+                filename_has_chart_hint,  # 12
+                is_source_sec,  # 13
+                is_table_image_classification,  # 14
+                log_keyword_count,  # 15
+                semantic["text_cohort_terms"],  # 16
+                semantic["text_retention_terms"],  # 17
+                semantic["text_unit_econ_terms"],  # 18
+                semantic["text_temporal_terms"],  # 19
+                semantic["text_growth_terms"],  # 20
+            ]
+        )
     return np.array(X, dtype=float)

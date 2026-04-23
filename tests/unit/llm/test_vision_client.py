@@ -205,19 +205,19 @@ class TestVisionClientCostCalculation:
 class TestVisionClientInit:
     """Test suite for VisionClient initialization."""
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_default_model(self, mock_openai):
         """Test that default model is gpt-4o."""
         client = VisionClient()
         assert client.model == "gpt-4o"
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_custom_model(self, mock_openai):
         """Test initialization with custom model."""
         client = VisionClient(model="gpt-4o-mini")
         assert client.model == "gpt-4o-mini"
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_creates_openai_client(self, mock_openai):
         """Test that OpenAI client is created on init."""
         VisionClient()
@@ -227,7 +227,7 @@ class TestVisionClientInit:
 class TestVisionClientAnalyzeImage:
     """Test suite for analyze_image method."""
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_success(self, mock_openai):
         """Test successful image analysis."""
         # Set up mock response
@@ -262,7 +262,7 @@ class TestVisionClientAnalyzeImage:
         assert result.prompt_tokens == 1000
         assert result.completion_tokens == 500
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_uses_correct_mime_type(self, mock_openai):
         """Test that correct MIME type is detected and used."""
         mock_usage = MagicMock()
@@ -296,7 +296,7 @@ class TestVisionClientAnalyzeImage:
         image_content = messages[0]["content"][1]["image_url"]["url"]
         assert "data:image/png;base64," in image_content
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_detail_parameter(self, mock_openai):
         """Test that detail parameter is passed correctly."""
         mock_usage = MagicMock()
@@ -331,7 +331,7 @@ class TestVisionClientAnalyzeImage:
         image_content = messages[0]["content"][1]["image_url"]
         assert image_content["detail"] == "low"
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_max_tokens_parameter(self, mock_openai):
         """Test that max_tokens parameter is passed correctly."""
         mock_usage = MagicMock()
@@ -364,7 +364,7 @@ class TestVisionClientAnalyzeImage:
         call_args = mock_client_instance.chat.completions.create.call_args
         assert call_args.kwargs["max_tokens"] == 1000
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_handles_none_content(self, mock_openai):
         """Test handling of None content from API."""
         mock_usage = MagicMock()
@@ -395,7 +395,7 @@ class TestVisionClientAnalyzeImage:
         # Should handle None gracefully
         assert result.content == ""
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_handles_none_usage(self, mock_openai):
         """Test handling of None usage stats from API."""
         mock_message = MagicMock()
@@ -424,7 +424,7 @@ class TestVisionClientAnalyzeImage:
         assert result.completion_tokens == 0
         assert result.cost_usd == 0.0
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_latency_tracking(self, mock_openai):
         """Test that latency is tracked."""
         mock_usage = MagicMock()
@@ -455,7 +455,7 @@ class TestVisionClientAnalyzeImage:
         # Latency should be non-negative
         assert result.latency_ms >= 0
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_analyze_image_api_error_propagates(self, mock_openai):
         """Test that API errors propagate."""
         from openai import APIError
@@ -484,7 +484,7 @@ class TestVisionClientAnalyzeImage:
 class TestInputValidation:
     """Test suite for input validation."""
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_empty_image_bytes_raises_error(self, mock_openai):
         """Test that empty image bytes raise ValueError."""
         client = VisionClient()
@@ -492,7 +492,7 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="image_bytes cannot be empty"):
             client.analyze_image(image_bytes=b"", prompt="test")
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_empty_prompt_raises_error(self, mock_openai):
         """Test that empty prompt raises ValueError."""
         client = VisionClient()
@@ -500,7 +500,7 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="prompt cannot be empty"):
             client.analyze_image(image_bytes=b"\xff\xd8\xff\xe0test", prompt="")
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_whitespace_only_prompt_raises_error(self, mock_openai):
         """Test that whitespace-only prompt raises ValueError."""
         client = VisionClient()
@@ -508,7 +508,7 @@ class TestInputValidation:
         with pytest.raises(ValueError, match="prompt cannot be empty"):
             client.analyze_image(image_bytes=b"\xff\xd8\xff\xe0test", prompt="   ")
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_validation_before_api_call(self, mock_openai):
         """Test that validation happens before API call is made."""
         mock_client_instance = MagicMock()
@@ -527,7 +527,7 @@ class TestInputValidation:
 class TestRetryLogic:
     """Test suite for retry logic with exponential backoff."""
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     @patch("src.llm.vision_client.time.sleep")
     def test_rate_limit_retries_with_backoff(self, mock_sleep, mock_openai):
         """Test that rate limit errors trigger retries with backoff."""
@@ -577,7 +577,7 @@ class TestRetryLogic:
         mock_sleep.assert_any_call(1.0)
         mock_sleep.assert_any_call(2.0)
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     @patch("src.llm.vision_client.time.sleep")
     def test_connection_error_retries(self, mock_sleep, mock_openai):
         """Test that connection errors trigger retries."""
@@ -617,7 +617,7 @@ class TestRetryLogic:
         assert result.content == "result"
         assert mock_sleep.call_count == 1
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     @patch("src.llm.vision_client.time.sleep")
     def test_server_error_retries(self, mock_sleep, mock_openai):
         """Test that 5xx server errors trigger retries."""
@@ -662,7 +662,7 @@ class TestRetryLogic:
         assert result.content == "result"
         assert mock_sleep.call_count == 1
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_client_error_no_retry(self, mock_openai):
         """Test that 4xx client errors don't trigger retries."""
         from openai import APIError
@@ -689,7 +689,7 @@ class TestRetryLogic:
         # Should only call once (no retries)
         assert mock_client_instance.chat.completions.create.call_count == 1
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     @patch("src.llm.vision_client.time.sleep")
     def test_max_retries_exhausted(self, mock_sleep, mock_openai):
         """Test that error is raised after max retries exhausted."""
@@ -718,7 +718,7 @@ class TestRetryLogic:
         # Should have slept twice
         assert mock_sleep.call_count == 2
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_default_max_retries(self, mock_openai):
         """Test that default max_retries value is used."""
         mock_usage = MagicMock()
@@ -748,7 +748,7 @@ class TestRetryLogic:
 class TestBase64Encoding:
     """Test suite for base64 encoding functionality."""
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_base64_encoding_applied(self, mock_openai):
         """Test that image bytes are base64 encoded."""
         import base64
@@ -817,7 +817,7 @@ class TestVisionClientCaching:
         mock_response.model = model
         return mock_response
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_cache_hit_skips_api_call(self, mock_openai):
         """Cache HIT: analyze_image returns cached data without calling the API."""
         from src.llm.cache import CacheConfig, CachedResponse, LLMCache
@@ -852,7 +852,7 @@ class TestVisionClientCaching:
         assert result.cost_usd == 0.0
         assert result.latency_ms == 0
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_cache_miss_calls_api_and_writes_cache(self, mock_openai):
         """Cache MISS: analyze_image calls the API then writes to cache with correct fields."""
         import hashlib
@@ -898,7 +898,7 @@ class TestVisionClientCaching:
         assert set_kwargs["input_tokens"] == 120
         assert set_kwargs["output_tokens"] == 60
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_different_image_bytes_produce_different_sha256(self, mock_openai):
         """Different image_bytes lead to distinct image_sha256 cache keys."""
         import hashlib
@@ -935,7 +935,7 @@ class TestVisionClientCaching:
         assert sha_values[1] == sha_b
         assert sha_values[0] != sha_values[1]
 
-    @patch("src.llm.vision_client.OpenAI")
+    @patch("src.llm.providers.openai.OpenAI")
     def test_cache_disabled_does_not_call_cache_get(self, mock_openai):
         """CacheConfig(enabled=False): analyze_image hits the API without touching the cache."""
         from src.llm.cache import CacheConfig, LLMCache
@@ -996,7 +996,7 @@ def _mock_vision_client(monkeypatch, response_content: str) -> tuple[VisionClien
     mock_instance = MagicMock()
     mock_instance.chat.completions.create.return_value = mock_response
 
-    monkeypatch.setattr("src.llm.vision_client.OpenAI", lambda *a, **kw: mock_instance)
+    monkeypatch.setattr("src.llm.providers.openai.OpenAI", lambda *a, **kw: mock_instance)
     return VisionClient(), mock_instance
 
 

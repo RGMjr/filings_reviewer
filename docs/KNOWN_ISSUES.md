@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 29 |
+| Open | 27 |
 | Partially Resolved | 3 |
 | Archived | 46 |
-| Resolved | 5 |
+| Resolved | 7 |
 
 
 ## Nightly Sweeper Classification
@@ -45,7 +45,6 @@
 | #72 | review | S | `pyproject.toml` `uv.lock` | Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate fix before baseline refresh |
 | #74 | safe | XS | `.gitignore` | One-line addition to root `.gitignore` |
 | #75 | skip | S | `tests/ui/*.spec.js` `tests/ui/test_server.py` | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
-| #76 | safe | S | `tests/integration/test_db_filings_reviewers.py` | New integration test for filings-list reviewer aggregate; isolated file |
 | #77 | skip | M | — | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; partial code fix shipped, prod backfill needs explicit auth (R2 + Neon writes) |
 | #79 | safe | XS | `scripts/known_issues_selector.py` | Filter selector picks on status=open or partially-resolved |
 | #80 | review | S | `src/infra/image_storage.py` `src/gold_standard/v2_validator.py` `.claude/rules/infrastructure.md` | Add env-scoped guard against unintended prod R2 writes from CLI tools; design call (storage-layer vs validator-layer) needed |
@@ -655,35 +654,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 - Pin `gh` to a specific apt version (`gh=2.X.Y`) or switch to the GitHub Releases tarball.
 - Consider adding a build-time smoke test: `claude --version && gh --version` to fail the build on unexpected drift.
 
-## #70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
-
-> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
-
-This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
-
-The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
-
-### Next Steps
-
-- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
-- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
-
-### Cross-References
-
-- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
-- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
-- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
-- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
-
 ## #74. `.claude/scheduled_tasks.lock` Not Gitignored
 
 **Status**: Open
@@ -716,23 +686,6 @@ The "auto-advance to next filing when queue empties" behavior is tested at the r
 - Add a Playwright spec in `tests/ui/` that seeds two filings with pending facts, sets sort to `company asc` on the list, approves the last pending fact in filing A, and asserts the browser lands on filing B (not the list, not default date-desc order).
 - Repeat the assertion with image-queue completion as the trigger (relevant → non-relevant → skip the last image).
 - Reuse the stub-server pattern in `tests/ui/test_server.py`; extend it with a `/filings-list-stub` route that renders `unified_filing_list.html` with two seeded filings.
-
-## #76. Missing Integration Test for Filings-List Reviewer Aggregate
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`get_unified_filings_for_review` now UNIONs text + image decision tables and projects a `reviewers` array per filing, plus an optional `reviewer_ids` filter using `ARRAY_AGG(...) && ...`. Unit tests cover the route layer threading this kwarg, but there's no integration test asserting: (a) mixed-reviewer filings return distinct reviewers from both text and image sources; (b) the `&&` overlap filter correctly narrows the list without false positives; (c) filings with only NULL reviewer_ids render as an empty array. Without this test, a future CTE refactor could silently lose reviewers from one source.
-
-### Next Steps
-
-- Add `tests/integration/test_db_filings_reviewers.py` that seeds a filing with text decisions by Alice + image decisions by Bob, calls `get_unified_filings_for_review`, and asserts `row["reviewers"] == ["alice", "bob"]`.
-- Add a second case: call with `reviewer_ids=["alice"]`, assert the filing is returned; call with `reviewer_ids=["zoe"]`, assert it is not.
-- Add a third case: a filing with only NULL reviewer_id decisions (legacy image rows) returns `reviewers == []`.
 
 ## #79. Nightly Sweeper Selector Picks Resolved/Archived Issues
 
@@ -1551,6 +1504,35 @@ Remaining narrow gaps (POST stub shape drift; non-rendering template files) are 
 - Detect `timeout` vs `gtimeout` vs neither at script start; fall back to `gtimeout` on macOS (via `brew install coreutils`) or to a no-timeout code path with a warning log.
 - Alternatively, install `coreutils` as part of the local-dev setup docs for the `/sweep` skill.
 
+## #70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+
+### Problem
+
+`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
+
+> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
+
+This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
+
+The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
+
+### Next Steps
+
+- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
+- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
+
+### Cross-References
+
+- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
+- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
+- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
+- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
+
 ## #71. Integration Tests Job Has No Path Filter
 
 **Status**: Resolved
@@ -1568,6 +1550,23 @@ Remaining narrow gaps (POST stub shape drift; non-rendering template files) are 
 - Mirror the UI E2E filter structure (`ci.yml:49-69`) on the `integration-tests` job. Same allowlist (`docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, `.github/CODEOWNERS`) — err on the side of running when in doubt.
 - Verify by opening a docs-only PR and confirming `Integration Tests` reports `skipped` in Actions.
 - Do NOT remove Integration Tests from required status checks — a skipped job still counts as passing for branch protection, so the gate stays intact.
+
+## #76. Missing Integration Test for Filings-List Reviewer Aggregate
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+
+### Problem
+
+`get_unified_filings_for_review` now UNIONs text + image decision tables and projects a `reviewers` array per filing, plus an optional `reviewer_ids` filter using `ARRAY_AGG(...) && ...`. Unit tests cover the route layer threading this kwarg, but there's no integration test asserting: (a) mixed-reviewer filings return distinct reviewers from both text and image sources; (b) the `&&` overlap filter correctly narrows the list without false positives; (c) filings with only NULL reviewer_ids render as an empty array. Without this test, a future CTE refactor could silently lose reviewers from one source.
+
+### Next Steps
+
+- Add `tests/integration/test_db_filings_reviewers.py` that seeds a filing with text decisions by Alice + image decisions by Bob, calls `get_unified_filings_for_review`, and asserts `row["reviewers"] == ["alice", "bob"]`.
+- Add a second case: call with `reviewer_ids=["alice"]`, assert the filing is returned; call with `reviewer_ids=["zoe"]`, assert it is not.
+- Add a third case: a filing with only NULL reviewer_id decisions (legacy image rows) returns `reviewers == []`.
 
 
 ## Change Log
