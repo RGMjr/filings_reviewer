@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 
-from src.infra.validation import ValidationError, validate_enum
+from src.infra.validation import ValidationError, normalize_sec_accession, validate_enum
 from src.review.models import (
     IMAGE_CHART_TYPES,
     IMAGE_DECISIONS,
@@ -290,7 +290,26 @@ class DatabaseAdapter:
 
         Returns:
             filing_id of the upserted record
+
+        Raises:
+            ValidationError: If accession_number has no SEC-shaped token
+                (``NNNNNNNNNN-NN-NNNNNN``) embedded. Synthetic namespaces
+                (``presentation:*``, ``transcript:*``) pass through unchanged.
         """
+        # Canonicalize the accession before we write. Historically, a small
+        # number of rows were persisted with the full EDGAR index path
+        # (e.g., ``edgar/data/<cik>/<accession>.txt``) rather than the bare
+        # token, which caused downstream fetchers to trip the path-traversal
+        # guard. The normalizer extracts the 10-2-6 token from any plausible
+        # input and leaves synthetic-namespace keys alone.
+        normalized = normalize_sec_accession(accession_number)
+        if normalized is None:
+            raise ValidationError(
+                f"Cannot persist filing: accession_number {accession_number!r} "
+                "contains no SEC-shaped token (NNNNNNNNNN-NN-NNNNNN)"
+            )
+        accession_number = normalized
+
         sql = """
             INSERT INTO filings (
                 company_id, cik, accession_number, form_type, filing_date,
