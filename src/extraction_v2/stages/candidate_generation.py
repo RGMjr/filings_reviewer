@@ -214,20 +214,24 @@ class CandidateGenerationStage:
                     logger.error(error_msg)
                     errors.append(error_msg)
 
-            # Scan chart data from processed images
+            # Scan chart data from processed images.
+            # enable_chart_candidate_emission defaults to False (chart-presence pivot):
+            # chart-sourced text candidates no longer enter the text pipeline.
+            # Set True via PipelineConfig for debug/comparison runs only.
             charts_scanned = 0
-            for asset in context.images:
-                if asset.chart_data is not None:
-                    try:
-                        chart_candidates = self._scan_chart(asset)
-                        for candidate in chart_candidates:
-                            context.candidates.append(candidate)
-                            candidates_found += 1
-                        charts_scanned += 1
-                    except Exception as e:
-                        error_msg = f"Error scanning chart {asset.img_id}: {e}"
-                        logger.error(error_msg)
-                        errors.append(error_msg)
+            if getattr(context.config, "enable_chart_candidate_emission", False):
+                for asset in context.images:
+                    if asset.chart_data is not None:
+                        try:
+                            chart_candidates = self._scan_chart(asset)
+                            for candidate in chart_candidates:
+                                context.candidates.append(candidate)
+                                candidates_found += 1
+                            charts_scanned += 1
+                        except Exception as e:
+                            error_msg = f"Error scanning chart {asset.img_id}: {e}"
+                            logger.error(error_msg)
+                            errors.append(error_msg)
 
             items_processed = len(context.segments) + len(context.tables) + charts_scanned
 

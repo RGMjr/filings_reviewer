@@ -66,16 +66,16 @@ def _metric_gate(metric_id: str, chart: ChartData, nearby_text: str = "") -> boo
         # Fallback for OCR outputs with missing y_axis_label: require margin /
         # contribution keyword somewhere in chart text OR nearby_text, AND a
         # percentage signal (point labels or axis).
-        text_blob = " ".join([
-            chart.title or "",
-            chart.x_axis_label or "",
-            chart.y_axis_label or "",
-            " ".join(s.name or "" for s in chart.series),
-            nearby_text[:1500] if nearby_text else "",
-        ])
-        has_margin = bool(
-            re.search(r"\b(?:margin|contribution)\b", text_blob, re.IGNORECASE)
+        text_blob = " ".join(
+            [
+                chart.title or "",
+                chart.x_axis_label or "",
+                chart.y_axis_label or "",
+                " ".join(s.name or "" for s in chart.series),
+                nearby_text[:1500] if nearby_text else "",
+            ]
         )
+        has_margin = bool(re.search(r"\b(?:margin|contribution)\b", text_blob, re.IGNORECASE))
         has_percent = "%" in (chart.y_axis_label or "") or any(
             "%" in (p.label or "") for s in chart.series for p in s.points
         )
@@ -151,9 +151,7 @@ def _score_metric(
     # (e.g. FTCH Order Contribution Margin) that lacks title/axes but is
     # structurally a gross-margin-by-cohort chart.
     if metric_id == "cm_gross_margin_by_cohort":
-        has_pct_labels = any(
-            "%" in (p.label or "") for s in chart.series for p in s.points
-        )
+        has_pct_labels = any("%" in (p.label or "") for s in chart.series for p in s.points)
         point_years = {
             m.group()
             for s in chart.series
@@ -178,7 +176,8 @@ class ChartMetricClassifier:
         self._specific = get_specific_patterns_by_metric()
         self._exclusions = get_exclusion_patterns()
 
-    def classify(self, chart: ChartData, nearby_text: str = "") -> tuple[str | None, float]:
+    def _build_candidates(self, chart: ChartData, nearby_text: str) -> list[tuple[str, float]]:
+        """Compute gated candidate list (shared by classify and classify_all)."""
         scores = {
             mid: _score_metric(
                 mid,
@@ -202,7 +201,36 @@ class ChartMetricClassifier:
                 if cohort_passed and _metric_gate(mid, chart, nearby_text):
                     candidates.append((mid, scores[mid]))
 
+        return candidates
+
+    def classify_all(self, chart: ChartData, nearby_text: str = "") -> list[tuple[str, float]]:
+        """Return all candidates passing _cohort_gate + _metric_gate, sorted by score desc.
+
+        Unlike ``classify()``, this does NOT apply the revenue/transactions
+        unit-disambiguation filter and does NOT collapse to a single winner.
+        Suitable for metric-presence detection where multiple metrics may be
+        present on the same chart (e.g. a stacked-bar cohort chart covering
+        both cm_revenue_by_cohort and cm_balance_by_cohort).
+        """
+        candidates = self._build_candidates(chart, nearby_text)
+        return sorted(candidates, key=lambda x: x[1], reverse=True)
+
+    def classify(self, chart: ChartData, nearby_text: str = "") -> tuple[str | None, float]:
+        """Return the single best-matching metric, or (None, raw_best) if none pass gates."""
+        candidates = self._build_candidates(chart, nearby_text)
+
         if not candidates:
+            scores = {
+                mid: _score_metric(
+                    mid,
+                    chart,
+                    nearby_text,
+                    self._keywords,
+                    self._specific,
+                    self._exclusions,
+                )
+                for mid in _SUPPORTED_METRICS
+            }
             best_raw = max(scores.values()) if scores else 0.0
             return (None, best_raw)
 

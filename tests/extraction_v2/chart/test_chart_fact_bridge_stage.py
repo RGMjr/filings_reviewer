@@ -1,3 +1,11 @@
+"""Presence-pivot contract smoke tests for ChartFactBridgeStage.
+
+The detailed behavioural assertions live in
+``tests/unit/extraction_v2/test_chart_fact_bridge_stage.py``. This file keeps
+a narrower set of scope-guard cases to prevent silent regressions on the
+"charts no longer emit facts" invariant from the `chart/` test package.
+"""
+
 from __future__ import annotations
 
 from datetime import date
@@ -10,33 +18,22 @@ from src.extraction_v2.models import (
     ChartType,
     DataPoint,
     ImageAsset,
-    SourceType,
 )
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext
 from src.extraction_v2.stages.chart_fact_bridge import ChartFactBridgeStage
 
 
-def _make_context(
-    images: list[ImageAsset],
-    enable_bridge: bool = True,
-    min_score: float = 0.6,
-    document_date: date | None = None,
-) -> PipelineContext:
-    config = PipelineConfig(
-        enable_chart_fact_bridge=enable_bridge,
-        chart_metric_classification_min_score=min_score,
-    )
-    ctx = PipelineContext(
+def _make_context(images: list[ImageAsset]) -> PipelineContext:
+    return PipelineContext(
         html_path=Path("/dev/null"),
         filing_id=42,
-        config=config,
-        document_date=document_date or date(2021, 10, 8),
+        config=PipelineConfig(),
+        document_date=date(2021, 10, 8),
+        images=images,
     )
-    ctx.images = images
-    return ctx
 
 
-def _cohort_stacked_bar_image() -> ImageAsset:
+def _cohort_series_image() -> ImageAsset:
     chart = ChartData(
         chart_type=ChartType.STACKED_BAR,
         title="Cumulative Net Deposits by Cohort",
@@ -52,90 +49,85 @@ def _cohort_stacked_bar_image() -> ImageAsset:
             ),
             ChartSeries(
                 name="2019",
+                points=[DataPoint(x="2020", y=9.0, label="9.0")],
+            ),
+        ],
+    )
+    img = ImageAsset(img_id="img-cohort", nearby_text="")
+    img.chart_data = chart
+    img.confidence = 0.8
+    return img
+
+
+def _ltv_cac_image() -> ImageAsset:
+    chart = ChartData(
+        chart_type=ChartType.BAR,
+        title="LTV to CAC Ratio by Cohort",
+        x_axis_label="Cohort",
+        y_axis_label="LTV/CAC",
+        series=[
+            ChartSeries(
+                name="Enterprise",
                 points=[
-                    DataPoint(x="2020", y=9.0, label="9.0"),
+                    DataPoint(x="Cohort 2018", y=3.5, label="3.5x"),
+                    DataPoint(x="Cohort 2019", y=4.0, label="4.0x"),
                 ],
             ),
         ],
     )
-    img = ImageAsset(img_id="img-001", nearby_text="")
+    img = ImageAsset(img_id="img-ltv", nearby_text="")
     img.chart_data = chart
-    img.confidence = 0.8  # above chart_image_min_confidence threshold (0.6)
+    img.confidence = 0.9
     return img
 
 
-def test_emits_facts_for_classified_chart() -> None:
-    image = _cohort_stacked_bar_image()
-    ctx = _make_context([image])
-    ChartFactBridgeStage().process(ctx)
-    assert len(ctx.facts) >= 1
-
-
-def test_skips_chart_below_classification_threshold() -> None:
+def _annotation_only_image() -> ImageAsset:
     chart = ChartData(
         chart_type=ChartType.BAR,
-        title="Annual Revenue",
-        y_axis_label="USD millions",
+        title="Revenue by Cohort",
         x_axis_label="Year",
-        series=[ChartSeries(name="Revenue", points=[DataPoint(x="2020", y=100.0)])],
-    )
-    img = ImageAsset(img_id="img-low", nearby_text="")
-    img.chart_data = chart
-    ctx = _make_context([img])
-    ChartFactBridgeStage().process(ctx)
-    assert ctx.facts == []
-
-
-def test_sets_source_type_chart_and_img_id_locator() -> None:
-    image = _cohort_stacked_bar_image()
-    ctx = _make_context([image])
-    ChartFactBridgeStage().process(ctx)
-    assert len(ctx.facts) >= 1
-    fact = ctx.facts[0]
-    assert fact.source_type == SourceType.CHART
-    assert fact.source_locator.img_id == "img-001"
-
-
-def test_marks_requires_review_for_annotations_only_facts() -> None:
-    ann = ChartAnnotation(
-        text="2019 cohort data",
-        value=44.4,
-        unit="billions",
-        category="2019 Cohort",
-        period="2019",
-    )
-    chart = ChartData(
-        chart_type=ChartType.STACKED_BAR,
-        title="Cumulative Net Deposits by Cohort",
-        y_axis_label="Cumulative Net Deposits ($ Billions)",
-        x_axis_label="Year",
+        y_axis_label="USDm",
         series=[],
-        annotations=[ann],
+        annotations=[
+            ChartAnnotation(text="$2.8M 2014 new customer revenue", value=2.8, unit="USD"),
+        ],
     )
-    img = ImageAsset(img_id="img-ann", nearby_text="")
+    img = ImageAsset(img_id="img-ann", nearby_text="new customer revenue by cohort")
     img.chart_data = chart
-    img.confidence = 0.8
-    ctx = _make_context([img])
+    img.confidence = 0.9
+    return img
+
+
+def test_cohort_series_shape_emits_zero_facts() -> None:
+    ctx = _make_context([_cohort_series_image()])
     ChartFactBridgeStage().process(ctx)
-    assert len(ctx.facts) >= 1
-    fact = ctx.facts[0]
-    assert fact.requires_review is True
-    assert fact.confidence == 0.55
+    assert ctx.facts == []
 
 
-def test_populates_cohort_def_and_period_end() -> None:
-    image = _cohort_stacked_bar_image()
+def test_ltv_cac_shape_emits_zero_facts() -> None:
+    ctx = _make_context([_ltv_cac_image()])
+    ChartFactBridgeStage().process(ctx)
+    assert ctx.facts == []
+
+
+def test_annotation_only_shape_emits_zero_facts() -> None:
+    ctx = _make_context([_annotation_only_image()])
+    ChartFactBridgeStage().process(ctx)
+    assert ctx.facts == []
+
+
+def test_cohort_series_shape_populates_detected_metrics() -> None:
+    image = _cohort_series_image()
     ctx = _make_context([image])
     ChartFactBridgeStage().process(ctx)
-    assert len(ctx.facts) >= 1
-    fact = ctx.facts[0]
-    assert fact.cohort_def is not None
-    assert fact.period_end is not None
+    assert len(image.detected_metrics) >= 1
+    for detected in image.detected_metrics:
+        assert isinstance(detected.metric_id, str) and detected.metric_id
+        assert 0.0 <= detected.score <= 1.0
 
 
-def test_bridge_noop_when_enable_chart_fact_bridge_false() -> None:
-    image = _cohort_stacked_bar_image()
-    ctx = _make_context([image], enable_bridge=False)
-    result = ChartFactBridgeStage().process(ctx)
-    assert result.items_output == 0
-    assert ctx.facts == []
+def test_ltv_cac_shape_populates_detected_metrics() -> None:
+    image = _ltv_cac_image()
+    ctx = _make_context([image])
+    ChartFactBridgeStage().process(ctx)
+    assert len(image.detected_metrics) >= 1
