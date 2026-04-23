@@ -49,6 +49,7 @@
 | #85 | safe | XS | `scripts/apply_all_migrations.py` | Recurrence of Issue |
 | #86 | review | M | `src/extraction_v2/stages/deduplication.py` | Chart extractor produces per-cohort bar values (visible pre-dedup), but deduplication stage collapses same-metric different-value facts. Surfaced post-#72 resolution as the residual HOOD `cm_revenue_by_cohort` 9/10 FN pattern. |
 | #87 | review | M | `src/extraction_v2/pipeline.py` `src/extraction_v2/stages/image_triage.py` `src/extraction_v2/stages/ocr_extraction.py` `data/gold_standard/v2_baseline.json` | Root cause likely in PR |
+| #88 | skip | S | `scripts/apply_all_migrations.py` `.pre-commit-config.yaml` | Add a pre-commit hook that fails if any sql/NN_*.sql on disk lacks an entry in MIGRATION_ORDER or EXCLUDED_FILES. |
 
 
 ## Open Issues
@@ -196,25 +197,6 @@ rollback).
    `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
 4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
    and re-extract 5 investor-deck-style filings to exercise Path B.
-
-## #85. `scripts/apply_all_migrations.py` MIGRATION_ORDER missing migration 40
-
-**Status**: Open
-**Severity**: medium
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-`scripts/apply_all_migrations.py` `MIGRATION_ORDER` ends at `39_v2_ingest_batches.sql`, but `sql/40_full_page_scan_and_ocr_provenance.sql` has existed on disk since before 2026-04-22. On a fresh-DB setup, running the script will skip migration 40 entirely. The `check_unregistered_migrations` guard flags this at `--dry-run` time but the list itself is stale.
-
-This is a recurrence of Issue #46 (resolved 2026-04-20 by extending the list through `38_create_analytics_views.sql`) — the drift pattern resurfaced as soon as new migrations landed. A related fragment (#85) covers migration 41 of the same commit, which was registered correctly in this PR; #40 was left alone to keep scope narrow.
-
-### Next Steps
-
-- Append `"40_full_page_scan_and_ocr_provenance.sql"` to `MIGRATION_ORDER` in `scripts/apply_all_migrations.py`.
-- Confirm the migration itself is idempotent (it uses `ALTER TABLE ... DROP CONSTRAINT IF EXISTS` / `ADD COLUMN IF NOT EXISTS`, so re-running on a DB where it was already applied manually should be safe, but verify before registering).
-- Consider a pre-commit hook that fails if any `sql/NN_*.sql` file is on disk without a matching entry in `MIGRATION_ORDER` or `EXCLUDED_FILES`. That would close the drift class, not just this one recurrence.
 
 ## #86. Dedup Stage Collapses Same-Metric Different-Value Cohort Facts
 
@@ -368,6 +350,23 @@ are unblocked.
 - [ ] Fix PR restores baseline and deletes
       `data/gold_standard/v2_baseline_pre_regression_2026-04-22.json`
 - [ ] Post-mortem comment in this fragment naming the actual root cause
+
+## #88. No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+### Problem
+
+`scripts/apply_all_migrations.py` has drifted twice (issues #46 and #85) because new SQL migration files land on disk without a corresponding entry in `MIGRATION_ORDER`. The `check_unregistered_migrations` guard only fires at runtime (`--dry-run`), not at commit time, so the drift isn't caught until someone runs the script.
+
+### Next Steps
+
+- Add a pre-commit hook (or `local` hook in `.pre-commit-config.yaml`) that runs `python3 scripts/apply_all_migrations.py --dry-run` (which exits 1 when unregistered files are found) before each commit.
+- Alternatively, write a small standalone check script and register it as a `local` repo hook so it doesn't require a DB connection.
+- Verify the hook runs in CI as well (the pre-commit framework is already in use for ruff and the extraction guard).
 
 ## #4. Spelled-Out Number Parsing Limitations
 
@@ -1578,6 +1577,25 @@ Root cause: integration fixtures share Postgres state (fixed CIKs, fixed filing 
 2. **Uniquified fixture data.** Second-best: inject `uuid4()` / worker-id suffixes into `cik`, `accession_number`, and other natural keys in `create_test_company_and_filing` and equivalents.
 3. **`--dist loadgroup` with shared-state markers.** Tag tests that share seed data with a `@pytest.mark.xdist_group("filings_seed")` and let xdist keep them on one worker. Cheapest change but leaves perf on the table.
 4. **Verification after fix:** run `pytest tests/integration/ -n auto -x -q` locally twice in a row against `$TEST_DATABASE_URL` with zero failures, then land the `-n auto` flag in `.github/workflows/ci.yml:184–187`.
+
+## #85. `scripts/apply_all_migrations.py` MIGRATION_ORDER missing migration 40
+
+**Status**: Resolved
+**Severity**: medium
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+`scripts/apply_all_migrations.py` `MIGRATION_ORDER` ends at `39_v2_ingest_batches.sql`, but `sql/40_full_page_scan_and_ocr_provenance.sql` has existed on disk since before 2026-04-22. On a fresh-DB setup, running the script will skip migration 40 entirely. The `check_unregistered_migrations` guard flags this at `--dry-run` time but the list itself is stale.
+
+This is a recurrence of Issue #46 (resolved 2026-04-20 by extending the list through `38_create_analytics_views.sql`) — the drift pattern resurfaced as soon as new migrations landed. A related fragment (#85) covers migration 41 of the same commit, which was registered correctly in this PR; #40 was left alone to keep scope narrow.
+
+### Next Steps
+
+- Append `"40_full_page_scan_and_ocr_provenance.sql"` to `MIGRATION_ORDER` in `scripts/apply_all_migrations.py`.
+- Confirm the migration itself is idempotent (it uses `ALTER TABLE ... DROP CONSTRAINT IF EXISTS` / `ADD COLUMN IF NOT EXISTS`, so re-running on a DB where it was already applied manually should be safe, but verify before registering).
+- Consider a pre-commit hook that fails if any `sql/NN_*.sql` file is on disk without a matching entry in `MIGRATION_ORDER` or `EXCLUDED_FILES`. That would close the drift class, not just this one recurrence.
 
 ## #28. Mock-Server / Template-Contract Coupling
 

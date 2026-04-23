@@ -93,11 +93,9 @@ MIGRATION_ORDER = [
     "37_create_analytics_role.sql",
     "38_create_analytics_views.sql",
     "39_v2_ingest_batches.sql",
+    "40_full_page_scan_and_ocr_provenance.sql",
     "41_normalize_accession_numbers.sql",
 ]
-# NOTE: sql/40_full_page_scan_and_ocr_provenance.sql exists but is not yet
-# registered here — tracked as a separate registration drift issue. New
-# migrations should still follow the sequential-numbering rule.
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
 EXCLUDED_FILES = {
