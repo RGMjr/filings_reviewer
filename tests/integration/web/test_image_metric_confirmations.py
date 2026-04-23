@@ -75,11 +75,11 @@ def seeded_image(db_adapter: DatabaseAdapter) -> str:
             cur.execute(
                 """
                 INSERT INTO v2_image_assets (
-                    img_id, doc_id, filename, classification, processed,
+                    img_id, doc_id, filename, dom_locator, classification, processed,
                     detected_metrics
                 ) VALUES (
-                    %(img_id)s, %(doc_id)s, 'chart_test.png', 'chart', true,
-                    %(detected)s::jsonb
+                    %(img_id)s, %(doc_id)s, 'chart_test.png', '/html/body/img[1]',
+                    'chart', true, %(detected)s::jsonb
                 )
                 """,
                 {
