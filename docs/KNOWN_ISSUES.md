@@ -10,7 +10,7 @@
 | Open | 26 |
 | Partially Resolved | 2 |
 | Archived | 46 |
-| Resolved | 11 |
+| Resolved | 12 |
 
 
 ## Nightly Sweeper Classification
