@@ -222,6 +222,39 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "rejection_reason": None,
     "decision_notes": None,
     "image_index": 1,
+    "detected_metrics": [],
+}
+
+MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
+    **{
+        "image_candidate_id": 12,
+        "img_id": "img-detected-12",
+        "filing_id": 1,
+        "image_url": "https://via.placeholder.com/400x300?text=Chart3",
+        "image_src_url": "https://via.placeholder.com/400x300?text=Chart3",
+        "image_alt": "Cohort Retention Chart",
+        "image_src": "chart3.png",
+        "image_width": 600,
+        "image_height": 400,
+        "review_status": "pending",
+        "decision": None,
+        "image_decision_id": None,
+        "detection_tier": "tier_1_cohort",
+        "cohort_confidence": 0.90,
+        "preceding_text": "Retention by cohort.",
+        "detected_keywords": ["retention", "cohort"],
+        "is_decorative": False,
+        "chart_type": None,
+        "rejection_reason": None,
+        "decision_notes": None,
+        "image_index": 3,
+    },
+    "detected_metrics": [
+        {"metric_id": "cm_customer_retention_rate", "score": 0.95},
+        {"metric_id": "cm_net_revenue_retention", "score": 0.82},
+        {"metric_id": "cm_revenue_by_cohort", "score": 0.71},
+        {"metric_id": "cm_churn_rate", "score": 0.55},
+    ],
 }
 
 MOCK_IMAGE_CANDIDATE_REVIEWED = {
@@ -246,6 +279,7 @@ MOCK_IMAGE_CANDIDATE_REVIEWED = {
     "rejection_reason": None,
     "decision_notes": "Clear cohort retention chart",
     "image_index": 2,
+    "detected_metrics": [],
 }
 
 IMAGE_CHART_TYPES = [
@@ -279,6 +313,7 @@ def _shared_template_vars(
     image_candidates=_UNSET,
     all_image_candidates=_UNSET,
     current_image=_UNSET,
+    current_image_confirmations=None,
     facts=_UNSET,
 ):
     """Build shared template context."""
@@ -319,6 +354,7 @@ def _shared_template_vars(
         image_candidates=image_candidates,
         all_image_candidates=all_image_candidates,
         current_image=current_image,
+        current_image_confirmations=current_image_confirmations or [],
         image_pending=1,
         image_reviewed=1,
         image_skipped=0,
@@ -415,6 +451,48 @@ def review_images_tab_reviewed():
     )
 
 
+@app.route("/images-tab-detected")
+def review_images_tab_detected():
+    """Images tab with a current image carrying detected_metrics (PR 3b)."""
+    return render_template(
+        "unified_review.html",
+        **_shared_template_vars(
+            active_tab="images",
+            current_image=MOCK_IMAGE_CANDIDATE_WITH_DETECTED,
+            image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            all_image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+        ),
+    )
+
+
+@app.route("/images-tab-detected-preseeded")
+def review_images_tab_detected_preseeded():
+    """Images tab with detected_metrics and pre-existing reviewer confirmations."""
+    preseeded = [
+        {
+            "confirmation_id": "c-1",
+            "img_id": MOCK_IMAGE_CANDIDATE_WITH_DETECTED["img_id"],
+            "detected_metric_id": "cm_customer_retention_rate",
+            "confirmed_metric_id": "cm_customer_retention_rate",
+            "decision": "accept",
+            "rejection_reason": None,
+            "reviewer_id": "test_reviewer",
+            "created_at": "2026-04-23T00:00:00+00:00",
+            "updated_at": "2026-04-23T00:00:00+00:00",
+        },
+    ]
+    return render_template(
+        "unified_review.html",
+        **_shared_template_vars(
+            active_tab="images",
+            current_image=MOCK_IMAGE_CANDIDATE_WITH_DETECTED,
+            image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            all_image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            current_image_confirmations=preseeded,
+        ),
+    )
+
+
 # --- Mock API endpoints ---
 
 
@@ -456,6 +534,60 @@ def mock_create_image_decision():
             "message": "All candidates reviewed for this filing",
         }
     ), 201
+
+
+@app.route("/api/v2/metrics/list", methods=["GET"])
+def mock_metrics_list():
+    return jsonify(
+        [
+            {
+                "metric_id": "cm_customer_retention_rate",
+                "display_name": "Customer Retention Rate",
+                "tier": "tier_1",
+            },
+            {
+                "metric_id": "cm_net_revenue_retention",
+                "display_name": "Net Revenue Retention",
+                "tier": "tier_1",
+            },
+            {
+                "metric_id": "cm_revenue_by_cohort",
+                "display_name": "Revenue by Cohort",
+                "tier": "tier_1",
+            },
+            {"metric_id": "cm_churn_rate", "display_name": "Churn Rate", "tier": "tier_2"},
+            {
+                "metric_id": "cm_lifetime_value_per_customer",
+                "display_name": "Lifetime Value per Customer",
+                "tier": "tier_1",
+            },
+        ]
+    ), 200
+
+
+@app.route("/api/v2/image-metric-confirmations", methods=["POST"])
+def mock_create_image_metric_confirmations():
+    data = request.get_json(silent=True) or {}
+    decisions = data.get("decisions", [])
+    img_id = data.get("img_id")
+    confirmations = []
+    for i, d in enumerate(decisions):
+        confirmations.append(
+            {
+                "confirmation_id": f"c-new-{i}",
+                "img_id": img_id,
+                "detected_metric_id": d.get("detected_metric_id"),
+                "confirmed_metric_id": d.get("confirmed_metric_id"),
+                "decision": d.get("decision"),
+                "rejection_reason": d.get("rejection_reason"),
+                "reviewer_id": data.get("reviewer_id", "anonymous"),
+                "created_at": "2026-04-23T00:00:00+00:00",
+                "updated_at": "2026-04-23T00:00:00+00:00",
+            }
+        )
+    return jsonify(
+        {"ok": True, "upserted": len(confirmations), "confirmations": confirmations}
+    ), 200
 
 
 @app.route("/api/v2/missed-metric", methods=["POST"])

@@ -397,6 +397,28 @@ def review_filing(filing_id: int):
 
         current_image = _select_current_image(image_candidates, request.args.get("img_id"))
 
+        # Per-metric confirmations for the currently-focused image
+        # (chart-presence pivot, #86 PR 3b). Loaded only for the active image
+        # since the full queue does not need prior decisions preloaded.
+        current_image_confirmations: list[dict[str, Any]] = []
+        if current_image and current_image.get("img_id"):
+            try:
+                current_image_confirmations = db.get_image_metric_confirmations(
+                    current_image["img_id"]
+                )
+                for c in current_image_confirmations:
+                    for ts_key in ("created_at", "updated_at"):
+                        ts = c.get(ts_key)
+                        if ts is not None and hasattr(ts, "isoformat"):
+                            c[ts_key] = ts.isoformat()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to load image metric confirmations for img_id=%s: %s",
+                    current_image.get("img_id"),
+                    exc,
+                )
+                current_image_confirmations = []
+
         # Image progress counts
         image_pending = sum(1 for c in all_image_candidates if c["review_status"] == "pending")
         image_reviewed = sum(1 for c in all_image_candidates if c["review_status"] == "reviewed")
@@ -452,6 +474,7 @@ def review_filing(filing_id: int):
             image_candidates=image_candidates,
             all_image_candidates=all_image_candidates,
             current_image=current_image,
+            current_image_confirmations=current_image_confirmations,
             image_pending=image_pending,
             image_reviewed=image_reviewed,
             image_skipped=image_skipped,

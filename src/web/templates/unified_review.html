@@ -861,6 +861,110 @@
           </div>
           {% endif %}
 
+          {# Detected Metrics card — chart-presence pivot (#86 PR 3b).
+             Rendered when the image carries classifier-detected metrics and the
+             reviewer has not marked the image as Not-Relevant. Reviewer
+             confirms each entry via accept / reject (reason) / correct
+             (replace) and may add metrics the classifier missed. #}
+          {% if current_image
+                and current_image.detected_metrics
+                and current_image.review_status in ('pending', 'reviewed')
+                and current_image.decision != 'not_relevant' %}
+          <div class="card detected-metrics-card mt-3"
+               id="detected-metrics-card"
+               data-img-id="{{ current_image.img_id }}"
+               data-detected-metrics='{{ current_image.detected_metrics|tojson }}'
+               data-confirmations='{{ (current_image_confirmations or [])|tojson }}'>
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+              <h6 class="mb-0">Detected metrics</h6>
+              <span class="badge bg-secondary">
+                {{ current_image.detected_metrics|length }} detected
+              </span>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Confirm which metrics this chart covers. Values are entered
+                separately via <em>Add missed metric</em> if needed.
+              </p>
+              <ul class="list-group list-group-flush" id="detected-metrics-list">
+                {% for metric in current_image.detected_metrics %}
+                <li class="list-group-item detected-metric-row"
+                    tabindex="0"
+                    data-metric-id="{{ metric.metric_id }}"
+                    data-score="{{ '%.2f'|format(metric.score) }}">
+                  <div class="d-flex justify-content-between align-items-center gap-2">
+                    <div class="flex-grow-1">
+                      <span class="metric-label fw-semibold">{{ metric.metric_id }}</span>
+                      <span class="metric-score text-muted small ms-2">{{ '%.2f'|format(metric.score) }}</span>
+                    </div>
+                    <div class="btn-group btn-group-sm metric-actions" role="group">
+                      <button type="button" class="btn btn-outline-success btn-accept-metric"
+                              data-action="accept">
+                        Accept <span class="kbd ms-1">A</span>
+                      </button>
+                      <button type="button" class="btn btn-outline-danger btn-reject-metric"
+                              data-action="reject">
+                        Reject <span class="kbd ms-1">R</span>
+                      </button>
+                      <button type="button" class="btn btn-outline-primary btn-correct-metric"
+                              data-action="correct">
+                        Correct <span class="kbd ms-1">C</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="reject-expansion mt-2" style="display: none;">
+                    <label class="form-label small mb-1">Reason</label>
+                    <select class="form-select form-select-sm metric-reject-reason">
+                      <option value="">Select a reason…</option>
+                      <option value="not_present">Not present</option>
+                      <option value="decorative">Decorative</option>
+                      <option value="unrelated_chart">Unrelated chart</option>
+                      <option value="similar_metric_misclassified">Similar metric misclassified</option>
+                      <option value="too_low_confidence">Too low confidence</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div class="correct-expansion mt-2" style="display: none;">
+                    <label class="form-label small mb-1">Correct to</label>
+                    <input type="text"
+                           class="form-control form-control-sm metric-correct-input"
+                           list="detected-metrics-datalist"
+                           placeholder="Search metrics…">
+                  </div>
+                  <div class="metric-state-indicator small mt-1 text-muted"
+                       style="display: none;"></div>
+                </li>
+                {% endfor %}
+              </ul>
+              <div class="mt-3 border-top pt-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm"
+                        id="btn-add-missed-detected-metric">
+                  + Add metric the classifier missed
+                </button>
+                <div id="add-missed-detected-expansion" class="mt-2" style="display: none;">
+                  <label class="form-label small mb-1">Metric</label>
+                  <input type="text"
+                         id="add-missed-detected-input"
+                         class="form-control form-control-sm"
+                         list="detected-metrics-datalist"
+                         placeholder="Search metrics…">
+                  <button type="button" class="btn btn-outline-primary btn-sm mt-2"
+                          id="btn-add-missed-detected-confirm">
+                    Add
+                  </button>
+                </div>
+              </div>
+              <div class="d-flex justify-content-end mt-3">
+                <button type="button" class="btn btn-primary"
+                        id="btn-submit-detected-metrics">
+                  Submit decisions
+                </button>
+              </div>
+            </div>
+          </div>
+          <datalist id="detected-metrics-datalist"></datalist>
+          {% endif %}
+
           <form id="decision-form" style="display: none;"
                 data-img-id="{{ current_image.img_id }}"
                 data-filing-id="{{ filing.filing_id }}">
