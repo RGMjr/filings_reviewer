@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 26 |
+| Open | 25 |
 | Partially Resolved | 3 |
 | Archived | 46 |
-| Resolved | 7 |
+| Resolved | 8 |
 
 
 ## Nightly Sweeper Classification
@@ -43,7 +43,6 @@
 | #66 | review | S | `render.yaml` `.claude/rules/infrastructure.md` | Wire apply_migrations into Render deploy; infra-change risk |
 | #69 | review | S | `Dockerfile.nightly-sweep` | Pin claude + gh versions; needs validation step |
 | #72 | review | S | `pyproject.toml` `uv.lock` | Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate fix before baseline refresh |
-| #74 | safe | XS | `.gitignore` | One-line addition to root `.gitignore` |
 | #75 | skip | S | `tests/ui/*.spec.js` `tests/ui/test_server.py` | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
 | #77 | skip | M | — | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; partial code fix shipped, prod backfill needs explicit auth (R2 + Neon writes) |
 | #79 | safe | XS | `scripts/known_issues_selector.py` | Filter selector picks on status=open or partially-resolved |
@@ -633,22 +632,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 - Pin the `claude` installer to a specific version once the installer supports a version argument; otherwise cache a specific binary in the image.
 - Pin `gh` to a specific apt version (`gh=2.X.Y`) or switch to the GitHub Releases tarball.
 - Consider adding a build-time smoke test: `claude --version && gh --version` to fail the build on unexpected drift.
-
-## #74. `.claude/scheduled_tasks.lock` Not Gitignored
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-`.claude/scheduled_tasks.lock` is created at runtime by the Claude Code scheduled-tasks system but is not covered by any `.gitignore` rule — `git check-ignore -v .claude/scheduled_tasks.lock` returns no match. Every `git status` run in an active session lists it as untracked, which inflates status output and creates a small risk of accidental staging if someone invokes `git add -A` or `git add .` (already an anti-pattern per CLAUDE.md, but worth hardening against).
-
-### Next Steps
-
-- Add `.claude/scheduled_tasks.lock` (or a broader `.claude/*.lock` glob) to the root `.gitignore`.
-- Quick audit of `.claude/` for other runtime-only files (e.g., `.claude/sweep-digests/` is already tracked separately — confirm nothing else needs ignoring).
 
 ## #75. Missing Playwright E2E for Cross-Filing Auto-Advance
 
@@ -1530,6 +1513,22 @@ The functional behavior is correct — the hook fires and blocks the operation a
 - Mirror the UI E2E filter structure (`ci.yml:49-69`) on the `integration-tests` job. Same allowlist (`docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, `.github/CODEOWNERS`) — err on the side of running when in doubt.
 - Verify by opening a docs-only PR and confirming `Integration Tests` reports `skipped` in Actions.
 - Do NOT remove Integration Tests from required status checks — a skipped job still counts as passing for branch protection, so the gate stays intact.
+
+## #74. `.claude/scheduled_tasks.lock` Not Gitignored
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+`.claude/scheduled_tasks.lock` is created at runtime by the Claude Code scheduled-tasks system but is not covered by any `.gitignore` rule — `git check-ignore -v .claude/scheduled_tasks.lock` returns no match. Every `git status` run in an active session lists it as untracked, which inflates status output and creates a small risk of accidental staging if someone invokes `git add -A` or `git add .` (already an anti-pattern per CLAUDE.md, but worth hardening against).
+
+### Next Steps
+
+- Add `.claude/scheduled_tasks.lock` (or a broader `.claude/*.lock` glob) to the root `.gitignore`.
+- Quick audit of `.claude/` for other runtime-only files (e.g., `.claude/sweep-digests/` is already tracked separately — confirm nothing else needs ignoring).
 
 ## #76. Missing Integration Test for Filings-List Reviewer Aggregate
 
