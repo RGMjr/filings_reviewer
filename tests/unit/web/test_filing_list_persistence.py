@@ -107,8 +107,8 @@ def test_specific_tab_link_carries_its_document_type(client, _stub_db):
     html = resp.get_data(as_text=True)
 
     hrefs = _hrefs(html)
-    # Each non-All doc_type must appear in at least one href with its literal value.
-    for dt in ("sec_filing", "earnings_call", "investor_presentation"):
+    # Each non-All tab key must appear in at least one href with its literal value.
+    for dt in ("ipo", "earnings", "investor_day"):
         assert any(f"document_type={dt}" in h for h in hrefs), f"No href carries document_type={dt}"
 
 

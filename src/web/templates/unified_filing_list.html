@@ -35,17 +35,17 @@
            class="btn {% if current_document_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
           All
         </a>
-        <a href="{{ list_url(doc_type='sec_filing') }}"
-           class="btn {% if current_document_type == 'sec_filing' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-          SEC Filings
+        <a href="{{ list_url(doc_type='ipo') }}"
+           class="btn {% if current_document_type == 'ipo' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          IPO Filings
         </a>
-        <a href="{{ list_url(doc_type='earnings_call') }}"
-           class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-          Earnings Calls
+        <a href="{{ list_url(doc_type='earnings') }}"
+           class="btn {% if current_document_type == 'earnings' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          Earnings
         </a>
-        <a href="{{ list_url(doc_type='investor_presentation') }}"
-           class="btn {% if current_document_type == 'investor_presentation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-          Presentations
+        <a href="{{ list_url(doc_type='investor_day') }}"
+           class="btn {% if current_document_type == 'investor_day' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          Investor Day
         </a>
       </div>
     </div>
@@ -141,10 +141,16 @@
               <br><small class="text-muted font-monospace" style="font-size: 0.75em;">{{ f.accession_number }}</small>
             </td>
             <td>
+              {%- set ipo_forms = ('S-1', 'S-1/A', 'F-1', 'F-1/A') -%}
+              {%- set earnings_forms = ('8-K', '8-K/A', '10-K', '10-K/A', '10-Q', '10-Q/A') -%}
               {% if f.document_type == 'earnings_call' %}
-              <span class="badge bg-info text-dark">Earnings Call</span>
+              <span class="badge bg-info text-dark">Earnings</span>
               {% elif f.document_type == 'investor_presentation' %}
-              <span class="badge bg-warning text-dark">Presentation</span>
+              <span class="badge bg-warning text-dark">Investor Day</span>
+              {% elif f.form_type in ipo_forms %}
+              <span class="badge bg-primary">IPO</span>
+              {% elif f.form_type in earnings_forms %}
+              <span class="badge bg-info text-dark">Earnings</span>
               {% else %}
               <span class="badge bg-light text-dark border">SEC</span>
               {% endif %}
@@ -333,7 +339,10 @@
     HIDE:      'hideCompleted'            // legacy "1"
   };
   var VALID_SORT_COLS = ['company', 'date', 'text_progress', 'image_progress'];
-  var VALID_DOC_TYPES = ['sec_filing', 'earnings_call', 'investor_presentation'];
+  // Old values ('sec_filing', 'earnings_call', 'investor_presentation') remain in
+  // existing users' localStorage; they silently fail the includes() check below
+  // and get ignored on next load — self-healing fallback to "All".
+  var VALID_DOC_TYPES = ['ipo', 'earnings', 'investor_day'];
 
   var url = new URL(window.location.href);
   var params = url.searchParams;
