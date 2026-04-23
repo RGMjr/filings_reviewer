@@ -21,7 +21,8 @@
       "filename": "g607688g09d00.jpg",
       "cik": "1720990",
       "company_name": "Farfetch Limited",
-      "relevance_score": 0.85
+      "relevance_score": 0.85,
+      "ground_truth_value_ids": [10001, 10100]
     },
     {
       "img_id": "gs-farfetch-g607688g12o45",

@@ -16,6 +16,8 @@ from src.gold_standard.image_eval import (
     _str_similarity,
     aggregate_results,
     chart_detection_metrics,
+    data_value_match,
+    data_value_scores,
     is_hard_ocr_image,
     is_tier1_image,
     legend_match_score,
@@ -434,3 +436,140 @@ class TestStratumHelpers:
         assert "decorative" in REJECTION_REASONS
         assert "not_a_chart" in REJECTION_REASONS
         assert len(REJECTION_REASONS) == 6
+
+
+# ---------------------------------------------------------------------------
+# Wave B5.x — chart-data fidelity (chart-read mode)
+# ---------------------------------------------------------------------------
+
+
+class TestDataValueMatch:
+    """`data_value_match` pairs numeric values within relative tolerance."""
+
+    def test_empty_inputs(self) -> None:
+        assert data_value_match([], []) == (0, 0, 0)
+
+    def test_empty_reference_all_extracted_become_fp(self) -> None:
+        tp, fp, fn = data_value_match([{"value": 1.0}, {"value": 2.0}], [])
+        assert (tp, fp, fn) == (0, 2, 0)
+
+    def test_empty_extracted_all_reference_become_fn(self) -> None:
+        tp, fp, fn = data_value_match([], [{"value": 3.0}, {"value": 4.0}])
+        assert (tp, fp, fn) == (0, 0, 2)
+
+    def test_exact_match_counts_as_tp(self) -> None:
+        tp, fp, fn = data_value_match(
+            [{"value": 44.4}, {"value": 55.6}],
+            [{"value": 44.4}, {"value": 55.6}],
+        )
+        assert (tp, fp, fn) == (2, 0, 0)
+
+    def test_tolerance_window(self) -> None:
+        # 0.5% off a value of 100 is within the default 2% tolerance.
+        tp, fp, fn = data_value_match([{"value": 100.5}], [{"value": 100.0}], rel_tol=0.02)
+        assert (tp, fp, fn) == (1, 0, 0)
+        # 5% off is outside.
+        tp, fp, fn = data_value_match([{"value": 105.0}], [{"value": 100.0}], rel_tol=0.02)
+        assert (tp, fp, fn) == (0, 1, 1)
+
+    def test_partial_match_mixed_tp_fp_fn(self) -> None:
+        # Model emits [44.4, 99.9]; truth is [44.4, 55.6].
+        tp, fp, fn = data_value_match(
+            [{"value": 44.4}, {"value": 99.9}],
+            [{"value": 44.4}, {"value": 55.6}],
+        )
+        assert (tp, fp, fn) == (1, 1, 1)
+
+    def test_duplicate_extracted_does_not_double_count(self) -> None:
+        # Two extracted 44.4s, one truth 44.4 → TP=1, FP=1 (the spare
+        # extracted is not re-matched).
+        tp, fp, fn = data_value_match(
+            [{"value": 44.4}, {"value": 44.4}],
+            [{"value": 44.4}],
+        )
+        assert (tp, fp, fn) == (1, 1, 0)
+
+    def test_non_numeric_extracted_is_ignored(self) -> None:
+        tp, fp, fn = data_value_match(
+            [{"value": "not a number"}, {"value": 44.4}, {"value": None}],
+            [{"value": 44.4}],
+        )
+        assert (tp, fp, fn) == (1, 0, 0)
+
+
+def _record_with_data(*, tp: int, fp: int, fn: int, img_id: str = "img") -> ImageRunRecord:
+    """Minimal record carrying chart-read scoring fields."""
+    return ImageRunRecord(
+        img_id=img_id,
+        reviewer_decision="relevant",
+        reviewer_chart_type="cohort_table",
+        reviewer_notes="",
+        tier1_facts_in_db=0,
+        predicted_chart_type="cohort_table",
+        predicted_relevant=True,
+        reference_points=[{"value": 1.0}] * (tp + fn),
+        extracted_points=[{"value": 1.0}] * (tp + fp),
+        data_value_tp=tp,
+        data_value_fp=fp,
+        data_value_fn=fn,
+    )
+
+
+class TestDataValueScores:
+    """`data_value_scores` micro-averages TP/FP/FN across records."""
+
+    def test_no_records_scored_returns_zeros(self) -> None:
+        # Record has no reference_points → not scored.
+        rec = ImageRunRecord(
+            img_id="x",
+            reviewer_decision="relevant",
+            reviewer_chart_type="cohort_table",
+            reviewer_notes="",
+            tier1_facts_in_db=0,
+            predicted_chart_type="cohort_table",
+            predicted_relevant=True,
+        )
+        p, r, f1, n = data_value_scores([rec])
+        assert (p, r, f1, n) == (0.0, 0.0, 0.0, 0)
+
+    def test_micro_average_across_records(self) -> None:
+        # Record A: TP=1, FP=1, FN=1.  Record B: TP=2, FP=0, FN=0.
+        # Micro: TP=3, FP=1, FN=1 → P=3/4=0.75, R=3/4=0.75, F1=0.75.
+        records = [
+            _record_with_data(tp=1, fp=1, fn=1, img_id="a"),
+            _record_with_data(tp=2, fp=0, fn=0, img_id="b"),
+        ]
+        p, r, f1, n = data_value_scores(records)
+        assert n == 2
+        assert p == pytest.approx(0.75)
+        assert r == pytest.approx(0.75)
+        assert f1 == pytest.approx(0.75)
+
+
+class TestAggregateResultsDataFields:
+    """`aggregate_results` populates the new chart-data fields."""
+
+    def test_new_fields_defaulted_when_no_data_scoring(self) -> None:
+        # A record with no reference_points should leave data fields zeroed.
+        rec = ImageRunRecord(
+            img_id="x",
+            reviewer_decision="relevant",
+            reviewer_chart_type="cohort_table",
+            reviewer_notes="",
+            tier1_facts_in_db=0,
+            predicted_chart_type="cohort_table",
+            predicted_relevant=True,
+        )
+        agg = aggregate_results([rec])
+        assert agg.data_value_precision == 0.0
+        assert agg.data_value_recall == 0.0
+        assert agg.data_value_f1 == 0.0
+        assert agg.n_images_scored_on_data == 0
+
+    def test_new_fields_populated_when_records_carry_reference(self) -> None:
+        records = [_record_with_data(tp=1, fp=1, fn=1)]
+        agg = aggregate_results(records)
+        assert agg.data_value_precision == pytest.approx(0.5)
+        assert agg.data_value_recall == pytest.approx(0.5)
+        assert agg.data_value_f1 == pytest.approx(0.5)
+        assert agg.n_images_scored_on_data == 1
