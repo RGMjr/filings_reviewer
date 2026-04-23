@@ -13,6 +13,20 @@ Provider selection is controlled by:
   ``VISION_MODEL_CHART``   — override per-provider default model for chart calls
   ``VISION_ROUTING_MODE``  — ``legacy`` (default) | ``two_stage`` (Wave B4)
 
+Wave B4 two-stage routing:
+  When ``VISION_ROUTING_MODE=two_stage``:
+  - TABLE_IMAGE calls use the fast provider resolved by ``VISION_MODEL_OCR``
+    (default ``gemini-2.5-flash-lite``).
+  - CHART calls make *two* sequential calls:
+    1. Fast OCR pass (same fast provider) to extract axis labels / legends /
+       annotation strings as a text blob.
+    2. Premium reader (``VISION_MODEL_CHART``, default ``claude-sonnet-4-6``)
+       with the standard chart-extraction prompt augmented by the OCR blob as
+       grounding context.  The premium prompt still enforces "labeled values
+       only — no interpolation".
+  Both calls' costs accumulate into the caller's ``_chart_vision_spend``.
+  When ``VISION_ROUTING_MODE=legacy`` (default), behavior is unchanged.
+
 Default behavior (all env vars unset) is **identical** to the pre-refactor
 implementation — the OpenAI adapter executes the same code path.
 
@@ -217,6 +231,67 @@ def _build_provider(provider_name: str, model: str) -> object:
         return AnthropicVisionProvider(model=model)
     else:
         raise ValueError(f"Unknown provider: {provider_name!r}")
+
+
+# Default models for two-stage routing (Wave B4).
+# These are read at stage init; operators can override via env vars.
+_TWO_STAGE_DEFAULT_OCR_MODEL = "gemini-2.5-flash-lite"
+_TWO_STAGE_DEFAULT_CHART_MODEL = "claude-sonnet-4-6"
+_TWO_STAGE_DEFAULT_OCR_PROVIDER = "gemini"
+_TWO_STAGE_DEFAULT_CHART_PROVIDER = "anthropic"
+
+
+def _resolve_two_stage_providers() -> tuple[tuple[str, str], tuple[str, str]]:
+    """Resolve (provider, model) pairs for the two-stage routing path.
+
+    Returns:
+        ((ocr_provider, ocr_model), (chart_provider, chart_model))
+
+    OCR model is controlled by ``VISION_MODEL_OCR`` env var (default:
+    ``gemini-2.5-flash-lite`` via Gemini).  Chart model is controlled by
+    ``VISION_MODEL_CHART`` env var (default: ``claude-sonnet-4-6`` via
+    Anthropic).  When an env-var override specifies a model that belongs to a
+    different provider, we make a best-effort guess based on model name
+    prefixes; callers can also set ``VISION_PROVIDER_OCR`` /
+    ``VISION_PROVIDER_CHART`` to force the provider explicitly.
+    """
+    ocr_model = os.environ.get("VISION_MODEL_OCR", "").strip() or _TWO_STAGE_DEFAULT_OCR_MODEL
+    chart_model = os.environ.get("VISION_MODEL_CHART", "").strip() or _TWO_STAGE_DEFAULT_CHART_MODEL
+
+    ocr_provider = _infer_provider_from_model(
+        os.environ.get("VISION_PROVIDER_OCR", "").strip(),
+        ocr_model,
+        _TWO_STAGE_DEFAULT_OCR_PROVIDER,
+    )
+    chart_provider = _infer_provider_from_model(
+        os.environ.get("VISION_PROVIDER_CHART", "").strip(),
+        chart_model,
+        _TWO_STAGE_DEFAULT_CHART_PROVIDER,
+    )
+
+    return (ocr_provider, ocr_model), (chart_provider, chart_model)
+
+
+def _infer_provider_from_model(explicit_provider: str, model: str, default: str) -> str:
+    """Return provider name, using explicit override or model-prefix heuristic.
+
+    Args:
+        explicit_provider: Value from VISION_PROVIDER_OCR / _CHART env vars.
+            Empty string means "no explicit override".
+        model: Model identifier string.
+        default: Fallback when neither explicit nor heuristic applies.
+    """
+    if explicit_provider and explicit_provider in _PROVIDER_DEFAULT_MODELS:
+        return explicit_provider
+    # Heuristic: model name prefix
+    m = model.lower()
+    if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"):
+        return "openai"
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith("claude"):
+        return "anthropic"
+    return default
 
 
 class VisionClient:
@@ -425,6 +500,70 @@ class VisionClient:
         if last_exception:
             raise last_exception
         raise RuntimeError("Unexpected state: no response and no exception")
+
+    def analyze_image_targeted(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        *,
+        task_type: str,
+        detail: str = "high",
+        max_tokens: int = 2000,
+        max_retries: int | None = None,
+        response_format: dict[str, str] | None = None,
+    ) -> VisionResponse:
+        """Route an image analysis call to the task-specific provider (Wave B4).
+
+        When ``VISION_ROUTING_MODE=two_stage``:
+        - ``task_type='table_ocr'`` or ``'chart_ocr'`` → fast provider
+          (``VISION_MODEL_OCR``, default ``gemini-2.5-flash-lite``).
+        - ``task_type='chart_read'`` → premium reader (``VISION_MODEL_CHART``,
+          default ``claude-sonnet-4-6``).
+
+        When ``VISION_ROUTING_MODE=legacy`` (default), all task types route
+        through the single provider configured at init — behavior is
+        identical to ``analyze_image``.
+        """
+        mode = os.environ.get("VISION_ROUTING_MODE", "legacy").strip().lower()
+        if mode != "two_stage":
+            return self.analyze_image(
+                image_bytes,
+                prompt,
+                detail=detail,
+                max_tokens=max_tokens,
+                max_retries=max_retries,
+                response_format=response_format,
+            )
+
+        (ocr_p, ocr_m), (chart_p, chart_m) = _resolve_two_stage_providers()
+        if task_type in ("table_ocr", "chart_ocr"):
+            provider_name, model = ocr_p, ocr_m
+        elif task_type == "chart_read":
+            provider_name, model = chart_p, chart_m
+        else:
+            raise ValueError(
+                f"Unknown task_type: {task_type!r} "
+                "(expected 'table_ocr', 'chart_ocr', or 'chart_read')"
+            )
+
+        # Swap provider + model for this call only. Cache keying depends on
+        # self.model, so both the lookup and store use the correct model.
+        orig_provider = self._provider
+        orig_model = self.model
+        self._provider = _build_provider(provider_name, model)
+        self.model = model
+        try:
+            return self.analyze_image(
+                image_bytes,
+                prompt,
+                detail=detail,
+                max_tokens=max_tokens,
+                max_retries=max_retries,
+                response_format=response_format,
+            )
+        finally:
+            self._provider = orig_provider
+            self.model = orig_model
 
     def analyze_image_for_text(
         self,

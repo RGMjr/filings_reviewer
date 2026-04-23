@@ -85,6 +85,25 @@ class MockVisionClient:
             latency_ms=250,
         )
 
+    def analyze_image_targeted(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        *,
+        task_type: str,
+        detail: str = "high",
+        max_tokens: int = 2000,
+        max_retries: int | None = None,
+        response_format: dict[str, str] | None = None,
+    ) -> VisionResponse:
+        return self.analyze_image(
+            image_bytes,
+            prompt,
+            detail=detail,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
+
 
 @pytest.fixture
 def tmp_chart_image(tmp_path: Path) -> Path:
@@ -101,9 +120,7 @@ def tmp_chart_image(tmp_path: Path) -> Path:
 class TestChartExtractionE2E:
     """End-to-end tests for chart OCR extraction through the pipeline stage."""
 
-    def test_chart_extraction_produces_chart_data(
-        self, tmp_chart_image: Path
-    ) -> None:
+    def test_chart_extraction_produces_chart_data(self, tmp_chart_image: Path) -> None:
         """OCRExtractionStage should extract chart data from a CHART image."""
         mock_client = MockVisionClient()
         stage = OCRExtractionStage(vision_client=mock_client)
@@ -142,9 +159,7 @@ class TestChartExtractionE2E:
         assert len(asset.chart_data.series[0].points) == 4
         assert asset.confidence == pytest.approx(0.88)
 
-    def test_chart_stage_result_metadata(
-        self, tmp_chart_image: Path
-    ) -> None:
+    def test_chart_stage_result_metadata(self, tmp_chart_image: Path) -> None:
         """StageResult should track chart API call counts."""
         mock_client = MockVisionClient()
         stage = OCRExtractionStage(vision_client=mock_client)
@@ -200,9 +215,7 @@ class TestChartExtractionE2E:
         assert mock_client.call_count == 0
         assert asset.processed is False
 
-    def test_fact_construction_chart_evidence(
-        self, tmp_chart_image: Path
-    ) -> None:
+    def test_fact_construction_chart_evidence(self, tmp_chart_image: Path) -> None:
         """FactConstructionStage should generate chart evidence with screenshot_path."""
         from src.extraction_v2.models import (
             BoundValue,

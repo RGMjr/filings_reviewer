@@ -77,6 +77,26 @@ class MockVisionClient:
         self.call_count += 1
         return response
 
+    def analyze_image_targeted(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        *,
+        task_type: str,
+        detail: str = "high",
+        max_tokens: int = 2000,
+        response_format: dict[str, str] | None = None,
+        max_retries: int | None = None,
+    ) -> VisionResponse:
+        """Delegate to analyze_image — mock does not inspect task_type."""
+        return self.analyze_image(
+            image_bytes=image_bytes,
+            prompt=prompt,
+            detail=detail,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
+
 
 class TestOCRExtractionBasics:
     """Tests for basic OCR extraction functionality."""
@@ -657,6 +677,213 @@ class TestChartExtraction:
         assert asset.requires_manual_capture is True
 
 
+class TestB4TwoStageRouting:
+    """Tests for Wave B4 two-stage chart routing.
+
+    Focused on behavior-preservation (legacy mode) and the two-call flow
+    under VISION_ROUTING_MODE=two_stage. Actual provider selection is
+    tested at the vision_client layer; here the mock delegates task_type
+    to its shared response queue.
+    """
+
+    @pytest.fixture
+    def temp_image_file(self, tmp_path: Path) -> Path:
+        """Create a temporary image file for testing."""
+        img = tmp_path / "chart.png"
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)
+        return img
+
+    @pytest.fixture
+    def chart_ocr_response(self) -> VisionResponse:
+        """First-pass fast-OCR response: a JSON blob of visible text."""
+        return VisionResponse(
+            content=json.dumps(
+                {
+                    "text": "Revenue $1,200M 2021\nRevenue $1,500M 2022",
+                    "labels": ["Revenue", "$1,200M", "$1,500M", "2021", "2022"],
+                }
+            ),
+            model="gemini-2.5-flash-lite-mock",
+            prompt_tokens=800,
+            completion_tokens=150,
+            cost_usd=0.005,
+            latency_ms=300,
+        )
+
+    @pytest.fixture
+    def chart_read_response(self) -> VisionResponse:
+        """Second-pass premium-reader response: structured chart data."""
+        return VisionResponse(
+            content=json.dumps(
+                {
+                    "chart_type": "bar",
+                    "title": "Annual Revenue",
+                    "x_axis_label": "Year",
+                    "y_axis_label": "Revenue ($M)",
+                    "confidence": 0.92,
+                    "series": [
+                        {
+                            "name": "Revenue",
+                            "points": [
+                                {"x": "2021", "y": 1200.0, "label": "$1,200M"},
+                                {"x": "2022", "y": 1500.0, "label": "$1,500M"},
+                            ],
+                        }
+                    ],
+                }
+            ),
+            model="claude-sonnet-4-6-mock",
+            prompt_tokens=2000,
+            completion_tokens=400,
+            cost_usd=0.09,
+            latency_ms=700,
+        )
+
+    def test_legacy_mode_makes_one_call(
+        self,
+        chart_read_response: VisionResponse,
+        temp_image_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """VISION_ROUTING_MODE unset (legacy): exactly one call, unchanged behavior."""
+        monkeypatch.delenv("VISION_ROUTING_MODE", raising=False)
+
+        mock_client = MockVisionClient(responses=[chart_read_response])
+        stage = OCRExtractionStage(vision_client=mock_client)
+
+        asset = ImageAsset(
+            img_id="test_legacy",
+            filename="chart.png",
+            nearby_text="Revenue chart",
+            width=1000,
+            height=700,
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+            file_path=temp_image_file.name,
+        )
+
+        cost = stage.process_chart(asset)
+
+        # Exactly one call; cost matches the single response.
+        assert mock_client.call_count == 1
+        assert cost == pytest.approx(0.09)
+        assert asset.chart_data is not None
+        assert asset.confidence == 0.92
+
+    def test_two_stage_mode_makes_two_calls_and_sums_cost(
+        self,
+        chart_ocr_response: VisionResponse,
+        chart_read_response: VisionResponse,
+        temp_image_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """VISION_ROUTING_MODE=two_stage: OCR pass + premium read; costs sum."""
+        monkeypatch.setenv("VISION_ROUTING_MODE", "two_stage")
+
+        # Two responses, in order: chart_ocr first, then chart_read.
+        mock_client = MockVisionClient(responses=[chart_ocr_response, chart_read_response])
+        stage = OCRExtractionStage(vision_client=mock_client)
+
+        asset = ImageAsset(
+            img_id="test_two_stage",
+            filename="chart.png",
+            nearby_text="Revenue chart",
+            width=1000,
+            height=700,
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+            file_path=temp_image_file.name,
+        )
+
+        cost = stage.process_chart(asset)
+
+        assert mock_client.call_count == 2
+        # Costs of both calls accumulate: 0.005 + 0.09 = 0.095.
+        assert cost == pytest.approx(0.095)
+        assert asset.chart_data is not None
+        assert asset.confidence == 0.92
+
+    def test_two_stage_injects_ocr_text_into_chart_prompt(
+        self,
+        chart_ocr_response: VisionResponse,
+        chart_read_response: VisionResponse,
+        temp_image_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Second-pass prompt must include the OCR grounding text block."""
+        monkeypatch.setenv("VISION_ROUTING_MODE", "two_stage")
+
+        captured_prompts: list[str] = []
+
+        class _CapturingMock(MockVisionClient):
+            def analyze_image_targeted(self, image_bytes, prompt, **kwargs):
+                captured_prompts.append(prompt)
+                return super().analyze_image_targeted(image_bytes, prompt, **kwargs)
+
+        mock_client = _CapturingMock(responses=[chart_ocr_response, chart_read_response])
+        stage = OCRExtractionStage(vision_client=mock_client)
+
+        asset = ImageAsset(
+            img_id="test_grounding",
+            filename="chart.png",
+            nearby_text="Revenue chart",
+            width=1000,
+            height=700,
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+            file_path=temp_image_file.name,
+        )
+
+        stage.process_chart(asset)
+
+        assert len(captured_prompts) == 2
+        # First prompt is the OCR prompt — should NOT contain grounding block.
+        assert "OCR GROUNDING TEXT" not in captured_prompts[0]
+        # Second prompt should include the OCR text from the first response.
+        assert "OCR GROUNDING TEXT" in captured_prompts[1]
+        assert "Revenue $1,200M" in captured_prompts[1]
+
+    def test_two_stage_ocr_failure_falls_through_to_single_read(
+        self,
+        chart_read_response: VisionResponse,
+        temp_image_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """If the OCR pass raises, chart extraction proceeds without grounding."""
+        monkeypatch.setenv("VISION_ROUTING_MODE", "two_stage")
+
+        class _FailingOCRMock(MockVisionClient):
+            def analyze_image_targeted(self, image_bytes, prompt, **kwargs):
+                if kwargs.get("task_type") == "chart_ocr":
+                    raise RuntimeError("simulated OCR failure")
+                return super().analyze_image_targeted(image_bytes, prompt, **kwargs)
+
+        mock_client = _FailingOCRMock(responses=[chart_read_response])
+        stage = OCRExtractionStage(vision_client=mock_client)
+
+        asset = ImageAsset(
+            img_id="test_fallthrough",
+            filename="chart.png",
+            nearby_text="Revenue chart",
+            width=1000,
+            height=700,
+            classification=ImageClassification.CHART,
+            relevance_score=0.9,
+            processed=False,
+            file_path=temp_image_file.name,
+        )
+
+        cost = stage.process_chart(asset)
+
+        # OCR failure is swallowed; one successful premium call proceeds.
+        assert mock_client.call_count == 1
+        assert cost == pytest.approx(0.09)
+        assert asset.chart_data is not None
+
+
 class TestPipelineIntegration:
     """Tests for pipeline stage integration."""
 
@@ -1056,6 +1283,26 @@ class MockTextOCRVisionClient:
         resp = self.chart_responses[self.chart_call_count]
         self.chart_call_count += 1
         return resp
+
+    def analyze_image_targeted(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        *,
+        task_type: str,
+        detail: str = "high",
+        max_tokens: int = 2000,
+        response_format: dict[str, str] | None = None,
+        max_retries: int | None = None,
+    ):
+        """Delegate to analyze_image — mock does not inspect task_type."""
+        return self.analyze_image(
+            image_bytes=image_bytes,
+            prompt=prompt,
+            detail=detail,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
 
 
 def _make_page_text_extraction(

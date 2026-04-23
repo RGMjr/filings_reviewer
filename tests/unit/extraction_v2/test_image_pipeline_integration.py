@@ -125,6 +125,26 @@ class MockVisionClient:
         self.call_count += 1
         return response
 
+    def analyze_image_targeted(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        *,
+        task_type: str,
+        detail: str = "high",
+        max_tokens: int = 2000,
+        response_format: dict[str, str] | None = None,
+        max_retries: int | None = None,
+    ) -> VisionResponse:
+        """Delegate to analyze_image — mock does not inspect task_type."""
+        return self.analyze_image(
+            image_bytes=image_bytes,
+            prompt=prompt,
+            detail=detail,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
+
 
 class MockSECClient:
     """Mock SEC client for testing image downloading."""

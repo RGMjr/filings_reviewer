@@ -18,6 +18,7 @@ Key responsibilities:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -407,11 +408,15 @@ class OCRExtractionStage:
         except FileNotFoundError:
             raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
-        # Call Vision API with table extraction prompt
+        # Call Vision API with table extraction prompt.
+        # Wave B4: in two_stage mode this routes to the fast provider;
+        # in legacy mode it falls through to self.analyze_image (identical
+        # behavior).
         try:
-            response = self.vision_client.analyze_image(
+            response = self.vision_client.analyze_image_targeted(
                 image_bytes=image_bytes,
                 prompt=self._get_table_extraction_prompt(),
+                task_type="table_ocr",
                 detail="high",  # High detail for accurate OCR
                 max_tokens=2000,
                 response_format={"type": "json_object"},
@@ -507,12 +512,40 @@ Example JSON:
 }
 """
 
-    def _get_chart_extraction_prompt(self, nearby_text: str = "") -> str:
+    def _get_chart_ocr_prompt(self) -> str:
+        """Fast OCR prompt used by Wave B4 two-stage routing.
+
+        Purpose: extract every visible text element from a chart — axis
+        labels, tick labels, legend entries, annotation strings, title —
+        as a grounding blob for the premium chart reader. Does NOT
+        interpret data or extract numeric values as "data points" — that
+        is the premium reader's job under the project's "labeled values
+        only, no interpolation" rule.
+
+        Returns a JSON object so the response can be parsed deterministically.
+        """
+        return """Read every visible text element on this chart.
+Include: chart title, axis labels, axis tick labels, legend entries,
+annotation / callout text, and any labels printed directly on bars / lines / slices.
+
+Do NOT interpret the chart. Do NOT extract numeric values as "data". Just read
+the text exactly as it appears.
+
+Return a JSON object with:
+- text: All visible text joined with newlines (string)
+- labels: Array of individual label strings (array of strings)
+"""
+
+    def _get_chart_extraction_prompt(self, nearby_text: str = "", ocr_text: str = "") -> str:
         """
         Get the prompt for chart extraction via Vision API.
 
         Args:
             nearby_text: Surrounding HTML paragraph text for context
+            ocr_text: Optional text extracted from a prior fast-OCR pass
+                (Wave B4 two-stage routing). Used as grounding for axis
+                labels, legend entries, and annotation strings — never
+                as a source of extracted numeric values.
 
         Returns:
             Prompt string for Vision API
@@ -579,6 +612,22 @@ SURROUNDING CONTEXT (from the HTML near this chart):
 
 Use this context to understand what the chart represents. It may contain metric names,
 time periods, or definitions that help interpret the chart's data.
+"""
+
+        # Wave B4: append text extracted from a prior fast-OCR pass as grounding.
+        # Rule: use this to ground axis labels, legend entries, and annotation
+        # text. DO NOT use it as a source of numeric data — any number surfaced
+        # only in this blob (and not as a labeled point on the chart) MUST be
+        # rejected per the extraction contract.
+        if ocr_text:
+            ocr_truncated = ocr_text[:2000]
+            prompt += f"""
+OCR GROUNDING TEXT (extracted from this image in a prior fast pass):
+\"\"\"{ocr_truncated}\"\"\"
+
+Use the above strictly as grounding for axis labels, legend entries, and
+annotation strings. DO NOT extract numeric values from it unless those
+numbers also appear as explicit data labels on the chart itself.
 """
         return prompt
 
@@ -739,17 +788,53 @@ time periods, or definitions that help interpret the chart's data.
         except FileNotFoundError:
             raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
-        # Call Vision API with chart extraction prompt (include nearby context)
+        # Call Vision API with chart extraction prompt (include nearby context).
+        # Wave B4: when VISION_ROUTING_MODE=two_stage, run a cheap OCR pass
+        # first and inject its output into the premium chart prompt as
+        # grounding for labels/legend/annotation text (NOT as a numeric
+        # data source — the premium call still enforces "labeled values
+        # only, no interpolation"). Both calls' costs accumulate.
         call_cost: float = 0.0
+        ocr_text_blob: str = ""
+        two_stage = os.environ.get("VISION_ROUTING_MODE", "legacy").strip().lower() == "two_stage"
         try:
-            response = self.vision_client.analyze_image(
+            if two_stage:
+                try:
+                    ocr_response = self.vision_client.analyze_image_targeted(
+                        image_bytes=image_bytes,
+                        prompt=self._get_chart_ocr_prompt(),
+                        task_type="chart_ocr",
+                        detail="high",
+                        max_tokens=1500,
+                        response_format={"type": "json_object"},
+                    )
+                    call_cost += float(getattr(ocr_response, "cost_usd", 0.0))
+                    try:
+                        parsed_ocr = json.loads(ocr_response.content)
+                        ocr_text_blob = str(parsed_ocr.get("text", "") or "")
+                    except (json.JSONDecodeError, AttributeError):
+                        # OCR pass failed to parse — fall through; grounding
+                        # blob stays empty and the chart_read prompt reverts
+                        # to its usual (nearby_text only) behavior.
+                        logger.warning(
+                            f"Chart OCR pass returned unparsable JSON for {asset.img_id}"
+                        )
+                except Exception as ocr_exc:
+                    # OCR pass failures should not abort the chart read.
+                    logger.warning(f"Chart OCR pass failed for {asset.img_id}: {ocr_exc}")
+
+            response = self.vision_client.analyze_image_targeted(
                 image_bytes=image_bytes,
-                prompt=self._get_chart_extraction_prompt(nearby_text=asset.nearby_text),
+                prompt=self._get_chart_extraction_prompt(
+                    nearby_text=asset.nearby_text,
+                    ocr_text=ocr_text_blob,
+                ),
+                task_type="chart_read",
                 detail="high",  # High detail for accurate label extraction
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )
-            call_cost = float(getattr(response, "cost_usd", 0.0))
+            call_cost += float(getattr(response, "cost_usd", 0.0))
 
             # Parse JSON response; attempt a best-effort repair before giving up
             chart_response = self._parse_chart_json(response.content)
