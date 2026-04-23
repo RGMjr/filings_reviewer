@@ -38,7 +38,7 @@ The unified review UI persists filter/sort/tab state client-side via localStorag
 | `hideCompleted`             | filings list  | `"1"` or absent                     | legacy (keep as-is)      |
 | `reviewer_name`             | global        | string                              | `base.html` reviewer modal |
 | `cmasb:filings:sort`        | filings list  | `{sort_by, sort_dir}` JSON          | `unified_filing_list.html` |
-| `cmasb:filings:doc_type`    | filings list  | `"sec_filing" \| "earnings_call" \| ...` | `unified_filing_list.html` |
+| `cmasb:filings:doc_type`    | filings list  | `"ipo" \| "earnings" \| "investor_day"` | `unified_filing_list.html` |
 | `cmasb:filings:per_page`    | filings list  | integer string                      | `unified_filing_list.html` |
 | `cmasb:filings:reviewers`   | filings list  | `string[]` JSON                     | `unified_filing_list.html` |
 | `cmasb:review:tab`          | review page   | `"text" \| "images"`                | `unified_review.html`    |
@@ -46,5 +46,9 @@ The unified review UI persists filter/sort/tab state client-side via localStorag
 | `cmasb:review:image_filter` | review page   | `{status}` JSON                     | `unified_review.html`    |
 
 **Pattern**: on page load, URL params win and are written to localStorage; if a param is absent and localStorage has a value, the page redirects once with the stored value applied. This pattern lets server routes stay stateless — do not add server-side session storage for view state. Do NOT rename `hideCompleted` → a `cmasb:` key; that would silently wipe existing users' saved preference.
+
+**Presence-based exception (`cmasb:filings:doc_type`)**: same rule as `reviewer_id`. The macro `list_url` always emits `document_type=<value>` or `document_type=` (empty string = explicit "All"). The restore JS checks `params.get('document_type') === null` — only a truly absent param triggers restore, so clicking the "All" tab is not silently overridden by a stored value. If you add another URL-generating site (form, link, redirect), always emit `document_type=` even when empty.
+
+**Tab taxonomy**: the three analytical tabs ("IPO Filings", "Earnings", "Investor Day") are mapped to SQL filters by `src/infra/db.py::TAB_SQL_FILTERS`. Tab keys (`ipo`, `earnings`, `investor_day`) combine `v2_documents.document_type` with `filings.form_type`; adding a tab means adding a row to that dict and updating `VALID_TABS` in `src/web/routes/review_unified.py` plus `VALID_DOC_TYPES` in the template JS.
 
 **Presence-based exception (`cmasb:filings:reviewers`)**: the reviewer filter uses URL *presence* (not value) as the signal, because HTML forms drop unchecked checkboxes — a cleared filter and a fresh visit would otherwise look identical. The reviewer form carries a hidden `<input name="reviewer_id" value="">` and the Clear link emits `?reviewer_id=` explicitly; an empty `reviewer_id=` in the URL means "explicitly cleared" and suppresses the localStorage restore.
