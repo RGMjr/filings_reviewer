@@ -8,7 +8,11 @@
 {%- macro list_url(doc_type='__keep__', sort_by_=None, sort_dir_=None, page_=None, include_reviewers=True, extra=None) -%}
   {%- set dt = (current_document_type if doc_type == '__keep__' else doc_type) -%}
   {%- set kwargs = {'sort_by': sort_by_ or sort_by, 'sort_dir': sort_dir_ or sort_dir} -%}
-  {%- if dt and dt != 'all' %}{% set _ = kwargs.update({'document_type': dt}) %}{% endif -%}
+  {# Always emit document_type= (empty string = explicit All) so the restore JS
+     can distinguish an intentional All click from a fresh visit. Mirrors the
+     reviewer_id sentinel pattern already in use below. #}
+  {%- if dt and dt != 'all' %}{% set _ = kwargs.update({'document_type': dt}) %}
+  {%- else %}{% set _ = kwargs.update({'document_type': ''}) %}{% endif -%}
   {%- if hide_completed %}{% set _ = kwargs.update({'hide_completed': 1}) %}{% endif -%}
   {%- if page_ %}{% set _ = kwargs.update({'page': page_, 'per_page': per_page}) %}{% endif -%}
   {%- if include_reviewers and reviewers %}{% set _ = kwargs.update({'reviewer_id': reviewers}) %}
@@ -53,7 +57,8 @@
         <div class="filing-reviewer-menu" style="position: absolute; z-index: 1000; background: white; border: 1px solid #dee2e6; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.1); padding: 10px; margin-top: 4px; min-width: 220px; max-height: 320px; overflow-y: auto;">
           {% if all_reviewers %}
           <form method="get">
-            {% if current_document_type and current_document_type != 'all' %}<input type="hidden" name="document_type" value="{{ current_document_type }}">{% endif %}
+            {# Always carry document_type; empty value = explicit All (matches macro/JS invariant). #}
+            <input type="hidden" name="document_type" value="{% if current_document_type and current_document_type != 'all' %}{{ current_document_type }}{% endif %}">
             {% if hide_completed %}<input type="hidden" name="hide_completed" value="1">{% endif %}
             <input type="hidden" name="sort_by" value="{{ sort_by }}">
             <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
@@ -366,7 +371,9 @@
   }
   // For document_type: only apply stored value if URL completely omits it.
   // An empty `document_type=` param means "All" and must not be overridden.
-  if (!params.has('document_type')) {
+  // The macro always emits the param (empty for All, value otherwise) so a
+  // null return here means "no one set it" — i.e. a fresh visit.
+  if (params.get('document_type') === null) {
     var savedDocType = localStorage.getItem(KEYS.DOC_TYPE);
     if (savedDocType && VALID_DOC_TYPES.includes(savedDocType)) {
       params.set('document_type', savedDocType);
