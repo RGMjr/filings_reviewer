@@ -110,28 +110,91 @@ psql "postgresql://metabase_ro:local_dev_pw@localhost:5433/filings_analysis" \
 3. Record the password in Render's environment variables for the future
    Metabase service — not in the repo.
 
-## Future: deploying Metabase
+## Current deployment
 
-Not yet deployed. When ready:
+Metabase runs as the `filings-metabase` service defined in `render.yaml`:
 
-- Add a third service block to `render.yaml` using the official
-  `metabase/metabase` image, pinned to a specific version.
-- Attach a small persistent disk for the H2 app DB (upgrade to a
-  Postgres-backed app DB before going public).
-- Connect to Neon using the `metabase_ro` role created above.
-- Initial auth: email + password, admin-created accounts, no public signup.
+- **Image:** `docker.io/metabase/metabase:v0.59.8` (pinned; see "Upgrade
+  procedure" below for bumping).
+- **Region:** `ohio` (matches the other services).
+- **Plan:** Render Starter. Disk: 1 GB at `/metabase-data`.
+- **App DB:** H2 file at `/metabase-data/metabase.db` (persistent). Upgrade to
+  Postgres before opening to a wider audience — see "On-ramp to public access".
+- **Autodeploy:** off. Upgrades happen manually from the Render dashboard to
+  avoid restarting Metabase (and dropping in-progress dashboard edits) on every
+  `main` push.
+- **Health check:** `/api/health`.
+- **Cost:** ~$7/mo (Starter) + ~$0.25/mo (1 GB disk).
 
-Approximate cost: Render Starter service (~$7/mo) + small disk (~$1/mo).
+### Env vars on the Metabase service
 
-### On-ramp to public access
+All set in `render.yaml`:
+
+| Key | Value | Purpose |
+|-----|-------|---------|
+| `MB_DB_TYPE` | `h2` | App DB backend |
+| `MB_DB_FILE` | `/metabase-data/metabase.db` | Path under the persistent disk |
+| `MB_ENCRYPTION_SECRET_KEY` | generated once by Render | Encrypts stored data-source credentials at rest. **Must stay stable** — rotating it makes the stored Neon password unreadable and the data-source must be re-added in the admin UI. |
+| `MB_SITE_URL` | set after first deploy | e.g. `https://filings-metabase.onrender.com`; required for correct share links. `sync: false` so the value is entered via the Render dashboard once the service URL is known. |
+| `MB_JETTY_PORT` | `3000` | Default Metabase HTTP port |
+
+Neon's URL and the `metabase_ro` password are **not** on this service. They are
+entered once inside the Metabase admin UI when adding the data source, and
+stored (encrypted by `MB_ENCRYPTION_SECRET_KEY`) in the H2 app DB.
+
+### First-login setup (one-time)
+
+1. After the service goes Live, open `https://<render-url>/` and create the
+   admin account. **Disable public signup** under Admin → Settings →
+   Authentication.
+2. Set `MB_SITE_URL` in the Render dashboard to the service URL; restart the
+   service so emails and share links use the right host.
+3. Admin → Databases → Add database → PostgreSQL. Use the Neon host/port, the
+   database name from `DATABASE_URL`, username `metabase_ro`, password from
+   `METABASE_DB_PASSWORD`. Enable "Use a secure connection (SSL)" — Neon
+   requires it.
+4. On that data source's sync settings, set "Scanning for field values" to
+   **Never** and "Syncing database schema" to **Daily**. This caps compute
+   spend on Neon; raise later only if dashboards feel stale.
+5. Browse data → confirm both `v_analytics_fact_wide` and
+   `v_analytics_coverage_matrix` appear.
+
+### Upgrade procedure
+
+1. Pick the target tag from https://github.com/metabase/metabase/releases
+   (prefer a `v0.N.M` where `N` matches or is one greater than the currently
+   deployed major; read the upgrade notes for breaking changes).
+2. Edit `image.url` in `render.yaml` on a branch, open a PR (CI is green
+   trivially — no app code changed).
+3. Merge. Autodeploy is off, so the service keeps running the old image.
+4. From the Render dashboard, trigger a manual deploy of `filings-metabase`.
+5. Wait for `/api/health` to return 200, log in, verify dashboards render.
+6. **Rollback:** revert the `render.yaml` change and trigger another manual
+   deploy.
+
+Metabase major versions are backwards-compatible within a line (0.N.M → 0.N.M+x)
+and forward-compatible for app DB (H2 is migrated automatically on startup).
+Downgrades across majors are **not** supported — snapshot the disk before
+major bumps.
+
+## On-ramp to public access
 
 Everything below becomes safe because the database layer already enforces
 read-only + query timeouts:
 
-1. Migrate Metabase's own app DB from H2 to Postgres (enables backups and
-   multi-instance).
-2. Enable Metabase's public-link feature on specific curated dashboards.
-3. Put rate limiting / a CDN (Cloudflare free tier) in front of public URLs.
+1. **Migrate Metabase's own app DB from H2 to Postgres.** Create a tiny Neon
+   database (or a second schema in the existing one) and use Metabase's
+   built-in `load-from-h2` command to copy the H2 state. Update `MB_DB_TYPE=postgres`
+   + `MB_DB_CONNECTION_URI` on the service. Required before any multi-instance
+   or reliable-backup setup.
+2. **Enable Metabase's public-link feature** on the specific curated
+   dashboards that should be shared openly. Other dashboards stay
+   authenticated.
+3. **Put rate limiting / a CDN** (Cloudflare free tier) in front of the public
+   URLs to absorb surprise traffic.
+4. **Back up the app DB** regularly — whichever backend is in use. Dashboards
+   and questions live only in the app DB; losing it means rebuilding every
+   dashboard by hand.
 
 ## Troubleshooting
 
@@ -180,4 +243,4 @@ the UI; do not backfill historical rows.
 - `sql/37_create_analytics_role.sql`
 - `sql/38_create_analytics_views.sql`
 - `scripts/apply_migrations.py` (registration list)
-- Plan: `~/.claude/plans/i-think-we-need-bright-fountain.md`
+- `render.yaml` (`filings-metabase` service block)
