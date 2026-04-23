@@ -53,6 +53,42 @@ def validate_cik(cik: str) -> str:
     return normalized
 
 
+SEC_ACCESSION_PATTERN = re.compile(r"\d{10}-\d{2}-\d{6}")
+"""Match an SEC accession anywhere in a string.
+
+EDGAR accession tokens are ``NNNNNNNNNN-NN-NNNNNN`` (10-2-6). This pattern
+is intentionally unanchored so callers can pull the token out of a longer
+value (filename, URL path, full index line) — use :func:`normalize_sec_accession`
+for the canonicalization entry point.
+"""
+
+
+_SYNTHETIC_ACCESSION_PREFIXES: tuple[str, ...] = ("presentation:", "transcript:")
+
+
+def normalize_sec_accession(raw: str | None) -> str | None:
+    """Extract the bare SEC accession token from any plausible input.
+
+    Accepts a bare token (``0001633917-23-000220``), a path-prefixed form
+    (``edgar/data/1633917/0001633917-23-000220.txt``), a full URL, or any
+    string containing exactly one SEC-shaped substring. Returns the bare
+    18-character token.
+
+    Synthetic namespaces (``presentation:*`` / ``transcript:*``) are returned
+    unchanged — they are not SEC tokens and must not be normalized away.
+
+    Returns ``None`` when the input is empty or contains no SEC-shaped
+    substring. Callers that want a hard guarantee should wrap the result
+    with :func:`validate_accession_number`.
+    """
+    if not raw:
+        return None
+    if raw.startswith(_SYNTHETIC_ACCESSION_PREFIXES):
+        return raw
+    match = SEC_ACCESSION_PATTERN.search(raw)
+    return match.group(0) if match else None
+
+
 def validate_accession_number(accession: str) -> str:
     """
     Validate accession number format.
@@ -74,15 +110,11 @@ def validate_accession_number(accession: str) -> str:
 
     # Security: Check for path traversal characters
     if ".." in accession or "\\" in accession:
-        raise ValidationError(
-            "Invalid accession number: contains path traversal characters"
-        )
+        raise ValidationError("Invalid accession number: contains path traversal characters")
 
     # Check for slashes (allowing dashes which are part of format)
     if "/" in accession.replace("-", ""):
-        raise ValidationError(
-            "Invalid accession number: contains path traversal characters"
-        )
+        raise ValidationError("Invalid accession number: contains path traversal characters")
 
     # Remove dashes for alphanumeric check
     accession_clean = accession.replace("-", "")
@@ -130,9 +162,7 @@ def validate_sic_code(sic: str) -> str:
     # Validate range (0100-9999 are valid SIC codes)
     sic_int = int(normalized)
     if sic_int < 100 or sic_int > 9999:
-        raise ValidationError(
-            f"Invalid SIC code: must be between 0100 and 9999: {normalized}"
-        )
+        raise ValidationError(f"Invalid SIC code: must be between 0100 and 9999: {normalized}")
 
     return normalized
 
@@ -162,9 +192,7 @@ def validate_date(date_str: str, field_name: str = "date") -> datetime:
         ) from e
 
 
-def validate_date_range(
-    start_date: str, end_date: str
-) -> tuple[datetime, datetime]:
+def validate_date_range(start_date: str, end_date: str) -> tuple[datetime, datetime]:
     """
     Validate a date range ensuring start <= end.
 
@@ -299,7 +327,6 @@ def validate_score(
     if not (min_val <= value <= max_val):
         context_suffix = f" ({context})" if context else ""
         raise ValidationError(
-            f"{field_name} must be between {min_val} and {max_val}, "
-            f"got {value}{context_suffix}"
+            f"{field_name} must be between {min_val} and {max_val}, got {value}{context_suffix}"
         )
     return value

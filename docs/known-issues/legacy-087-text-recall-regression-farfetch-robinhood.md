@@ -2,8 +2,8 @@
 autonomy: review
 discovered: '2026-04-22'
 estimated: M
-id: 85
-note: Root cause likely in PR #110 (full-page OCR + Tier-1 pre-scan); needs git bisect between 8840912 and current main
+id: 87
+note: Root cause likely in PR #110 (full-page OCR + Tier-1 pre-scan); needs git bisect between 8840912 and current main. Renumbered from #85 → #87 during b4 rebase (PR #130 took #85, PR #135 took #86).
 severity: medium
 slug: text-recall-regression-farfetch-robinhood
 source: legacy

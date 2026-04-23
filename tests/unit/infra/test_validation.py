@@ -6,6 +6,7 @@ import pytest
 
 from src.infra.validation import (
     ValidationError,
+    normalize_sec_accession,
     validate_accession_number,
     validate_cik,
     validate_date,
@@ -13,6 +14,54 @@ from src.infra.validation import (
     validate_form_type,
     validate_sic_code,
 )
+
+
+class TestNormalizeSecAccession:
+    """Tests for SEC-accession canonicalization."""
+
+    def test_bare_token_returned_unchanged(self):
+        assert normalize_sec_accession("0001633917-23-000220") == "0001633917-23-000220"
+
+    def test_edgar_path_stripped_to_token(self):
+        """The path-prefixed malformed shape observed in production (PayPal 8-Ks)."""
+        raw = "edgar/data/1633917/0001633917-23-000220.txt"
+        assert normalize_sec_accession(raw) == "0001633917-23-000220"
+
+    def test_absolute_edgar_url_stripped(self):
+        raw = "https://www.sec.gov/Archives/edgar/data/1633917/0001633917-23-000220-index.htm"
+        assert normalize_sec_accession(raw) == "0001633917-23-000220"
+
+    def test_embedded_in_filename(self):
+        assert normalize_sec_accession("paypal_0001633917-23-000220.txt") == "0001633917-23-000220"
+
+    def test_no_token_returns_none(self):
+        assert normalize_sec_accession("nothing-shaped-like-an-accession") is None
+
+    def test_empty_returns_none(self):
+        assert normalize_sec_accession("") is None
+
+    def test_none_returns_none(self):
+        assert normalize_sec_accession(None) is None
+
+    def test_presentation_prefix_preserved(self):
+        """Synthetic namespace — preserved verbatim even if it contains path chars."""
+        raw = "presentation:0001633917/0001633917-23-000220/deck.pdf"
+        assert normalize_sec_accession(raw) == raw
+
+    def test_transcript_prefix_preserved(self):
+        raw = "transcript:PYPL:2023-11-01:Q3"
+        assert normalize_sec_accession(raw) == raw
+
+    def test_digits_not_matching_shape_returns_none(self):
+        """Digit clusters that aren't 10-2-6 must not match."""
+        assert normalize_sec_accession("123-45-67") is None
+        assert normalize_sec_accession("1234567890") is None
+
+    def test_normalized_output_passes_validate_accession_number(self):
+        """Integration: normalize → validate round-trip always succeeds for SEC shape."""
+        out = normalize_sec_accession("edgar/data/1/0001234567-23-123456.txt")
+        assert out is not None
+        assert validate_accession_number(out) == "0001234567-23-123456"
 
 
 class TestValidateCik:
