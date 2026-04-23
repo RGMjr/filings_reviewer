@@ -1,6 +1,6 @@
 {
   "baseline_date": "2026-04-23T01:56:55.638951+00:00",
-  "description": "Baseline refreshed post-image-pipeline-waves (A1/A2/A3/B1/B2/B3 landed 2026-04-22). Accepts known regression on Farfetch (recall 0.867->0.533, 10 facts lost) and Robinhood (recall+f1 regressed). Pre-regression baseline preserved at data/gold_standard/v2_baseline_pre_regression_2026-04-22.json. Root cause not yet identified; tracked as known-issue #85 (docs/known-issues/legacy-085-text-recall-regression-farfetch-robinhood.md). Primary suspect: PR #110 (full-page OCR + Tier-1 pre-scan) via image_triage.py classification side effects. Follow-up session to bisect and fix.",
+  "description": "Baseline refreshed post-image-pipeline-waves (A1/A2/A3/B1/B2/B3 landed 2026-04-22). Numbers here reflect actual validator output on post-#134 main in the canonical Python / lxml environment (lxml>=6.1.0 per pyproject). Issue #87 post-mortem confirms no extraction code regression exists: running the validator at commit 8840912 in the current environment reproduces these same per-company numbers (Farfetch recall 0.533, Robinhood 0.171, overall 0.459). The earlier `v2_baseline_pre_regression_2026-04-22.json` file (Farfetch 0.867, Robinhood 0.314, overall 0.498) was produced in a Python environment that no longer reproduces; it is a stale snapshot, not a reproducible 'good' baseline, and has been deleted. See docs/known-issues/legacy-087-text-recall-regression-farfetch-robinhood.md for the full bisect report.",
   "overall": {
     "precision": 0.6681222707423581,
     "recall": 0.4594594594594595,
