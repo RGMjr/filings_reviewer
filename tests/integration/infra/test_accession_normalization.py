@@ -162,7 +162,7 @@ class TestBackfillMigration:
                        'investor_presentation', '2023-06-01', NULL,
                        FALSE, FALSE, FALSE, now()),
                       (%(cid)s, %(cik)s, 'transcript:SYN:2023-06-01:Q2',
-                       'earnings_transcript', '2023-06-01', NULL,
+                       'earnings_call', '2023-06-01', NULL,
                        FALSE, FALSE, FALSE, now())
                     """,
                     {"cid": company_id, "cik": "0001000001"},
