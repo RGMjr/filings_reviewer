@@ -7,7 +7,7 @@ note: Recurrence of Issue #46. Append `40_full_page_scan_and_ocr_provenance.sql`
 severity: medium
 slug: apply-all-migrations-stale-at-40
 source: legacy
-status: open
+status: resolved
 title: '`scripts/apply_all_migrations.py` MIGRATION_ORDER missing migration 40'
 touches:
   - scripts/apply_all_migrations.py
