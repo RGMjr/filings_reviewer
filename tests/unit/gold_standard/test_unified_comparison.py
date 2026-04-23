@@ -416,12 +416,20 @@ class TestPartitionBySourceType:
         assert result["text"].v2_text_only_result is None
 
     def test_partition_scores_computed_per_bucket(self) -> None:
-        """Each bucket gets its own MatchingResult from all extractions."""
+        """Each bucket gets its own MatchingResult from all extractions.
+
+        Post-2026-04 chart-stage pivot (Q2a): chart-segment gold entries are
+        evaluated via metric-presence P/R by the primary v2_validator, not by
+        the value-level matcher in unified_comparison. Their value is forced
+        to None (`has_numeric_value=False`), so they do not produce tp_pairs
+        through this partition API. Presence-level matching for chart entries
+        lives in `V2GoldStandardValidator._chart_presence_set_from_context`.
+        """
         gold = [
             make_gold_entry(
                 metric_id="cm_average_order_value", raw_value="100", segment_type="text"
             ),
-            make_gold_entry(metric_id="cm_nrr", raw_value="110", segment_type="chart"),
+            make_gold_entry(metric_id="cm_nrr", raw_value="110", segment_type="table"),
         ]
         extractions = [
             make_normalized(metric_id="cm_average_order_value", value=100.0),
@@ -436,8 +444,9 @@ class TestPartitionBySourceType:
 
         # text bucket: cm_average_order_value matched
         assert len(result["text"].v2_full_result.tp_pairs) == 1
-        # chart bucket: cm_nrr matched
-        assert len(result["chart"].v2_full_result.tp_pairs) == 1
+        # table bucket: cm_nrr matched (was "chart" pre-pivot; now exercises
+        # value-level matching in a bucket that still supports it).
+        assert len(result["table"].v2_full_result.tp_pairs) == 1
 
     def test_empty_gold_produces_empty_result(self) -> None:
         """Empty gold list returns empty partition dict."""

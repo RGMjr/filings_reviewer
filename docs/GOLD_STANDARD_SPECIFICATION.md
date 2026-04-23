@@ -60,11 +60,16 @@ A gold standard entry is a **chart entry** if the metric value appears only in a
 - Set `segment_type` to `chart`.
 - Leave `Scaled value` blank.
 
-**Validation behavior for chart entries:**
-- `normalize_value("chart")` returns `None`.
-- Chart entries can match on metric ID only — not on value.
-- A chart entry is counted as a TP if any candidate with the correct `cm_*` metric ID is generated for the filing, regardless of value.
-- Chart entries are **not** excluded from recall computation — they represent real disclosures the system should detect.
+**Validation behavior for chart entries (post-2026-04 chart-stage pivot):**
+
+Chart entries are evaluated via **metric-presence P/R**, not value-level P/R. The validator checks whether `ChartMetricClassifier` surfaced the expected metric on any image in the filing (via `v2_image_assets.detected_metrics`).
+
+- `segment_type='chart'` entries always bypass value normalization — `Raw value` is advisory/archival only. Even numeric values like `"3.5x"` on a chart row are forced to `None` by the validator.
+- **TP** if the metric appears in the filing's `detected_metrics` set (any image, score ≥ `chart_presence_min_score`, default 0.5) OR a text/table-sourced `v2_metric_facts` row exists for the same `(filing, metric)` — mixed-source fallback.
+- **FN** otherwise. Diagnostics distinguish `presence_not_detected` (chart image exists but metric scored below threshold) from `image_missing` (no chart images processed).
+- **FP** if a metric is detected on a filing's images but no chart gold row for that metric exists.
+
+Chart-presence aggregates surface as `presence_f1` on the baseline JSON alongside the existing overall precision/recall/f1. Pre-pivot baselines without `presence_f1` remain loadable — the regression check skips presence comparison when either side lacks the field.
 
 **Table entries:** Values from HTML tables should be marked `segment_type = table` but otherwise treated the same as text entries (value must be parseable).
 
