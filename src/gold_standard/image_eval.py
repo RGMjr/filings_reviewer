@@ -124,6 +124,21 @@ class ImageRunRecord:
     data_value_tp: int = 0
     data_value_fp: int = 0
     data_value_fn: int = 0
+    # metric-classify mode — presence-first classification. ``predicted_metrics``
+    # is the set the model emitted; ``reference_metrics`` is the hand-annotated
+    # ground truth from the manifest (``ground_truth_metric_ids``).
+    # ``classification_confidence`` is the model's self-reported confidence over
+    # the predicted set. ``rejection_reason`` carries the model's reason when
+    # ``predicted_metrics`` is empty (matches the
+    # ``v2_image_review_decisions.rejection_reason`` enum; table images emit
+    # ``"other"``). ``reviewer_action`` is the single-word bucket a reviewer
+    # would take given the prediction vs reference (one of
+    # ``accept``/``reject``/``correct``/``add``/``partial``/``skip``).
+    predicted_metrics: list[str] = field(default_factory=list)
+    reference_metrics: list[str] = field(default_factory=list)
+    classification_confidence: float = 0.0
+    rejection_reason: str | None = None
+    reviewer_action: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +188,25 @@ class ImageEvalResult:
     data_value_recall: float = 0.0
     data_value_f1: float = 0.0
     n_images_scored_on_data: int = 0
+
+    # metric-classify mode — reviewer-disposition rates over the full corpus
+    # and micro-averaged metric-tag P/R/F1 over records that carry a
+    # non-empty ``reference_metrics``. Rates sum to 1.0 over ``n_images``.
+    # ``auto_disposition_rate`` (accept + skip) is the human-hours-saved
+    # headline number; ``calibration_ece`` is expected calibration error on
+    # classification confidence for the same n_scored subset.
+    accept_rate: float = 0.0
+    reject_rate: float = 0.0
+    correct_rate: float = 0.0
+    add_rate: float = 0.0
+    partial_rate: float = 0.0
+    skip_rate: float = 0.0
+    auto_disposition_rate: float = 0.0
+    metric_tag_precision: float = 0.0
+    metric_tag_recall: float = 0.0
+    metric_tag_f1: float = 0.0
+    calibration_ece: float = 0.0
+    n_images_scored_on_metric_tags: int = 0
 
     # Extra diagnostics
     extra: dict[str, Any] = field(default_factory=dict)
@@ -380,6 +414,148 @@ def data_value_match(
     return tp, fp, fn
 
 
+REVIEWER_ACTIONS: tuple[str, ...] = (
+    "accept",
+    "reject",
+    "correct",
+    "add",
+    "partial",
+    "skip",
+)
+
+
+def reviewer_action(predicted: list[str], reference: list[str]) -> str:
+    """Return the single-word reviewer action given predicted vs reference sets.
+
+    Buckets (see ``REVIEWER_ACTIONS``):
+
+    - ``skip``    — both sets empty (auto-skip, zero reviewer time)
+    - ``accept``  — sets equal and non-empty (single-click accept)
+    - ``add``     — predicted is empty OR a proper subset of reference
+                    (pipeline missed at least one metric — costly)
+    - ``reject``  — predicted non-empty, reference empty (all bogus)
+    - ``correct`` — sets disjoint with both non-empty (full replacement)
+    - ``partial`` — overlap but neither is a subset (mixed acc/rej/add)
+
+    This is the scorer the ``--mode metric-classify`` harness uses to
+    translate per-image prediction outcomes into reviewer-workflow cost.
+    """
+    pset, rset = set(predicted), set(reference)
+    if not pset and not rset:
+        return "skip"
+    if pset == rset:
+        return "accept"
+    if not pset and rset:
+        return "add"
+    if pset and not rset:
+        return "reject"
+    if pset < rset:
+        return "add"
+    if pset.isdisjoint(rset):
+        return "correct"
+    return "partial"
+
+
+def metric_tag_match(predicted: list[str], reference: list[str]) -> tuple[int, int, int]:
+    """Per-image TP/FP/FN from predicted vs reference metric_id sets.
+
+    Used for micro-averaged set-overlap P/R/F1 across the corpus. Returns
+    ``(0, 0, 0)`` for fully empty inputs so empty/empty pairs do not
+    inflate the denominator.
+    """
+    pset, rset = set(predicted), set(reference)
+    if not pset and not rset:
+        return 0, 0, 0
+    tp = len(pset & rset)
+    fp = len(pset - rset)
+    fn = len(rset - pset)
+    return tp, fp, fn
+
+
+def reviewer_action_counts(records: list[ImageRunRecord]) -> dict[str, int]:
+    """Count records in each reviewer-action bucket.
+
+    Reads the pre-computed ``reviewer_action`` field on each record; falls
+    back to recomputing from ``predicted_metrics`` / ``reference_metrics``
+    when the field is blank so the helper is robust to manually constructed
+    records. Every bucket in :data:`REVIEWER_ACTIONS` is present in the
+    result, even if its count is 0, so callers can index safely.
+    """
+    counts = dict.fromkeys(REVIEWER_ACTIONS, 0)
+    for rec in records:
+        action = rec.reviewer_action or reviewer_action(
+            rec.predicted_metrics, rec.reference_metrics
+        )
+        if action in counts:
+            counts[action] += 1
+    return counts
+
+
+def expected_calibration_error(records: list[ImageRunRecord], n_bins: int = 10) -> float:
+    """Binned ECE over records with scoring evidence.
+
+    Only records that carry a non-empty ``reference_metrics`` contribute —
+    calibration is only meaningful where ground truth exists. Accuracy
+    per bin is the fraction of records whose ``reviewer_action`` is
+    ``accept`` (predicted set matches reference exactly); ``skip`` bins
+    are excluded because they have no confidence signal. The bins
+    partition ``[0.0, 1.0]`` uniformly; the final number is the
+    sample-weighted average of ``|accuracy - mean_confidence|`` per
+    non-empty bin. Returns 0.0 when no record has reference metrics.
+    """
+    if n_bins <= 0:
+        raise ValueError("n_bins must be positive")
+    scored = [r for r in records if r.reference_metrics]
+    if not scored:
+        return 0.0
+
+    bin_confidences: list[list[float]] = [[] for _ in range(n_bins)]
+    bin_correct: list[list[int]] = [[] for _ in range(n_bins)]
+    for rec in scored:
+        conf = max(0.0, min(1.0, float(rec.classification_confidence)))
+        # Uniform bin in [0, 1); confidence of 1.0 falls in the last bin.
+        idx = min(n_bins - 1, int(conf * n_bins))
+        bin_confidences[idx].append(conf)
+        action = rec.reviewer_action or reviewer_action(
+            rec.predicted_metrics, rec.reference_metrics
+        )
+        bin_correct[idx].append(1 if action == "accept" else 0)
+
+    total = len(scored)
+    ece = 0.0
+    for confs, corrs in zip(bin_confidences, bin_correct, strict=False):
+        if not confs:
+            continue
+        bin_weight = len(confs) / total
+        bin_acc = sum(corrs) / len(corrs)
+        bin_conf = sum(confs) / len(confs)
+        ece += bin_weight * abs(bin_acc - bin_conf)
+    return ece
+
+
+def metric_tag_scores(
+    records: list[ImageRunRecord],
+) -> tuple[float, float, float, int]:
+    """Micro-average metric-tag TP/FP/FN across scored records → P/R/F1.
+
+    Only records whose ``reference_metrics`` is non-empty contribute, so
+    ``skip`` records (both sides empty) do not dilute the tag-level view.
+    """
+    scored = [r for r in records if r.reference_metrics]
+    if not scored:
+        return 0.0, 0.0, 0.0, 0
+    tp = fp = fn = 0
+    for rec in scored:
+        rtp, rfp, rfn = metric_tag_match(rec.predicted_metrics, rec.reference_metrics)
+        tp += rtp
+        fp += rfp
+        fn += rfn
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    return precision, recall, f1, len(scored)
+
+
 def data_value_scores(records: list[ImageRunRecord]) -> tuple[float, float, float, int]:
     """Micro-average chart-data TP/FP/FN across records and compute P/R/F1.
 
@@ -439,6 +615,10 @@ def aggregate_results(records: list[ImageRunRecord]) -> ImageEvalResult:
     n = len(records)
     prec, rec, f1 = chart_detection_metrics(records)
     dv_p, dv_r, dv_f1, dv_n = data_value_scores(records)
+    tag_p, tag_r, tag_f1, tag_n = metric_tag_scores(records)
+    action_counts = reviewer_action_counts(records)
+    rates = {action: count / n for action, count in action_counts.items()}
+    ece = expected_calibration_error(records)
 
     return ImageEvalResult(
         chart_detection_precision=prec,
@@ -459,6 +639,18 @@ def aggregate_results(records: list[ImageRunRecord]) -> ImageEvalResult:
         data_value_recall=dv_r,
         data_value_f1=dv_f1,
         n_images_scored_on_data=dv_n,
+        accept_rate=rates["accept"],
+        reject_rate=rates["reject"],
+        correct_rate=rates["correct"],
+        add_rate=rates["add"],
+        partial_rate=rates["partial"],
+        skip_rate=rates["skip"],
+        auto_disposition_rate=rates["accept"] + rates["skip"],
+        metric_tag_precision=tag_p,
+        metric_tag_recall=tag_r,
+        metric_tag_f1=tag_f1,
+        calibration_ece=ece,
+        n_images_scored_on_metric_tags=tag_n,
     )
 
 
