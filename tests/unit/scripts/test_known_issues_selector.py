@@ -293,8 +293,13 @@ class TestFragmentParityWithMainBaseline:
         assert "Classification totals:" in result.stdout
         assert "Picks" in result.stdout
 
-    def test_json_output_is_valid_and_nonempty(self) -> None:
-        """JSON output must be parseable and contain at least one pick."""
+    def test_json_output_is_valid_list(self) -> None:
+        """JSON output against the real fragments dir must be a parseable list.
+
+        The count depends on how many safe-autonomy issues are currently
+        open/partially-resolved — legitimately zero when the nightly sweeper
+        has cleared the queue. Shape is validated in the schema test below.
+        """
         result = subprocess.run(
             [
                 sys.executable,
@@ -309,7 +314,6 @@ class TestFragmentParityWithMainBaseline:
         assert result.returncode == 0, f"selector failed:\n{result.stderr}"
         picks = json.loads(result.stdout)
         assert isinstance(picks, list)
-        assert len(picks) > 0, "Expected at least one pick from the real fragment directory"
 
     def test_json_output_schema_matches_contract(self) -> None:
         """Each pick must have the fields run_nightly_sweep.sh expects."""

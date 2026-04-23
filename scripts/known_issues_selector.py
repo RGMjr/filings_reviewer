@@ -90,6 +90,13 @@ def parse_classification_from_fragments(fragments_dir: Path) -> list[IssueRecord
 
         # Skip resolved/archived issues — they are no longer actionable.
         if status in _INACTIVE_STATUSES:
+            if autonomy != "n/a":
+                issue_id = fm.get("id", "?")
+                print(
+                    f"warning: issue #{issue_id} has status={status!r} but autonomy={autonomy!r}; "
+                    "consider setting autonomy: n/a on resolved/archived entries.",
+                    file=sys.stderr,
+                )
             continue
 
         touches_raw = fm.get("touches") or []

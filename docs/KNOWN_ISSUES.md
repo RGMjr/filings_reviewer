@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 27 |
+| Open | 26 |
 | Partially Resolved | 2 |
 | Archived | 46 |
-| Resolved | 11 |
+| Resolved | 12 |
 
 
 ## Nightly Sweeper Classification
@@ -768,35 +768,6 @@ The "auto-advance to next filing when queue empties" behavior is tested at the r
 - Add a Playwright spec in `tests/ui/` that seeds two filings with pending facts, sets sort to `company asc` on the list, approves the last pending fact in filing A, and asserts the browser lands on filing B (not the list, not default date-desc order).
 - Repeat the assertion with image-queue completion as the trigger (relevant → non-relevant → skip the last image).
 - Reuse the stub-server pattern in `tests/ui/test_server.py`; extend it with a `/filings-list-stub` route that renders `unified_filing_list.html` with two seeded filings.
-
-## #79. Nightly Sweeper Selector Picks Resolved/Archived Issues
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-`scripts/known_issues_selector.py` filters on `autonomy` (safe/review) and
-dedupes against open PRs, but never checks `status`. When a resolved issue
-remains in the classification table with `autonomy: safe` (either because the
-post-merge cleanup didn't remove it, or because the fragment's `status` was
-updated to `resolved` but its `autonomy` was left as `safe`), the selector
-picks it for nightly attempts.
-
-Baseline selector run against the pre-migration monolith picked #60, #68, #71
-— all three already resolved per PRs #105 / #107 / #108. The sweeper would
-attempt to re-fix issues whose fixes are already in `main`.
-
-### Next Steps
-
-- Naturally subsumed by Phase 3 selector rewrite: when it reads frontmatter
-  directly, filter out fragments whose `status` is `resolved` or `archived`.
-- Add a regression test: fragment with `status: resolved` + `autonomy: safe`
-  must NOT appear in selector picks.
-- Optional: also emit a warning when such a fragment is encountered, so the
-  author knows to set `autonomy: n/a` on resolved entries.
 
 ## #82. Full-Page-OCR Pipeline Integration Test Missing
 
@@ -1743,6 +1714,35 @@ The functional behavior is correct — the hook fires and blocks the operation a
 - Add `tests/integration/test_db_filings_reviewers.py` that seeds a filing with text decisions by Alice + image decisions by Bob, calls `get_unified_filings_for_review`, and asserts `row["reviewers"] == ["alice", "bob"]`.
 - Add a second case: call with `reviewer_ids=["alice"]`, assert the filing is returned; call with `reviewer_ids=["zoe"]`, assert it is not.
 - Add a third case: a filing with only NULL reviewer_id decisions (legacy image rows) returns `reviewers == []`.
+
+## #79. Nightly Sweeper Selector Picks Resolved/Archived Issues
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-23
+
+### Problem
+
+`scripts/known_issues_selector.py` filters on `autonomy` (safe/review) and
+dedupes against open PRs, but never checks `status`. When a resolved issue
+remains in the classification table with `autonomy: safe` (either because the
+post-merge cleanup didn't remove it, or because the fragment's `status` was
+updated to `resolved` but its `autonomy` was left as `safe`), the selector
+picks it for nightly attempts.
+
+Baseline selector run against the pre-migration monolith picked #60, #68, #71
+— all three already resolved per PRs #105 / #107 / #108. The sweeper would
+attempt to re-fix issues whose fixes are already in `main`.
+
+### Next Steps
+
+- Naturally subsumed by Phase 3 selector rewrite: when it reads frontmatter
+  directly, filter out fragments whose `status` is `resolved` or `archived`.
+- Add a regression test: fragment with `status: resolved` + `autonomy: safe`
+  must NOT appear in selector picks.
+- Optional: also emit a warning when such a fragment is encountered, so the
+  author knows to set `autonomy: n/a` on resolved entries.
 
 
 ## Change Log
