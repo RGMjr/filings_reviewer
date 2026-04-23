@@ -123,18 +123,36 @@ BAKEOFF_PROVIDER_ORDER: list[str] = [
     "gemini-flash",
     "gemini-pro",
     "anthropic",
-    # NOTE: "two-stage" is intentionally excluded from the default bake-off.
-    # The harness invokes VisionClient.analyze_image_for_text(), which
-    # bypasses VisionClient.analyze_image_targeted() — the only call site
-    # where VISION_ROUTING_MODE=two_stage actually fires. Benchmarking the
-    # real B4 two-stage path needs a harness that exercises
-    # analyze_image_targeted(task_type="chart_read"); deferred to a B5.x
-    # follow-up. The config for "two-stage" is still in PROVIDER_CONFIGS so
-    # the targeted harness can reuse it unchanged.
+    # NOTE: "two-stage" is intentionally excluded from the DETECT bake-off.
+    # analyze_image_for_text() ignores VISION_ROUTING_MODE, so running a
+    # two-stage provider in detect mode would burn spend without
+    # exercising B4. The chart-read bake-off uses
+    # BAKEOFF_PROVIDER_ORDER_CHART_READ below, which DOES include
+    # "two-stage" because analyze_image_targeted() honors routing.
+]
+
+# Wave B5.x — chart-read bake-off order. Adds "two-stage" because
+# analyze_image_targeted(task_type="chart_read") is the call site where
+# VISION_ROUTING_MODE=two_stage actually fires (see
+# src/llm/vision_client.py:527 and src/extraction_v2/stages/ocr_extraction.py:826).
+BAKEOFF_PROVIDER_ORDER_CHART_READ: list[str] = [
+    "current",
+    "openai-vnext",
+    "gemini-flash",
+    "gemini-pro",
+    "anthropic",
+    "two-stage",
 ]
 
 # Spend cap for the full bake-off sweep. Override via $MAX_BAKEOFF_USD.
 DEFAULT_MAX_BAKEOFF_USD = 15.0
+
+# Available harness modes. ``detect`` is the PR #142 path (chart detection
+# only); ``chart-read`` is the B5.x extension that calls
+# VisionClient.analyze_image_targeted(task_type="chart_read") with the prod
+# chart-extraction prompt and scores per-point data fidelity against the
+# gold-standard ``extracted_values.csv`` rows.
+BENCHMARK_MODES: tuple[str, ...] = ("detect", "chart-read")
 
 
 # ---- DB query -----------------------------------------------------------------
@@ -371,20 +389,29 @@ def _force_local_storage_for_fixtures() -> None:
     logger.info("Benchmark storage: %s", os.environ["IMAGE_CACHE_DIR"])
 
 
-def _run_provider(entry: dict[str, Any], provider: str) -> dict[str, Any]:
+def _run_provider(entry: dict[str, Any], provider: str, mode: str = "detect") -> dict[str, Any]:
     """Run one vision provider against one corpus image.
 
     Returns a dict with benchmark fields compatible with ImageRunRecord.
     Does NOT re-persist any facts (read-only).
 
-    All providers exercise `VisionClient.analyze_image_for_text` — the same
-    method the prod chart-detection path uses. `PROVIDER_CONFIGS[provider]`
-    is applied to the process env for the duration of the call so the B2
-    `VisionClient` picks the right adapter + model, and B4's two-stage
-    routing fires for `provider == "two-stage"`.
+    ``mode="detect"`` calls ``VisionClient.analyze_image_for_text`` — the
+    PR #142 path that measures chart DETECTION. ``mode="chart-read"``
+    calls ``VisionClient.analyze_image_targeted(task_type="chart_read")``
+    with the prod chart-extraction prompt (Wave B5.x). For the
+    ``two-stage`` provider under chart-read mode, the harness replicates
+    the double-call (``chart_ocr`` grounding pass then ``chart_read``
+    premium reader) that ``src/extraction_v2/stages/ocr_extraction.py``
+    makes in production so costs and outputs match the real routing.
+
+    In either mode ``PROVIDER_CONFIGS[provider]`` is applied to the
+    process env for the duration of the call so the B2 ``VisionClient``
+    picks the right adapter + model.
     """
+    if mode not in BENCHMARK_MODES:
+        raise ValueError(f"Unknown mode {mode!r}. Known: {BENCHMARK_MODES}")
+
     from src.infra.image_storage import get_image_storage
-    from src.llm.vision_client import VisionClient
 
     storage = get_image_storage()
     storage_key = entry.get("storage_key", "")
@@ -402,6 +429,7 @@ def _run_provider(entry: dict[str, Any], provider: str) -> dict[str, Any]:
         "ocr_cells_extracted": [],
         "axis_labels_extracted": [],
         "tier1_facts_extracted": 0,
+        "extracted_points": [],
         "skipped": False,
         "skip_reason": None,
     }
@@ -413,13 +441,28 @@ def _run_provider(entry: dict[str, Any], provider: str) -> dict[str, Any]:
         logger.warning("Image not found in storage: %s (img_id=%s)", storage_key, entry["img_id"])
         return {**skeleton, "skipped": True, "skip_reason": "missing_bytes"}
 
+    if mode == "detect":
+        return _run_provider_detect(entry, provider, image_bytes, skeleton, t0)
+    return _run_provider_chart_read(entry, provider, image_bytes, skeleton, t0)
+
+
+def _run_provider_detect(
+    entry: dict[str, Any],
+    provider: str,
+    image_bytes: bytes,
+    skeleton: dict[str, Any],
+    t0: float,
+) -> dict[str, Any]:
+    """Detect-mode path: the PR #142 ``analyze_image_for_text`` call."""
+    from src.llm.vision_client import VisionClient
+
     try:
         with _ProviderEnv(provider):
             client = VisionClient()
             result = client.analyze_image_for_text(image_bytes)
     except Exception as exc:
         logger.warning(
-            "Vision API error for provider=%s img_id=%s: %s",
+            "Vision API error (detect) for provider=%s img_id=%s: %s",
             provider,
             entry["img_id"],
             exc,
@@ -441,6 +484,219 @@ def _run_provider(entry: dict[str, Any], provider: str) -> dict[str, Any]:
     }
 
 
+def _run_provider_chart_read(
+    entry: dict[str, Any],
+    provider: str,
+    image_bytes: bytes,
+    skeleton: dict[str, Any],
+    t0: float,
+) -> dict[str, Any]:
+    """Chart-read mode: call ``analyze_image_targeted(task_type='chart_read')``.
+
+    For the ``two-stage`` provider this fires the OCR grounding pass
+    first (``chart_ocr``) then the premium reader (``chart_read``), with
+    the OCR blob injected into the chart-read prompt. Prompt text is
+    pulled from the prod stage so the benchmark can't drift from prod.
+    """
+    from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
+    from src.llm.vision_client import VisionClient
+
+    stage = OCRExtractionStage()  # no-arg init; just for prompt methods
+    cost = 0.0
+    ocr_blob = ""
+    raw_ocr = ""
+    raw_chart = ""
+
+    try:
+        with _ProviderEnv(provider):
+            client = VisionClient()
+            two_stage = os.environ.get("VISION_ROUTING_MODE", "").strip().lower() == "two_stage"
+
+            if two_stage:
+                ocr_resp = client.analyze_image_targeted(
+                    image_bytes=image_bytes,
+                    prompt=stage._get_chart_ocr_prompt(),
+                    task_type="chart_ocr",
+                    detail="high",
+                    max_tokens=1500,
+                    response_format={"type": "json_object"},
+                )
+                cost += float(getattr(ocr_resp, "cost_usd", 0.0))
+                raw_ocr = getattr(ocr_resp, "content", "") or ""
+                parsed_ocr = OCRExtractionStage._parse_chart_json(raw_ocr) or {}
+                ocr_blob = str(parsed_ocr.get("text", "") or "")
+
+            chart_resp = client.analyze_image_targeted(
+                image_bytes=image_bytes,
+                prompt=stage._get_chart_extraction_prompt(ocr_text=ocr_blob),
+                task_type="chart_read",
+                detail="high",
+                max_tokens=2000,
+                response_format={"type": "json_object"},
+            )
+            cost += float(getattr(chart_resp, "cost_usd", 0.0))
+            raw_chart = getattr(chart_resp, "content", "") or ""
+    except Exception as exc:
+        logger.warning(
+            "Vision API error (chart-read) for provider=%s img_id=%s: %s",
+            provider,
+            entry["img_id"],
+            exc,
+        )
+        return {
+            **skeleton,
+            "parse_failed": True,
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+            "cost_usd": cost,
+            "raw_output": str(exc),
+        }
+
+    parsed = OCRExtractionStage._parse_chart_json(raw_chart)
+    latency_ms = int((time.perf_counter() - t0) * 1000)
+    if parsed is None:
+        return {
+            **skeleton,
+            "parse_failed": True,
+            "cost_usd": cost,
+            "latency_ms": latency_ms,
+            "raw_output": raw_chart[:4000],
+        }
+
+    title = str(parsed.get("title", "") or "")
+    x_axis = str(parsed.get("x_axis_label", "") or "")
+    y_axis = str(parsed.get("y_axis_label", "") or "")
+    series = parsed.get("series", []) or []
+    annotations = parsed.get("annotations", []) or []
+
+    axis_labels: list[str] = []
+    if x_axis:
+        axis_labels.append(x_axis)
+    if y_axis:
+        axis_labels.append(y_axis)
+
+    legend_parts = [str(s.get("name", "") or "") for s in series]
+    legend = "\n".join(p for p in legend_parts if p)
+
+    predicted_chart_type = str(parsed.get("chart_type", "") or "") or None
+    # If the model returns a chart_type + any structured output, count it
+    # as "relevant" for detection purposes in chart-read mode too.
+    predicted_relevant = bool(predicted_chart_type) or bool(series) or bool(annotations)
+
+    extracted_points = _flatten_chart_points(series, annotations)
+
+    return {
+        **skeleton,
+        "predicted_relevant": predicted_relevant,
+        "predicted_chart_type": predicted_chart_type,
+        "cost_usd": cost,
+        "latency_ms": latency_ms,
+        "raw_output": raw_chart[:4000],
+        "title_extracted": title,
+        "legend_extracted": legend,
+        "axis_labels_extracted": axis_labels,
+        "extracted_points": extracted_points,
+    }
+
+
+def _flatten_chart_points(
+    series: list[dict[str, Any]], annotations: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Flatten model output into ``[{"value": float, "period": str|None, "source": str}, ...]``.
+
+    Used by the chart-read scorer. Non-numeric values are dropped (a
+    missing ``y`` or ``value`` can't contribute to a value match).
+    """
+    out: list[dict[str, Any]] = []
+    for s in series:
+        name = s.get("name")
+        for p in s.get("points", []) or []:
+            y = p.get("y")
+            try:
+                y_float = float(y)
+            except (TypeError, ValueError):
+                continue
+            out.append(
+                {
+                    "value": y_float,
+                    "period": p.get("x"),
+                    "source": "series",
+                    "series_name": name,
+                    "label": p.get("label"),
+                }
+            )
+    for a in annotations:
+        v = a.get("value")
+        if v is None:
+            continue
+        try:
+            v_float = float(v)
+        except (TypeError, ValueError):
+            continue
+        out.append(
+            {
+                "value": v_float,
+                "period": a.get("period"),
+                "source": "annotation",
+                "category": a.get("category"),
+                "text": a.get("text"),
+            }
+        )
+    return out
+
+
+def _load_chart_ground_truth(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Load ground-truth chart rows for a manifest entry, if mapped.
+
+    Honors the optional ``ground_truth_value_ids`` field on each manifest
+    entry. The scorer derives the gold-standard company directory from
+    the ``storage_key`` prefix (e.g. ``Farfetch_Limited/foo.jpg`` →
+    ``data/gold_standard/Farfetch_Limited/extracted_values.csv``) and
+    returns the CSV rows whose ``metric_value_id`` appears in
+    ``ground_truth_value_ids`` AND whose ``source_type == "chart"``.
+
+    Returns an empty list if the entry has no mapping or the CSV is
+    missing; callers should treat that as "structural fidelity only, no
+    data-value scoring for this image".
+    """
+    ids = entry.get("ground_truth_value_ids")
+    if not ids:
+        return []
+    storage_key = entry.get("storage_key", "") or ""
+    if "/" not in storage_key:
+        return []
+    company_dir = storage_key.split("/", 1)[0]
+    csv_path = REPO_ROOT / "data" / "gold_standard" / company_dir / "extracted_values.csv"
+    if not csv_path.exists():
+        logger.warning("ground_truth CSV not found for %s (expected %s)", entry["img_id"], csv_path)
+        return []
+
+    id_set = {str(i) for i in ids}
+    import csv as _csv
+
+    rows: list[dict[str, Any]] = []
+    with csv_path.open(encoding="utf-8") as fh:
+        for row in _csv.DictReader(fh):
+            if row.get("source_type") != "chart":
+                continue
+            if str(row.get("metric_value_id", "")).strip() not in id_set:
+                continue
+            try:
+                value = float(row["value_numeric"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            rows.append(
+                {
+                    "metric_value_id": row.get("metric_value_id"),
+                    "metric_id": row.get("metric_id"),
+                    "value": value,
+                    "unit": row.get("unit"),
+                    "period_start": row.get("period_start") or None,
+                    "period_end": row.get("period_end") or None,
+                }
+            )
+    return rows
+
+
 def _run_current_provider(entry: dict[str, Any]) -> dict[str, Any]:
     """Legacy shim — kept for back-compat with external callers / tests."""
     return _run_provider(entry, "current")
@@ -450,8 +706,16 @@ def _run_benchmark(
     corpus: list[dict[str, Any]],
     provider: str,
     limit: int | None,
+    mode: str = "detect",
 ) -> list[dict[str, Any]]:
-    """Run the benchmark harness against the corpus and return raw run records."""
+    """Run the benchmark harness against the corpus and return raw run records.
+
+    ``mode`` is forwarded to ``_run_provider``. In ``chart-read`` mode,
+    each result is augmented with per-image data-value TP/FP/FN scored
+    against any ground-truth CSV rows mapped by the manifest entry.
+    """
+    if mode not in BENCHMARK_MODES:
+        raise ValueError(f"Unknown mode {mode!r}. Known: {BENCHMARK_MODES}")
     if limit is not None:
         corpus = corpus[:limit]
 
@@ -466,7 +730,7 @@ def _run_benchmark(
             raise ValueError(
                 f"Unknown provider {provider!r}. Known: {sorted(PROVIDER_CONFIGS.keys())}"
             )
-        result = _run_provider(entry, provider)
+        result = _run_provider(entry, provider, mode=mode)
 
         result["reviewer_decision"] = entry["decision"]
         result["reviewer_chart_type"] = entry.get("chart_type")
@@ -475,6 +739,23 @@ def _run_benchmark(
         result["stratum"] = entry.get("stratum", "unknown")
         result["is_tier1"] = entry.get("is_tier1", False)
         result["provider"] = provider
+        result["mode"] = mode
+
+        if mode == "chart-read" and not result.get("skipped"):
+            reference = _load_chart_ground_truth(entry)
+            from src.gold_standard.image_eval import data_value_match
+
+            tp, fp, fn = data_value_match(result.get("extracted_points", []), reference)
+            result["reference_points"] = reference
+            result["data_value_tp"] = tp
+            result["data_value_fp"] = fp
+            result["data_value_fn"] = fn
+        else:
+            result.setdefault("reference_points", [])
+            result.setdefault("data_value_tp", 0)
+            result.setdefault("data_value_fp", 0)
+            result.setdefault("data_value_fn", 0)
+
         run_records.append(result)
 
     return run_records
@@ -509,6 +790,11 @@ def _build_eval_results(run_records: list[dict[str, Any]]) -> dict[str, Any]:
                 latency_ms=int(r.get("latency_ms", 0)),
                 raw_output=r.get("raw_output", ""),
                 provider=r.get("provider", "unknown"),
+                extracted_points=r.get("extracted_points", []),
+                reference_points=r.get("reference_points", []),
+                data_value_tp=int(r.get("data_value_tp", 0)),
+                data_value_fp=int(r.get("data_value_fp", 0)),
+                data_value_fn=int(r.get("data_value_fn", 0)),
             )
         )
 
@@ -528,6 +814,10 @@ def _build_eval_results(run_records: list[dict[str, Any]]) -> dict[str, Any]:
         "n_images": agg.n_images,
         "n_relevant": agg.n_relevant,
         "n_not_relevant": agg.n_not_relevant,
+        "data_value_precision": agg.data_value_precision,
+        "data_value_recall": agg.data_value_recall,
+        "data_value_f1": agg.data_value_f1,
+        "n_images_scored_on_data": agg.n_images_scored_on_data,
         "n_skipped": sum(1 for r in run_records if r.get("skipped")),
         "n_missing_bytes": sum(1 for r in run_records if r.get("skip_reason") == "missing_bytes"),
     }
@@ -578,7 +868,20 @@ Examples:
             "Run the full Wave B5 sweep: every provider in PROVIDER_CONFIGS, "
             "sequentially, with a cumulative spend cap ($MAX_BAKEOFF_USD, "
             f"default ${DEFAULT_MAX_BAKEOFF_USD:.0f}). Writes per-provider "
-            "reports to data/image_benchmarks/bakeoff_<date>/ plus a summary."
+            "reports to data/image_benchmarks/bakeoff_<date>/ plus a summary. "
+            "In chart-read mode the order also includes 'two-stage'."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="detect",
+        choices=sorted(BENCHMARK_MODES),
+        help=(
+            "Benchmark mode. 'detect' = PR #142 chart-detection path "
+            "(analyze_image_for_text). 'chart-read' = Wave B5.x per-point "
+            "data-fidelity path (analyze_image_targeted, exercises B4 "
+            "two-stage routing for provider=two-stage)."
         ),
     )
     parser.add_argument(
@@ -623,16 +926,18 @@ def _run_single_provider_report(
     limit: int | None,
     manifest_path: Path,
     output_path: Path,
+    mode: str = "detect",
 ) -> dict[str, Any]:
     """Run one provider, aggregate metrics, write the JSON report, return it."""
-    logger.info("Running benchmark with provider=%r ...", provider)
-    run_records = _run_benchmark(corpus, provider, limit)
+    logger.info("Running benchmark with provider=%r mode=%r ...", provider, mode)
+    run_records = _run_benchmark(corpus, provider, limit, mode=mode)
 
     logger.info("Computing metrics ...")
     eval_metrics = _build_eval_results(run_records)
 
     report = {
         "provider": provider,
+        "mode": mode,
         "run_date": date.today().isoformat(),
         "manifest_path": str(manifest_path),
         "limit": limit,
@@ -644,7 +949,7 @@ def _run_single_provider_report(
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2, default=str)
 
-    logger.info("\n=== Provider: %s ===", provider)
+    logger.info("\n=== Provider: %s (mode=%s) ===", provider, mode)
     m = eval_metrics
     logger.info(
         "  Chart detection  P=%.3f  R=%.3f  F1=%.3f",
@@ -654,6 +959,14 @@ def _run_single_provider_report(
     )
     logger.info("  Tier-1 fact recall     : %.3f", m["tier1_fact_recall"])
     logger.info("  Parse failure rate     : %.3f", m["parse_failure_rate"])
+    if mode == "chart-read":
+        logger.info(
+            "  Data-value P/R/F1      : %.3f / %.3f / %.3f  (scored on %d img)",
+            m["data_value_precision"],
+            m["data_value_recall"],
+            m["data_value_f1"],
+            m["n_images_scored_on_data"],
+        )
     logger.info(
         "  Cost / image           : $%.5f  |  Latency: %dms",
         m["mean_cost_usd"],
@@ -668,29 +981,43 @@ def _cumulative_cost(report: dict[str, Any]) -> float:
     return sum(float(r.get("cost_usd", 0.0)) for r in report.get("run_records", []))
 
 
+def _bakeoff_order_for(mode: str) -> list[str]:
+    """Return the provider order for the bake-off given the benchmark mode."""
+    if mode == "chart-read":
+        return list(BAKEOFF_PROVIDER_ORDER_CHART_READ)
+    return list(BAKEOFF_PROVIDER_ORDER)
+
+
 def _run_bakeoff(
     corpus: list[dict[str, Any]],
     limit: int | None,
     manifest_path: Path,
     output_root: Path,
     max_usd: float,
+    mode: str = "detect",
 ) -> dict[str, Any]:
-    """Run every provider in PROVIDER_CONFIGS sequentially with a spend cap.
+    """Run every provider for ``mode`` sequentially with a spend cap.
 
     Aborts mid-sweep if cumulative cost crosses ``max_usd``. Writes a
     per-provider JSON to ``output_root / <provider>.json`` plus a
     ``summary.json`` comparing metrics across providers.
+
+    Provider order is mode-dependent:
+    - ``detect`` → ``BAKEOFF_PROVIDER_ORDER`` (excludes two-stage).
+    - ``chart-read`` → ``BAKEOFF_PROVIDER_ORDER_CHART_READ`` (includes two-stage).
     """
     output_root.mkdir(parents=True, exist_ok=True)
 
     per_provider: dict[str, dict[str, Any]] = {}
     cumulative = 0.0
     aborted_at: str | None = None
+    order = _bakeoff_order_for(mode)
 
-    for provider in BAKEOFF_PROVIDER_ORDER:
+    for provider in order:
         logger.info(
-            "\n--- Bake-off provider %s (cumulative spend: $%.4f / $%.2f cap) ---",
+            "\n--- Bake-off provider %s (mode=%s, cumulative spend: $%.4f / $%.2f cap) ---",
             provider,
+            mode,
             cumulative,
             max_usd,
         )
@@ -710,12 +1037,14 @@ def _run_bakeoff(
             limit=limit,
             manifest_path=manifest_path,
             output_path=provider_output,
+            mode=mode,
         )
         per_provider[provider] = report
         cumulative += _cumulative_cost(report)
 
     summary = {
         "run_date": date.today().isoformat(),
+        "mode": mode,
         "manifest_path": str(manifest_path),
         "providers_run": list(per_provider.keys()),
         "aborted_at": aborted_at,
@@ -733,7 +1062,7 @@ def _run_bakeoff(
     with open(summary_path, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=2, default=str)
 
-    logger.info("\n=== Bake-off summary ===")
+    logger.info("\n=== Bake-off summary (mode=%s) ===", mode)
     logger.info("  Providers run: %s", ", ".join(per_provider.keys()))
     logger.info("  Total spend  : $%.4f (cap $%.2f)", cumulative, max_usd)
     logger.info("  Summary JSON : %s", summary_path)
@@ -818,13 +1147,17 @@ def main() -> None:
     if args.limit:
         logger.info("  Limiting to %d images (--limit)", args.limit)
 
+    mode = args.mode
+    mode_prefix = "bakeoff_chart_read" if mode == "chart-read" else "bakeoff"
+    single_prefix = "chart-read" if mode == "chart-read" else args.provider
+
     if args.bakeoff:
         max_usd_raw = os.environ.get("MAX_BAKEOFF_USD", "").strip()
         max_usd = float(max_usd_raw) if max_usd_raw else DEFAULT_MAX_BAKEOFF_USD
         output_root = (
             Path(args.output)
             if args.output
-            else BENCHMARK_OUTPUT_DIR / f"bakeoff_{date.today().isoformat()}"
+            else BENCHMARK_OUTPUT_DIR / f"{mode_prefix}_{date.today().isoformat()}"
         )
         _run_bakeoff(
             corpus=corpus,
@@ -832,6 +1165,7 @@ def main() -> None:
             manifest_path=manifest_path,
             output_root=output_root,
             max_usd=max_usd,
+            mode=mode,
         )
         return
 
@@ -839,7 +1173,11 @@ def main() -> None:
         output_path = Path(args.output)
     else:
         BENCHMARK_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        output_path = BENCHMARK_OUTPUT_DIR / f"{args.provider}_{date.today().isoformat()}.json"
+        if mode == "chart-read":
+            filename = f"{single_prefix}_{args.provider}_{date.today().isoformat()}.json"
+        else:
+            filename = f"{args.provider}_{date.today().isoformat()}.json"
+        output_path = BENCHMARK_OUTPUT_DIR / filename
 
     _run_single_provider_report(
         corpus=corpus,
@@ -847,6 +1185,7 @@ def main() -> None:
         limit=args.limit,
         manifest_path=manifest_path,
         output_path=output_path,
+        mode=mode,
     )
 
 
