@@ -39,6 +39,9 @@ class TestUpsertFilingNormalizes:
             form_type="8-K",
             filing_date="2023-11-01",
             sec_html_url="https://example.com/f.htm",
+            is_post_combination=False,
+            is_investment_vehicle=False,
+            is_resource_extraction=False,
         )
         rows = clean_db.query(
             "SELECT accession_number FROM filings WHERE filing_id = %(fid)s",
@@ -55,6 +58,9 @@ class TestUpsertFilingNormalizes:
             form_type="8-K",
             filing_date="2023-11-01",
             sec_html_url="https://example.com/f.htm",
+            is_post_combination=False,
+            is_investment_vehicle=False,
+            is_resource_extraction=False,
         )
         rows = clean_db.query("SELECT accession_number FROM filings WHERE cik = '0001633917'")
         assert rows[0]["accession_number"] == "0001633917-23-000220"
@@ -86,12 +92,16 @@ class TestBackfillMigration:
                 cur.execute(
                     """
                     INSERT INTO filings (company_id, cik, accession_number, form_type,
-                                         filing_date, sec_html_url, updated_at)
+                                         filing_date, sec_html_url,
+                                         is_post_combination, is_investment_vehicle,
+                                         is_resource_extraction, updated_at)
                     VALUES
                       (%(cid)s, %(cik)s, 'edgar/data/1633917/0001633917-23-000220.txt',
-                       '8-K', '2023-11-01', 'https://x/f1.htm', now()),
+                       '8-K', '2023-11-01', 'https://x/f1.htm',
+                       FALSE, FALSE, FALSE, now()),
                       (%(cid)s, %(cik)s, 'edgar/data/1633917/0001633917-23-000444.txt',
-                       '8-K', '2023-05-01', 'https://x/f2.htm', now())
+                       '8-K', '2023-05-01', 'https://x/f2.htm',
+                       FALSE, FALSE, FALSE, now())
                     """,
                     {"cid": company_id, "cik": "0001633917"},
                 )
@@ -119,6 +129,9 @@ class TestBackfillMigration:
             form_type="8-K",
             filing_date="2023-11-01",
             sec_html_url="https://x/f.htm",
+            is_post_combination=False,
+            is_investment_vehicle=False,
+            is_resource_extraction=False,
         )
 
         with clean_db.transaction() as conn:
@@ -140,13 +153,17 @@ class TestBackfillMigration:
                 cur.execute(
                     """
                     INSERT INTO filings (company_id, cik, accession_number, form_type,
-                                         filing_date, sec_html_url, updated_at)
+                                         filing_date, sec_html_url,
+                                         is_post_combination, is_investment_vehicle,
+                                         is_resource_extraction, updated_at)
                     VALUES
                       (%(cid)s, %(cik)s,
                        'presentation:0001000001/0001000001-23-000001/deck.pdf',
-                       'investor_presentation', '2023-06-01', NULL, now()),
+                       'investor_presentation', '2023-06-01', NULL,
+                       FALSE, FALSE, FALSE, now()),
                       (%(cid)s, %(cik)s, 'transcript:SYN:2023-06-01:Q2',
-                       'earnings_transcript', '2023-06-01', NULL, now())
+                       'earnings_transcript', '2023-06-01', NULL,
+                       FALSE, FALSE, FALSE, now())
                     """,
                     {"cid": company_id, "cik": "0001000001"},
                 )
