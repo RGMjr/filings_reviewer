@@ -7,11 +7,11 @@ note: Filter selector picks on status=open or partially-resolved
 severity: low
 slug: sweeper-picks-resolved-and-archived-issues
 source: legacy
-status: open
+status: resolved
 title: Nightly Sweeper Selector Picks Resolved/Archived Issues
 touches:
 - scripts/known_issues_selector.py
-updated: 2026-04-22
+updated: 2026-04-23
 ---
 
 ### Problem

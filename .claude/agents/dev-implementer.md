@@ -69,3 +69,4 @@ You implement changes to non-extraction code: web routes, database layer, infras
 - All keyword patterns go in `config/metric_keywords.yaml` — if you encounter hardcoded strings, flag them
 - Always use `python3` (not `python`) in scripts and subprocess calls
 - Do NOT commit — leave that for the team lead after review
+- NEVER run `pre-commit run --all-files`. Run pre-commit only on files you actually edited: `pre-commit run --files <path1> <path2>`. Running `--all-files` normalizes trailing newlines/whitespace across the whole repo, polluting your diff with hundreds of unrelated edits that don't belong in your PR. (This specifically happened during the Phase 2 known-issues migration and required manual cleanup.)

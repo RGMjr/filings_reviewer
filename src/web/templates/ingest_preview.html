@@ -46,7 +46,9 @@
       ================================================================ -->
       <h4 class="mt-4">New Filings <span class="badge bg-primary">{{ new_candidates | length }}</span></h4>
       {% if new_candidates %}
-      <p class="text-muted small">These filings have not been extracted yet. All will be included in the batch.</p>
+      <p class="text-muted small">
+        All are checked by default — uncheck any filing you don't want in this batch.
+      </p>
       <div class="table-responsive mb-4">
         <table class="table table-sm table-striped align-middle">
           <thead class="table-dark">
@@ -56,7 +58,12 @@
               <th>Company</th>
               <th>Form</th>
               <th>Date</th>
-              <th>Include</th>
+              <th>
+                <input class="form-check-input select-all-cb" type="checkbox"
+                       data-section="new" checked
+                       title="Select / deselect all filings in this section">
+                Include
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -68,10 +75,11 @@
               <td>{{ c.form_type }}</td>
               <td>{{ c.filing_date }}</td>
               <td>
-                <!-- Always included; hidden filing_id signals inclusion -->
-                <input type="hidden" name="filing_id" value="{{ c.filing_id }}">
                 <input type="hidden" name="bucket_{{ c.filing_id }}" value="new">
-                <span class="badge bg-success">Yes</span>
+                <input class="form-check-input filing-include-cb"
+                       type="checkbox" name="filing_id"
+                       value="{{ c.filing_id }}"
+                       data-section="new" checked>
               </td>
             </tr>
             {% endfor %}
@@ -91,7 +99,8 @@
       </h4>
       {% if already_no_review %}
       <p class="text-muted small">
-        These filings have already been extracted. Check the box to re-extract (overwrites existing facts).
+        These filings have already been extracted. Include them only if you want to re-extract (overwrites existing facts).
+        All are <strong>unchecked</strong> by default.
       </p>
       <div class="table-responsive mb-4">
         <table class="table table-sm table-striped align-middle">
@@ -102,7 +111,12 @@
               <th>Company</th>
               <th>Form</th>
               <th>Date</th>
-              <th>Re-extract?</th>
+              <th>
+                <input class="form-check-input select-all-cb" type="checkbox"
+                       data-section="reextract"
+                       title="Select / deselect all filings in this section">
+                Include &amp; re-extract
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -114,10 +128,11 @@
               <td>{{ c.form_type }}</td>
               <td>{{ c.filing_date }}</td>
               <td>
-                <input type="hidden" name="filing_id" value="{{ c.filing_id }}">
                 <input type="hidden" name="bucket_{{ c.filing_id }}" value="reextract">
-                <input class="form-check-input" type="checkbox"
-                       name="reextract_{{ c.filing_id }}" value="on">
+                <input class="form-check-input filing-include-cb"
+                       type="checkbox" name="filing_id"
+                       value="{{ c.filing_id }}"
+                       data-section="reextract">
               </td>
             </tr>
             {% endfor %}
@@ -137,8 +152,9 @@
       </h4>
       {% if already_reviewed %}
       <div class="alert alert-warning mb-2" role="alert">
-        <strong>Warning:</strong> Re-extracting these filings will permanently delete
-        human review decisions. Use the checkbox with caution.
+        <strong>Warning:</strong> Including these filings will re-extract them and
+        permanently delete human review decisions. All are <strong>unchecked</strong> by default —
+        check with caution.
       </div>
       <div class="table-responsive mb-4">
         <table class="table table-sm table-striped align-middle">
@@ -150,7 +166,12 @@
               <th>Form</th>
               <th>Date</th>
               <th>Decisions</th>
-              <th>Re-extract?</th>
+              <th>
+                <input class="form-check-input select-all-cb" type="checkbox"
+                       data-section="reextract_reviewed"
+                       title="Select / deselect all filings in this section">
+                Include &amp; re-extract
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -163,10 +184,11 @@
               <td>{{ c.filing_date }}</td>
               <td><span class="badge bg-warning text-dark">{{ decision_count }}</span></td>
               <td>
-                <input type="hidden" name="filing_id" value="{{ c.filing_id }}">
                 <input type="hidden" name="bucket_{{ c.filing_id }}" value="reextract_reviewed">
-                <input class="form-check-input reviewed-reextract-cb" type="checkbox"
-                       name="reextract_{{ c.filing_id }}" value="on"
+                <input class="form-check-input filing-include-cb reviewed-reextract-cb"
+                       type="checkbox" name="filing_id"
+                       value="{{ c.filing_id }}"
+                       data-section="reextract_reviewed"
                        data-reviewed="true">
               </td>
             </tr>
@@ -202,7 +224,7 @@
         </p>
         {% else %}
         <button type="submit" class="btn btn-success btn-lg" id="start-btn">
-          Start Batch ({{ total }} filing{{ 's' if total != 1 else '' }})
+          Start Batch (<span id="start-btn-count">{{ new_candidates | length }}</span> filing<span id="start-btn-plural">{{ 's' if (new_candidates | length) != 1 else '' }}</span>)
         </button>
         {% endif %}
         <a href="{{ url_for('ingest.ingest_form') }}" class="btn btn-outline-secondary btn-lg ms-2">
@@ -222,6 +244,48 @@
 
   var form = document.getElementById('start-form');
   if (!form) return;
+
+  var includeCbs = document.querySelectorAll('.filing-include-cb');
+  var selectAllCbs = document.querySelectorAll('.select-all-cb');
+  var countEl = document.getElementById('start-btn-count');
+  var pluralEl = document.getElementById('start-btn-plural');
+
+  function updateCount() {
+    var n = document.querySelectorAll('.filing-include-cb:checked').length;
+    if (countEl) countEl.textContent = String(n);
+    if (pluralEl) pluralEl.textContent = n === 1 ? '' : 's';
+  }
+
+  function syncSelectAll(section) {
+    var header = document.querySelector('.select-all-cb[data-section="' + section + '"]');
+    if (!header) return;
+    var sectionCbs = document.querySelectorAll('.filing-include-cb[data-section="' + section + '"]');
+    if (sectionCbs.length === 0) return;
+    var checkedCount = 0;
+    sectionCbs.forEach(function (cb) { if (cb.checked) checkedCount++; });
+    header.checked = (checkedCount === sectionCbs.length);
+    header.indeterminate = (checkedCount > 0 && checkedCount < sectionCbs.length);
+  }
+
+  selectAllCbs.forEach(function (header) {
+    var section = header.getAttribute('data-section');
+    header.addEventListener('change', function () {
+      document.querySelectorAll('.filing-include-cb[data-section="' + section + '"]')
+        .forEach(function (cb) { cb.checked = header.checked; });
+      updateCount();
+    });
+  });
+
+  includeCbs.forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      syncSelectAll(cb.getAttribute('data-section'));
+      updateCount();
+    });
+  });
+
+  // Initial sync for sections whose defaults are mixed (e.g. none-checked reextract sections)
+  ['new', 'reextract', 'reextract_reviewed'].forEach(syncSelectAll);
+  updateCount();
 
   form.addEventListener('submit', function (e) {
     var reviewedBoxes = document.querySelectorAll('.reviewed-reextract-cb:checked');

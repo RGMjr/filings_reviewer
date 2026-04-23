@@ -1,17 +1,18 @@
 ---
-autonomy: safe
+autonomy: n/a
 discovered: '2026-04-21'
-estimated: XS
+estimated: —
 id: 68
-note: Detect timeout vs gtimeout; fallback path for macOS
+note: Resolved in PR #107; retained for audit trail
+pr_refs:
+- 107
 severity: low
 slug: nightly-sweeper-orchestrator-uses-gnu-timeout-incompatible-w
 source: legacy
-status: open
+status: resolved
 title: Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
-touches:
-- scripts/run_nightly_sweep.sh
-updated: '2026-04-21'
+touches: []
+updated: '2026-04-22'
 ---
 
 ### Problem

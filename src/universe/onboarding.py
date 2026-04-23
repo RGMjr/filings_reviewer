@@ -204,26 +204,36 @@ JOIN companies c ON c.company_id = f.company_id
 LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
 WHERE f.form_type = ANY(%(form_types)s)
   AND EXTRACT(YEAR FROM f.filing_date) BETWEEN %(year_min)s AND %(year_max)s
-  AND c.industry_code = ANY(%(sic_codes)s)
 """
+
+_INDUSTRY_GATE = "  AND c.industry_code = ANY(%(sic_codes)s)\n"
 
 _PHASE1_GATE = "  AND f.is_in_scope_phase1 = TRUE\n"
 
 _DISCOVERY_ORDER = "ORDER BY f.filing_date, c.company_name\n"
 
 # Exposed for tests and backward compatibility. Equivalent to the original
-# S-1/F-1-gated query (Phase-1 filter included).
-DISCOVERY_SQL = _DISCOVERY_SQL_BASE + _PHASE1_GATE + _DISCOVERY_ORDER
+# S-1/F-1-gated query (Phase-1 filter included, industry filter present).
+DISCOVERY_SQL = _DISCOVERY_SQL_BASE + _INDUSTRY_GATE + _PHASE1_GATE + _DISCOVERY_ORDER
 
 
-def _build_discovery_sql(form_types: list[str]) -> str:
+def _build_discovery_sql(form_types: list[str], sic_codes: list[str]) -> str:
     """Include the Phase-1 gate only when at least one S-1/F-1 form is requested.
 
     For 10-K-only (or other non-S-1/F-1) queries, Phase-1 filter doesn't apply:
     those filings intentionally land with is_in_scope_phase1=FALSE.
+
+    Include the industry (SIC-code) clause only when ``sic_codes`` is non-empty.
+    Empty SIC list means the caller is filtering by company name alone; emitting
+    ``= ANY(ARRAY[]::text[])`` would return zero rows.
     """
     include_phase1 = bool(S1F1_FORMS & set(form_types))
-    return _DISCOVERY_SQL_BASE + (_PHASE1_GATE if include_phase1 else "") + _DISCOVERY_ORDER
+    return (
+        _DISCOVERY_SQL_BASE
+        + (_INDUSTRY_GATE if sic_codes else "")
+        + (_PHASE1_GATE if include_phase1 else "")
+        + _DISCOVERY_ORDER
+    )
 
 
 def discover_candidates(
@@ -233,14 +243,16 @@ def discover_candidates(
     year_max: int,
     sic_codes: list[str],
 ) -> list[Candidate]:
+    params: dict[str, Any] = {
+        "form_types": form_types,
+        "year_min": year_min,
+        "year_max": year_max,
+    }
+    if sic_codes:
+        params["sic_codes"] = sic_codes
     rows = db.query(
-        _build_discovery_sql(form_types),
-        {
-            "form_types": form_types,
-            "year_min": year_min,
-            "year_max": year_max,
-            "sic_codes": sic_codes,
-        },
+        _build_discovery_sql(form_types, sic_codes),
+        params,
     )
     return [
         Candidate(
@@ -325,8 +337,9 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
     Raises
     ------
     ValueError
-        On unrecognised industry name, invalid SIC code, bad year string, or
-        empty resolved form-types list.
+        On unrecognised industry name, invalid SIC code, bad year string,
+        empty resolved form-types list, or when no narrowing criterion is
+        supplied (industry, SIC code, *and* company-name filter all empty).
     """
 
     # --- SIC codes from industry picker ---
@@ -345,8 +358,8 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
             raise ValueError(f"Invalid SIC code {code!r}: must be a 4-digit numeric string")
         sic_set.add(code)
 
-    if not sic_set:
-        raise ValueError("At least one industry or SIC code must be supplied in criteria")
+    if not sic_set and not (criteria.get("company_name_ilike") or "").strip():
+        raise ValueError("Provide at least one of: industry, SIC code, or company name filter")
 
     # --- Year range ---
     raw_year = criteria.get("year")

@@ -1,16 +1,16 @@
 ---
-autonomy: safe
+autonomy: n/a
 discovered: '2026-04-22'
-estimated: XS
+estimated: —
 id: 74
-note: One-line addition to root `.gitignore`
+note: Resolved in fresh-branch replay of PR #104
+pr_refs: []
 severity: low
 slug: claude-scheduled-tasks-lock-not-gitignored
 source: legacy
-status: open
+status: resolved
 title: '`.claude/scheduled_tasks.lock` Not Gitignored'
-touches:
-- .gitignore
+touches: []
 updated: '2026-04-22'
 ---
 

@@ -14,6 +14,7 @@ Key responsibilities:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections import Counter
 from datetime import UTC, datetime
@@ -26,11 +27,24 @@ from src.extraction_v2.models import (
     ImageClassification,
     SectionType,
 )
+from src.shared.image_features import predict_relevance, v2_row_to_features_input
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Learned triage feature flags
+# ---------------------------------------------------------------------------
+# Set USE_LEARNED_TRIAGE=true to enable the gradient-boosted triage gate.
+# When true and the model artifact loads, predicted_relevance replaces the
+# heuristic relevance_score threshold for the pass/fail decision.
+# LEARNED_TRIAGE_MIN controls the minimum predicted score (default 0.4).
+# When false (default), or when the model is absent, existing heuristic
+# behavior is preserved exactly.
+_USE_LEARNED_TRIAGE: bool = os.environ.get("USE_LEARNED_TRIAGE", "false").lower() == "true"
+_LEARNED_TRIAGE_MIN: float = float(os.environ.get("LEARNED_TRIAGE_MIN", "0.4"))
 
 
 class ImageTriageStage:
@@ -586,7 +600,33 @@ class ImageTriageStage:
             # Score relevance
             asset.relevance_score = self.score_relevance(asset)
 
-            # Mark for manual capture if ambiguous
+            # Learned triage gate (USE_LEARNED_TRIAGE=true)
+            # When enabled and the model loads, write predicted_relevance onto
+            # the asset and use it in place of the heuristic threshold check.
+            # Falls back transparently to heuristic when model is absent.
+            queued: bool
+            if _USE_LEARNED_TRIAGE:
+                features = v2_row_to_features_input(
+                    {
+                        "nearby_text": asset.nearby_text,
+                        "relevance_score": asset.relevance_score,
+                        "width": asset.width or None,
+                        "height": asset.height or None,
+                        "classification": asset.classification.value,
+                        "filename": asset.filename,
+                    }
+                )
+                score = predict_relevance(features)
+                if score is not None:
+                    asset.predicted_relevance = score
+                    queued = score >= _LEARNED_TRIAGE_MIN
+                else:
+                    # Model absent — fall back to heuristic
+                    queued = asset.relevance_score >= self.MIN_RELEVANCE_FOR_PROCESSING
+            else:
+                queued = asset.relevance_score >= self.MIN_RELEVANCE_FOR_PROCESSING
+
+            # Mark for manual capture if ambiguous (heuristic; applies in both modes)
             if (
                 asset.classification == ImageClassification.UNKNOWN
                 and asset.relevance_score >= self.MIN_RELEVANCE_FOR_PROCESSING
@@ -595,7 +635,7 @@ class ImageTriageStage:
                 asset.requires_manual_capture = True
 
             # Queue for processing if relevant
-            if asset.relevance_score >= self.MIN_RELEVANCE_FOR_PROCESSING:
+            if queued:
                 images_for_processing.append(asset)
 
         logger.info(
@@ -682,8 +722,18 @@ class ImageTriageStage:
                 warnings=warnings,
                 metadata={
                     "total_images": len(context.images),
+                    "images_seen": len(context.images),
                     "images_for_processing": len(images_for_processing),
                     "classification_counts": classification_counts,
+                    # Per-classification counters for downstream benchmark use (A2).
+                    # Names mirror ImageClassification enum values.
+                    "classified_chart": classification_counts.get("chart", 0),
+                    "classified_table": classification_counts.get("table_image", 0),
+                    "classified_decorative": classification_counts.get("decorative", 0),
+                    "classified_logo": classification_counts.get("logo", 0),
+                    "classified_signature": classification_counts.get("signature", 0),
+                    "classified_unknown": classification_counts.get("unknown", 0),
+                    "classified_full_page_scan": classification_counts.get("full_page_scan", 0),
                     "manual_capture_count": sum(
                         1 for img in context.images if img.requires_manual_capture
                     ),

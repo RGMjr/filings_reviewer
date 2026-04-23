@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 29 |
-| Partially Resolved | 3 |
+| Open | 26 |
+| Partially Resolved | 2 |
 | Archived | 46 |
-| Resolved | 3 |
+| Resolved | 12 |
 
 
 ## Nightly Sweeper Classification
@@ -41,72 +41,18 @@
 | #62 | review | S | `docs/operations/*` `src/universe/onboarding_runner.py` | Docs + optional admin flag; needs design call |
 | #63 | skip | S | — | Monkey-patch integration test; mid-complexity |
 | #66 | review | S | `render.yaml` `.claude/rules/infrastructure.md` | Wire apply_migrations into Render deploy; infra-change risk |
-| #68 | safe | XS | `scripts/run_nightly_sweep.sh` | Detect timeout vs gtimeout; fallback path for macOS |
 | #69 | review | S | `Dockerfile.nightly-sweep` | Pin claude + gh versions; needs validation step |
-| #71 | safe | XS | `.github/workflows/ci.yml` | Add path filter to integration-tests, mirroring ui-e2e |
-| #72 | review | S | `pyproject.toml` `uv.lock` | Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate fix before baseline refresh |
-| #74 | safe | XS | `.gitignore` | One-line addition to root `.gitignore` |
 | #75 | skip | S | `tests/ui/*.spec.js` `tests/ui/test_server.py` | Playwright E2E gap — cross-filing auto-advance; needs stub-server extension |
-| #76 | safe | S | `tests/integration/test_db_filings_reviewers.py` | New integration test for filings-list reviewer aggregate; isolated file |
-| #77 | skip | M | — | Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1; partial code fix shipped, prod backfill needs explicit auth (R2 + Neon writes) |
 | #79 | safe | XS | `scripts/known_issues_selector.py` | Filter selector picks on status=open or partially-resolved |
 | #80 | review | S | `src/infra/image_storage.py` `src/gold_standard/v2_validator.py` `.claude/rules/infrastructure.md` | Add env-scoped guard against unintended prod R2 writes from CLI tools; design call (storage-layer vs validator-layer) needed |
+| #84 | review | S | `scripts/known_issues_selector.py` `.claude/commands/commit.md` | Cross-reference pr_refs with GitHub API; auto-update status=resolved on merge |
+| #85 | safe | XS | `scripts/apply_all_migrations.py` | Recurrence of Issue |
+| #86 | review | M | `src/extraction_v2/stages/deduplication.py` | Chart extractor produces per-cohort bar values (visible pre-dedup), but deduplication stage collapses same-metric different-value facts. Surfaced post-#72 resolution as the residual HOOD `cm_revenue_by_cohort` 9/10 FN pattern. |
+| #87 | review | M | `src/extraction_v2/pipeline.py` `src/extraction_v2/stages/image_triage.py` `src/extraction_v2/stages/ocr_extraction.py` `data/gold_standard/v2_baseline.json` | Root cause likely in PR |
+| #88 | skip | S | `scripts/apply_all_migrations.py` `.pre-commit-config.yaml` | Add a pre-commit hook that fails if any sql/NN_*.sql on disk lacks an entry in MIGRATION_ORDER or EXCLUDED_FILES. |
 
 
 ## Open Issues
-
-## #72. Robinhood Tier 1 Gold-Standard Regression vs. 2026-04-19 Baseline
-
-**Status**: Open
-**Severity**: high
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-Baseline at pre-scrub `cdc831f` (2026-04-19) recorded Robinhood `recall=0.3143, f1=0.4231`. Current main state: `recall=0.171, f1=0.255` (-14pp on HOOD, -0.009 overall). Per-metric diagnostics:
-
-| Metric | Tier | Current P/R/F1 | Notes |
-|---|---|---|---|
-| `cm_balance_by_cohort` | T1 | 0% / 0% / 0% | Same chart-pipeline failure mode as `cm_revenue_by_cohort` (both chart-only metrics on the same filing). Issue #64 — chart classifier boundary sensitivity — is a separate, narrower concern already resolved |
-| `cm_customer_acquisition_cost` | T1 | 100% / 50% / 66.7% | 1 FN — dedup collision (`20.0` collapsed into sibling with different value) |
-| `cm_revenue_by_cohort` | T1 | 0% / 0% / 0% | 10 FNs — chart pipeline never ran on source image (see below) |
-
-### Diagnosis (2026-04-22, against Neon `filing_id=1545`)
-
-HOOD S-1 has 21 images, 17 classified as charts, **0 with `ocr_text`, 0 with `chart_data`** before this PR. The "Annual Revenue by Annual Cohort ($mm)" image — the single source of all 10 gold per-cohort values ($17/$62/$44/$56/$87/$45/$130/$186/$175/$326) — is `img_id=e5f65961-f33f-44db-9fd0-5f3b61dae987`, classified `chart`, `processed=False`, no linked facts. The lone `$130` chart fact in the DB references `img_id=c8da02f5-227c-4830-94d9-c45944d45e7f` which no longer exists in `v2_image_assets` — an orphan from a pre-`d94acab` img_id stabilisation run. The `$102,034.8` text fact flagged as an FP is an unrelated period-`2026-Q1` mis-bind.
-
-### Root cause: PR #34 dropped `boto3` from the uv-managed manifest
-
-`src/infra/image_storage.py` routes chart/image storage to R2 (prod) or local filesystem (dev) based on whether `R2_BUCKET` is set. The R2 backend calls `import boto3` lazily inside `R2Storage.__init__`. PR #34 (`9aeb454 feat(image-cache): migrate to Cloudflare R2 via ImageStorage abstraction`) added `boto3>=1.34.0` to `requirements.txt` but **not to `pyproject.toml`/`uv.lock`**. Any extraction launched via `uv run …` in an R2-configured environment therefore crashes at the ingestion stage with `ModuleNotFoundError: No module named 'boto3'` before any chart processing runs.
-
-### What the earlier framing got wrong
-
-- **Not a scale bug.** There is no `$33,421.5` anywhere in HOOD's facts. Extraction wasn't binding a quarterly total — it wasn't binding the cohort chart at all.
-- **Not caused by #52.** `24bfd6b` (re-hashed post-scrub to `5c44a4b`) is a 3-file persistence refactor with commit body "No behavioral change; 3630 tests pass." Zero value-binding or chart-stage code is touched.
-- **"Only extraction-touching commit in the window" was wrong.** The real extraction-touching commits in the window include `d94acab` (#21, img_id stabilisation), `9aeb454`/`cf0c756` (#34, R2 migration), `1d7c204` + `8cd3b4d` (#50, chart_only persistence).
-
-### Why this landed on main
-
-CI installs from `requirements.txt`, which has `boto3` pinned — so CI never reproduced the missing-dep crash. The `uv`-managed path that developers and the nightly sweeper use diverges silently. The dual-manifest layout (pip + pyproject) can drift any time only one is updated.
-
-### Fix in this PR
-
-- Add `boto3>=1.34.0` to `pyproject.toml` dependencies; regenerate `uv.lock`.
-- Proved locally against Neon: `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` now runs the full pipeline (2215 segments, 137 tables, 22 images parsed; 16 text/html_table facts produced). Previously died at stage 1.
-- **No data loss.** Chart-only mode safely skipped the fact-DELETE when 0 new chart facts were produced; 9 text-review + 3 image-review decisions on HOOD S-1 remain intact.
-
-### Second layer still open (new follow-up needed)
-
-After the boto3 fix, all 17 HOOD chart images now run through OCR but fail with `FileNotFoundError: Image file not found: 1783879/000162828021019902/hood-20211008_g*.jpg`. The R2 bucket does not have bytes at those keys. Two possible explanations: (a) the canonical storage-key format changed (infrastructure.md's example uses a `pipeline/` prefix that's absent from the DB's `file_path` values), or (b) the bytes were never uploaded for the HOOD S-1 filing after the R2 migration.
-
-### Next Steps
-
-1. Merge this PR to unblock `uv run` extraction for everyone.
-2. Resolve the R2 image-bytes layer — tracked as Issue #77.
-3. **Do NOT refresh the baseline until the R2 layer is resolved** — refreshing over zero chart recall locks in the bug.
-4. Consider adding a CI job that exercises `uv sync` + a smoke extraction so pip/pyproject manifest drift gets caught pre-merge.
-5. Blocks: PR merge commits against current main will keep failing the pre-commit Tier-1 guard until HOOD chart recall recovers (both this fix AND the R2 fix are required).
 
 ## #2. Low Farfetch Recall
 
@@ -251,6 +197,176 @@ rollback).
    `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
 4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
    and re-extract 5 investor-deck-style filings to exercise Path B.
+
+## #86. Dedup Stage Collapses Same-Metric Different-Value Cohort Facts
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+On HOOD's S-1, the Annual Revenue by Annual Cohort chart produces candidate per-cohort bar values pre-dedup — gold-standard values $17, $62, $44, $56, $87, $45, $130, $186, $175 all appear in the pre-dedup candidate set — but only one ($87) survives to the persisted fact set. Running `python3 -m src.gold_standard.v2_validator --companies "Robinhood Markets, Inc." --fn-diagnostics` after the 2026-04-22 HOOD backfill (#72, #77) classifies all 9 missing cohort values as `DEDUP_COLLISION` with the diagnostic:
+
+> *"Value-matching fact (17.0) existed pre-dedup but was collapsed into a sibling with different value; 1 match(es) pre-dedup, 2 total post-dedup"*
+
+Same pattern repeats for 62.0, 45.0, 130.0, 186.0, 56.0, 175.0, 326.0 (eight more). The same failure mode also produces HOOD's pre-existing `cm_customer_acquisition_cost` FN (expected $20, collapsed into a sibling).
+
+### Impact
+
+| Metric | Tier | Current P/R/F1 (post-#72 backfill) | Gap vs. perfect |
+|---|---|---|---|
+| `cm_revenue_by_cohort` | T1 | 50% / 10% / 16.7% | 9 cohort FNs (all `dedup_collision`) |
+| `cm_customer_acquisition_cost` | T1 | 100% / 50% / 66.7% | 1 FN (dedup collision on value 20) |
+
+HOOD's overall Tier 1 F1 is 68.6% post-backfill; closing this gap could push it well above 80%. Not a Tier 1 blocker on its own (HOOD T1 recall is already above the pre-scrub 0.3143 baseline thanks to `cm_balance_by_cohort` at 100/100/100), but it's the single biggest remaining per-metric recall gain available without new extractor work.
+
+### Candidate root causes (not yet narrowed)
+
+1. **Post-transfer collision collapse merges too aggressively.** The validator run logged `Post-transfer collision collapse: merged 18 colliding primaries` then `Fuzzy period dedup: removed 4 duplicate-value facts (68 → 28)`. The first step is the suspect — collapsing facts that share `(canonical_metric_id, period, source_type)` but differ in `value` is exactly what's happening here. A cohort chart legitimately has N distinct bars for the same `canonical_metric_id` and effectively no period (period is the cohort dimension, encoded in `cohort_def` / `cohort_type`, not `period_start`/`period_end`).
+2. **Identity-key doesn't include `cohort_def`/`cohort_type`.** If the dedup identity key skips those cohort-specific columns for chart-sourced facts, every bar value collapses into one.
+3. **`source_locator.img_id` isn't part of the identity either.** Even if two facts came from different bars of the same image, distinctness on img_id + bar position is probably what uniquely identifies a cohort bar.
+
+### Next Steps
+
+1. Read `src/extraction_v2/stages/deduplication.py` and identify which columns form the identity key for the "post-transfer collision collapse" step. Confirm whether chart-sourced cohort facts are being merged on a key that excludes `value`, `cohort_def`, or the bar-position portion of `source_locator`.
+2. Add a regression test in `tests/unit/extraction_v2/` that constructs 10 chart-sourced `cm_revenue_by_cohort` facts with identical `canonical_metric_id`/`source_type`/`period_*` and distinct `value`+`cohort_def`; assert all 10 survive the stage.
+3. Fix: extend the dedup identity to include `cohort_def` (and/or the bar-position within `source_locator`) for chart-sourced cohort metrics. Should be a narrow change in `_collision_identity_key` or equivalent.
+4. Re-run the HOOD validator; expect `cm_revenue_by_cohort` recall to jump from 10% toward 100% and `cm_customer_acquisition_cost` to move from 50% to 100%.
+5. Refresh the v2 baseline once the gain is observed (still gated on Issue #78 / Chewy lxml regression per PR #102 body, if unresolved).
+
+### Cross-references
+
+- Issue #72 — HOOD Tier 1 regression (resolved 2026-04-22; this issue is the residual).
+- Issue #77 — R2 chart-image bytes (resolved 2026-04-22; unrelated root cause).
+- Issue #14 — Farfetch LTV/CAC dedup collision on layout-table misclassification (different failure mode but related stage).
+- Validator diagnostic output on HOOD post-backfill: `dedup_collision: 16 (89%)`.
+
+## #87. Text Recall Regression on Farfetch + Robinhood Between 04-19 and 04-22 Baselines
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+Between the 04-19 gold-standard baseline (`8840912`) and current `main` (post-B3
+merge), text-only gold-standard recall regressed meaningfully on two companies.
+The regression was discovered when Wave B4 (two-stage vision routing) hit the
+pre-commit `extraction-guard`. B4's code is **not** the cause — the validator
+runs without `OPENAI_API_KEY`, so Stages 4–5 (image/chart) are disabled and B4
+code never executes during validation.
+
+### Measured impact
+
+Validator run on plain `main` (no B4), `--fail-on-regression`:
+
+| Metric | 04-19 baseline | Current | Delta |
+|---|---|---|---|
+| Overall precision | 0.664 | 0.668 | +0.004 |
+| Overall recall | 0.498 | 0.459 | **−0.039** |
+| Overall F1 | 0.569 | 0.544 | −0.025 |
+| Farfetch recall | 0.867 | 0.533 | **−0.333** |
+| Farfetch F1 | 0.765 | 0.561 | −0.204 |
+| Robinhood | — regressed recall + f1 — | | |
+
+Farfetch lost **10 specific facts** (TP 26 → 16). The other 13 companies in the
+gold standard appear unchanged.
+
+### Preserved baseline
+
+The pre-regression 04-19 baseline is preserved at
+`data/gold_standard/v2_baseline_pre_regression_2026-04-22.json` for direct
+comparison once the root cause is identified. Do NOT delete this file without
+resolving this issue first.
+
+### Suspect commits
+
+Commits between `8840912` (04-19 baseline) and HEAD that touched
+`src/extraction_v2/` or `config/metric_keywords.yaml`:
+
+| Commit | PR | Touches | Likelihood |
+|---|---|---|---|
+| `b517f75` | #110 | `pipeline.py`, `persistence.py`, `image_triage.py`, `ocr_extraction.py` (+440 / −7) | **Primary suspect** — only commit that modified `pipeline.py` and `persistence.py` |
+| `a9da728` | #114 | `pipeline.py` (+26) — env var wiring for full-page OCR | Secondary |
+| `e20fb04` | #121 | `image_triage.py`, `ocr_extraction.py` — observability counters | Unlikely (counters only) |
+| `7b02584` | #131 | `ocr_extraction.py` — chart dollar budget | Unlikely (chart path only) |
+| `fe4e544` | #132 | `models.py`, `image_triage.py`, `image_features.py` — ML triage gate | Unlikely (gate default OFF) |
+
+### Why #110 is the primary suspect
+
+PR #110 introduced full-page OCR (Path A) and Tier-1 keyword pre-scan (Path B).
+Both are gated on `enable_full_page_ocr` and `enable_image_keyword_prescan`
+`PipelineConfig` flags that default `False`. In theory, text-only extraction
+should be unaffected. In practice, #110 touched:
+
+1. `src/extraction_v2/pipeline.py` — added `PipelineContext.full_page_scan_mode`
+   field plus two `PipelineConfig` flags.
+2. `src/extraction_v2/persistence.py` — extended the `v2_segments` INSERT with
+   `source_type` + `source_img_id` columns (validator doesn't persist; not a
+   factor here).
+3. `src/extraction_v2/stages/image_triage.py` — added full-page-scan detector
+   (`_detect_full_page_scan_filing`) that runs unconditionally, classifying
+   some images as `FULL_PAGE_SCAN` even in flag-off mode.
+4. `src/extraction_v2/stages/ocr_extraction.py` — added `_prescan_ambiguous_images`
+   and `process_full_page_scan` methods. The pre-scan runs at the top of
+   `OCRExtractionStage.process` on images with `classification == UNKNOWN` and
+   `relevance_score ∈ [0.2, 0.3)`.
+
+**Hypothesis:** the full-page-scan detector changed classification decisions
+for some Farfetch images, which in turn altered what text candidates
+`candidate_generation._scan_chart` extracts from image metadata (title / axis /
+annotations). Even without vision calls, the triage stage's classification
+output feeds downstream text scanning.
+
+### Investigation plan (for follow-up session)
+
+1. `git checkout b517f75^` (commit before #110). Run
+   `python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited"`.
+   If Farfetch recall is back to 0.867, #110 is confirmed.
+2. Diff `b517f75` for `image_triage.py` changes that run unconditionally
+   (outside the `enable_full_page_ocr` guard). Look at
+   `_detect_full_page_scan_filing` and whether it sets
+   `classification = FULL_PAGE_SCAN` in flag-off mode.
+3. Identify the 10 missing Farfetch facts — run with `--fn-diagnostics`
+   on both baseline and current main, diff the FN lists.
+4. Proposed fix: make `_detect_full_page_scan_filing` a no-op when
+   `config.enable_full_page_ocr is False`, OR preserve the original
+   classification for images in text-only filings.
+
+### Workaround applied
+
+Baseline refreshed to current (regressed) numbers with this fragment referenced
+in the description. Accepts 10-fact Farfetch loss as a known issue pending
+proper fix. Wave B4 (two-stage routing) and future extraction-touching PRs
+are unblocked.
+
+### Acceptance criteria for resolution
+
+- [ ] Farfetch recall restored to ≥ 0.85 on the 04-19 gold standard
+- [ ] Robinhood recall non-regressed vs. 04-19
+- [ ] Fix PR restores baseline and deletes
+      `data/gold_standard/v2_baseline_pre_regression_2026-04-22.json`
+- [ ] Post-mortem comment in this fragment naming the actual root cause
+
+## #88. No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+### Problem
+
+`scripts/apply_all_migrations.py` has drifted twice (issues #46 and #85) because new SQL migration files land on disk without a corresponding entry in `MIGRATION_ORDER`. The `check_unregistered_migrations` guard only fires at runtime (`--dry-run`), not at commit time, so the drift isn't caught until someone runs the script.
+
+### Next Steps
+
+- Add a pre-commit hook (or `local` hook in `.pre-commit-config.yaml`) that runs `python3 scripts/apply_all_migrations.py --dry-run` (which exits 1 when unregistered files are found) before each commit.
+- Alternatively, write a small standalone check script and register it as a `local` repo hook so it doesn't require a DB connection.
+- Verify the hook runs in CI as well (the pre-commit framework is already in use for ruff and the extraction guard).
 
 ## #4. Spelled-Out Number Parsing Limitations
 
@@ -619,22 +735,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 
 ---
 
-## #68. Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`scripts/run_nightly_sweep.sh` invokes `timeout "$PER_ISSUE_BUDGET" claude -p "$prompt"` to enforce per-issue wall-clock budgets. `timeout` is GNU coreutils; macOS ships BSD utilities and does not include it by default. Local `/sweep` skill invocations on macOS fail at the `timeout` call. Render's container image is Linux so production is fine.
-
-### Next Steps
-
-- Detect `timeout` vs `gtimeout` vs neither at script start; fall back to `gtimeout` on macOS (via `brew install coreutils`) or to a no-timeout code path with a warning log.
-- Alternatively, install `coreutils` as part of the local-dev setup docs for the `/sweep` skill.
-
 ## #69. `Dockerfile.nightly-sweep` Installs `claude` + `gh` Unpinned
 
 **Status**: Open
@@ -652,68 +752,6 @@ Wave C documents the cancel-during-populate flow (cancel flips `status='cancelle
 - Pin `gh` to a specific apt version (`gh=2.X.Y`) or switch to the GitHub Releases tarball.
 - Consider adding a build-time smoke test: `claude --version && gh --version` to fail the build on unexpected drift.
 
-## #70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
-
-> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
-
-This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
-
-The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
-
-### Next Steps
-
-- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
-- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
-
-### Cross-References
-
-- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
-- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
-- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
-- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
-
-## #71. Integration Tests Job Has No Path Filter
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`.github/workflows/ci.yml` runs the `integration-tests` job on every PR regardless of touched paths. UI E2E already has a conservative path filter (`ci.yml:49-69`) that skips the job when every changed path is under `docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, or `.github/CODEOWNERS`. Integration Tests has no equivalent, so docs-only and `.claude/`-only PRs still spin up Postgres 15, apply migrations, and run the full integration suite (~3–6 min). Net ~3–6 min wall-time save per docs-only PR.
-
-### Next Steps
-
-- Mirror the UI E2E filter structure (`ci.yml:49-69`) on the `integration-tests` job. Same allowlist (`docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, `.github/CODEOWNERS`) — err on the side of running when in doubt.
-- Verify by opening a docs-only PR and confirming `Integration Tests` reports `skipped` in Actions.
-- Do NOT remove Integration Tests from required status checks — a skipped job still counts as passing for branch protection, so the gate stays intact.
-
-## #74. `.claude/scheduled_tasks.lock` Not Gitignored
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-`.claude/scheduled_tasks.lock` is created at runtime by the Claude Code scheduled-tasks system but is not covered by any `.gitignore` rule — `git check-ignore -v .claude/scheduled_tasks.lock` returns no match. Every `git status` run in an active session lists it as untracked, which inflates status output and creates a small risk of accidental staging if someone invokes `git add -A` or `git add .` (already an anti-pattern per CLAUDE.md, but worth hardening against).
-
-### Next Steps
-
-- Add `.claude/scheduled_tasks.lock` (or a broader `.claude/*.lock` glob) to the root `.gitignore`.
-- Quick audit of `.claude/` for other runtime-only files (e.g., `.claude/sweep-digests/` is already tracked separately — confirm nothing else needs ignoring).
-
 ## #75. Missing Playwright E2E for Cross-Filing Auto-Advance
 
 **Status**: Open
@@ -730,52 +768,6 @@ The "auto-advance to next filing when queue empties" behavior is tested at the r
 - Add a Playwright spec in `tests/ui/` that seeds two filings with pending facts, sets sort to `company asc` on the list, approves the last pending fact in filing A, and asserts the browser lands on filing B (not the list, not default date-desc order).
 - Repeat the assertion with image-queue completion as the trigger (relevant → non-relevant → skip the last image).
 - Reuse the stub-server pattern in `tests/ui/test_server.py`; extend it with a `/filings-list-stub` route that renders `unified_filing_list.html` with two seeded filings.
-
-## #76. Missing Integration Test for Filings-List Reviewer Aggregate
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-`get_unified_filings_for_review` now UNIONs text + image decision tables and projects a `reviewers` array per filing, plus an optional `reviewer_ids` filter using `ARRAY_AGG(...) && ...`. Unit tests cover the route layer threading this kwarg, but there's no integration test asserting: (a) mixed-reviewer filings return distinct reviewers from both text and image sources; (b) the `&&` overlap filter correctly narrows the list without false positives; (c) filings with only NULL reviewer_ids render as an empty array. Without this test, a future CTE refactor could silently lose reviewers from one source.
-
-### Next Steps
-
-- Add `tests/integration/test_db_filings_reviewers.py` that seeds a filing with text decisions by Alice + image decisions by Bob, calls `get_unified_filings_for_review`, and asserts `row["reviewers"] == ["alice", "bob"]`.
-- Add a second case: call with `reviewer_ids=["alice"]`, assert the filing is returned; call with `reviewer_ids=["zoe"]`, assert it is not.
-- Add a third case: a filing with only NULL reviewer_id decisions (legacy image rows) returns `reviewers == []`.
-
-## #79. Nightly Sweeper Selector Picks Resolved/Archived Issues
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-`scripts/known_issues_selector.py` filters on `autonomy` (safe/review) and
-dedupes against open PRs, but never checks `status`. When a resolved issue
-remains in the classification table with `autonomy: safe` (either because the
-post-merge cleanup didn't remove it, or because the fragment's `status` was
-updated to `resolved` but its `autonomy` was left as `safe`), the selector
-picks it for nightly attempts.
-
-Baseline selector run against the pre-migration monolith picked #60, #68, #71
-— all three already resolved per PRs #105 / #107 / #108. The sweeper would
-attempt to re-fix issues whose fixes are already in `main`.
-
-### Next Steps
-
-- Naturally subsumed by Phase 3 selector rewrite: when it reads frontmatter
-  directly, filter out fragments whose `status` is `resolved` or `archived`.
-- Add a regression test: fragment with `status: resolved` + `autonomy: safe`
-  must NOT appear in selector picks.
-- Optional: also emit a warning when such a fragment is encountered, so the
-  author knows to set `autonomy: n/a` on resolved entries.
 
 ## #82. Full-Page-OCR Pipeline Integration Test Missing
 
@@ -811,6 +803,27 @@ Phase-3 unit tests exercise `ImageTriageStage._detect_full_page_scan_filing`, `O
 2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
 3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
 
+## #84. Fragment Status Drift After PR Merge (Needs Auto-Update Mechanism)
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+Fragment frontmatter's `pr_refs` field lists the PRs expected to resolve each issue, but nothing updates a fragment's `status` from `open` to `resolved` when those PRs merge. Discovered during the 4-phase known-issues migration (PRs #115/#116/#117/#119): #68 and #71 fragments still said `status: open` on `main` two days after their fix-PRs merged (#107, #108), causing the nightly sweeper to re-attempt already-resolved work until someone noticed.
+
+The selector's Phase 3 status filter (issue #79) correctly excludes `status in {resolved, archived}`, but only if something populates those statuses in the first place. Manual bookkeeping is fragile — drift is guaranteed at scale.
+
+### Next Steps
+
+- Option A: A periodic script that scans fragments, pulls `pr_refs` from each frontmatter, queries `gh pr view <ref> --json state` for each, and updates fragments whose referenced PRs are all `MERGED` to `status: resolved` + `autonomy: n/a`. Run it from the nightly sweep cron (pre-selector) or as a GitHub Action on a schedule.
+- Option B: Update the `/commit` skill to accept a `resolves: #N,#M` hint and, on successful merge of the PR, rewrite the referenced fragments via a merge-queue hook. More invasive; ties fragment updates to the `/commit` path.
+- Option C: A pre-commit check that warns (not fails) when a fragment's `pr_refs` all point at merged PRs but `status` is still `open`. Low-cost nudge.
+
+Recommend Option A — simplest, runs outside the happy path, no coupling to `/commit`.
+
 ## #5. Revenue Synonym Context Gating
 
 **Status**: Open
@@ -837,64 +850,6 @@ Some valid per-customer GMV values may not have context keywords nearby, causing
 Review rejection rates for revenue synonyms to determine if context gating is too strict.
 
 ## Partially Resolved Issues
-
-## #77. R2 Chart-Image Bytes Missing for HOOD S-1 (Second Layer of #72)
-
-**Status**: Partially Resolved
-**Severity**: high
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-After PR #87 restored `boto3` to `pyproject.toml`/`uv.lock`, `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` runs the full V2 pipeline on HOOD's S-1 (22 images parsed, 16 text/html_table facts produced) — but **all 17 chart-classified images** then fail in the OCR stage with:
-
-```
-FileNotFoundError: Image file not found: 1783879/000162828021019902/hood-20211008_g<N>.jpg
-```
-
-for `N` in `{2, 3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}`. All 17 images end the run marked `processed=True` but with `ocr_text IS NULL` and `chart_data IS NULL`, so `cm_revenue_by_cohort` and `cm_balance_by_cohort` remain at 0/0/0 P/R/F1 on HOOD. This is the reason Issue #72's Tier 1 regression persists even after #87.
-
-### Root cause confirmed (one concrete writer-without-upload bug; second cause still open)
-
-**Confirmed (2026-04-22, this PR's investigation):**
-
-`OCRExtractionStage._download_missing_images()` at `src/extraction_v2/stages/ocr_extraction.py:199-274` calls `SECClient.fetch_image()` (which writes bytes to the local disk cache rooted at `image_cache_dir()`), assigns `asset.file_path = key` (the cache-relative path), and increments `downloaded` — but **never calls `storage.put_bytes(key, bytes)` to upload those bytes to the active storage backend**. In dev (`LocalFilesystemStorage` rooted at `image_cache_dir()`), this is invisible because the disk write IS the storage write. In prod (`R2Storage`), the bytes never leave the local disk; the DB row's `file_path` then points at an R2 key that was never PUT, and downstream `process_chart_image` / `process_table_image` calls fail with `FileNotFoundError`. Compare with the correct upload pattern at `src/extraction_v2/stages/ingestion.py:956-969`, which DOES call `storage.put_bytes` after assigning the key.
-
-This applies to **every** prod filing that went through `_download_missing_images` since PR #34 — not just HOOD. HOOD is the most visible victim (Tier 1 chart-only metrics).
-
-**Still open:** the original entry's Case A (key-format divergence between `pipeline/<cik>/<accession>/<filename>` per docs vs. `<cik>/<accession>/<filename>` per DB rows) is **separate** from the writer-without-upload bug. My investigation surfaced that `data/image_cache/pipeline/` exists locally as a legacy layout, suggesting the `pipeline/` prefix WAS used by some other code path historically. Whether any prod R2 keys live under the `pipeline/` prefix is unverified — distinguishing requires R2 `HeadObject` against both layouts (deferred to manual prod op; see Next Steps).
-
-### Evidence from Neon (2026-04-22)
-
-| Fact | Observation |
-|---|---|
-| Cohort image `img_id=e5f65961-f33f-44db-9fd0-5f3b61dae987` | `classification='chart', relevance_score=0.66, processed=True` (post-#87 re-run); `ocr_text IS NULL`, `chart_data IS NULL`, `file_path='1783879/000162828021019902/hood-20211008_g6.jpg'` |
-| Cumulative-Net-Deposits image `img_id=44e035d8-2302-40bb-ab40-01c8fec41665` | Same state; `file_path='1783879/000162828021019902/hood-20211008_g5.jpg'`. Also has a human `relevant` decision in `v2_image_review_decisions`. |
-| 15 other chart-classified images on `doc_id=1545` | All `processed=True`, 0 OCR, 0 chart_data, `file_path` without `pipeline/` prefix |
-| Pre-#87 chart fact `$130 cm_revenue_by_cohort` | Orphan — references `img_id=c8da02f5-227c-4830-94d9-c45944d45e7f` which does not exist in `v2_image_assets`. Stranded from a pre-`d94acab` run. Preserved by chart-only mode's reviewer-guard path (did not get deleted in the #87 verification run because 0 new chart facts were produced). |
-
-### Why this matters
-
-- **Blocks Issue #72 closure and Tier-1 baseline refresh.** PR #87 is a *partial* fix — it restores the ability to run the pipeline, but HOOD chart recall cannot recover without image bytes reaching the OCR stage.
-- **Blocks any merge commit against current main.** The pre-commit Tier-1 guard keeps firing on HOOD until `cm_revenue_by_cohort` recovers.
-- **Risk of quietly affecting other pre-R2 filings** beyond HOOD — worth checking whether any non-S-1 filings with chart-sourced gold standard values show the same `FileNotFoundError` pattern when their chart stage runs.
-
-### Status
-
-- **Code fix landed** in this PR (`src/extraction_v2/stages/ocr_extraction.py` adds `storage.put_bytes` mirroring `ingestion.py:956-969`). New unit test `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading::test_uploads_bytes_to_storage` locks in the invariant.
-- **Prod backfill still pending.** From now on, any new prod filing that goes through `_download_missing_images` will upload bytes to R2 correctly. But the historical filings (including HOOD's 17 chart images) are still in the broken state — their bytes need to be re-uploaded via a chart-only re-extract or a targeted backfill script.
-
-### Next Steps (deferred to a separate manual prod operation)
-
-1. **R2 `HeadObject` against both prefix variants** — `1783879/000162828021019902/hood-20211008_g6.jpg` AND `pipeline/1783879/000162828021019902/hood-20211008_g6.jpg`. Distinguishes the writer-without-upload bug (this PR's fix) from any residual Case A key-format divergence. Requires real R2 credentials.
-2. **HOOD chart backfill** — `python3 scripts/batch_v2_extraction.py --filing-ids-file <one-line file with HOOD's filing_id> --chart-only` against prod (Neon `$DATABASE_URL` + R2 creds). With this PR's fix, `_download_missing_images` will re-fetch from EDGAR and upload to R2 in the same run. Pre-flight: confirm `chart_decision_count` for HOOD chart facts is zero (otherwise add `--force-reextract` only after explicit confirmation, since it purges reviewer decisions).
-3. **Repo-wide audit** — `scripts/check_image_referential_integrity.py` against prod (Neon) DB, looking for class-C violations beyond HOOD. Every filing routed through `_download_missing_images` since PR #34 likely has the same orphan-key state. Decide between bulk chart-only re-extract vs. a targeted backfill script that walks `v2_image_assets` rows + uploads from local cache where present.
-4. **Refresh the v2 gold-standard baseline** once HOOD `cm_revenue_by_cohort` + `cm_balance_by_cohort` recover chart facts. **Only then** do the regression deltas return to the pre-scrub 0.3143 recall target.
-5. **Investigate Case A (`pipeline/` prefix)** — `data/image_cache/pipeline/` exists locally as a legacy layout, but no live writer code constructs `pipeline/`-prefixed keys. Either dead-code cleanup or a third-party prod path; needs a `git log -S "pipeline/"` archaeology pass. Reconcile `infrastructure.md` and `src/infra/image_storage.py:8` docstrings with whichever convention is canonical (probably remove the `pipeline/` prefix from docs since live code never uses it).
-6. **Hygiene follow-up**: add a CI smoke that runs the chart stage on at least one fixture filing end-to-end under `uv run` against a mock R2 (`moto[s3]` is already in `requirements-dev.txt`). Would have caught both the boto3-missing case AND this writer-without-upload regression at PR-time.
-
-Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracking), #42 (resolved — `_download_missing_images` double-write collapse). PR #87 fix commit `8713f51`.
 
 ## #35. Pre-2026-04-17 Filings Missing Chart-Sourced Facts
 
@@ -1421,6 +1376,123 @@ Removed the uppercase `.github/PULL_REQUEST_TEMPLATE.md` via `git -c core.ignore
 
 ## Resolved Issues
 
+## #72. Robinhood Tier 1 Gold-Standard Regression vs. 2026-04-19 Baseline
+
+**Status**: Resolved
+**Severity**: high
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+**PR refs**: #87, #102
+
+**Resolved**: 2026-04-22 — chart pipeline produces facts end-to-end on HOOD's S-1. Validator against Neon (post-backfill): HOOD **recall=0.486, F1=0.586** (vs baseline 0.3143 / 0.4231 — +15pp recall above baseline). Tier-1: **P=92.3%, R=54.5%, F1=68.6%**. `cm_balance_by_cohort` at 100/100/100. `cm_revenue_by_cohort` at 50/10/16.7 — residual gap tracked as Issue #86 (dedup stage collapses chart-sourced cohort facts at the fact-construction boundary); orthogonal to the original infra regression. Path to close: PR #87 restored `boto3` in `pyproject.toml`/`uv.lock` (unblocked ingestion); PR #102 wired `storage.put_bytes` into `_download_missing_images` (unblocked R2 chart-image reads); chart-only re-extract + R2 upload executed against prod Neon on 2026-04-22 — 12 new chart facts persisted, 17 chart images processed cleanly. Chart-only mode preserved 16 text-review + 20 image-review decisions on HOOD.
+
+### Problem
+
+Baseline at pre-scrub `cdc831f` (2026-04-19) recorded Robinhood `recall=0.3143, f1=0.4231`. Current main state: `recall=0.171, f1=0.255` (-14pp on HOOD, -0.009 overall). Per-metric diagnostics:
+
+| Metric | Tier | Current P/R/F1 | Notes |
+|---|---|---|---|
+| `cm_balance_by_cohort` | T1 | 0% / 0% / 0% | Same chart-pipeline failure mode as `cm_revenue_by_cohort` (both chart-only metrics on the same filing). Issue #64 — chart classifier boundary sensitivity — is a separate, narrower concern already resolved |
+| `cm_customer_acquisition_cost` | T1 | 100% / 50% / 66.7% | 1 FN — dedup collision (`20.0` collapsed into sibling with different value) |
+| `cm_revenue_by_cohort` | T1 | 0% / 0% / 0% | 10 FNs — chart pipeline never ran on source image (see below) |
+
+### Diagnosis (2026-04-22, against Neon `filing_id=1545`)
+
+HOOD S-1 has 21 images, 17 classified as charts, **0 with `ocr_text`, 0 with `chart_data`** before this PR. The "Annual Revenue by Annual Cohort ($mm)" image — the single source of all 10 gold per-cohort values ($17/$62/$44/$56/$87/$45/$130/$186/$175/$326) — is `img_id=e5f65961-f33f-44db-9fd0-5f3b61dae987`, classified `chart`, `processed=False`, no linked facts. The lone `$130` chart fact in the DB references `img_id=c8da02f5-227c-4830-94d9-c45944d45e7f` which no longer exists in `v2_image_assets` — an orphan from a pre-`d94acab` img_id stabilisation run. The `$102,034.8` text fact flagged as an FP is an unrelated period-`2026-Q1` mis-bind.
+
+### Root cause: PR #34 dropped `boto3` from the uv-managed manifest
+
+`src/infra/image_storage.py` routes chart/image storage to R2 (prod) or local filesystem (dev) based on whether `R2_BUCKET` is set. The R2 backend calls `import boto3` lazily inside `R2Storage.__init__`. PR #34 (`9aeb454 feat(image-cache): migrate to Cloudflare R2 via ImageStorage abstraction`) added `boto3>=1.34.0` to `requirements.txt` but **not to `pyproject.toml`/`uv.lock`**. Any extraction launched via `uv run …` in an R2-configured environment therefore crashes at the ingestion stage with `ModuleNotFoundError: No module named 'boto3'` before any chart processing runs.
+
+### What the earlier framing got wrong
+
+- **Not a scale bug.** There is no `$33,421.5` anywhere in HOOD's facts. Extraction wasn't binding a quarterly total — it wasn't binding the cohort chart at all.
+- **Not caused by #52.** `24bfd6b` (re-hashed post-scrub to `5c44a4b`) is a 3-file persistence refactor with commit body "No behavioral change; 3630 tests pass." Zero value-binding or chart-stage code is touched.
+- **"Only extraction-touching commit in the window" was wrong.** The real extraction-touching commits in the window include `d94acab` (#21, img_id stabilisation), `9aeb454`/`cf0c756` (#34, R2 migration), `1d7c204` + `8cd3b4d` (#50, chart_only persistence).
+
+### Why this landed on main
+
+CI installs from `requirements.txt`, which has `boto3` pinned — so CI never reproduced the missing-dep crash. The `uv`-managed path that developers and the nightly sweeper use diverges silently. The dual-manifest layout (pip + pyproject) can drift any time only one is updated.
+
+### Fix in this PR
+
+- Add `boto3>=1.34.0` to `pyproject.toml` dependencies; regenerate `uv.lock`.
+- Proved locally against Neon: `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` now runs the full pipeline (2215 segments, 137 tables, 22 images parsed; 16 text/html_table facts produced). Previously died at stage 1.
+- **No data loss.** Chart-only mode safely skipped the fact-DELETE when 0 new chart facts were produced; 9 text-review + 3 image-review decisions on HOOD S-1 remain intact.
+
+### Second layer still open (new follow-up needed)
+
+After the boto3 fix, all 17 HOOD chart images now run through OCR but fail with `FileNotFoundError: Image file not found: 1783879/000162828021019902/hood-20211008_g*.jpg`. The R2 bucket does not have bytes at those keys. Two possible explanations: (a) the canonical storage-key format changed (infrastructure.md's example uses a `pipeline/` prefix that's absent from the DB's `file_path` values), or (b) the bytes were never uploaded for the HOOD S-1 filing after the R2 migration.
+
+### Next Steps
+
+1. Merge this PR to unblock `uv run` extraction for everyone.
+2. Resolve the R2 image-bytes layer — tracked as Issue #77.
+3. **Do NOT refresh the baseline until the R2 layer is resolved** — refreshing over zero chart recall locks in the bug.
+4. Consider adding a CI job that exercises `uv sync` + a smoke extraction so pip/pyproject manifest drift gets caught pre-merge.
+5. Blocks: PR merge commits against current main will keep failing the pre-commit Tier-1 guard until HOOD chart recall recovers (both this fix AND the R2 fix are required).
+
+## #77. R2 Chart-Image Bytes Missing for HOOD S-1 (Second Layer of #72)
+
+**Status**: Resolved
+**Severity**: high
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+**PR refs**: #102
+
+**Resolved**: 2026-04-22 — PR #102 wired `storage.put_bytes` into `OCRExtractionStage._download_missing_images` (the existing call mirrors the correct pattern at `ingestion.py:956-969`). Manual HOOD prod backfill on 2026-04-22 via `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract`: no `FileNotFoundError`, 17 chart images processed, 2 cohort charts populated `chart_data` (`e5f65961` Annual Revenue by Annual Cohort, `44e035d8` Cumulative Net Deposits by Annual Cohort), 12 chart facts persisted. Case A confirmed — no `pipeline/` prefix divergence; unprefixed keys are the live convention. Unblocks Issue #72 (closed same day).
+
+### Problem
+
+After PR #87 restored `boto3` to `pyproject.toml`/`uv.lock`, `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` runs the full V2 pipeline on HOOD's S-1 (22 images parsed, 16 text/html_table facts produced) — but **all 17 chart-classified images** then fail in the OCR stage with:
+
+```
+FileNotFoundError: Image file not found: 1783879/000162828021019902/hood-20211008_g<N>.jpg
+```
+
+for `N` in `{2, 3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}`. All 17 images end the run marked `processed=True` but with `ocr_text IS NULL` and `chart_data IS NULL`, so `cm_revenue_by_cohort` and `cm_balance_by_cohort` remain at 0/0/0 P/R/F1 on HOOD. This is the reason Issue #72's Tier 1 regression persists even after #87.
+
+### Root cause confirmed (one concrete writer-without-upload bug; second cause still open)
+
+**Confirmed (2026-04-22, this PR's investigation):**
+
+`OCRExtractionStage._download_missing_images()` at `src/extraction_v2/stages/ocr_extraction.py:199-274` calls `SECClient.fetch_image()` (which writes bytes to the local disk cache rooted at `image_cache_dir()`), assigns `asset.file_path = key` (the cache-relative path), and increments `downloaded` — but **never calls `storage.put_bytes(key, bytes)` to upload those bytes to the active storage backend**. In dev (`LocalFilesystemStorage` rooted at `image_cache_dir()`), this is invisible because the disk write IS the storage write. In prod (`R2Storage`), the bytes never leave the local disk; the DB row's `file_path` then points at an R2 key that was never PUT, and downstream `process_chart_image` / `process_table_image` calls fail with `FileNotFoundError`. Compare with the correct upload pattern at `src/extraction_v2/stages/ingestion.py:956-969`, which DOES call `storage.put_bytes` after assigning the key.
+
+This applies to **every** prod filing that went through `_download_missing_images` since PR #34 — not just HOOD. HOOD is the most visible victim (Tier 1 chart-only metrics).
+
+**Still open:** the original entry's Case A (key-format divergence between `pipeline/<cik>/<accession>/<filename>` per docs vs. `<cik>/<accession>/<filename>` per DB rows) is **separate** from the writer-without-upload bug. My investigation surfaced that `data/image_cache/pipeline/` exists locally as a legacy layout, suggesting the `pipeline/` prefix WAS used by some other code path historically. Whether any prod R2 keys live under the `pipeline/` prefix is unverified — distinguishing requires R2 `HeadObject` against both layouts (deferred to manual prod op; see Next Steps).
+
+### Evidence from Neon (2026-04-22)
+
+| Fact | Observation |
+|---|---|
+| Cohort image `img_id=e5f65961-f33f-44db-9fd0-5f3b61dae987` | `classification='chart', relevance_score=0.66, processed=True` (post-#87 re-run); `ocr_text IS NULL`, `chart_data IS NULL`, `file_path='1783879/000162828021019902/hood-20211008_g6.jpg'` |
+| Cumulative-Net-Deposits image `img_id=44e035d8-2302-40bb-ab40-01c8fec41665` | Same state; `file_path='1783879/000162828021019902/hood-20211008_g5.jpg'`. Also has a human `relevant` decision in `v2_image_review_decisions`. |
+| 15 other chart-classified images on `doc_id=1545` | All `processed=True`, 0 OCR, 0 chart_data, `file_path` without `pipeline/` prefix |
+| Pre-#87 chart fact `$130 cm_revenue_by_cohort` | Orphan — references `img_id=c8da02f5-227c-4830-94d9-c45944d45e7f` which does not exist in `v2_image_assets`. Stranded from a pre-`d94acab` run. Preserved by chart-only mode's reviewer-guard path (did not get deleted in the #87 verification run because 0 new chart facts were produced). |
+
+### Why this matters
+
+- **Blocks Issue #72 closure and Tier-1 baseline refresh.** PR #87 is a *partial* fix — it restores the ability to run the pipeline, but HOOD chart recall cannot recover without image bytes reaching the OCR stage.
+- **Blocks any merge commit against current main.** The pre-commit Tier-1 guard keeps firing on HOOD until `cm_revenue_by_cohort` recovers.
+- **Risk of quietly affecting other pre-R2 filings** beyond HOOD — worth checking whether any non-S-1 filings with chart-sourced gold standard values show the same `FileNotFoundError` pattern when their chart stage runs.
+
+### Status
+
+- **Code fix landed** in this PR (`src/extraction_v2/stages/ocr_extraction.py` adds `storage.put_bytes` mirroring `ingestion.py:956-969`). New unit test `tests/unit/extraction_v2/test_image_pipeline_integration.py::TestImageDownloading::test_uploads_bytes_to_storage` locks in the invariant.
+- **Prod backfill still pending.** From now on, any new prod filing that goes through `_download_missing_images` will upload bytes to R2 correctly. But the historical filings (including HOOD's 17 chart images) are still in the broken state — their bytes need to be re-uploaded via a chart-only re-extract or a targeted backfill script.
+
+### Next Steps (deferred to a separate manual prod operation)
+
+1. **R2 `HeadObject` against both prefix variants** — `1783879/000162828021019902/hood-20211008_g6.jpg` AND `pipeline/1783879/000162828021019902/hood-20211008_g6.jpg`. Distinguishes the writer-without-upload bug (this PR's fix) from any residual Case A key-format divergence. Requires real R2 credentials.
+2. **HOOD chart backfill** — `python3 scripts/batch_v2_extraction.py --filing-ids-file <one-line file with HOOD's filing_id> --chart-only` against prod (Neon `$DATABASE_URL` + R2 creds). With this PR's fix, `_download_missing_images` will re-fetch from EDGAR and upload to R2 in the same run. Pre-flight: confirm `chart_decision_count` for HOOD chart facts is zero (otherwise add `--force-reextract` only after explicit confirmation, since it purges reviewer decisions).
+3. **Repo-wide audit** — `scripts/check_image_referential_integrity.py` against prod (Neon) DB, looking for class-C violations beyond HOOD. Every filing routed through `_download_missing_images` since PR #34 likely has the same orphan-key state. Decide between bulk chart-only re-extract vs. a targeted backfill script that walks `v2_image_assets` rows + uploads from local cache where present.
+4. **Refresh the v2 gold-standard baseline** once HOOD `cm_revenue_by_cohort` + `cm_balance_by_cohort` recover chart facts. **Only then** do the regression deltas return to the pre-scrub 0.3143 recall target.
+5. **Investigate Case A (`pipeline/` prefix)** — `data/image_cache/pipeline/` exists locally as a legacy layout, but no live writer code constructs `pipeline/`-prefixed keys. Either dead-code cleanup or a third-party prod path; needs a `git log -S "pipeline/"` archaeology pass. Reconcile `infrastructure.md` and `src/infra/image_storage.py:8` docstrings with whichever convention is canonical (probably remove the `pipeline/` prefix from docs since live code never uses it).
+6. **Hygiene follow-up**: add a CI smoke that runs the chart stage on at least one fixture filing end-to-end under `uv run` against a mock R2 (`moto[s3]` is already in `requirements-dev.txt`). Would have caught both the boto3-missing case AND this writer-without-upload regression at PR-time.
+
+Cross-references: #34 (R2 migration, Phases 1+3), #72 (overall regression tracking), #42 (resolved — `_download_missing_images` double-write collapse). PR #87 fix commit `8713f51`.
+
 ## #34. `v2_image_assets.file_path` Rooted in TMPDIR (Purged by OS)
 
 **Status**: Resolved
@@ -1506,6 +1578,25 @@ Root cause: integration fixtures share Postgres state (fixed CIKs, fixed filing 
 3. **`--dist loadgroup` with shared-state markers.** Tag tests that share seed data with a `@pytest.mark.xdist_group("filings_seed")` and let xdist keep them on one worker. Cheapest change but leaves perf on the table.
 4. **Verification after fix:** run `pytest tests/integration/ -n auto -x -q` locally twice in a row against `$TEST_DATABASE_URL` with zero failures, then land the `-n auto` flag in `.github/workflows/ci.yml:184–187`.
 
+## #85. `scripts/apply_all_migrations.py` MIGRATION_ORDER missing migration 40
+
+**Status**: Resolved
+**Severity**: medium
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+`scripts/apply_all_migrations.py` `MIGRATION_ORDER` ends at `39_v2_ingest_batches.sql`, but `sql/40_full_page_scan_and_ocr_provenance.sql` has existed on disk since before 2026-04-22. On a fresh-DB setup, running the script will skip migration 40 entirely. The `check_unregistered_migrations` guard flags this at `--dry-run` time but the list itself is stale.
+
+This is a recurrence of Issue #46 (resolved 2026-04-20 by extending the list through `38_create_analytics_views.sql`) — the drift pattern resurfaced as soon as new migrations landed. A related fragment (#85) covers migration 41 of the same commit, which was registered correctly in this PR; #40 was left alone to keep scope narrow.
+
+### Next Steps
+
+- Append `"40_full_page_scan_and_ocr_provenance.sql"` to `MIGRATION_ORDER` in `scripts/apply_all_migrations.py`.
+- Confirm the migration itself is idempotent (it uses `ALTER TABLE ... DROP CONSTRAINT IF EXISTS` / `ADD COLUMN IF NOT EXISTS`, so re-running on a DB where it was already applied manually should be safe, but verify before registering).
+- Consider a pre-commit hook that fails if any `sql/NN_*.sql` file is on disk without a matching entry in `MIGRATION_ORDER` or `EXCLUDED_FILES`. That would close the drift class, not just this one recurrence.
+
 ## #28. Mock-Server / Template-Contract Coupling
 
 **Status**: Resolved
@@ -1526,6 +1617,132 @@ Related surface: the mock also ships stubs for `POST /api/v2/decisions`, `DELETE
 The contract test exposed latent drift already on main — `filing.ticker`, `source_locator.img_id`, fact `confirming_source_types`, fact `_chart_image_status`, image-candidate `image_src_url` were all referenced by production templates but missing from mock context. These were added to the mock dicts in the same commit so the test lands green.
 
 Remaining narrow gaps (POST stub shape drift; non-rendering template files) are out of the contract test's scope — revisit if they become a real source of failure.
+
+## #68. Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+**PR refs**: #107
+
+### Problem
+
+`scripts/run_nightly_sweep.sh` invokes `timeout "$PER_ISSUE_BUDGET" claude -p "$prompt"` to enforce per-issue wall-clock budgets. `timeout` is GNU coreutils; macOS ships BSD utilities and does not include it by default. Local `/sweep` skill invocations on macOS fail at the `timeout` call. Render's container image is Linux so production is fine.
+
+### Next Steps
+
+- Detect `timeout` vs `gtimeout` vs neither at script start; fall back to `gtimeout` on macOS (via `brew install coreutils`) or to a no-timeout code path with a warning log.
+- Alternatively, install `coreutils` as part of the local-dev setup docs for the `/sweep` skill.
+
+## #70. CONTRIBUTING.md `/commit` Step 1 Wording Is Stale Post-Worktree-Hook
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+
+### Problem
+
+`docs/development/CONTRIBUTING.md` § "Committing via `/commit`" step 1 currently reads:
+
+> "If on `main`, auto-creates `claude/<type>-<slug>` and switches to it. Otherwise stays on the current branch."
+
+This implies `/commit` can be invoked from the primary worktree while on `main`. In practice, `~/.claude/hooks/guard-destructive-git.sh` (the PreToolUse hook) now denies `git checkout -b` in the primary tree, so running `/commit` from there will fail with a hook block. The step 1 description does not reflect the worktree-required model that is actually enforced.
+
+The functional behavior is correct — the hook fires and blocks the operation as intended. Only the documentation lags behind.
+
+### Next Steps
+
+- Rewrite step 1 to state that `/commit` must be invoked from a `ccw` worktree (or via an `Agent` call with `isolation: "worktree"`), and that invoking it from the primary tree will be refused by the PreToolUse hook.
+- Cross-link `docs/development/claude-sessions-and-worktrees.md` § Orchestration pattern for the recommended workflow.
+
+### Cross-References
+
+- `docs/development/CONTRIBUTING.md` — § "Committing via `/commit`", step 1
+- `docs/development/claude-sessions-and-worktrees.md` — § Orchestration pattern
+- `~/.claude/hooks/guard-destructive-git.sh` — the hook that blocks `git checkout -b` in the primary tree
+- PR #71 — added `/supervise-prs` and orchestration guidance to the worktree guide
+
+## #71. Integration Tests Job Has No Path Filter
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+**PR refs**: #108
+
+### Problem
+
+`.github/workflows/ci.yml` runs the `integration-tests` job on every PR regardless of touched paths. UI E2E already has a conservative path filter (`ci.yml:49-69`) that skips the job when every changed path is under `docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, or `.github/CODEOWNERS`. Integration Tests has no equivalent, so docs-only and `.claude/`-only PRs still spin up Postgres 15, apply migrations, and run the full integration suite (~3–6 min). Net ~3–6 min wall-time save per docs-only PR.
+
+### Next Steps
+
+- Mirror the UI E2E filter structure (`ci.yml:49-69`) on the `integration-tests` job. Same allowlist (`docs/`, `.claude/`, `CLAUDE.md`, `README.md`, `.gitignore`, `.github/CODEOWNERS`) — err on the side of running when in doubt.
+- Verify by opening a docs-only PR and confirming `Integration Tests` reports `skipped` in Actions.
+- Do NOT remove Integration Tests from required status checks — a skipped job still counts as passing for branch protection, so the gate stays intact.
+
+## #74. `.claude/scheduled_tasks.lock` Not Gitignored
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-22
+
+### Problem
+
+`.claude/scheduled_tasks.lock` is created at runtime by the Claude Code scheduled-tasks system but is not covered by any `.gitignore` rule — `git check-ignore -v .claude/scheduled_tasks.lock` returns no match. Every `git status` run in an active session lists it as untracked, which inflates status output and creates a small risk of accidental staging if someone invokes `git add -A` or `git add .` (already an anti-pattern per CLAUDE.md, but worth hardening against).
+
+### Next Steps
+
+- Add `.claude/scheduled_tasks.lock` (or a broader `.claude/*.lock` glob) to the root `.gitignore`.
+- Quick audit of `.claude/` for other runtime-only files (e.g., `.claude/sweep-digests/` is already tracked separately — confirm nothing else needs ignoring).
+
+## #76. Missing Integration Test for Filings-List Reviewer Aggregate
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-22
+
+### Problem
+
+`get_unified_filings_for_review` now UNIONs text + image decision tables and projects a `reviewers` array per filing, plus an optional `reviewer_ids` filter using `ARRAY_AGG(...) && ...`. Unit tests cover the route layer threading this kwarg, but there's no integration test asserting: (a) mixed-reviewer filings return distinct reviewers from both text and image sources; (b) the `&&` overlap filter correctly narrows the list without false positives; (c) filings with only NULL reviewer_ids render as an empty array. Without this test, a future CTE refactor could silently lose reviewers from one source.
+
+### Next Steps
+
+- Add `tests/integration/test_db_filings_reviewers.py` that seeds a filing with text decisions by Alice + image decisions by Bob, calls `get_unified_filings_for_review`, and asserts `row["reviewers"] == ["alice", "bob"]`.
+- Add a second case: call with `reviewer_ids=["alice"]`, assert the filing is returned; call with `reviewer_ids=["zoe"]`, assert it is not.
+- Add a third case: a filing with only NULL reviewer_id decisions (legacy image rows) returns `reviewers == []`.
+
+## #79. Nightly Sweeper Selector Picks Resolved/Archived Issues
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-23
+
+### Problem
+
+`scripts/known_issues_selector.py` filters on `autonomy` (safe/review) and
+dedupes against open PRs, but never checks `status`. When a resolved issue
+remains in the classification table with `autonomy: safe` (either because the
+post-merge cleanup didn't remove it, or because the fragment's `status` was
+updated to `resolved` but its `autonomy` was left as `safe`), the selector
+picks it for nightly attempts.
+
+Baseline selector run against the pre-migration monolith picked #60, #68, #71
+— all three already resolved per PRs #105 / #107 / #108. The sweeper would
+attempt to re-fix issues whose fixes are already in `main`.
+
+### Next Steps
+
+- Naturally subsumed by Phase 3 selector rewrite: when it reads frontmatter
+  directly, filter out fragments whose `status` is `resolved` or `archived`.
+- Add a regression test: fragment with `status: resolved` + `autonomy: safe`
+  must NOT appear in selector picks.
+- Optional: also emit a warning when such a fragment is encountered, so the
+  author knows to set `autonomy: n/a` on resolved entries.
 
 
 ## Change Log
@@ -1610,3 +1827,6 @@ Remaining narrow gaps (POST stub shape drift; non-rendering template files) are 
 - **2026-04-22**: Issue #72 diagnosis corrected. Direct Neon investigation showed: (a) the `$33,421.5` scale-bug framing was wrong — no such value exists in HOOD's facts; (b) #52 is a persistence-only refactor with no extraction code touched, ruled out as root cause; (c) HOOD S-1 has 17 chart-classified images with 0 `ocr_text` / 0 `chart_data`, cohort image `e5f65961` unprocessed; (d) the single `$130` chart fact is an orphan pointing at a vanished img_id. Real cause: PR #34 (R2 image-cache migration) added `boto3>=1.34.0` to `requirements.txt` but not to `pyproject.toml`/`uv.lock`, so `uv run` extraction crashed at stage 1 with `ModuleNotFoundError`. Fix bundled with this entry: `boto3` added to `pyproject.toml`; `uv.lock` regenerated. Verified locally: `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` now runs full pipeline (22 images parsed, 16 text/html_table facts produced; previously died on import). Chart-only mode safely preserved all 12 reviewer decisions. A second-layer issue surfaced during verification — 17/17 chart images now hit `FileNotFoundError` in R2 at keys like `1783879/000162828021019902/hood-20211008_g6.jpg` — will be tracked as a separate follow-up. Baseline refresh gated on the R2 fix landing too.
 - **2026-04-22**: Added Issue #77 — R2 chart-image bytes missing / mis-keyed on HOOD S-1 (second layer of #72). Post-PR-#87 run confirmed all 17 chart images fail in OCR with `FileNotFoundError` at keys like `1783879/000162828021019902/hood-20211008_g<N>.jpg` (N in 2,3,5-20). Two candidate causes not yet distinguished: (a) bytes never uploaded to R2 for this pre-migration filing, or (b) `pipeline/` prefix divergence between `infrastructure.md` (canonical keys are `pipeline/<cik>/<accession>/<filename>`) and the `v2_image_assets.file_path` values stored without that prefix. Remediation path depends on which: a one-shot R2 `HeadObject` check against both key variants will distinguish, then either migrate `file_path` values / fix the lookup path (Case A) or re-ingest HOOD S-1 from source HTML (Case B). Also worth a scope check across other pre-migration filings with chart-sourced gold values. Blocks HOOD chart recall recovery + v2 baseline refresh. §72's "open a separate issue" Next Step is now tracked here.
 - **2026-04-22**: Issue #9 resolved (local) — replay of the lost PR #72 (closed during #65 history scrub). `sql/seed_snap_s1a.sql` (unnumbered, follows `register_gold_standard_filings.sql` precedent) relabels CIK `0001644378` row to `RMR Group Inc.` and seeds Snap Inc. (CIK `0001564408`) + its real S-1/A (accession `0001193125-17-056992`, primary doc `d270216ds1a.htm`). `FilingFetcher.fetch_filing` pulled 2.3 MB into `data/filings/0001564408/000119312517056992/primary.htm`; `batch_v2_extraction.py --filing-id 22267` persisted 8 facts / 1724 segments / 547 tables / 40 images (DAU 153M/158M, revenue-per-user $2.15 — matches Snap's public disclosures). `scripts/gi3_richness_analysis.py` FILING_MAP entry for id 32 corrected to `"RMR Group Inc."`. Partially-Resolved summary row removed; body moved to Archive §9. Scope: local (`$TEST_DATABASE_URL`) only — Neon prod mirror and gold-standard coverage addition remain separate workstreams. Merged fine this time because the commit only touches `sql/`, `scripts/`, `docs/` — none of the paths that trigger the `pre-commit-extraction-guard.sh` gold-standard check, so the Issue #72 / #77 chart-pipeline stall is orthogonal to this merge.
+- **2026-04-22**: Issues #72 and #77 resolved end-to-end. Manual HOOD prod backfill (`uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract` against Neon + R2) executed after PRs #87 (boto3 in `pyproject.toml`) and #102 (`storage.put_bytes` in `_download_missing_images`). 17 chart images processed cleanly (no `FileNotFoundError`), 2 cohort charts populated `chart_data`, 12 chart facts persisted (11 `cm_balance_by_cohort` matching 7/7 gold values + extras, 1 `cm_revenue_by_cohort`). Chart-only mode preserved 16 text-review + 20 image-review decisions. Validator: HOOD **recall=0.486, F1=0.586** (baseline 0.3143 / 0.4231 — +15pp recall above baseline); Tier 1 P=92.3%, R=54.5%, F1=68.6%. `cm_balance_by_cohort` at 100/100/100. `cm_revenue_by_cohort` still at 50/10/16.7 — residual dedup bug, tracked as new Issue #86. #77 root cause confirmed as Case A (bytes never uploaded); no `pipeline/` prefix divergence.
+- **2026-04-23**: PR #134 unblock — (a) CI Integration Tests failure: added `analyze_image_targeted` delegate to `MockVisionClient` in `tests/integration/test_chart_e2e.py` (B4 introduced the targeted vision-routing method on `VisionClient` / `analyze_image`; the mock was the only call-site missing the wrapper). (b) Fragment-id collision after merging origin/main: renumbered text-recall-regression fragment #85 → #87 (origin/main took #85 for `apply_all_migrations` via PR #130, #86 for dedup-collision via PR #135); filename + frontmatter updated, rollup regenerated.
+- **2026-04-22**: Added Issue #86 — Dedup stage collapses same-metric different-value cohort facts. Surfaced post-#72 resolution as the residual HOOD `cm_revenue_by_cohort` 9/10 FN pattern. Validator diagnostic output: *"Value-matching fact (17.0 / 62.0 / 45.0 / 130.0 / 186.0 / 56.0 / 175.0 / 326.0) existed pre-dedup but was collapsed into a sibling with different value"* — same pattern 9x. Also produces HOOD's pre-existing `cm_customer_acquisition_cost` value-20 FN. Likely root cause: `post-transfer collision collapse` step in `src/extraction_v2/stages/deduplication.py` uses an identity key that excludes `value` + `cohort_def` for chart-sourced cohort metrics, so all N bars of a cohort chart collapse into one. Not a Tier 1 blocker on its own (HOOD T1 recall is already above the pre-scrub baseline), but is the single biggest remaining per-metric recall gain available.

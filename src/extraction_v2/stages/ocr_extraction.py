@@ -18,6 +18,7 @@ Key responsibilities:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -99,7 +100,6 @@ class OCRExtractionStage:
 
     # Cost control limits (per document)
     MAX_OCR_CALLS_PER_DOCUMENT: int = 20
-    MAX_CHART_CALLS_PER_DOCUMENT: int = 10
     # Full-page-scan (Path A) cap. Longest known PayPal deck is ~16 pages;
     # 30 gives headroom. Exceeding this halts processing with a warning.
     MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT: int = 30
@@ -107,6 +107,16 @@ class OCRExtractionStage:
     # images only; 10/filing bounds worst-case cost at ~$1 (10 pre-scans +
     # up to 10 follow-on chart/table calls, shared chart budget).
     MAX_PRESCAN_CALLS_PER_DOCUMENT: int = 10
+
+    # A3: chart cost control. Per-filing cumulative-spend ceiling in USD
+    # replaces the prior MAX_CHART_CALLS_PER_DOCUMENT=10 count cap. Charts
+    # are processed in descending relevance_score order; when running-total
+    # vision spend hits CHART_BUDGET_PER_FILING_USD, remaining charts are
+    # skipped EXCEPT when they carry Tier-1 keywords in nearby_text (these
+    # process regardless of budget — CMASB's priority metrics).
+    # Dollar-based (not count-based) so the ceiling adapts when cheaper
+    # providers land in Wave B4.
+    DEFAULT_CHART_BUDGET_PER_FILING_USD: float = 0.25
 
     # Tier-1 keyword regex used by Path B to decide whether an OCR'd
     # ambiguous image should escalate to the chart/table extraction path.
@@ -155,6 +165,10 @@ class OCRExtractionStage:
         self._chart_call_count = 0
         self._full_page_ocr_call_count = 0
         self._prescan_call_count = 0
+        # A2 observability counters — reset per-document in process().
+        self._parse_failed_count = 0
+        # A3: per-filing cumulative chart vision spend (USD).
+        self._chart_vision_spend: float = 0.0
 
     @property
     def vision_client(self) -> Any:
@@ -394,11 +408,15 @@ class OCRExtractionStage:
         except FileNotFoundError:
             raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
-        # Call Vision API with table extraction prompt
+        # Call Vision API with table extraction prompt.
+        # Wave B4: in two_stage mode this routes to the fast provider;
+        # in legacy mode it falls through to self.analyze_image (identical
+        # behavior).
         try:
-            response = self.vision_client.analyze_image(
+            response = self.vision_client.analyze_image_targeted(
                 image_bytes=image_bytes,
                 prompt=self._get_table_extraction_prompt(),
+                task_type="table_ocr",
                 detail="high",  # High detail for accurate OCR
                 max_tokens=2000,
                 response_format={"type": "json_object"},
@@ -409,6 +427,7 @@ class OCRExtractionStage:
             if ocr_data is None:
                 logger.error(f"Failed to parse OCR response as JSON for {asset.img_id}")
                 logger.debug(f"Response content: {response.content[:500]}")
+                self._parse_failed_count += 1
                 asset.ocr_text = response.content
                 asset.processed = True
                 asset.confidence = 0.0
@@ -493,12 +512,40 @@ Example JSON:
 }
 """
 
-    def _get_chart_extraction_prompt(self, nearby_text: str = "") -> str:
+    def _get_chart_ocr_prompt(self) -> str:
+        """Fast OCR prompt used by Wave B4 two-stage routing.
+
+        Purpose: extract every visible text element from a chart — axis
+        labels, tick labels, legend entries, annotation strings, title —
+        as a grounding blob for the premium chart reader. Does NOT
+        interpret data or extract numeric values as "data points" — that
+        is the premium reader's job under the project's "labeled values
+        only, no interpolation" rule.
+
+        Returns a JSON object so the response can be parsed deterministically.
+        """
+        return """Read every visible text element on this chart.
+Include: chart title, axis labels, axis tick labels, legend entries,
+annotation / callout text, and any labels printed directly on bars / lines / slices.
+
+Do NOT interpret the chart. Do NOT extract numeric values as "data". Just read
+the text exactly as it appears.
+
+Return a JSON object with:
+- text: All visible text joined with newlines (string)
+- labels: Array of individual label strings (array of strings)
+"""
+
+    def _get_chart_extraction_prompt(self, nearby_text: str = "", ocr_text: str = "") -> str:
         """
         Get the prompt for chart extraction via Vision API.
 
         Args:
             nearby_text: Surrounding HTML paragraph text for context
+            ocr_text: Optional text extracted from a prior fast-OCR pass
+                (Wave B4 two-stage routing). Used as grounding for axis
+                labels, legend entries, and annotation strings — never
+                as a source of extracted numeric values.
 
         Returns:
             Prompt string for Vision API
@@ -565,6 +612,22 @@ SURROUNDING CONTEXT (from the HTML near this chart):
 
 Use this context to understand what the chart represents. It may contain metric names,
 time periods, or definitions that help interpret the chart's data.
+"""
+
+        # Wave B4: append text extracted from a prior fast-OCR pass as grounding.
+        # Rule: use this to ground axis labels, legend entries, and annotation
+        # text. DO NOT use it as a source of numeric data — any number surfaced
+        # only in this blob (and not as a labeled point on the chart) MUST be
+        # rejected per the extraction contract.
+        if ocr_text:
+            ocr_truncated = ocr_text[:2000]
+            prompt += f"""
+OCR GROUNDING TEXT (extracted from this image in a prior fast pass):
+\"\"\"{ocr_truncated}\"\"\"
+
+Use the above strictly as grounding for axis labels, legend entries, and
+annotation strings. DO NOT extract numeric values from it unless those
+numbers also appear as explicit data labels on the chart itself.
 """
         return prompt
 
@@ -688,7 +751,7 @@ time periods, or definitions that help interpret the chart's data.
             _grid=grid,
         )
 
-    def process_chart(self, asset: ImageAsset) -> None:
+    def process_chart(self, asset: ImageAsset) -> float:
         """
         Extract labeled values from chart.
 
@@ -704,6 +767,9 @@ time periods, or definitions that help interpret the chart's data.
 
         Args:
             asset: Image asset to process (modified in place)
+
+        Returns:
+            Cost in USD of the vision API call (0.0 if result came from cache).
 
         Raises:
             FileNotFoundError: If image file doesn't exist
@@ -722,25 +788,64 @@ time periods, or definitions that help interpret the chart's data.
         except FileNotFoundError:
             raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
-        # Call Vision API with chart extraction prompt (include nearby context)
+        # Call Vision API with chart extraction prompt (include nearby context).
+        # Wave B4: when VISION_ROUTING_MODE=two_stage, run a cheap OCR pass
+        # first and inject its output into the premium chart prompt as
+        # grounding for labels/legend/annotation text (NOT as a numeric
+        # data source — the premium call still enforces "labeled values
+        # only, no interpolation"). Both calls' costs accumulate.
+        call_cost: float = 0.0
+        ocr_text_blob: str = ""
+        two_stage = os.environ.get("VISION_ROUTING_MODE", "legacy").strip().lower() == "two_stage"
         try:
-            response = self.vision_client.analyze_image(
+            if two_stage:
+                try:
+                    ocr_response = self.vision_client.analyze_image_targeted(
+                        image_bytes=image_bytes,
+                        prompt=self._get_chart_ocr_prompt(),
+                        task_type="chart_ocr",
+                        detail="high",
+                        max_tokens=1500,
+                        response_format={"type": "json_object"},
+                    )
+                    call_cost += float(getattr(ocr_response, "cost_usd", 0.0))
+                    try:
+                        parsed_ocr = json.loads(ocr_response.content)
+                        ocr_text_blob = str(parsed_ocr.get("text", "") or "")
+                    except (json.JSONDecodeError, AttributeError):
+                        # OCR pass failed to parse — fall through; grounding
+                        # blob stays empty and the chart_read prompt reverts
+                        # to its usual (nearby_text only) behavior.
+                        logger.warning(
+                            f"Chart OCR pass returned unparsable JSON for {asset.img_id}"
+                        )
+                except Exception as ocr_exc:
+                    # OCR pass failures should not abort the chart read.
+                    logger.warning(f"Chart OCR pass failed for {asset.img_id}: {ocr_exc}")
+
+            response = self.vision_client.analyze_image_targeted(
                 image_bytes=image_bytes,
-                prompt=self._get_chart_extraction_prompt(nearby_text=asset.nearby_text),
+                prompt=self._get_chart_extraction_prompt(
+                    nearby_text=asset.nearby_text,
+                    ocr_text=ocr_text_blob,
+                ),
+                task_type="chart_read",
                 detail="high",  # High detail for accurate label extraction
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )
+            call_cost += float(getattr(response, "cost_usd", 0.0))
 
             # Parse JSON response; attempt a best-effort repair before giving up
             chart_response = self._parse_chart_json(response.content)
             if chart_response is None:
                 logger.error(f"Failed to parse chart response as JSON for {asset.img_id}")
                 logger.debug(f"Response content: {response.content[:500]}")
+                self._parse_failed_count += 1
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                return
+                return call_cost
 
             # Extract chart metadata
             chart_type_str = chart_response.get("chart_type", "unknown")
@@ -787,7 +892,7 @@ time periods, or definitions that help interpret the chart's data.
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                return
+                return call_cost
 
             # Build ChartSeries and DataPoint objects
             chart_series_list: list[ChartSeries] = []
@@ -836,7 +941,7 @@ time periods, or definitions that help interpret the chart's data.
                 asset.processed = True
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
-                return
+                return call_cost
 
             # Build ChartData object
             chart_data = ChartData(
@@ -865,6 +970,7 @@ time periods, or definitions that help interpret the chart's data.
                 f"series={len(chart_series_list)}, points={total_points}, "
                 f"confidence={asset.confidence:.2f}"
             )
+            return call_cost
 
         except Exception as e:
             logger.error(f"Error during chart extraction for {asset.img_id}: {e}", exc_info=True)
@@ -1058,10 +1164,27 @@ time periods, or definitions that help interpret the chart's data.
         self._chart_call_count = 0
         self._full_page_ocr_call_count = 0
         self._prescan_call_count = 0
+        self._parse_failed_count = 0
+        self._chart_vision_spend = 0.0
+
+        # A3: per-filing chart-spend ceiling. Read env each call so tests
+        # and operators can tune at runtime without reconstructing the stage.
+        chart_budget_usd = float(
+            os.environ.get(
+                "CHART_BUDGET_PER_FILING_USD",
+                str(self.DEFAULT_CHART_BUDGET_PER_FILING_USD),
+            )
+        )
 
         processed_count = 0
         skipped_count = 0
         manual_capture_count = 0
+        # A2 observability counters — surfaced in StageResult.metadata so
+        # downstream benchmark work (B1) can separate failure modes without
+        # re-reading the DB.
+        skipped_for_missing_bytes = 0
+        skipped_by_budget_cap = 0
+        chart_data_none_after_processing = 0
 
         try:
             # Download missing images before processing
@@ -1091,8 +1214,23 @@ time periods, or definitions that help interpret the chart's data.
             # invocation. Skipped on Path-A filings.
             self._prescan_ambiguous_images(context)
 
+            # A3: process charts in descending relevance_score order so
+            # high-value charts land inside the per-filing dollar budget
+            # before it gets exhausted. Non-chart classifications keep
+            # their original order (tables/full-page have their own caps).
+            # Non-charts run first so table OCR — which feeds candidate
+            # generation downstream — is not starved by chart budget.
+            _charts_sorted = sorted(
+                (a for a in context.images if a.classification == ImageClassification.CHART),
+                key=lambda a: -(a.relevance_score or 0.0),
+            )
+            _non_charts = [
+                a for a in context.images if a.classification != ImageClassification.CHART
+            ]
+            images_in_order = _non_charts + _charts_sorted
+
             # Process each relevant image
-            for asset in context.images:
+            for asset in images_in_order:
                 # Check if should process
                 if not self._should_process(asset):
                     skipped_count += 1
@@ -1107,14 +1245,25 @@ time periods, or definitions that help interpret the chart's data.
                             warnings.append(msg)
                             logger.warning(msg)
                         skipped_count += 1
+                        skipped_by_budget_cap += 1
                         continue
                 elif asset.classification == ImageClassification.CHART:
-                    if self._chart_call_count >= self.MAX_CHART_CALLS_PER_DOCUMENT:
-                        msg = f"Chart call limit ({self.MAX_CHART_CALLS_PER_DOCUMENT}) reached"
+                    # A3: per-filing dollar ceiling. Tier-1 keyword charts
+                    # process regardless of budget (CMASB priority metrics);
+                    # everything else respects the ceiling. Spend is rounded
+                    # to 4 decimals to sidestep float precision (0.01 is not
+                    # exact in binary, so cumulative sums drift).
+                    has_tier1 = bool(self.TIER1_KEYWORDS_RE.search(asset.nearby_text or ""))
+                    if not has_tier1 and round(self._chart_vision_spend, 4) >= chart_budget_usd:
+                        msg = (
+                            f"Chart budget (${chart_budget_usd:.2f}) exhausted "
+                            f"after spending ${self._chart_vision_spend:.4f}"
+                        )
                         if msg not in warnings:
                             warnings.append(msg)
                             logger.warning(msg)
                         skipped_count += 1
+                        skipped_by_budget_cap += 1
                         continue
                 elif asset.classification == ImageClassification.FULL_PAGE_SCAN:
                     if self._full_page_ocr_call_count >= self.MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT:
@@ -1126,6 +1275,7 @@ time periods, or definitions that help interpret the chart's data.
                             warnings.append(msg)
                             logger.warning(msg)
                         skipped_count += 1
+                        skipped_by_budget_cap += 1
                         continue
 
                 # Process based on classification
@@ -1137,21 +1287,28 @@ time periods, or definitions that help interpret the chart's data.
                         if asset.ocr_table is not None:
                             context.tables.append(asset.ocr_table)
                     elif asset.classification == ImageClassification.CHART:
-                        self.process_chart(asset)
+                        chart_cost = self.process_chart(asset)
                         self._chart_call_count += 1
+                        self._chart_vision_spend += chart_cost
+                        # Track charts that were processed but yielded no data.
+                        if asset.chart_data is None:
+                            chart_data_none_after_processing += 1
                     elif asset.classification == ImageClassification.FULL_PAGE_SCAN:
                         contains_chart = self.process_full_page_scan(asset, context)
                         self._full_page_ocr_call_count += 1
                         # Two-pass: if the page contains a chart, run the
                         # existing chart extraction on the same image.
-                        # Respects the shared chart call budget.
-                        if (
-                            contains_chart
-                            and self._chart_call_count < self.MAX_CHART_CALLS_PER_DOCUMENT
-                        ):
-                            self.process_chart(asset)
-                            self._chart_call_count += 1
-                            self._api_call_count += 1
+                        # Respects the shared chart dollar budget with the
+                        # same Tier-1 bypass as the main chart branch.
+                        if contains_chart:
+                            has_tier1 = bool(self.TIER1_KEYWORDS_RE.search(asset.nearby_text or ""))
+                            if has_tier1 or round(self._chart_vision_spend, 4) < chart_budget_usd:
+                                chart_cost = self.process_chart(asset)
+                                self._chart_call_count += 1
+                                self._chart_vision_spend += chart_cost
+                                self._api_call_count += 1
+                                if asset.chart_data is None:
+                                    chart_data_none_after_processing += 1
                     else:
                         # Unknown type - skip
                         logger.debug(
@@ -1166,6 +1323,20 @@ time periods, or definitions that help interpret the chart's data.
                     if asset.requires_manual_capture:
                         manual_capture_count += 1
 
+                except FileNotFoundError:
+                    # Bytes missing from storage — count separately from generic errors.
+                    skipped_for_missing_bytes += 1
+                    skipped_count += 1
+                    asset.requires_manual_capture = True
+                    asset.processed = True
+                    asset.confidence = 0.0
+                    manual_capture_count += 1
+                    logger.warning(
+                        "Missing bytes for image %s (%s) — skipped_for_missing_bytes=%d",
+                        asset.img_id,
+                        asset.file_path,
+                        skipped_for_missing_bytes,
+                    )
                 except Exception as e:
                     # Log error but continue processing other images
                     error_msg = f"Error processing {asset.img_id}: {str(e)}"
@@ -1191,11 +1362,18 @@ time periods, or definitions that help interpret the chart's data.
                 metadata={
                     "ocr_calls": self._ocr_call_count,
                     "chart_calls": self._chart_call_count,
+                    "chart_vision_spend_usd": round(self._chart_vision_spend, 4),
+                    "chart_budget_usd": chart_budget_usd,
                     "full_page_ocr_calls": self._full_page_ocr_call_count,
                     "prescan_calls": self._prescan_call_count,
                     "total_api_calls": self._api_call_count,
                     "manual_capture_count": manual_capture_count,
                     "skipped_count": skipped_count,
+                    # A2 observability counters — separate failure modes for B1 benchmarking.
+                    "skipped_for_missing_bytes": skipped_for_missing_bytes,
+                    "skipped_by_budget_cap": skipped_by_budget_cap,
+                    "parse_failed": self._parse_failed_count,
+                    "chart_data_none_after_processing": chart_data_none_after_processing,
                 },
             )
 

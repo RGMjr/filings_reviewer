@@ -37,8 +37,14 @@ Run `/commit` from a `ccw` worktree. HEAD-moving git commands in the primary tre
 The project-local `/commit` skill (`.claude/commands/commit.md`) handles the
 full flow in one invocation:
 
-1. **Branch preflight.** If on `main`, auto-creates `claude/<type>-<slug>` and
-   switches to it. Otherwise stays on the current branch.
+1. **Branch preflight.** `/commit` must run inside a `ccw` worktree — the
+   PreToolUse hook in `~/.claude/hooks/guard-destructive-git.sh` refuses
+   `git checkout -b` in the primary tree. If no worktree exists yet, enter
+   one first (`EnterWorktree` from a Claude session, or `ccw [branch]`
+   from a shell). See [§ Orchestration pattern](claude-sessions-and-worktrees.md#orchestration-pattern-planning-session--parallel-subagents)
+   for the recommended flow. On first-commit for a branch, `/commit` derives
+   the branch name (`claude/<type>-<slug>`) from the staged diff; on a
+   pre-existing branch it reuses the current one.
 2. **Pre-commit framework check.** Verifies `.git/hooks/pre-commit` is
    installed; if missing, runs `make hooks-install`.
 3. **Lint + tests + doc-freshness + known-issues triage** (unchanged).
@@ -146,14 +152,7 @@ specific files by name.
 
 ## Known-issues triage
 
-New issues surfaced during contribution go into `docs/KNOWN_ISSUES.md` with
-the next available number. See the existing entries for the expected shape
-(Status / Severity / Problem / Resolution or Next Steps).
-
-`docs/KNOWN_ISSUES.md` is auto-generated from fragment files under
-`docs/known-issues/`.  Edit the per-issue fragment, not the rollup directly.
-A pre-commit hook regenerates and re-stages the rollup automatically whenever
-you stage a fragment.
+New issues surfaced during contribution go into a new `docs/known-issues/legacy-NNN-<slug>.md` fragment file (see the frontmatter template in the `/commit` skill or existing fragments for the expected shape). The pre-commit hook regenerates `docs/KNOWN_ISSUES.md` automatically when you stage a fragment — do NOT edit the rollup directly.
 
 ### Merge conflicts on `docs/KNOWN_ISSUES.md`
 

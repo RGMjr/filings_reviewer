@@ -168,12 +168,12 @@ sweep_issue() {
   # Prompt briefs Claude on the issue, restricts scope, calls /commit.
   local prompt
   prompt=$(cat <<EOF
-You are the nightly autonomous sweeper working issue #${issue} from docs/KNOWN_ISSUES.md.
+You are the nightly autonomous sweeper working issue #${issue}.
 
 Classification: Autonomy=${autonomy}. Note: "${note}".
 
 Rules (STRICT):
-1. Read the full issue body for #${issue} in docs/KNOWN_ISSUES.md. Do exactly what its "Next Steps" section asks, no more.
+1. Find the fragment file for issue #${issue} under docs/known-issues/ (filename prefix is either legacy- or gh-, e.g. legacy-${issue}-*.md or gh-${issue}-*.md) and read it in full. Do exactly what its "Next Steps" section asks, no more.
 2. If the issue requires schema migrations, infra edits, credential changes, or anything outside the "Touches" globs declared in the classification table: ABORT and explain.
 3. After implementing, invoke the /commit skill. The skill handles branch/tests/PR/auto-merge.
 4. If tests fail or you cannot complete the work cleanly, abort. Do NOT update baselines, do NOT skip tests, do NOT use --no-verify.

@@ -1,37 +1,64 @@
-"""LLM Vision API client for chart image analysis.
+"""LLM Vision API client — provider-agnostic dispatcher.
 
-This module provides a client for the OpenAI GPT-4o Vision API, designed
-specifically for extracting structured data from chart images in SEC filings.
+``VisionClient`` is the single public entry point for all vision calls.
+It handles:
+  - Input validation
+  - LLMCache integration (lookup before call, write after)
+  - Retry + exponential backoff (RateLimitError, connection errors, 5xx)
+  - Provider dispatch (OpenAI by default; Gemini / Anthropic via env var)
 
-Design: OpenAI-only for now. Can be extended to support Claude Vision
-in the future via subclassing or protocol pattern.
+Provider selection is controlled by:
+  ``VISION_PROVIDER``      — ``openai`` (default) | ``gemini`` | ``anthropic``
+  ``VISION_MODEL_OCR``     — override per-provider default model for OCR calls
+  ``VISION_MODEL_CHART``   — override per-provider default model for chart calls
+  ``VISION_ROUTING_MODE``  — ``legacy`` (default) | ``two_stage`` (Wave B4)
 
-Future Improvements:
-    1. Timing precision: Consider using time.perf_counter() instead of time.time()
-       for latency_ms measurement. time.perf_counter() provides monotonic,
-       high-resolution timing better suited for measuring elapsed time.
+Wave B4 two-stage routing:
+  When ``VISION_ROUTING_MODE=two_stage``:
+  - TABLE_IMAGE calls use the fast provider resolved by ``VISION_MODEL_OCR``
+    (default ``gemini-2.5-flash-lite``).
+  - CHART calls make *two* sequential calls:
+    1. Fast OCR pass (same fast provider) to extract axis labels / legends /
+       annotation strings as a text blob.
+    2. Premium reader (``VISION_MODEL_CHART``, default ``claude-sonnet-4-6``)
+       with the standard chart-extraction prompt augmented by the OCR blob as
+       grounding context.  The premium prompt still enforces "labeled values
+       only — no interpolation".
+  Both calls' costs accumulate into the caller's ``_chart_vision_spend``.
+  When ``VISION_ROUTING_MODE=legacy`` (default), behavior is unchanged.
 
-    2. Pipeline integration: This client is standalone. To integrate with the
-       extraction pipeline, orchestrate as:
-       - CohortChartDetector.detect_charts_in_filing() -> list of image candidates
-       - SECClient.fetch_image() -> download each image
-       - ChartValueExtractor.extract() -> extract values from each image
-       See VIS-2a for planned caching to avoid repeated SEC downloads.
+Default behavior (all env vars unset) is **identical** to the pre-refactor
+implementation — the OpenAI adapter executes the same code path.
+
+Design notes:
+  1. Timing: uses ``time.time()`` for consistency with the original (see
+     docstring in the original for the perf_counter improvement note).
+  2. Prompts are unchanged — adapters receive exactly the prompt string
+     that callers pass.  Any prompt modifications live in the adapters
+     (e.g. appending JSON mode hints for Gemini/Anthropic).
+  3. Cache key includes ``model`` as a top-level field via ``LLMCache._compute_key``.
+     ``LLM_CACHE_VERSION`` is bumped to ``v2`` in this PR to prevent old GPT-4o
+     cached responses from appearing as hits under a new provider default.
 """
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
 
-from openai import APIConnectionError, APIError, OpenAI, RateLimitError
+from openai import APIConnectionError, APIError, RateLimitError
 
 from src.llm.cache import CacheConfig, LLMCache
+from src.llm.providers.retry_shim import (
+    ProviderConnectionError,
+    ProviderRateLimitError,
+    ProviderServerError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +99,7 @@ def detect_mime_type(image_bytes: bytes) -> str:
     ):
         return "image/webp"
 
-    # Default to PNG for unknown formats (OpenAI will reject if invalid)
+    # Default to PNG for unknown formats
     return "image/png"
 
 
@@ -144,25 +171,151 @@ Do not include any commentary outside the JSON."""
 
 _VALID_CHART_HINTS = frozenset({"bar", "line", "pie", "area", "stacked_bar", "scatter", "none"})
 
+# Per-provider default models
+_PROVIDER_DEFAULT_MODELS: dict[str, dict[str, str]] = {
+    "openai": {"ocr": "gpt-4o", "chart": "gpt-4o"},
+    "gemini": {"ocr": "gemini-2.0-flash", "chart": "gemini-2.5-pro-preview-05-06"},
+    "anthropic": {"ocr": "claude-sonnet-4-6", "chart": "claude-sonnet-4-6"},
+}
+
+
+def _get_provider_and_model(
+    model: str | None,
+) -> tuple[str, str]:
+    """Resolve provider name and model string from env vars + argument.
+
+    Priority (highest to lowest):
+      1. ``model`` argument passed directly to ``VisionClient.__init__``
+         (when non-None, uses ``openai`` provider regardless of VISION_PROVIDER)
+      2. ``VISION_PROVIDER`` env var + ``VISION_MODEL_OCR`` / ``VISION_MODEL_CHART``
+      3. Provider defaults from ``_PROVIDER_DEFAULT_MODELS``
+
+    Returns:
+        (provider_name, model_string)
+    """
+    provider = os.environ.get("VISION_PROVIDER", "openai").lower().strip()
+    if provider not in _PROVIDER_DEFAULT_MODELS:
+        logger.warning("Unknown VISION_PROVIDER=%r; falling back to 'openai'", provider)
+        provider = "openai"
+
+    if model is not None:
+        # Explicit model passed → force openai provider (back-compat with
+        # call sites that do VisionClient(model="gpt-4o-mini"))
+        return "openai", model
+
+    # Use VISION_MODEL_OCR as the default model for the client.  Callers that
+    # need chart-specific models will be handled in Wave B4.
+    env_model = os.environ.get("VISION_MODEL_OCR", "").strip()
+    if env_model:
+        return provider, env_model
+
+    return provider, _PROVIDER_DEFAULT_MODELS[provider]["ocr"]
+
+
+def _build_provider(provider_name: str, model: str) -> object:
+    """Instantiate the appropriate provider adapter.
+
+    Returns an instance of ``VisionProvider`` for the given provider name.
+    """
+    if provider_name == "openai":
+        from src.llm.providers.openai import OpenAIVisionProvider
+
+        return OpenAIVisionProvider(model=model)
+    elif provider_name == "gemini":
+        from src.llm.providers.gemini import GeminiVisionProvider
+
+        return GeminiVisionProvider(model=model)
+    elif provider_name == "anthropic":
+        from src.llm.providers.anthropic import AnthropicVisionProvider
+
+        return AnthropicVisionProvider(model=model)
+    else:
+        raise ValueError(f"Unknown provider: {provider_name!r}")
+
+
+# Default models for two-stage routing (Wave B4).
+# These are read at stage init; operators can override via env vars.
+_TWO_STAGE_DEFAULT_OCR_MODEL = "gemini-2.5-flash-lite"
+_TWO_STAGE_DEFAULT_CHART_MODEL = "claude-sonnet-4-6"
+_TWO_STAGE_DEFAULT_OCR_PROVIDER = "gemini"
+_TWO_STAGE_DEFAULT_CHART_PROVIDER = "anthropic"
+
+
+def _resolve_two_stage_providers() -> tuple[tuple[str, str], tuple[str, str]]:
+    """Resolve (provider, model) pairs for the two-stage routing path.
+
+    Returns:
+        ((ocr_provider, ocr_model), (chart_provider, chart_model))
+
+    OCR model is controlled by ``VISION_MODEL_OCR`` env var (default:
+    ``gemini-2.5-flash-lite`` via Gemini).  Chart model is controlled by
+    ``VISION_MODEL_CHART`` env var (default: ``claude-sonnet-4-6`` via
+    Anthropic).  When an env-var override specifies a model that belongs to a
+    different provider, we make a best-effort guess based on model name
+    prefixes; callers can also set ``VISION_PROVIDER_OCR`` /
+    ``VISION_PROVIDER_CHART`` to force the provider explicitly.
+    """
+    ocr_model = os.environ.get("VISION_MODEL_OCR", "").strip() or _TWO_STAGE_DEFAULT_OCR_MODEL
+    chart_model = os.environ.get("VISION_MODEL_CHART", "").strip() or _TWO_STAGE_DEFAULT_CHART_MODEL
+
+    ocr_provider = _infer_provider_from_model(
+        os.environ.get("VISION_PROVIDER_OCR", "").strip(),
+        ocr_model,
+        _TWO_STAGE_DEFAULT_OCR_PROVIDER,
+    )
+    chart_provider = _infer_provider_from_model(
+        os.environ.get("VISION_PROVIDER_CHART", "").strip(),
+        chart_model,
+        _TWO_STAGE_DEFAULT_CHART_PROVIDER,
+    )
+
+    return (ocr_provider, ocr_model), (chart_provider, chart_model)
+
+
+def _infer_provider_from_model(explicit_provider: str, model: str, default: str) -> str:
+    """Return provider name, using explicit override or model-prefix heuristic.
+
+    Args:
+        explicit_provider: Value from VISION_PROVIDER_OCR / _CHART env vars.
+            Empty string means "no explicit override".
+        model: Model identifier string.
+        default: Fallback when neither explicit nor heuristic applies.
+    """
+    if explicit_provider and explicit_provider in _PROVIDER_DEFAULT_MODELS:
+        return explicit_provider
+    # Heuristic: model name prefix
+    m = model.lower()
+    if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"):
+        return "openai"
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith("claude"):
+        return "anthropic"
+    return default
+
 
 class VisionClient:
-    """Client for OpenAI GPT-4o Vision API.
+    """Provider-agnostic vision client.
 
-    Provides a simple interface for sending images to GPT-4o Vision
-    and receiving structured responses. Includes cost tracking,
-    MIME type detection, and retry logic with exponential backoff.
+    Routes image analysis calls to the configured provider (default: OpenAI
+    GPT-4o).  Provider is selected via ``VISION_PROVIDER`` env var.  When
+    ``VISION_PROVIDER`` is unset or ``"openai"``, behavior is **identical** to
+    the pre-refactor implementation.
 
-    Example:
+    Public interface is unchanged from the original:
         client = VisionClient()
         response = client.analyze_image(
             image_bytes=open("chart.jpg", "rb").read(),
             prompt="Extract data from this chart...",
         )
         print(response.content)
+
+    Cache, retry, and cost-tracking semantics are preserved across all
+    providers.
     """
 
-    # GPT-4o pricing per 1M tokens (as of 2025-01)
-    # Source: https://openai.com/pricing
+    # GPT-4o pricing per 1M tokens (as of 2025-01) — kept as class attrs for
+    # test back-compat (tests reference VisionClient.COST_PER_1M_INPUT_TOKENS).
     COST_PER_1M_INPUT_TOKENS: float = 2.50  # $2.50/1M input
     COST_PER_1M_OUTPUT_TOKENS: float = 10.00  # $10.00/1M output
 
@@ -170,16 +323,23 @@ class VisionClient:
     DEFAULT_MAX_RETRIES: int = 3
     BASE_BACKOFF_SECONDS: float = 1.0
 
-    def __init__(self, model: str = "gpt-4o", cache_config: CacheConfig | None = None) -> None:
+    def __init__(self, model: str | None = None, cache_config: CacheConfig | None = None) -> None:
         """Initialize VisionClient.
 
         Args:
-            model: OpenAI model to use (default: gpt-4o)
-            cache_config: Optional cache configuration. If None, uses defaults from
-                environment. Cache is disabled automatically when DATABASE_URL is unset.
+            model: Optional model override. When set, forces the OpenAI
+                provider with the specified model (back-compat). When None,
+                provider and model are resolved from env vars.
+            cache_config: Optional cache configuration. If None, uses defaults
+                from environment. Cache is disabled automatically when
+                DATABASE_URL is unset.
         """
-        self.model = model
-        self._client = OpenAI()  # Uses OPENAI_API_KEY from env
+        # Accept model="gpt-4o" for back-compat (original signature)
+        _model_arg: str | None = model if model is not None else None
+
+        provider_name, resolved_model = _get_provider_and_model(_model_arg)
+        self.model = resolved_model
+        self._provider = _build_provider(provider_name, resolved_model)
         self._cache = LLMCache(cache_config)
 
     def analyze_image(
@@ -195,21 +355,23 @@ class VisionClient:
         """Send image to Vision LLM for analysis.
 
         Args:
-            image_bytes: Raw image bytes (JPEG, PNG, or GIF)
+            image_bytes: Raw image bytes (JPEG, PNG, GIF, or WebP)
             prompt: Text prompt describing what to extract
             detail: Image detail level ("high" for accuracy, "low" for speed/cost)
             max_tokens: Maximum response tokens
             max_retries: Maximum retry attempts (default: 3)
-            response_format: Optional OpenAI response_format, e.g.
+            response_format: Optional response_format, e.g.
                 ``{"type": "json_object"}`` to force valid JSON output. Requires
-                the word "JSON" to appear in the prompt. Included in the cache key.
+                the word "JSON" to appear in the prompt (OpenAI requirement;
+                other providers use a prompt injection instead). Included in
+                the cache key.
 
         Returns:
             VisionResponse with content and metadata
 
         Raises:
             ValueError: On invalid inputs (empty image or prompt)
-            openai.APIError: On API failures (after retries exhausted)
+            Exception: Provider-specific API error after retries exhausted
         """
         # Input validation - fail fast before API call
         if not image_bytes:
@@ -221,18 +383,17 @@ class VisionClient:
             max_retries = self.DEFAULT_MAX_RETRIES
 
         # Compute SHA-256 of image bytes once; used as part of the cache key
-        # so that different images with identical prompts produce distinct keys.
         image_sha256 = hashlib.sha256(image_bytes).hexdigest()
 
-        # Serialize response_format for cache key (None and json_object must produce distinct keys)
+        # Serialize response_format for cache key
         response_format_key = response_format.get("type", "none") if response_format else "none"
 
-        # Cache lookup — returns immediately with zero cost if entry exists
+        # Cache lookup
         cached = self._cache.get(
             model=self.model,
             system_message="",
             prompt=prompt,
-            temperature=0.0,  # placeholder for key stability; not passed to API
+            temperature=0.0,
             max_tokens=max_tokens,
             image_sha256=image_sha256,
             detail=detail,
@@ -248,84 +409,41 @@ class VisionClient:
                 latency_ms=0,
             )
 
-        # Encode image as base64
-        b64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
-
-        # Detect MIME type from magic bytes
+        # Detect MIME type from magic bytes (done here, not in adapter,
+        # so it's part of the common path and available for logging)
         mime_type = detect_mime_type(image_bytes)
-
-        # Build message content for Vision API
-        # Type assertion needed for OpenAI SDK's strict typing
-        from openai.types.chat import ChatCompletionUserMessageParam
-
-        user_message: ChatCompletionUserMessageParam = {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{mime_type};base64,{b64_image}",
-                        "detail": detail,  # type: ignore[typeddict-item]
-                    },
-                },
-            ],
-        }
 
         # Retry loop with exponential backoff
         last_exception: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                start_ms = int(time.time() * 1000)
+                response = self._provider.call_api(  # type: ignore[attr-defined]
+                    image_bytes=image_bytes,
+                    mime_type=mime_type,
+                    prompt=prompt,
+                    detail=detail,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
+                )
 
-                create_kwargs: dict = {
-                    "model": self.model,
-                    "messages": [user_message],
-                    "max_tokens": max_tokens,
-                }
-                if response_format is not None:
-                    create_kwargs["response_format"] = response_format
-
-                response = self._client.chat.completions.create(**create_kwargs)
-
-                latency_ms = int(time.time() * 1000) - start_ms
-
-                # Extract usage stats
-                usage = response.usage
-                prompt_tokens = usage.prompt_tokens if usage else 0
-                completion_tokens = usage.completion_tokens if usage else 0
-
-                # Calculate cost (per 1M tokens)
-                cost_usd = (prompt_tokens / 1_000_000) * self.COST_PER_1M_INPUT_TOKENS + (
-                    completion_tokens / 1_000_000
-                ) * self.COST_PER_1M_OUTPUT_TOKENS
-
-                # Store result in cache for future calls on same image/prompt
+                # Store result in cache
                 self._cache.set(
                     model=self.model,
                     system_message="",
                     prompt=prompt,
-                    temperature=0.0,  # placeholder for key stability; not passed to API
+                    temperature=0.0,
                     max_tokens=max_tokens,
-                    response_content=response.choices[0].message.content or "",
-                    input_tokens=prompt_tokens,
-                    output_tokens=completion_tokens,
+                    response_content=response.content,
+                    input_tokens=response.prompt_tokens,
+                    output_tokens=response.completion_tokens,
                     image_sha256=image_sha256,
                     detail=detail,
                     response_format=response_format_key,
                 )
 
-                return VisionResponse(
-                    content=response.choices[0].message.content or "",
-                    model=response.model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    cost_usd=cost_usd,
-                    latency_ms=latency_ms,
-                )
+                return response
 
-            except RateLimitError as e:
-                # Rate limit - always retry with backoff
+            except (RateLimitError, ProviderRateLimitError) as e:
                 last_exception = e
                 if attempt < max_retries:
                     backoff = self.BASE_BACKOFF_SECONDS * (2**attempt)
@@ -337,8 +455,7 @@ class VisionClient:
                 else:
                     logger.error(f"Rate limit exceeded after {max_retries} retries")
 
-            except APIConnectionError as e:
-                # Connection error - retry with backoff
+            except (APIConnectionError, ProviderConnectionError) as e:
                 last_exception = e
                 if attempt < max_retries:
                     backoff = self.BASE_BACKOFF_SECONDS * (2**attempt)
@@ -350,8 +467,22 @@ class VisionClient:
                 else:
                     logger.error(f"Connection failed after {max_retries} retries: {e}")
 
+            except ProviderServerError as e:
+                # Provider-neutral 5xx shim
+                last_exception = e
+                if attempt < max_retries:
+                    backoff = self.BASE_BACKOFF_SECONDS * (2**attempt)
+                    logger.warning(
+                        f"Server error {e.status_code}, retrying in {backoff}s "
+                        f"(attempt {attempt + 1}/{max_retries + 1})"
+                    )
+                    time.sleep(backoff)
+                else:
+                    logger.error(f"Server error after {max_retries} retries: {e}")
+                    raise
+
             except APIError as e:
-                # Server error (5xx) - retry; client error (4xx) - don't retry
+                # OpenAI server error (5xx) - retry; client error (4xx) - don't retry
                 last_exception = e
                 status_code = getattr(e, "status_code", None)
                 if status_code and 500 <= status_code < 600 and attempt < max_retries:
@@ -362,7 +493,6 @@ class VisionClient:
                     )
                     time.sleep(backoff)
                 else:
-                    # Client error or max retries exceeded - raise immediately
                     logger.error(f"API error (status={status_code}): {e}")
                     raise
 
@@ -370,6 +500,70 @@ class VisionClient:
         if last_exception:
             raise last_exception
         raise RuntimeError("Unexpected state: no response and no exception")
+
+    def analyze_image_targeted(
+        self,
+        image_bytes: bytes,
+        prompt: str,
+        *,
+        task_type: str,
+        detail: str = "high",
+        max_tokens: int = 2000,
+        max_retries: int | None = None,
+        response_format: dict[str, str] | None = None,
+    ) -> VisionResponse:
+        """Route an image analysis call to the task-specific provider (Wave B4).
+
+        When ``VISION_ROUTING_MODE=two_stage``:
+        - ``task_type='table_ocr'`` or ``'chart_ocr'`` → fast provider
+          (``VISION_MODEL_OCR``, default ``gemini-2.5-flash-lite``).
+        - ``task_type='chart_read'`` → premium reader (``VISION_MODEL_CHART``,
+          default ``claude-sonnet-4-6``).
+
+        When ``VISION_ROUTING_MODE=legacy`` (default), all task types route
+        through the single provider configured at init — behavior is
+        identical to ``analyze_image``.
+        """
+        mode = os.environ.get("VISION_ROUTING_MODE", "legacy").strip().lower()
+        if mode != "two_stage":
+            return self.analyze_image(
+                image_bytes,
+                prompt,
+                detail=detail,
+                max_tokens=max_tokens,
+                max_retries=max_retries,
+                response_format=response_format,
+            )
+
+        (ocr_p, ocr_m), (chart_p, chart_m) = _resolve_two_stage_providers()
+        if task_type in ("table_ocr", "chart_ocr"):
+            provider_name, model = ocr_p, ocr_m
+        elif task_type == "chart_read":
+            provider_name, model = chart_p, chart_m
+        else:
+            raise ValueError(
+                f"Unknown task_type: {task_type!r} "
+                "(expected 'table_ocr', 'chart_ocr', or 'chart_read')"
+            )
+
+        # Swap provider + model for this call only. Cache keying depends on
+        # self.model, so both the lookup and store use the correct model.
+        orig_provider = self._provider
+        orig_model = self.model
+        self._provider = _build_provider(provider_name, model)
+        self.model = model
+        try:
+            return self.analyze_image(
+                image_bytes,
+                prompt,
+                detail=detail,
+                max_tokens=max_tokens,
+                max_retries=max_retries,
+                response_format=response_format,
+            )
+        finally:
+            self._provider = orig_provider
+            self.model = orig_model
 
     def analyze_image_for_text(
         self,
@@ -395,8 +589,8 @@ class VisionClient:
 
         Notes:
             - Uses ``response_format={"type": "json_object"}`` to force valid
-              JSON out of gpt-4o. ``_parse_text_ocr_json`` repairs the rare
-              truncated response (mirrors ``OCRExtractionStage._parse_chart_json``).
+              JSON where the provider supports it; other providers receive a
+              prompt injection.
             - Cache key includes the prompt, so this call never collides with
               cached chart/table responses.
         """
@@ -428,8 +622,6 @@ class VisionClient:
         chart_hint_raw = str(parsed.get("chart_hint", "none") or "none").lower()
         chart_hint = chart_hint_raw if chart_hint_raw in _VALID_CHART_HINTS else "none"
 
-        # If the model said no chart, normalize the hint so callers don't see
-        # stale hints from a flipped-flag response.
         if not contains_chart:
             chart_hint = "none"
 

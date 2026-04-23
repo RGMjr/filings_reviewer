@@ -746,6 +746,9 @@ class ImageAsset:
     confidence: float = 0.0
     requires_manual_capture: bool = False  # True if values couldn't be extracted
 
+    # ML triage score (populated by learned gate when USE_LEARNED_TRIAGE=true)
+    predicted_relevance: float | None = None
+
     def is_relevant(self, threshold: float = 0.3) -> bool:
         """Check if image is relevant for metric extraction."""
         if self.classification == ImageClassification.DECORATIVE:

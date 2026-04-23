@@ -4,7 +4,7 @@
 
 Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron service:
 
-1. Parses the **Nightly Sweeper Classification** table in `docs/KNOWN_ISSUES.md`.
+1. Reads fragment frontmatter from `docs/known-issues/` to find eligible issues (autonomy `safe` or `review`, status `open` or `partially-resolved`).
 2. Picks up to 3 non-colliding issues tagged `Autonomy: safe` (default) or `review` (opt-in).
 3. For each pick, creates an isolated git worktree and runs a Claude Code session that:
    - Reads the issue body.
@@ -16,7 +16,7 @@ Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron se
    - **Abandoned** — issues the sweeper tried but gave up on, with the reason.
 5. Opens a PR for the digest file.
 
-The source of truth for which issues the sweeper may touch is the classification table in `docs/KNOWN_ISSUES.md`.
+The source of truth for which issues the sweeper may touch is the `autonomy:` field in each fragment's YAML frontmatter under `docs/known-issues/`. `docs/KNOWN_ISSUES.md` is auto-generated from those fragments — do NOT edit it directly.
 
 ## Activate / pause
 
@@ -46,13 +46,13 @@ The cron still fires on schedule — it just exits `0` with a log line on the Re
 
 ## Classifying issues
 
-When you open a new issue via `/commit`'s step 9, the filing defaults to `Autonomy: skip`. Reclassify it by editing the row in `docs/KNOWN_ISSUES.md` → **Nightly Sweeper Classification**:
+When you open a new issue via `/commit`'s step 9, the fragment defaults to `autonomy: skip`. To reclassify, edit the `autonomy:` field in the fragment file (`docs/known-issues/legacy-NNN-<slug>.md`) and commit (the pre-commit hook regenerates `docs/KNOWN_ISSUES.md` automatically):
 
 - `safe` — single file or disjoint files; no schema/migration; no infra/credential change; existing test coverage. Sweeper auto-merges on green CI.
 - `review` — cross-module edits, judgment calls, new feature logic. Sweeper opens draft PR for morning approval.
 - `skip` — stakeholder decision, data-driven tuning, investigation. Sweeper never touches.
 
-Always fill in the **Touches** column with space-separated file globs. An issue without globs is skipped regardless of tag — the sweeper cannot scope its work otherwise.
+Always fill in the `touches:` list with file globs. An issue without globs is skipped regardless of `autonomy` tag — the sweeper cannot scope its work otherwise.
 
 ## Local dry-run / debugging
 
@@ -110,5 +110,5 @@ Configurable via Render env vars on the `filings-nightly-sweep` service (default
 - Orchestrator: `scripts/run_nightly_sweep.sh`
 - Image: `Dockerfile.nightly-sweep`
 - Cron wiring: `render.yaml` (service `filings-nightly-sweep`)
-- Classification table: `docs/KNOWN_ISSUES.md` → **Nightly Sweeper Classification**
+- Fragment directory: `docs/known-issues/` (frontmatter drives selection; `docs/KNOWN_ISSUES.md` is auto-generated)
 - Manual invocation: `/sweep` (see `.claude/skills/sweep/SKILL.md`)

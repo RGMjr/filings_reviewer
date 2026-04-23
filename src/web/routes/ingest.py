@@ -112,26 +112,39 @@ def _volume_band_message(band: VolumeBand, total: int) -> str:
     return messages.get(band, f"{total} filings.")
 
 
+_FORM_TYPES_AVAILABLE = [
+    {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)"},
+    {"key": "10k", "label": "10-K (Annual reports)"},
+    {"key": "8k", "label": "8-K (Current reports)"},
+]
+
+
+def _render_ingest_form(form_state: dict[str, Any] | None = None, status: int = 200):
+    """Render the criteria form. When *form_state* is given, the template
+    repopulates fields so a validation error doesn't wipe user input.
+    """
+    state = form_state or {}
+    reviewer_name = state.get("_reviewer_name") or request.cookies.get("ingest_reviewer", "")
+    return (
+        render_template(
+            "ingest_form.html",
+            reviewer_name=reviewer_name,
+            industries=_industry_options(),
+            form_types_available=_FORM_TYPES_AVAILABLE,
+            form_state=state,
+        ),
+        status,
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /ingest/
 # ---------------------------------------------------------------------------
 
 
 @ingest_bp.route("/", methods=["GET"])
-def ingest_form() -> str:
-    reviewer_name = request.cookies.get("ingest_reviewer", "")
-    industries = _industry_options()
-    form_types_available = [
-        {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)"},
-        {"key": "10k", "label": "10-K (Annual reports)"},
-        {"key": "8k", "label": "8-K (Current reports)"},
-    ]
-    return render_template(
-        "ingest_form.html",
-        reviewer_name=reviewer_name,
-        industries=industries,
-        form_types_available=form_types_available,
-    )
+def ingest_form():
+    return _render_ingest_form()
 
 
 # ---------------------------------------------------------------------------
@@ -142,13 +155,14 @@ def ingest_form() -> str:
 @ingest_bp.route("/preview", methods=["POST"])
 def ingest_preview():
     raw = _parse_form_criteria()
-    reviewer_name = raw.pop("_reviewer_name", "")
 
     try:
         query = resolve_criteria(raw)
     except ValueError as exc:
         flash(str(exc), "danger")
-        return redirect(url_for("ingest.ingest_form"))
+        return _render_ingest_form(form_state=raw, status=400)
+
+    reviewer_name = raw.pop("_reviewer_name", "")
 
     db = get_db()
 
@@ -277,16 +291,20 @@ def ingest_start():
             400,
         )
 
-    # Determine per-filing bucket and reextract flag
+    # Determine per-filing bucket and reextract flag.
+    # Inclusion is signalled by the filing_id checkbox being submitted (preview
+    # template — only checked rows reach us). The bucket hidden field carries
+    # the filing's classification; for the two "reextract*" buckets inclusion
+    # implies re-extraction, so we derive the decision from bucket rather than
+    # from a redundant per-row reextract checkbox.
     filing_buckets: dict[int, str] = {}
     reextract_decisions: dict[int, bool] = {}
     has_reviewed_reextract = False
 
     for fid in filing_ids:
-        reextract_cb = request.form.get(f"reextract_{fid}") == "on"
         bucket_hidden = request.form.get(f"bucket_{fid}", "new")
         filing_buckets[fid] = bucket_hidden
-        if reextract_cb:
+        if bucket_hidden in ("reextract", "reextract_reviewed"):
             reextract_decisions[fid] = True
             if bucket_hidden == "reextract_reviewed":
                 has_reviewed_reextract = True

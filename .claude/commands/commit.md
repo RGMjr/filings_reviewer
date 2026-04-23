@@ -45,13 +45,12 @@
 
 8. **Doc freshness.** After pytest passes:
    - If pytest output shows a coverage percentage different from `CLAUDE.md` (currently "87%"), update and stage.
-   - If `docs/KNOWN_ISSUES.md` is staged, update its "Last Updated" date to today and re-stage.
    - If `docs/PROJECT_TASK_INVENTORY.md` "Last Verified" date is >30 days old, warn and suggest `/doc-audit`.
    - Stage any fixes made here.
 
-9. **Out-of-scope issue triage.** Review the session for issues that surfaced but were NOT addressed by this commit, and recommend which merit filing to `docs/KNOWN_ISSUES.md`.
+9. **Out-of-scope issue triage.** Review the session for issues that surfaced but were NOT addressed by this commit, and recommend which merit filing as fragment files under `docs/known-issues/`.
 
-   **9a. Pre-flight guard.** If `docs/KNOWN_ISSUES.md` already has pre-existing uncommitted edits (staged or unstaged), stop and tell the user to commit those separately first.
+   **9a. Pre-flight guard.** If any `docs/known-issues/` fragment already has pre-existing uncommitted edits (staged or unstaged), stop and tell the user to commit those separately first.
 
    **9b. Enumerate candidates.** Consider every issue that surfaced but was not fixed:
    - Bugs/incorrect behavior observed but deliberately not fixed
@@ -62,12 +61,12 @@
    - Unexpected behavior in adjacent code paths surfaced while debugging
 
    Filter out:
-   - Already tracked in `docs/KNOWN_ISSUES.md`
+   - Already tracked in `docs/known-issues/` fragments
    - Items the user told you to forget or decline to track
    - Ephemeral observations (test timing variance, comment typos)
    - Style preferences with no behavioral impact
 
-   **9c. Classify.** Assign `FILE` or `SKIP` with a one-line rationale per item. Propose severity (Critical/High/Medium/Low) for `FILE` items.
+   **9c. Classify.** Assign `FILE` or `SKIP` with a one-line rationale per item. Propose severity (high/medium/low) for `FILE` items.
 
    **9d. Present recommendations.** Default action is to file every `FILE`-recommended item. If no candidates, state "No out-of-scope issues surfaced this session" and proceed. Otherwise output:
 
@@ -87,13 +86,35 @@
 
    **9e. Act.** "approve"/"all"/silent → file all `TO FILE`. "none"/"skip" → file nothing. Anything else → apply user edits, confirm revised list, file.
 
-   **9f. Write entries.** For each item:
-   - Read `docs/KNOWN_ISSUES.md`, scan `## N.` headings, pick max + 1.
-   - Format: `## [N]. [Title]`, then `**Status**: Open`, `**Severity**: [level]`, `**Discovered**: [today's date]`, then `### Problem` (1–3 sentences) and `### Next Steps` (1–3 bullets). 5–15 lines each.
-   - Append below last existing issue, above the summary table.
-   - Update `**Last Updated**` to today, append `, #N opened for [descriptor]`.
-   - Add a row per issue to the summary table.
-   - Do NOT stage `docs/KNOWN_ISSUES.md` yet — it's a separate follow-up commit (step 13).
+   **9f. Write fragment files.** For each item:
+   - Find the highest existing id: `ls docs/known-issues/legacy-*.md docs/known-issues/gh-*.md 2>/dev/null | grep -oE '(legacy|gh)-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1`. Next id = that + 1.
+   - Create `docs/known-issues/legacy-NNN-<kebab-slug>.md` with this exact structure:
+     ```yaml
+     ---
+     id: NNN
+     source: legacy
+     slug: <kebab-case-slug>
+     title: <Title>
+     status: open
+     severity: <high|medium|low>
+     autonomy: skip  # default for new issues — reclassify after triage
+     estimated: —    # — if unknown
+     touches: []     # list of globs; required before sweeper will pick it up
+     discovered: <today's date YYYY-MM-DD>
+     updated: <today's date YYYY-MM-DD>
+     note: <short one-line actionable summary>
+     ---
+
+     ### Problem
+
+     <1–3 sentences: what was observed>
+
+     ### Next Steps
+
+     - <1–3 bullets: what would fix it>
+     ```
+   - Do NOT hand-edit `docs/KNOWN_ISSUES.md` — it is auto-generated.
+   - Do NOT stage the fragment yet — it's a separate follow-up commit (step 13).
 
 10. **Show staged diff.** Run `git diff --cached --stat`.
 
@@ -106,8 +127,9 @@
 
 12. **Restore pre-existing staging.** Re-stage files that were unstaged in step 4.
 
-13. **Known-issues follow-up commit.** Only if step 9 produced changes to `docs/KNOWN_ISSUES.md`:
-    - `git add docs/KNOWN_ISSUES.md` (only that file).
+13. **Known-issues follow-up commit.** Only if step 9 produced new fragment files under `docs/known-issues/`:
+    - Run `python3 scripts/regenerate_known_issues.py` to update the rollup.
+    - `git add docs/known-issues/legacy-NNN-<slug>.md docs/KNOWN_ISSUES.md` (fragment + regenerated rollup only).
     - Commit: `docs(known-issues): log issue(s) #N[, #M] — [descriptor]` (matches commits `87b54f7`, `e96b6fb`).
     - Do NOT push yet — step 14 pushes both commits together.
 
