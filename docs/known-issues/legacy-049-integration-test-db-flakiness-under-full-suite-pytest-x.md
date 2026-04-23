@@ -3,15 +3,19 @@ autonomy: skip
 discovered: '2026-04-20'
 estimated: M
 id: 49
-note: Flaky test investigation; risk of masking real bug
+note: Resolved 2026-04-23 — cannot reproduce on main; retained in table for audit trail
 severity: low
 slug: integration-test-db-flakiness-under-full-suite-pytest-x
 source: legacy
-status: open
+status: resolved
 title: Integration Test DB Flakiness Under Full-Suite `pytest -x`
 touches: []
-updated: '2026-04-20'
+updated: '2026-04-23'
 ---
+
+**Resolved**: 2026-04-23 — cannot reproduce on current `main`. Five back-to-back clean runs of the full suite (4× sequential `pytest -x -q`, 1× xdist `pytest -x -q -n auto`), all green. The symptoms described below (`AdminShutdown`, `connection is lost`, deadlock in ROLLBACK) do not surface. Two commits since #49 was filed likely combine to eliminate the race: (a) `5c11593` (2026-03-30) added `_terminate_stale_connections` + atomic-TRUNCATE in the V1 `clean_extraction_db` (V1 since retired); (b) `2e5977e` (2026-04-22, #78) added `_isolate_xdist_worker_database` so each pytest-xdist worker runs against its own Postgres DB, eliminating cross-worker pool/TRUNCATE contention entirely. Under `-n0` sequential mode the shared-pool race was never re-observed.
+
+One latent hygiene concern remains (not fixed here, not currently reproducible): `tests/integration/conftest.py::clean_db` still issues three separate TRUNCATE blocks (review tables, V2 tables, `filings`+`companies`) rather than one atomic TRUNCATE. The March 30 commit explicitly identified this pattern as the "interleaved-lock deadlock window" cause in the V1 fixture. File a follow-up if the flakiness recurs.
 
 ### Problem
 
