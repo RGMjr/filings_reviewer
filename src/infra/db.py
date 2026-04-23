@@ -821,6 +821,7 @@ class DatabaseAdapter:
                     COUNT(mf.fact_id)                                                      AS fact_count,
                     COUNT(CASE WHEN mf.review_status = 'pending_review'             THEN 1 END) AS facts_pending,
                     COUNT(CASE WHEN mf.review_status IN ('accepted', 'auto_accepted') THEN 1 END) AS facts_accepted,
+                    COUNT(CASE WHEN mf.review_status = 'auto_accepted'              THEN 1 END) AS facts_auto_accepted,
                     COUNT(CASE WHEN mf.review_status IN ('rejected', 'corrected')   THEN 1 END) AS facts_rejected
                 FROM v2_metric_facts mf
                 GROUP BY mf.doc_id
@@ -863,11 +864,12 @@ class DatabaseAdapter:
                 f.form_type,
                 f.filing_date,
                 d.document_type,
-                COALESCE(tp.fact_count,      0) AS fact_count,
-                COALESCE(tp.facts_pending,   0) AS facts_pending,
-                COALESCE(tp.facts_accepted,  0) AS facts_accepted,
-                COALESCE(tp.facts_rejected,  0) AS facts_rejected,
-                COALESCE(ip.image_count,     0) AS image_count,
+                COALESCE(tp.fact_count,         0) AS fact_count,
+                COALESCE(tp.facts_pending,      0) AS facts_pending,
+                COALESCE(tp.facts_accepted,     0) AS facts_accepted,
+                COALESCE(tp.facts_auto_accepted, 0) AS facts_auto_accepted,
+                COALESCE(tp.facts_rejected,     0) AS facts_rejected,
+                COALESCE(ip.image_count,        0) AS image_count,
                 COALESCE(ip.images_pending,  0) AS images_pending,
                 COALESCE(ip.images_reviewed, 0) AS images_reviewed,
                 COALESCE(rp.reviewers, ARRAY[]::text[]) AS reviewers

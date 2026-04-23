@@ -130,6 +130,7 @@
           {% set fact_total = f.fact_count or 0 %}
           {% set facts_pending = f.facts_pending or 0 %}
           {% set facts_accepted = f.facts_accepted or 0 %}
+          {% set facts_auto_accepted = f.facts_auto_accepted or 0 %}
           {% set facts_rejected = f.facts_rejected or 0 %}
           {% set image_count = f.image_count or 0 %}
           {% set images_pending = f.images_pending or 0 %}
@@ -170,10 +171,29 @@
             </td>
             <td>
               {% if fact_total > 0 %}
+              {# Auto-accepted review link: mirrors the Review button below but pre-filters to status=auto_accepted. #}
+              {%- set auto_review_kwargs = {
+                'filing_id': f.filing_id,
+                'status': 'auto_accepted',
+                'list_sort_by': sort_by,
+                'list_sort_dir': sort_dir,
+                'list_hide_completed': 1 if hide_completed else 0
+              } -%}
+              {%- if current_document_type and current_document_type != 'all' -%}
+                {% set _ = auto_review_kwargs.update({'list_document_type': current_document_type}) %}
+              {%- endif -%}
+              {%- if reviewers -%}
+                {% set _ = auto_review_kwargs.update({'list_reviewer_id': reviewers}) %}
+              {%- endif -%}
               <small class="text-muted">
                 <span class="badge bg-warning text-dark">{{ facts_pending }}</span> pending
                 &middot;
                 <span class="text-success">{{ facts_accepted }}</span> accepted
+                {% if facts_auto_accepted > 0 %}
+                (<a href="{{ url_for('review_unified.review_filing', **auto_review_kwargs) }}"
+                    title="Facts auto-accepted at extraction time when confidence cleared threshold. Click to review."
+                    style="text-decoration: none;">&#9889; {{ facts_auto_accepted }} auto</a>)
+                {% endif %}
                 &middot;
                 <span class="text-danger">{{ facts_rejected }}</span> rejected
               </small>

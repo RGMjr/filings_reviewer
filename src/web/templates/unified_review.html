@@ -6,7 +6,9 @@
 <style>
   .fact-card { border-left: 4px solid #6c757d; }
   .fact-card.pending { border-left-color: #ffc107; }
-  .fact-card.accepted, .fact-card.auto_accepted { border-left-color: #198754; }
+  .fact-card.accepted { border-left-color: #198754; }
+  /* Auto-accepted: same green family but dashed to distinguish from human review. */
+  .fact-card.auto_accepted { border-left: 4px dashed #198754; }
   .fact-card.rejected { border-left-color: #dc3545; }
   .fact-card.corrected { border-left-color: #0d6efd; }
 
@@ -26,7 +28,9 @@
   .fact-nav-item.active { background: #e8f0fe; border-left-color: #0d6efd; }
   .fact-nav-item .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
   .status-dot.pending_review { background: #ffc107; }
-  .status-dot.accepted, .status-dot.auto_accepted { background: #198754; }
+  .status-dot.accepted { background: #198754; }
+  /* Auto-accepted dot: green ring (not filled) + ⚡ overlay — visually distinct from human review. */
+  .status-dot.auto_accepted { background: #fff; border: 2px solid #198754; box-sizing: border-box; }
   .status-dot.rejected { background: #dc3545; }
   .status-dot.corrected { background: #0d6efd; }
 
@@ -288,8 +292,9 @@
             {% if current_fact.source_type == 'chart' or current_fact.source_type == 'CHART' %}
             <span class="badge bg-info text-dark" style="font-size:0.75rem;">Chart</span>
             {% endif %}
-            <span class="badge status-{{ current_fact.review_status }} bg-light text-dark border" style="font-size:0.75rem;">
-              {{ current_fact.review_status.replace('_', ' ').title() }}
+            <span class="badge status-{{ current_fact.review_status }} bg-light text-dark border" style="font-size:0.75rem;"
+                  {% if current_fact.review_status == 'auto_accepted' %}title="Auto-accepted at extraction time when confidence cleared threshold. No human review yet."{% endif %}>
+              {% if current_fact.review_status == 'auto_accepted' %}&#9889; Auto-accepted{% else %}{{ current_fact.review_status.replace('_', ' ').title() }}{% endif %}
             </span>
             <span class="fact-summary-values">
               {{ current_fact.value_raw }} &middot; {{ period_display|safe }} &middot; {{ current_fact.scope or 'company' }}
