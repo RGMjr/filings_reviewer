@@ -330,7 +330,6 @@ def review_filing(filing_id: int):
         # Enrich sparse evidence with live segment/table context
         if current_fact:
             current_fact = _enrich_sparse_evidence(db, filing_id, current_fact)
-            current_fact["_chart_image_status"] = _resolve_chart_image_status(db, current_fact)
 
         # Calculate progress
         pending_count = sum(1 for f in all_facts if f["review_status"] == "pending_review")
@@ -601,60 +600,6 @@ def image_crop(img_id: str) -> Response:
 # =============================================================================
 # Helpers
 # =============================================================================
-
-
-def _resolve_chart_image_status(db: Any, fact: dict) -> dict | None:
-    """
-    Pre-compute whether a chart-sourced fact's linked image will render.
-
-    Mirrors the validation in `image_crop` (asset row exists → file_path under
-    data/ → file exists on disk) so the template can show a targeted placeholder
-    when any of those fail. Returns None for non-chart facts.
-
-    Status values:
-      - "ok"              image will render
-      - "missing_img_id"  chart fact, but source_locator.img_id is null
-      - "asset_missing"   img_id set, but no v2_image_assets row (orphaned)
-      - "file_missing"    asset row present, file_path empty or not on disk
-                          (covers TMPDIR-cached paths purged by the OS)
-    """
-    source_type = fact.get("source_type")
-    if source_type not in ("chart", "CHART"):
-        return None
-
-    loc = fact.get("source_locator") or {}
-    if not isinstance(loc, dict):
-        return {"status": "missing_img_id"}
-
-    img_id = loc.get("img_id")
-    if not img_id:
-        return {"status": "missing_img_id"}
-
-    try:
-        rows = db.query(
-            "SELECT file_path FROM v2_image_assets WHERE img_id = %(img_id)s",
-            {"img_id": img_id},
-        )
-    except Exception as exc:
-        logger.warning("chart_image_status: query failed img_id=%s err=%s", img_id, exc)
-        return {"status": "asset_missing"}
-
-    if not rows:
-        return {"status": "asset_missing"}
-
-    file_path = rows[0].get("file_path")
-    if not file_path:
-        return {"status": "file_missing"}
-
-    from src.infra.image_storage import InvalidStorageKeyError, get_image_storage
-
-    try:
-        if not get_image_storage().exists(file_path):
-            return {"status": "file_missing"}
-    except InvalidStorageKeyError:
-        return {"status": "file_missing"}
-
-    return {"status": "ok"}
 
 
 def _enrich_sparse_evidence(db: Any, filing_id: int, fact: dict) -> dict:

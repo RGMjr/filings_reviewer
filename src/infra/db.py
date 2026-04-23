@@ -1706,6 +1706,7 @@ class DatabaseAdapter:
                 THEN 'tier_2_large'
             ELSE 'tier_3_all'
         END AS detection_tier,
+        v.detected_metrics,
         v.created_at,
         d.image_decision_id,
         d.decision,
@@ -2053,6 +2054,95 @@ class DatabaseAdapter:
             "auto_rejected_count": row["auto_rejected_count"] or 0,
             "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
         }
+
+    # =============================================================================
+    # V2 Image Metric Confirmation Methods (v2_image_metric_confirmations)
+    # =============================================================================
+
+    def insert_image_metric_confirmations(
+        self,
+        img_id: str,
+        confirmations: list[dict[str, Any]],
+        reviewer_id: str,
+    ) -> int:
+        """
+        Upsert per-metric confirmation decisions for a chart image.
+
+        Each entry in *confirmations* must have at minimum:
+          - decision: 'accept' | 'reject' | 'correct' | 'add'
+          - detected_metric_id: str | None
+          - confirmed_metric_id: str | None
+          - rejection_reason: str | None
+
+        On conflict (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
+        the existing row is updated with the new decision values.
+
+        Returns the number of rows upserted.
+        """
+        if not confirmations:
+            return 0
+
+        upsert_sql = """
+            INSERT INTO v2_image_metric_confirmations (
+                img_id, detected_metric_id, confirmed_metric_id,
+                decision, rejection_reason, reviewer_id
+            ) VALUES (
+                %(img_id)s, %(detected_metric_id)s, %(confirmed_metric_id)s,
+                %(decision)s, %(rejection_reason)s, %(reviewer_id)s
+            )
+            ON CONFLICT (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
+            DO UPDATE SET
+                decision            = EXCLUDED.decision,
+                confirmed_metric_id = EXCLUDED.confirmed_metric_id,
+                rejection_reason    = EXCLUDED.rejection_reason,
+                updated_at          = now()
+        """
+
+        count = 0
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                for entry in confirmations:
+                    cur.execute(
+                        upsert_sql,
+                        {
+                            "img_id": img_id,
+                            "detected_metric_id": entry.get("detected_metric_id"),
+                            "confirmed_metric_id": entry.get("confirmed_metric_id"),
+                            "decision": entry["decision"],
+                            "rejection_reason": entry.get("rejection_reason"),
+                            "reviewer_id": reviewer_id,
+                        },
+                    )
+                    count += 1
+
+        logger.debug(
+            "Upserted %d image metric confirmations: img_id=%s reviewer_id=%s",
+            count,
+            img_id,
+            reviewer_id,
+        )
+        return count
+
+    def get_image_metric_confirmations(self, img_id: str) -> list[dict[str, Any]]:
+        """
+        Return all metric confirmation rows for *img_id*, ordered by created_at.
+        """
+        sql = """
+            SELECT
+                id::text AS confirmation_id,
+                img_id::text,
+                detected_metric_id,
+                confirmed_metric_id,
+                decision,
+                rejection_reason,
+                reviewer_id,
+                created_at,
+                updated_at
+            FROM v2_image_metric_confirmations
+            WHERE img_id = %(img_id)s
+            ORDER BY created_at ASC
+        """
+        return self.query(sql, {"img_id": img_id})
 
 
 # =============================================================================

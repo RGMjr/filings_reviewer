@@ -354,3 +354,215 @@ class TestChartReadMode:
         assert metrics["data_value_recall"] == 0.5
         assert metrics["data_value_f1"] == 0.5
         assert metrics["n_images_scored_on_data"] == 1
+
+
+class TestMetricClassifyMode:
+    """metric-classify mode — dispatch, order, scoring, end-to-end."""
+
+    def test_metric_classify_order_excludes_two_stage(self) -> None:
+        assert "two-stage" not in bv.BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY
+        # Every configured classify provider must exist in PROVIDER_CONFIGS.
+        missing = [
+            p for p in bv.BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY if p not in bv.PROVIDER_CONFIGS
+        ]
+        assert missing == []
+
+    def test_bakeoff_order_for_resolves_metric_classify(self) -> None:
+        assert bv._bakeoff_order_for("metric-classify") == list(
+            bv.BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY
+        )
+
+    def test_metric_classify_is_registered_mode(self) -> None:
+        assert "metric-classify" in bv.BENCHMARK_MODES
+
+    def test_classify_prompt_enumerates_tiers_from_yaml(self) -> None:
+        # All tier-1 ids pulled from yaml must appear in the prompt.
+        for metric_id in bv._TIER1_METRIC_IDS:
+            assert metric_id in bv.CLASSIFY_PROMPT
+        for metric_id in bv._TIER2_METRIC_IDS:
+            assert metric_id in bv.CLASSIFY_PROMPT
+        # Prompt is JSON-forced — must mention JSON (OpenAI json_object
+        # response_format requires the word "JSON" in the prompt).
+        assert "JSON" in bv.CLASSIFY_PROMPT
+
+    def test_parse_classify_response_happy_path(self) -> None:
+        parsed = bv._parse_classify_response(
+            '{"predicted_metrics":["cm_revenue_by_cohort"],'
+            '"confidence":0.85,"rejection_reason":null,'
+            '"reasoning":"cohort parfait shape"}'
+        )
+        assert parsed == {
+            "predicted_metrics": ["cm_revenue_by_cohort"],
+            "confidence": 0.85,
+            "rejection_reason": None,
+            "reasoning": "cohort parfait shape",
+        }
+
+    def test_parse_classify_response_drops_unknown_metric_ids(self) -> None:
+        parsed = bv._parse_classify_response(
+            '{"predicted_metrics":["cm_revenue_by_cohort","cm_bogus"],'
+            '"confidence":0.9,"rejection_reason":null,"reasoning":"x"}'
+        )
+        assert parsed is not None
+        assert parsed["predicted_metrics"] == ["cm_revenue_by_cohort"]
+
+    def test_parse_classify_response_invalid_json(self) -> None:
+        assert bv._parse_classify_response("not json at all") is None
+        assert bv._parse_classify_response("[]") is None  # not a dict
+
+    def test_parse_classify_response_strips_markdown_fences(self) -> None:
+        """Gemini wraps JSON in ```json … ``` fences; parser must unwrap."""
+        raw = (
+            '```json\n{"predicted_metrics":["cm_arr"],"confidence":0.9,'
+            '"rejection_reason":null,"reasoning":"x"}\n```'
+        )
+        parsed = bv._parse_classify_response(raw)
+        assert parsed is not None
+        assert parsed["predicted_metrics"] == ["cm_arr"]
+        assert parsed["confidence"] == 0.9
+
+    def test_parse_classify_response_coerces_bad_confidence(self) -> None:
+        # None confidence → 0.0; out-of-range clamped.
+        parsed = bv._parse_classify_response(
+            '{"predicted_metrics":[],"confidence":null,"rejection_reason":"decorative","reasoning":""}'
+        )
+        assert parsed is not None
+        assert parsed["confidence"] == 0.0
+        parsed = bv._parse_classify_response(
+            '{"predicted_metrics":["cm_arr"],"confidence":2.5,"rejection_reason":null,"reasoning":""}'
+        )
+        assert parsed is not None
+        assert parsed["confidence"] == 1.0
+
+    def test_parse_classify_response_coerces_unknown_rejection_reason(self) -> None:
+        parsed = bv._parse_classify_response(
+            '{"predicted_metrics":[],"confidence":0.1,"rejection_reason":"wibble","reasoning":""}'
+        )
+        assert parsed is not None
+        assert parsed["rejection_reason"] == "other"
+
+    def test_parse_classify_response_drops_reason_when_metrics_present(self) -> None:
+        """If the model emits both, the reason is stripped (schema requires null)."""
+        parsed = bv._parse_classify_response(
+            '{"predicted_metrics":["cm_arr"],"confidence":0.9,'
+            '"rejection_reason":"decorative","reasoning":"odd"}'
+        )
+        assert parsed is not None
+        assert parsed["rejection_reason"] is None
+
+    def test_load_manifest_metric_tags_empty_when_missing(self) -> None:
+        assert bv._load_manifest_metric_tags({}) == []
+        assert bv._load_manifest_metric_tags({"ground_truth_metric_ids": None}) == []
+
+    def test_load_manifest_metric_tags_filters_unknown(self) -> None:
+        entry = {"ground_truth_metric_ids": ["cm_revenue_by_cohort", "cm_bogus", " "]}
+        assert bv._load_manifest_metric_tags(entry) == ["cm_revenue_by_cohort"]
+
+    def test_run_provider_dispatches_to_classify_branch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        def _fake_classify(entry: Any, provider: Any, image_bytes: Any, skel: Any, t0: Any) -> Any:
+            calls.append("metric-classify")
+            return {
+                **skel,
+                "predicted_relevant": True,
+                "predicted_metrics": ["cm_revenue_by_cohort"],
+                "classification_confidence": 0.8,
+                "cost_usd": 0.002,
+            }
+
+        class _FakeStorage:
+            def get_bytes(self, key: str) -> bytes:
+                return b"\xff\xd8\xffJPEG"
+
+        monkeypatch.setattr(bv, "_run_provider_metric_classify", _fake_classify)
+        monkeypatch.setattr("src.infra.image_storage.get_image_storage", lambda: _FakeStorage())
+
+        entry = {
+            "img_id": "x",
+            "storage_key": "Farfetch_Limited/g.jpg",
+            "decision": "chart",
+        }
+        bv._run_provider(entry, "gemini-flash", mode="metric-classify")
+        assert calls == ["metric-classify"]
+
+    def test_end_to_end_covers_six_reviewer_buckets(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Exercise accept/reject/correct/add/partial/skip in one run."""
+        # One record per bucket. ``predicted`` is what the fake provider
+        # emits; ``reference`` comes from manifest entry ground_truth_metric_ids.
+        scenarios = [
+            ("accept-img", ["cm_arr"], ["cm_arr"], 0.9),
+            ("reject-img", ["cm_arr"], [], 0.9),
+            ("correct-img", ["cm_arr"], ["cm_mrr"], 0.8),
+            ("add-img", [], ["cm_arr"], 0.2),
+            ("partial-img", ["cm_arr", "cm_mrr"], ["cm_arr"], 0.7),
+            ("skip-img", [], [], 0.1),
+        ]
+        prediction_by_id = {img: preds for img, preds, _, _ in scenarios}
+        confidence_by_id = {img: conf for img, _, _, conf in scenarios}
+
+        def _fake_run_provider(
+            entry: dict[str, Any], provider: str, mode: str = "detect"
+        ) -> dict[str, Any]:
+            assert mode == "metric-classify"
+            img = entry["img_id"]
+            preds = prediction_by_id[img]
+            conf = confidence_by_id[img]
+            return {
+                "img_id": img,
+                "predicted_relevant": bool(preds),
+                "predicted_chart_type": None,
+                "parse_failed": False,
+                "cost_usd": 0.002,
+                "latency_ms": 50,
+                "raw_output": "",
+                "title_extracted": "",
+                "legend_extracted": "",
+                "ocr_cells_extracted": [],
+                "axis_labels_extracted": [],
+                "tier1_facts_extracted": 0,
+                "predicted_metrics": preds,
+                "classification_confidence": conf,
+                "rejection_reason": None,
+                "classification_reasoning": "",
+                "skipped": False,
+                "skip_reason": None,
+            }
+
+        monkeypatch.setattr(bv, "_run_provider", _fake_run_provider)
+
+        corpus = [
+            {
+                "img_id": img,
+                "storage_key": f"x/{img}.jpg",
+                "decision": "relevant",
+                "ground_truth_metric_ids": ref,
+            }
+            for img, _preds, ref, _conf in scenarios
+        ]
+        records = bv._run_benchmark(corpus, "gemini-flash", None, mode="metric-classify")
+        assert len(records) == 6
+        actions = {r["img_id"]: r["reviewer_action"] for r in records}
+        assert actions == {
+            "accept-img": "accept",
+            "reject-img": "reject",
+            "correct-img": "correct",
+            "add-img": "add",
+            "partial-img": "partial",
+            "skip-img": "skip",
+        }
+
+        metrics = bv._build_eval_results(records)
+        # 6 records, one per bucket → every rate is 1/6 and they sum to 1.0.
+        assert metrics["accept_rate"] == pytest.approx(1 / 6)
+        assert metrics["reject_rate"] == pytest.approx(1 / 6)
+        assert metrics["correct_rate"] == pytest.approx(1 / 6)
+        assert metrics["add_rate"] == pytest.approx(1 / 6)
+        assert metrics["partial_rate"] == pytest.approx(1 / 6)
+        assert metrics["skip_rate"] == pytest.approx(1 / 6)
+        assert metrics["auto_disposition_rate"] == pytest.approx(2 / 6)
+        # Scored-on-tags subset excludes skip-img AND reject-img (reference
+        # empty in both): 4 records contribute to tag P/R/F1.
+        assert metrics["n_images_scored_on_metric_tags"] == 4

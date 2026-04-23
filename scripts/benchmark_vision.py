@@ -144,6 +144,16 @@ BAKEOFF_PROVIDER_ORDER_CHART_READ: list[str] = [
     "two-stage",
 ]
 
+# metric-classify bake-off order. No "two-stage" — the premium-reader's
+# edge is numeric fidelity (chart-read), not presence classification.
+BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY: list[str] = [
+    "current",
+    "openai-vnext",
+    "gemini-flash",
+    "gemini-pro",
+    "anthropic",
+]
+
 # Spend cap for the full bake-off sweep. Override via $MAX_BAKEOFF_USD.
 DEFAULT_MAX_BAKEOFF_USD = 15.0
 
@@ -151,8 +161,23 @@ DEFAULT_MAX_BAKEOFF_USD = 15.0
 # only); ``chart-read`` is the B5.x extension that calls
 # VisionClient.analyze_image_targeted(task_type="chart_read") with the prod
 # chart-extraction prompt and scores per-point data fidelity against the
-# gold-standard ``extracted_values.csv`` rows.
-BENCHMARK_MODES: tuple[str, ...] = ("detect", "chart-read")
+# gold-standard ``extracted_values.csv`` rows. ``metric-classify`` calls
+# VisionClient.analyze_image directly with a short metric-enumeration prompt
+# and scores per-image reviewer-disposition (accept/reject/correct/add).
+BENCHMARK_MODES: tuple[str, ...] = ("detect", "chart-read", "metric-classify")
+
+# metric-classify — reviewer rejection-reason enum, matching the
+# ``v2_image_review_decisions.rejection_reason`` column (migration 29).
+# Table-in-image cases map to ``"other"`` until the enum is extended; the
+# detail is carried in ``reasoning``.
+CLASSIFY_REJECTION_REASONS: frozenset[str] = frozenset(
+    {"decorative", "not_a_chart", "wrong_subject", "duplicate", "unreadable", "other"}
+)
+
+# metric-classify — default confidence threshold for the derived
+# ``predicted_relevant`` flag. Held at 0.5 so zero-metric outputs stay
+# "not relevant" and low-confidence positives stay flagged for review.
+CLASSIFY_RELEVANCE_THRESHOLD: float = 0.5
 
 
 # ---- DB query -----------------------------------------------------------------
@@ -430,6 +455,10 @@ def _run_provider(entry: dict[str, Any], provider: str, mode: str = "detect") ->
         "axis_labels_extracted": [],
         "tier1_facts_extracted": 0,
         "extracted_points": [],
+        "predicted_metrics": [],
+        "classification_confidence": 0.0,
+        "rejection_reason": None,
+        "classification_reasoning": "",
         "skipped": False,
         "skip_reason": None,
     }
@@ -443,6 +472,8 @@ def _run_provider(entry: dict[str, Any], provider: str, mode: str = "detect") ->
 
     if mode == "detect":
         return _run_provider_detect(entry, provider, image_bytes, skeleton, t0)
+    if mode == "metric-classify":
+        return _run_provider_metric_classify(entry, provider, image_bytes, skeleton, t0)
     return _run_provider_chart_read(entry, provider, image_bytes, skeleton, t0)
 
 
@@ -481,6 +512,79 @@ def _run_provider_detect(
         "cost_usd": result.cost_usd,
         "latency_ms": int((time.perf_counter() - t0) * 1000),
         "raw_output": result.raw_response,
+    }
+
+
+def _run_provider_metric_classify(
+    entry: dict[str, Any],
+    provider: str,
+    image_bytes: bytes,
+    skeleton: dict[str, Any],
+    t0: float,
+) -> dict[str, Any]:
+    """metric-classify mode: short prompt, JSON output, per-image metric set.
+
+    Calls ``VisionClient.analyze_image`` directly (no routing) with the
+    tier-enumerating ``CLASSIFY_PROMPT`` and ``response_format=json_object``.
+    Returns the skeleton shape augmented with ``predicted_metrics``,
+    ``classification_confidence``, ``rejection_reason``, and
+    ``classification_reasoning``. ``predicted_relevant`` is derived from
+    the confidence threshold so the chart-detection view still has signal.
+    """
+    from src.llm.vision_client import VisionClient
+
+    try:
+        with _ProviderEnv(provider):
+            client = VisionClient()
+            response = client.analyze_image(
+                image_bytes=image_bytes,
+                prompt=CLASSIFY_PROMPT,
+                detail="high",
+                max_tokens=400,
+                response_format={"type": "json_object"},
+            )
+    except Exception as exc:
+        logger.warning(
+            "Vision API error (metric-classify) for provider=%s img_id=%s: %s",
+            provider,
+            entry["img_id"],
+            exc,
+        )
+        return {
+            **skeleton,
+            "parse_failed": True,
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+            "raw_output": str(exc),
+        }
+
+    raw_content = getattr(response, "content", "") or ""
+    cost = float(getattr(response, "cost_usd", 0.0))
+    latency_ms = int((time.perf_counter() - t0) * 1000)
+
+    parsed = _parse_classify_response(raw_content)
+    if parsed is None:
+        return {
+            **skeleton,
+            "parse_failed": True,
+            "cost_usd": cost,
+            "latency_ms": latency_ms,
+            "raw_output": raw_content[:4000],
+        }
+
+    metrics = parsed["predicted_metrics"]
+    confidence = parsed["confidence"]
+    predicted_relevant = bool(metrics) and confidence >= CLASSIFY_RELEVANCE_THRESHOLD
+
+    return {
+        **skeleton,
+        "predicted_relevant": predicted_relevant,
+        "cost_usd": cost,
+        "latency_ms": latency_ms,
+        "raw_output": raw_content[:4000],
+        "predicted_metrics": metrics,
+        "classification_confidence": confidence,
+        "rejection_reason": parsed["rejection_reason"],
+        "classification_reasoning": parsed["reasoning"],
     }
 
 
@@ -644,6 +748,165 @@ def _flatten_chart_points(
     return out
 
 
+def _load_tier_metric_ids() -> tuple[list[str], list[str]]:
+    """Return ``(tier1_ids, tier2_ids)`` from config/metric_keywords.yaml.
+
+    Pulled from yaml at call time so the prompt can never drift from the
+    authoritative tier assignment in CLAUDE.md. Returns deterministically
+    sorted ids (alphabetical) so the prompt is stable across runs.
+    """
+    import yaml
+
+    yaml_path = REPO_ROOT / "config" / "metric_keywords.yaml"
+    with yaml_path.open(encoding="utf-8") as fh:
+        cfg = yaml.safe_load(fh) or {}
+
+    tier1: list[str] = []
+    tier2: list[str] = []
+    for metric_id, body in cfg.items():
+        if not isinstance(body, dict):
+            continue
+        tier = body.get("tier")
+        if tier == 1:
+            tier1.append(metric_id)
+        elif tier == 2:
+            tier2.append(metric_id)
+    return sorted(tier1), sorted(tier2)
+
+
+# metric-classify — short classification prompt, built from metric_keywords.yaml
+# at import time so the tier lists in CLAUDE.md are the single source of truth.
+# TODO: when prod adopts this, move the constant into
+# ``src/llm/vision_client.analyze_image_for_metric_classification`` and have
+# the harness import it from there (keeps prompt-parity across benchmark and
+# prod; see plan-doc "Prompt-parity risk").
+_TIER1_METRIC_IDS, _TIER2_METRIC_IDS = _load_tier_metric_ids()
+
+
+def _build_classify_prompt(tier1: list[str], tier2: list[str]) -> str:
+    """Assemble the metric-classification prompt.
+
+    Inlined in the harness rather than ``vision_client.py`` so prod routing
+    isn't affected while we validate the approach. Returns JSON-only; paired
+    with ``response_format={"type": "json_object"}`` on the API call.
+    """
+    tier1_block = "\n".join(f"  - {m}" for m in tier1)
+    tier2_block = "\n".join(f"  - {m}" for m in tier2)
+    reasons = sorted(CLASSIFY_REJECTION_REASONS)
+    reasons_block = ", ".join(reasons)
+    return (
+        "You are classifying a customer-metrics disclosure image from an SEC "
+        "filing.\n\n"
+        f"TIER-1 metrics (must-not-miss; {len(tier1)}):\n{tier1_block}\n\n"
+        f"TIER-2 metrics (nice-to-have; {len(tier2)}):\n{tier2_block}\n\n"
+        "A metric is DISCLOSED in this image if the image depicts meaningful "
+        "chart data for that metric — even if data points are unlabeled, axes "
+        "are missing, or numeric values aren't visible. Base your judgment on "
+        "the chart SHAPE (cohort parfait / layer cake / stacked-area-by-cohort "
+        "/ triangle / retention curve / bar-by-cohort), the title, the legend, "
+        "and any surrounding text. Labeled values are sufficient evidence; "
+        "they are NOT required. Unlabeled cohort-waterfall / layer-cake "
+        "visuals are valid disclosures when the shape depicts per-cohort data.\n\n"
+        "Images that are TABLES of numbers should be returned with "
+        'predicted_metrics=[] and rejection_reason="other" (tables are handled '
+        "by a different pipeline).\n\n"
+        "Return JSON exactly:\n"
+        "{\n"
+        '  "predicted_metrics": [metric_ids from the lists above; [] if none],\n'
+        '  "confidence": float in 0.0 to 1.0 over the predicted set,\n'
+        f'  "rejection_reason": one of {{{reasons_block}}} when '
+        "predicted_metrics is empty, else null,\n"
+        '  "reasoning": one sentence explaining the call (for audit)\n'
+        "}\n\n"
+        "Only emit metric_ids exactly as listed above."
+    )
+
+
+CLASSIFY_PROMPT: str = _build_classify_prompt(_TIER1_METRIC_IDS, _TIER2_METRIC_IDS)
+
+
+def _strip_markdown_fences(raw: str) -> str:
+    """Strip ```json … ``` fences that Gemini often wraps JSON responses in.
+
+    Returns the stripped payload when the full content is a single fenced
+    block; otherwise returns ``raw`` unchanged. Conservative: only triggers
+    when the text starts with \"```\" so clean JSON is left alone.
+    """
+    if not raw:
+        return raw
+    stripped = raw.strip()
+    if not stripped.startswith("```"):
+        return raw
+    first_newline = stripped.find("\n")
+    if first_newline == -1:
+        return raw
+    body = stripped[first_newline + 1 :]
+    if body.rstrip().endswith("```"):
+        body = body.rstrip()[:-3]
+    return body
+
+
+def _parse_classify_response(raw: str) -> dict[str, Any] | None:
+    """Parse and lightly normalise the metric-classify JSON response.
+
+    Returns ``None`` if JSON parsing fails. Accepts missing optional fields
+    and coerces common shape bugs (e.g. ``null`` confidence → 0.0, string
+    metric list → wrapped in list, unknown rejection_reason → ``"other"``)
+    so minor provider drift doesn't bubble up as a parse failure.
+    """
+    try:
+        obj = json.loads(_strip_markdown_fences(raw))
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+
+    raw_metrics = obj.get("predicted_metrics", []) or []
+    if isinstance(raw_metrics, str):
+        raw_metrics = [raw_metrics]
+    known_ids = set(_TIER1_METRIC_IDS) | set(_TIER2_METRIC_IDS)
+    metrics = [str(m).strip() for m in raw_metrics if str(m).strip() in known_ids]
+
+    try:
+        confidence = float(obj.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    reason = obj.get("rejection_reason")
+    if reason is not None:
+        reason = str(reason).strip()
+        if reason not in CLASSIFY_REJECTION_REASONS:
+            reason = "other"
+        if metrics:
+            # Classifier emitted metrics AND a reason; the schema says the
+            # reason only applies when metrics is empty. Drop it to keep
+            # downstream scoring unambiguous.
+            reason = None
+    reasoning = str(obj.get("reasoning") or "")
+
+    return {
+        "predicted_metrics": metrics,
+        "confidence": confidence,
+        "rejection_reason": reason,
+        "reasoning": reasoning,
+    }
+
+
+def _load_manifest_metric_tags(entry: dict[str, Any]) -> list[str]:
+    """Return the manifest-provided ``ground_truth_metric_ids`` for an entry.
+
+    Primary truth for the metric-classify scorer. Stable filter against the
+    known tier-1/2 metric-id universe so a typo in the manifest doesn't
+    quietly become a false negative elsewhere.
+    """
+    raw = entry.get("ground_truth_metric_ids") or []
+    if not isinstance(raw, list):
+        return []
+    known_ids = set(_TIER1_METRIC_IDS) | set(_TIER2_METRIC_IDS)
+    return [str(m).strip() for m in raw if str(m).strip() in known_ids]
+
+
 def _load_chart_ground_truth(entry: dict[str, Any]) -> list[dict[str, Any]]:
     """Load ground-truth chart rows for a manifest entry, if mapped.
 
@@ -756,6 +1019,18 @@ def _run_benchmark(
             result.setdefault("data_value_fp", 0)
             result.setdefault("data_value_fn", 0)
 
+        if mode == "metric-classify" and not result.get("skipped"):
+            reference_metrics = _load_manifest_metric_tags(entry)
+            from src.gold_standard.image_eval import reviewer_action
+
+            result["reference_metrics"] = reference_metrics
+            result["reviewer_action"] = reviewer_action(
+                result.get("predicted_metrics", []), reference_metrics
+            )
+        else:
+            result.setdefault("reference_metrics", [])
+            result.setdefault("reviewer_action", "")
+
         run_records.append(result)
 
     return run_records
@@ -795,6 +1070,11 @@ def _build_eval_results(run_records: list[dict[str, Any]]) -> dict[str, Any]:
                 data_value_tp=int(r.get("data_value_tp", 0)),
                 data_value_fp=int(r.get("data_value_fp", 0)),
                 data_value_fn=int(r.get("data_value_fn", 0)),
+                predicted_metrics=r.get("predicted_metrics", []),
+                reference_metrics=r.get("reference_metrics", []),
+                classification_confidence=float(r.get("classification_confidence", 0.0)),
+                rejection_reason=r.get("rejection_reason"),
+                reviewer_action=r.get("reviewer_action", ""),
             )
         )
 
@@ -818,6 +1098,18 @@ def _build_eval_results(run_records: list[dict[str, Any]]) -> dict[str, Any]:
         "data_value_recall": agg.data_value_recall,
         "data_value_f1": agg.data_value_f1,
         "n_images_scored_on_data": agg.n_images_scored_on_data,
+        "accept_rate": agg.accept_rate,
+        "reject_rate": agg.reject_rate,
+        "correct_rate": agg.correct_rate,
+        "add_rate": agg.add_rate,
+        "partial_rate": agg.partial_rate,
+        "skip_rate": agg.skip_rate,
+        "auto_disposition_rate": agg.auto_disposition_rate,
+        "metric_tag_precision": agg.metric_tag_precision,
+        "metric_tag_recall": agg.metric_tag_recall,
+        "metric_tag_f1": agg.metric_tag_f1,
+        "calibration_ece": agg.calibration_ece,
+        "n_images_scored_on_metric_tags": agg.n_images_scored_on_metric_tags,
         "n_skipped": sum(1 for r in run_records if r.get("skipped")),
         "n_missing_bytes": sum(1 for r in run_records if r.get("skip_reason") == "missing_bytes"),
     }
@@ -881,7 +1173,10 @@ Examples:
             "Benchmark mode. 'detect' = PR #142 chart-detection path "
             "(analyze_image_for_text). 'chart-read' = Wave B5.x per-point "
             "data-fidelity path (analyze_image_targeted, exercises B4 "
-            "two-stage routing for provider=two-stage)."
+            "two-stage routing for provider=two-stage). 'metric-classify' "
+            "= presence-first per-image metric classification "
+            "(analyze_image + short JSON prompt); scored on reviewer "
+            "accept/reject/correct/add dispositions."
         ),
     )
     parser.add_argument(
@@ -967,6 +1262,29 @@ def _run_single_provider_report(
             m["data_value_f1"],
             m["n_images_scored_on_data"],
         )
+    if mode == "metric-classify":
+        logger.info(
+            "  Metric-tag P/R/F1      : %.3f / %.3f / %.3f  (scored on %d img)",
+            m["metric_tag_precision"],
+            m["metric_tag_recall"],
+            m["metric_tag_f1"],
+            m["n_images_scored_on_metric_tags"],
+        )
+        logger.info(
+            "  Reviewer actions       : accept=%.2f reject=%.2f correct=%.2f "
+            "add=%.2f partial=%.2f skip=%.2f",
+            m["accept_rate"],
+            m["reject_rate"],
+            m["correct_rate"],
+            m["add_rate"],
+            m["partial_rate"],
+            m["skip_rate"],
+        )
+        logger.info(
+            "  Auto-disposition       : %.3f   Calibration ECE: %.3f",
+            m["auto_disposition_rate"],
+            m["calibration_ece"],
+        )
     logger.info(
         "  Cost / image           : $%.5f  |  Latency: %dms",
         m["mean_cost_usd"],
@@ -985,6 +1303,8 @@ def _bakeoff_order_for(mode: str) -> list[str]:
     """Return the provider order for the bake-off given the benchmark mode."""
     if mode == "chart-read":
         return list(BAKEOFF_PROVIDER_ORDER_CHART_READ)
+    if mode == "metric-classify":
+        return list(BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY)
     return list(BAKEOFF_PROVIDER_ORDER)
 
 
@@ -1148,8 +1468,15 @@ def main() -> None:
         logger.info("  Limiting to %d images (--limit)", args.limit)
 
     mode = args.mode
-    mode_prefix = "bakeoff_chart_read" if mode == "chart-read" else "bakeoff"
-    single_prefix = "chart-read" if mode == "chart-read" else args.provider
+    if mode == "chart-read":
+        mode_prefix = "bakeoff_chart_read"
+        single_prefix = "chart-read"
+    elif mode == "metric-classify":
+        mode_prefix = "bakeoff_metric_classify"
+        single_prefix = "metric-classify"
+    else:
+        mode_prefix = "bakeoff"
+        single_prefix = args.provider
 
     if args.bakeoff:
         max_usd_raw = os.environ.get("MAX_BAKEOFF_USD", "").strip()
@@ -1173,7 +1500,7 @@ def main() -> None:
         output_path = Path(args.output)
     else:
         BENCHMARK_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        if mode == "chart-read":
+        if mode in {"chart-read", "metric-classify"}:
             filename = f"{single_prefix}_{args.provider}_{date.today().isoformat()}.json"
         else:
             filename = f"{args.provider}_{date.today().isoformat()}.json"

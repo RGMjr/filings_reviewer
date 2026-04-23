@@ -146,12 +146,24 @@ class GoldStandardEntry:
 
     @property
     def has_numeric_value(self) -> bool:
-        """Check if entry has a numeric value (not definition-only)."""
+        """Check if entry has a numeric value (not definition-only).
+
+        Chart entries (segment_type='chart') are always presence-only —
+        Raw value is advisory/archival and never used for value-level matching.
+        """
         if self.is_definition_only:
+            return False
+        # Q2a: all chart-segment entries are presence-only regardless of raw_value.
+        if self.segment_type.strip().lower() == "chart":
             return False
         if not self.raw_value or self.raw_value.lower() in ("", "chart", "n/a", "-"):
             return False
         return True
+
+    @property
+    def is_chart_presence_entry(self) -> bool:
+        """True when this gold row should be evaluated via presence P/R, not value-level."""
+        return self.segment_type.strip().lower() == "chart"
 
     @property
     def normalized_value(self) -> float | None:
@@ -255,10 +267,38 @@ class ValidationResult:
     # metrics can be recomputed at a different threshold.
     expected_entries_for_recompute: list[GoldStandardEntry] = field(default_factory=list)
 
+    # Presence P/R counters for chart gold rows (post-PR-1 pivot).
+    # Chart gold rows no longer contribute to value-level TP/FP/FN; they are
+    # measured here via metric-presence signals from v2_image_assets.detected_metrics.
+    presence_tp: int = 0
+    presence_fp: int = 0
+    presence_fn: int = 0
+
+    # Presence diagnostics for FN chart rows.
+    presence_fn_diagnostics: list[FNDiagnostic] = field(default_factory=list)
+
     # Per-stage pipeline timings for this filing (stage name → duration_ms).
     # Populated from v2_result.stage_results; empty if the pipeline failed.
     stage_timings: dict[str, int] = field(default_factory=dict)
     total_pipeline_ms: int = 0
+
+    @property
+    def presence_precision(self) -> float:
+        """Presence precision = pTP / (pTP + pFP)."""
+        total = self.presence_tp + self.presence_fp
+        return self.presence_tp / total if total > 0 else 0.0
+
+    @property
+    def presence_recall(self) -> float:
+        """Presence recall = pTP / (pTP + pFN)."""
+        total = self.presence_tp + self.presence_fn
+        return self.presence_tp / total if total > 0 else 0.0
+
+    @property
+    def presence_f1(self) -> float:
+        """Presence F1 = harmonic mean of presence_precision and presence_recall."""
+        p, r = self.presence_precision, self.presence_recall
+        return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
     @property
     def precision(self) -> float:
@@ -302,6 +342,25 @@ class AggregateMetrics:
     chart_facts_text_derivable_total: int = 0
     chart_facts_text_derivable_cross_confirmed: int = 0
     chart_facts_by_chart_native_metric: dict[str, int] = field(default_factory=dict)
+    # Chart-presence aggregates (post-PR-1 pivot).
+    total_presence_tp: int = 0
+    total_presence_fp: int = 0
+    total_presence_fn: int = 0
+
+    @property
+    def presence_precision(self) -> float:
+        total = self.total_presence_tp + self.total_presence_fp
+        return self.total_presence_tp / total if total > 0 else 0.0
+
+    @property
+    def presence_recall(self) -> float:
+        total = self.total_presence_tp + self.total_presence_fn
+        return self.total_presence_tp / total if total > 0 else 0.0
+
+    @property
+    def presence_f1(self) -> float:
+        p, r = self.presence_precision, self.presence_recall
+        return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
     def to_baseline_metrics(
         self,
@@ -310,6 +369,11 @@ class AggregateMetrics:
         """Convert to BaselineMetrics for saving."""
         from datetime import UTC, datetime
 
+        # Emit presence_f1 only when there were chart-presence gold rows to evaluate;
+        # keeps pre-pivot baselines loadable without spurious 0.0 defaults.
+        has_presence = (
+            self.total_presence_tp + self.total_presence_fp + self.total_presence_fn
+        ) > 0
         return BaselineMetrics(
             baseline_date=datetime.now(UTC).isoformat(),
             description=description or "V2 pipeline validation",
@@ -319,6 +383,7 @@ class AggregateMetrics:
                 f1=self.f1,
             ),
             by_company=self.by_company,
+            presence_f1=self.presence_f1 if has_presence else None,
             # V2 baseline marker (via description)
         )
 
@@ -711,6 +776,61 @@ class V2GoldStandardValidator:
                     )
                     result.fp_diagnostics.append(diag)
 
+        # --- Presence-pivot: chart gold rows (post-PR-1 chart-stage pivot) ---
+        # Chart gold rows (segment_type='chart') are evaluated via metric-presence
+        # P/R, not value-level P/R. Source of truth: v2_context.images[*].detected_metrics
+        # (in-memory; validator runs pipeline with filing_id=0, no persistence).
+        # Mixed-source fallback (Q1a): a text/table-sourced fact for the same
+        # (filing, metric) also counts as presence TP.
+        if v2_context is not None:
+            chart_gold_set = self._chart_gold_presence_set(expected_entries)
+            chart_detected_set = self._chart_presence_set_from_context(v2_context)
+
+            text_table_metric_ids = {
+                normalize_metric_id(f.canonical_metric_id)
+                for f in v2_facts
+                if f.source_type != SourceType.CHART
+            }
+
+            has_chart_images = any(img.chart_data is not None for img in v2_context.images)
+
+            for metric_id in chart_gold_set:
+                if metric_id in chart_detected_set or metric_id in text_table_metric_ids:
+                    result.presence_tp += 1
+                else:
+                    result.presence_fn += 1
+                    if self.fn_diagnostics:
+                        entries_for_metric = [
+                            e
+                            for e in expected_entries
+                            if e.is_chart_presence_entry
+                            and normalize_metric_id(e.metric_id) == metric_id
+                        ]
+                        if entries_for_metric:
+                            category = (
+                                "presence_not_detected" if has_chart_images else "image_missing"
+                            )
+                            detail = (
+                                f"chart image(s) present but {metric_id} scored below threshold"
+                                if has_chart_images
+                                else f"no chart images processed; {metric_id} expected"
+                            )
+                            result.presence_fn_diagnostics.append(
+                                FNDiagnostic(
+                                    entry=entries_for_metric[0],
+                                    company_name=company_name,
+                                    root_cause=FNRootCause(
+                                        category=category,
+                                        detail=detail,
+                                        stage="chart_fact_bridge",
+                                    ),
+                                )
+                            )
+
+            # FPs: metrics detected but not expected in this filing's chart-gold set
+            for _ in chart_detected_set - chart_gold_set:
+                result.presence_fp += 1
+
         # Store all pre-threshold facts and gold entries so metrics can be
         # recomputed at a different confidence threshold without re-running
         # the full pipeline (see compute_metrics_at_threshold).
@@ -718,6 +838,34 @@ class V2GoldStandardValidator:
         result.expected_entries_for_recompute = list(expected_entries)
 
         return result
+
+    def _chart_presence_set_from_context(
+        self,
+        context: PipelineContext,
+        threshold: float | None = None,
+    ) -> set[str]:
+        """Union of metric_ids detected on any chart image, above the presence threshold.
+
+        Uses `PipelineConfig.chart_presence_min_score` when `threshold` is None.
+        """
+        if threshold is None:
+            threshold = context.config.chart_presence_min_score
+        detected: set[str] = set()
+        for image in context.images:
+            for dm in image.detected_metrics:
+                if dm.score >= threshold:
+                    detected.add(normalize_metric_id(dm.metric_id))
+        return detected
+
+    def _chart_gold_presence_set(self, entries: list[GoldStandardEntry]) -> set[str]:
+        """Metric IDs appearing in chart-segment gold entries for a filing."""
+        return {
+            normalize_metric_id(e.metric_id)
+            for e in entries
+            if e.is_chart_presence_entry
+            and normalize_metric_id(e.metric_id)
+            and normalize_metric_id(e.metric_id) != "cm_not_a_customer_metric"
+        }
 
     def _find_matching_fact(
         self,
@@ -927,7 +1075,8 @@ class V2GoldStandardValidator:
 
         # Step 1: Check candidates for this metric_id
         matching_candidates = [
-            c for c in context.candidates
+            c
+            for c in context.candidates
             if normalize_metric_id(getattr(c, "metric_id", "")) == entry_metric_id
         ]
         candidate_count = len(matching_candidates)
@@ -947,7 +1096,8 @@ class V2GoldStandardValidator:
 
         # Step 2: Check pre-filter bound values for these candidates
         pre_filter_bindings = [
-            bv for bv in context._pre_filter_bound_values
+            bv
+            for bv in context._pre_filter_bound_values
             if getattr(bv, "candidate_id", None) in candidate_ids
         ]
         bound_value_count = len(pre_filter_bindings)
@@ -967,8 +1117,7 @@ class V2GoldStandardValidator:
 
         # Step 3: Check post-filter bound values — were bindings FP-filtered out?
         post_filter_bindings = [
-            bv for bv in context.bound_values
-            if getattr(bv, "candidate_id", None) in candidate_ids
+            bv for bv in context.bound_values if getattr(bv, "candidate_id", None) in candidate_ids
         ]
 
         if not post_filter_bindings and pre_filter_bindings:
@@ -980,9 +1129,9 @@ class V2GoldStandardValidator:
             value_matching_removed: list = []
             if expected_value is not None:
                 value_matching_removed = [
-                    bv for bv in pre_filter_bindings
-                    if bv.value is not None
-                    and self._values_match(expected_value, bv.value)
+                    bv
+                    for bv in pre_filter_bindings
+                    if bv.value is not None and self._values_match(expected_value, bv.value)
                 ]
             if expected_value is None or value_matching_removed:
                 return FNDiagnostic(
@@ -1020,13 +1169,13 @@ class V2GoldStandardValidator:
         # Step 4–7: Bindings survived FP filter — check facts
         # Look at ALL facts (pre-confidence-filter) for this metric
         metric_facts = [
-            f for f in all_facts
-            if normalize_metric_id(f.canonical_metric_id) == entry_metric_id
+            f for f in all_facts if normalize_metric_id(f.canonical_metric_id) == entry_metric_id
         ]
 
         # Also check context.facts (pre-dedup) directly
         context_facts = [
-            f for f in context.facts
+            f
+            for f in context.facts
             if normalize_metric_id(f.canonical_metric_id) == entry_metric_id
         ]
 
@@ -1052,7 +1201,8 @@ class V2GoldStandardValidator:
                 for f in all_metric_facts:
                     if f.value is not None and (
                         closest_fact is None
-                        or abs(f.value - expected_value) < abs((closest_fact.value or 0) - expected_value)
+                        or abs(f.value - expected_value)
+                        < abs((closest_fact.value or 0) - expected_value)
                     ):
                         closest_fact = f
             else:
@@ -1086,16 +1236,19 @@ class V2GoldStandardValidator:
         # the metric). This is the LTV/CAC case: three per-cohort values extracted pre-dedup
         # share identity tuple and get collapsed; only the highest-value sibling survives.
         post_dedup_metric_facts = [
-            f for f in (context.deduplicated_facts or [])
+            f
+            for f in (context.deduplicated_facts or [])
             if normalize_metric_id(f.canonical_metric_id) == entry_metric_id
         ]
         if expected_value is not None:
             pre_dedup_value_matches = [
-                f for f in context_facts
+                f
+                for f in context_facts
                 if f.value is not None and self._values_match(expected_value, f.value)
             ]
             post_dedup_value_matches = [
-                f for f in post_dedup_metric_facts
+                f
+                for f in post_dedup_metric_facts
                 if f.value is not None and self._values_match(expected_value, f.value)
             ]
             if pre_dedup_value_matches and not post_dedup_value_matches:
@@ -1119,14 +1272,8 @@ class V2GoldStandardValidator:
                 )
 
         # Step 6: Check confidence threshold
-        low_conf_facts = [
-            f for f in all_metric_facts
-            if f.confidence < self.min_confidence
-        ]
-        ok_conf_facts = [
-            f for f in all_metric_facts
-            if f.confidence >= self.min_confidence
-        ]
+        low_conf_facts = [f for f in all_metric_facts if f.confidence < self.min_confidence]
+        ok_conf_facts = [f for f in all_metric_facts if f.confidence >= self.min_confidence]
         if low_conf_facts and not ok_conf_facts:
             return FNDiagnostic(
                 entry=entry,
@@ -1147,7 +1294,8 @@ class V2GoldStandardValidator:
         # collapsed are classified as dedup_collision (Step 5b), not wrong_period.
         if expected_value is not None:
             value_matched_facts = [
-                f for f in post_dedup_metric_facts
+                f
+                for f in post_dedup_metric_facts
                 if f.value is not None and self._values_match(expected_value, f.value)
             ]
             if value_matched_facts:
@@ -1367,17 +1515,14 @@ class V2GoldStandardValidator:
             unknown = [c for c in companies if c not in valid_names]
             if unknown:
                 raise ValueError(
-                    f"Unknown company name(s): {unknown}. "
-                    f"Valid names: {sorted(valid_names)}"
+                    f"Unknown company name(s): {unknown}. Valid names: {sorted(valid_names)}"
                 )
             entries_by_company = {
                 k: v for k, v in entries_by_company.items() if k in set(companies)
             }
         if limit is not None:
             entries_by_company = dict(list(entries_by_company.items())[:limit])
-        logger.info(
-            f"Running {len(entries_by_company)} filing(s) with max_workers={max_workers}"
-        )
+        logger.info(f"Running {len(entries_by_company)} filing(s) with max_workers={max_workers}")
 
         if max_workers > 1:
             return self._validate_all_parallel(entries_by_company, max_workers)
@@ -1429,15 +1574,11 @@ class V2GoldStandardValidator:
 
         company_items = list(entries_by_company.items())
 
-        def make_task(
-            company_name: str, entries: list[GoldStandardEntry]
-        ):
+        def make_task(company_name: str, entries: list[GoldStandardEntry]):
             def task() -> ValidationResult | None:
                 filing_path = self._find_filing_path(company_name)
                 if filing_path is None:
-                    logger.warning(
-                        f"No filing found for {company_name}, skipping validation"
-                    )
+                    logger.warning(f"No filing found for {company_name}, skipping validation")
                     return None
                 metadata = self._load_filing_metadata(company_name)
                 fy_end_month = metadata.get("fiscal_year_end_month")
@@ -1597,8 +1738,7 @@ class V2GoldStandardValidator:
             s = metrics.by_metric[mid]
             tier = get_tier(mid)
             print(
-                f"  {mid:<{col_w}}   T{tier}  "
-                f"{s.precision:>6.1%}  {s.recall:>6.1%}  {s.f1:>6.1%}"
+                f"  {mid:<{col_w}}   T{tier}  {s.precision:>6.1%}  {s.recall:>6.1%}  {s.f1:>6.1%}"
             )
 
     @staticmethod
@@ -1716,9 +1856,7 @@ class V2GoldStandardValidator:
 
         chart_facts_total = sum(r.chart_facts_total for r in results)
         chart_facts_cross_confirmed = sum(r.chart_facts_cross_confirmed for r in results)
-        chart_facts_text_derivable_total = sum(
-            r.chart_facts_text_derivable_total for r in results
-        )
+        chart_facts_text_derivable_total = sum(r.chart_facts_text_derivable_total for r in results)
         chart_facts_text_derivable_cross_confirmed = sum(
             r.chart_facts_text_derivable_cross_confirmed for r in results
         )
@@ -1728,6 +1866,10 @@ class V2GoldStandardValidator:
                 chart_facts_by_chart_native_metric[metric_id] = (
                     chart_facts_by_chart_native_metric.get(metric_id, 0) + count
                 )
+
+        total_presence_tp = sum(r.presence_tp for r in results)
+        total_presence_fp = sum(r.presence_fp for r in results)
+        total_presence_fn = sum(r.presence_fn for r in results)
 
         return AggregateMetrics(
             precision=precision,
@@ -1744,6 +1886,9 @@ class V2GoldStandardValidator:
             chart_facts_text_derivable_total=chart_facts_text_derivable_total,
             chart_facts_text_derivable_cross_confirmed=chart_facts_text_derivable_cross_confirmed,
             chart_facts_by_chart_native_metric=chart_facts_by_chart_native_metric,
+            total_presence_tp=total_presence_tp,
+            total_presence_fp=total_presence_fp,
+            total_presence_fn=total_presence_fn,
         )
 
     def compute_metrics_at_threshold(
@@ -1837,11 +1982,7 @@ class V2GoldStandardValidator:
 
         precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
         recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
-        f1 = (
-            2 * (precision * recall) / (precision + recall)
-            if (precision + recall) > 0
-            else 0.0
-        )
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
         return AggregateMetrics(
             precision=precision,
@@ -2033,7 +2174,9 @@ def run_validation(
         )
 
     # Run at the requested confidence threshold (default: high-confidence only)
-    validator = V2GoldStandardValidator(min_confidence=min_confidence, fn_diagnostics=fn_diagnostics)
+    validator = V2GoldStandardValidator(
+        min_confidence=min_confidence, fn_diagnostics=fn_diagnostics
+    )
     results = validator.validate_all(
         max_workers=max_workers,
         companies=companies,
@@ -2091,7 +2234,9 @@ def run_validation(
                 print(f"\n⚠ {comparison}")
                 print("\n  COMMIT BLOCKED: V2 gold standard regression detected")
                 print("  To update baseline after intentional changes:")
-                print('    python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"')
+                print(
+                    '    python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"'
+                )
                 sys.exit(1)
             else:
                 delta_f1 = comparison.f1_delta * 100
@@ -2173,11 +2318,7 @@ if __name__ == "__main__":
     _args = parser.parse_args()
     # With action="append", _args.companies is already a list[str] | None.
     # Strip whitespace and drop empties for robustness against quoting quirks.
-    companies_list = (
-        [c.strip() for c in _args.companies if c.strip()]
-        if _args.companies
-        else None
-    )
+    companies_list = [c.strip() for c in _args.companies if c.strip()] if _args.companies else None
     try:
         run_validation(
             update_baseline=_args.update_baseline,

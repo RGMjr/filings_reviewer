@@ -10,6 +10,7 @@ import pytest
 from src.gold_standard.image_eval import (
     CHART_TYPES,
     REJECTION_REASONS,
+    REVIEWER_ACTIONS,
     ImageEvalResult,
     ImageRunRecord,
     _list_cell_accuracy,
@@ -18,12 +19,17 @@ from src.gold_standard.image_eval import (
     chart_detection_metrics,
     data_value_match,
     data_value_scores,
+    expected_calibration_error,
     is_hard_ocr_image,
     is_tier1_image,
     legend_match_score,
+    metric_tag_match,
+    metric_tag_scores,
     ocr_axis_label_accuracy_score,
     ocr_cell_accuracy_score,
     parse_failure_rate,
+    reviewer_action,
+    reviewer_action_counts,
     stratum_label,
     tier1_fact_recall_score,
     title_match_score,
@@ -573,3 +579,285 @@ class TestAggregateResultsDataFields:
         assert agg.data_value_recall == pytest.approx(0.5)
         assert agg.data_value_f1 == pytest.approx(0.5)
         assert agg.n_images_scored_on_data == 1
+
+
+# ---------------------------------------------------------------------------
+# metric-classify — reviewer-disposition scoring
+# ---------------------------------------------------------------------------
+
+
+def _record_with_classify(
+    *,
+    predicted: list[str],
+    reference: list[str],
+    confidence: float = 0.8,
+    rejection_reason: str | None = None,
+    img_id: str = "img",
+) -> ImageRunRecord:
+    """Minimal record carrying metric-classify scoring fields."""
+    return ImageRunRecord(
+        img_id=img_id,
+        reviewer_decision="relevant",
+        reviewer_chart_type="cohort_table",
+        reviewer_notes="",
+        tier1_facts_in_db=0,
+        predicted_chart_type=None,
+        predicted_relevant=bool(predicted),
+        predicted_metrics=predicted,
+        reference_metrics=reference,
+        classification_confidence=confidence,
+        rejection_reason=rejection_reason,
+        reviewer_action=reviewer_action(predicted, reference),
+    )
+
+
+class TestReviewerAction:
+    """`reviewer_action` maps (predicted, reference) to a single bucket."""
+
+    def test_both_empty_is_skip(self) -> None:
+        assert reviewer_action([], []) == "skip"
+
+    def test_exact_non_empty_match_is_accept(self) -> None:
+        assert reviewer_action(["cm_arr"], ["cm_arr"]) == "accept"
+        assert (
+            reviewer_action(["cm_arr", "cm_mrr"], ["cm_mrr", "cm_arr"]) == "accept"
+        )  # set equality, order-agnostic
+
+    def test_reference_empty_is_reject(self) -> None:
+        assert reviewer_action(["cm_arr"], []) == "reject"
+
+    def test_predicted_empty_with_reference_is_add(self) -> None:
+        assert reviewer_action([], ["cm_arr"]) == "add"
+
+    def test_proper_subset_is_add(self) -> None:
+        # Predicted missed a metric; reviewer adds the rest.
+        assert reviewer_action(["cm_arr"], ["cm_arr", "cm_mrr"]) == "add"
+
+    def test_proper_superset_is_partial(self) -> None:
+        # Predicted added a bogus metric on top of a correct one — reviewer
+        # rejects the extra but keeps the accept.
+        assert reviewer_action(["cm_arr", "cm_mrr"], ["cm_arr"]) == "partial"
+
+    def test_disjoint_non_empty_is_correct(self) -> None:
+        assert reviewer_action(["cm_arr"], ["cm_mrr"]) == "correct"
+
+    def test_overlap_neither_subset_is_partial(self) -> None:
+        # Shared: cm_arr; predicted-only: cm_mrr; reference-only: cm_customer_retention_rate.
+        assert (
+            reviewer_action(["cm_arr", "cm_mrr"], ["cm_arr", "cm_customer_retention_rate"])
+            == "partial"
+        )
+
+    def test_reviewer_actions_constant_includes_all_buckets(self) -> None:
+        assert set(REVIEWER_ACTIONS) == {
+            "accept",
+            "reject",
+            "correct",
+            "add",
+            "partial",
+            "skip",
+        }
+
+
+class TestMetricTagMatch:
+    """`metric_tag_match` counts TP/FP/FN from set overlap."""
+
+    def test_both_empty_returns_zero(self) -> None:
+        assert metric_tag_match([], []) == (0, 0, 0)
+
+    def test_exact_match(self) -> None:
+        assert metric_tag_match(["a", "b"], ["a", "b"]) == (2, 0, 0)
+
+    def test_only_predicted(self) -> None:
+        assert metric_tag_match(["a", "b"], []) == (0, 2, 0)
+
+    def test_only_reference(self) -> None:
+        assert metric_tag_match([], ["a", "b"]) == (0, 0, 2)
+
+    def test_partial_overlap(self) -> None:
+        assert metric_tag_match(["a", "b"], ["a", "c"]) == (1, 1, 1)
+
+    def test_duplicate_predicted_does_not_inflate_tp(self) -> None:
+        # Sets dedup — ["a", "a"] is {"a"}.
+        assert metric_tag_match(["a", "a"], ["a"]) == (1, 0, 0)
+
+
+class TestMetricTagScores:
+    """`metric_tag_scores` micro-averages across records with reference_metrics."""
+
+    def test_no_records_scored(self) -> None:
+        rec = _record_with_classify(predicted=["cm_arr"], reference=[])
+        p, r, f1, n = metric_tag_scores([rec])
+        assert (p, r, f1, n) == (0.0, 0.0, 0.0, 0)
+
+    def test_micro_average(self) -> None:
+        # A: predicted={arr}, ref={arr,mrr} → TP=1, FP=0, FN=1
+        # B: predicted={arr,mrr}, ref={arr,mrr} → TP=2, FP=0, FN=0
+        # Micro: TP=3, FP=0, FN=1 → P=1.0, R=0.75, F1=0.857
+        recs = [
+            _record_with_classify(predicted=["cm_arr"], reference=["cm_arr", "cm_mrr"]),
+            _record_with_classify(predicted=["cm_arr", "cm_mrr"], reference=["cm_arr", "cm_mrr"]),
+        ]
+        p, r, f1, n = metric_tag_scores(recs)
+        assert n == 2
+        assert p == pytest.approx(1.0)
+        assert r == pytest.approx(0.75)
+        assert f1 == pytest.approx(2 * 1.0 * 0.75 / 1.75)
+
+
+class TestExpectedCalibrationError:
+    """`expected_calibration_error` bins confidence vs accept-accuracy."""
+
+    def test_empty_corpus_returns_zero(self) -> None:
+        assert expected_calibration_error([]) == pytest.approx(0.0)
+
+    def test_all_records_without_reference_returns_zero(self) -> None:
+        rec = _record_with_classify(predicted=["cm_arr"], reference=[])
+        assert expected_calibration_error([rec]) == pytest.approx(0.0)
+
+    def test_perfectly_calibrated_is_zero(self) -> None:
+        # 10 records, all at conf=1.0, all accept → bin accuracy=1.0, bin mean_conf=1.0
+        records = [
+            _record_with_classify(
+                predicted=["cm_arr"],
+                reference=["cm_arr"],
+                confidence=1.0,
+                img_id=f"img-{i}",
+            )
+            for i in range(10)
+        ]
+        assert expected_calibration_error(records) == pytest.approx(0.0)
+
+    def test_overconfident_all_wrong(self) -> None:
+        # 10 records at conf=1.0 all emitting wrong metric → accuracy=0
+        # in that bin; ECE = |0 - 1.0| * 1.0 = 1.0.
+        records = [
+            _record_with_classify(
+                predicted=["cm_mrr"],
+                reference=["cm_arr"],
+                confidence=1.0,
+                img_id=f"img-{i}",
+            )
+            for i in range(10)
+        ]
+        assert expected_calibration_error(records) == pytest.approx(1.0)
+
+    def test_underconfident_all_right(self) -> None:
+        # 10 records at conf=0.1 all accept → bin accuracy=1.0, mean_conf≈0.1
+        # ECE = |1.0 - 0.1| = 0.9.
+        records = [
+            _record_with_classify(
+                predicted=["cm_arr"],
+                reference=["cm_arr"],
+                confidence=0.1,
+                img_id=f"img-{i}",
+            )
+            for i in range(10)
+        ]
+        assert expected_calibration_error(records) == pytest.approx(0.9)
+
+    def test_confidence_one_falls_in_last_bin(self) -> None:
+        """Conf=1.0 must map into bin index ``n_bins - 1`` (not n_bins)."""
+        rec = _record_with_classify(predicted=["cm_arr"], reference=["cm_arr"], confidence=1.0)
+        assert expected_calibration_error([rec], n_bins=4) == pytest.approx(0.0)
+
+    def test_rejects_non_positive_n_bins(self) -> None:
+        rec = _record_with_classify(predicted=["cm_arr"], reference=["cm_arr"])
+        with pytest.raises(ValueError, match="n_bins must be positive"):
+            expected_calibration_error([rec], n_bins=0)
+
+
+class TestReviewerActionCounts:
+    """`reviewer_action_counts` counts records in each bucket, defaulting zeros."""
+
+    def test_every_bucket_present_with_zero_default(self) -> None:
+        counts = reviewer_action_counts([])
+        assert set(counts) == set(REVIEWER_ACTIONS)
+        assert all(v == 0 for v in counts.values())
+
+    def test_counts_one_per_bucket(self) -> None:
+        records = [
+            _record_with_classify(predicted=["a"], reference=["a"], img_id="1"),  # accept
+            _record_with_classify(predicted=["a"], reference=[], img_id="2"),  # reject
+            _record_with_classify(predicted=["a"], reference=["b"], img_id="3"),  # correct
+            _record_with_classify(predicted=[], reference=["a"], img_id="4"),  # add
+            _record_with_classify(predicted=["a", "b"], reference=["a"], img_id="5"),  # partial
+            _record_with_classify(predicted=[], reference=[], img_id="6"),  # skip
+        ]
+        counts = reviewer_action_counts(records)
+        assert counts == {
+            "accept": 1,
+            "reject": 1,
+            "correct": 1,
+            "add": 1,
+            "partial": 1,
+            "skip": 1,
+        }
+
+
+class TestAggregateResultsMetricFields:
+    """`aggregate_results` populates the classify-mode fields."""
+
+    def test_rates_sum_to_one(self) -> None:
+        records = [
+            _record_with_classify(predicted=["a"], reference=["a"], img_id="1"),
+            _record_with_classify(predicted=["a"], reference=[], img_id="2"),
+            _record_with_classify(predicted=[], reference=[], img_id="3"),
+        ]
+        agg = aggregate_results(records)
+        total = (
+            agg.accept_rate
+            + agg.reject_rate
+            + agg.correct_rate
+            + agg.add_rate
+            + agg.partial_rate
+            + agg.skip_rate
+        )
+        assert total == pytest.approx(1.0)
+
+    def test_auto_disposition_is_accept_plus_skip(self) -> None:
+        records = [
+            _record_with_classify(predicted=["a"], reference=["a"], img_id="1"),
+            _record_with_classify(predicted=[], reference=[], img_id="2"),
+            _record_with_classify(predicted=["a"], reference=["b"], img_id="3"),
+        ]
+        agg = aggregate_results(records)
+        assert agg.accept_rate == pytest.approx(1 / 3)
+        assert agg.skip_rate == pytest.approx(1 / 3)
+        assert agg.auto_disposition_rate == pytest.approx(2 / 3)
+
+    def test_metric_tag_f1_and_ece_populated_when_reference_present(self) -> None:
+        records = [
+            _record_with_classify(
+                predicted=["cm_arr"],
+                reference=["cm_arr"],
+                confidence=0.9,
+                img_id="1",
+            ),
+            _record_with_classify(
+                predicted=["cm_mrr"],
+                reference=["cm_arr"],
+                confidence=0.9,
+                img_id="2",
+            ),
+        ]
+        agg = aggregate_results(records)
+        assert agg.n_images_scored_on_metric_tags == 2
+        # TP=1 (img1 arr), FP=1 (img2 mrr), FN=1 (img2 arr missed)
+        assert agg.metric_tag_precision == pytest.approx(0.5)
+        assert agg.metric_tag_recall == pytest.approx(0.5)
+        assert agg.metric_tag_f1 == pytest.approx(0.5)
+        # img1 accept, img2 correct — bin at conf=0.9 has accuracy=0.5, mean_conf=0.9 →
+        # ECE ~ |0.5 - 0.9| = 0.4
+        assert agg.calibration_ece == pytest.approx(0.4)
+
+    def test_classify_fields_zero_when_records_lack_reference(self) -> None:
+        records = [_record_with_classify(predicted=["cm_arr"], reference=[], img_id="1")]
+        agg = aggregate_results(records)
+        assert agg.n_images_scored_on_metric_tags == 0
+        assert agg.metric_tag_precision == 0.0
+        assert agg.calibration_ece == 0.0
+
+    def test_returns_image_eval_result_type(self) -> None:
+        agg = aggregate_results([_record_with_classify(predicted=["a"], reference=["a"])])
+        assert isinstance(agg, ImageEvalResult)

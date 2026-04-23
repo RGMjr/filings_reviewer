@@ -289,9 +289,6 @@
               <span class="chevron">&#9662;</span>
             </button>
             <span class="fact-metric-id">{{ current_fact.canonical_metric_id }}</span>
-            {% if current_fact.source_type == 'chart' or current_fact.source_type == 'CHART' %}
-            <span class="badge bg-info text-dark" style="font-size:0.75rem;">Chart</span>
-            {% endif %}
             <span class="badge status-{{ current_fact.review_status }} bg-light text-dark border" style="font-size:0.75rem;"
                   {% if current_fact.review_status == 'auto_accepted' %}title="Auto-accepted at extraction time when confidence cleared threshold. No human review yet."{% endif %}>
               {% if current_fact.review_status == 'auto_accepted' %}&#9889; Auto-accepted{% else %}{{ current_fact.review_status.replace('_', ' ').title() }}{% endif %}
@@ -442,56 +439,9 @@
         </div>
         {% endif %}
 
-        {# Chart evidence image — bbox crop when available, otherwise full image.
-           Rendered for every chart-sourced fact; shows a targeted placeholder
-           when the image is unresolvable (orphaned asset, missing file, etc.). #}
-        {% set loc = current_fact.source_locator if current_fact.source_locator is mapping else {} %}
-        {% set bbox = loc.bbox if loc.bbox is mapping else {} %}
-        {% set img_status = current_fact._chart_image_status %}
-        {% set is_chart_fact = current_fact.source_type in ('chart', 'CHART') %}
-        {% if img_status or loc.img_id %}
-        <div class="mb-3">
-          <label class="form-label text-muted mb-1" style="font-size: 0.8rem;">Chart Evidence</label>
-          <div>
-            {% if img_status and img_status.status == 'ok' %}
-              {% if bbox and bbox.w and bbox.h %}
-              <img src="{{ url_for('review_unified.image_crop', img_id=loc.img_id, x=bbox.x|int, y=bbox.y|int, w=bbox.w|int, h=bbox.h|int) }}"
-                   alt="Chart evidence (cropped to data point)"
-                   style="max-width:400px;border:1px solid #ccc;"
-                   onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-              {% else %}
-              <img src="{{ url_for('review_unified.image_crop', img_id=loc.img_id) }}"
-                   alt="Chart evidence (full chart)"
-                   style="max-width:600px;border:1px solid #ccc;"
-                   onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-              {% endif %}
-              <div class="alert alert-warning py-2 mb-0" style="display:none; font-size:0.85rem;">
-                Chart image failed to load. The asset exists in the DB but could not be served.
-              </div>
-            {% elif is_chart_fact and img_status and img_status.status == 'missing_img_id' %}
-              <div class="alert alert-warning py-2 mb-0" style="font-size:0.85rem;">
-                Chart-sourced fact without a linked image.
-                See the <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images') }}">Images tab</a>
-                to find the source chart.
-              </div>
-            {% elif img_status and img_status.status == 'asset_missing' %}
-              <div class="alert alert-warning py-2 mb-0" style="font-size:0.85rem;">
-                Chart image unavailable: linked asset row was deleted
-                (<code>img_id={{ loc.img_id }}</code>).
-                See the <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images') }}">Images tab</a>
-                for available charts on this filing.
-              </div>
-            {% elif img_status and img_status.status == 'file_missing' %}
-              <div class="alert alert-warning py-2 mb-0" style="font-size:0.85rem;">
-                Chart image unavailable: file missing on disk
-                (extraction cache was likely cleared).
-                Re-extract this filing with <code>--force-reextract</code> to restore the preview, or
-                see the <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images') }}">Images tab</a>.
-              </div>
-            {% endif %}
-          </div>
-        </div>
-        {% endif %}
+        {# Chart Evidence block removed: chart signals are now presence-only (PR 1
+           of the chart-stage pivot, #86). Reviewers adjudicate chart metric
+           presence on the Images tab via the Detected-metrics card (PR 3b). #}
 
         <hr>
 
