@@ -96,6 +96,9 @@ htmlcov/
 # But keep project-specific Claude settings
 !.claude/settings.json
 
+# Claude Code runtime locks (created by the scheduled-tasks system)
+.claude/*.lock
+
 # Python tool caches
 .mypy_cache/
 .pytest_cache/
