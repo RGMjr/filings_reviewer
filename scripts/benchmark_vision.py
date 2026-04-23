@@ -66,6 +66,77 @@ TIER1_TARGET = 40
 # Hard-OCR subset: ensure at least this many hard-OCR images.
 HARD_OCR_TARGET = 20
 
+# ---- Provider configurations (Wave B5) ---------------------------------------
+# Each entry maps a --provider value to the env-var settings that the B2
+# VisionClient honors. "current" preserves the legacy single-call prod path;
+# others exercise one of the B2 provider adapters, with "two-stage" using
+# B4's task-aware routing (fast OCR -> premium reader).
+#
+# Env vars referenced: VISION_PROVIDER, VISION_MODEL_OCR, VISION_MODEL_CHART,
+# VISION_ROUTING_MODE (see src/llm/vision_client.py).
+PROVIDER_CONFIGS: dict[str, dict[str, str]] = {
+    "current": {
+        "VISION_PROVIDER": "openai",
+        "VISION_MODEL_OCR": "gpt-4o",
+        "VISION_MODEL_CHART": "gpt-4o",
+        "VISION_ROUTING_MODE": "legacy",
+    },
+    "openai-vnext": {
+        "VISION_PROVIDER": "openai",
+        "VISION_MODEL_OCR": "gpt-4o-2024-11-20",
+        "VISION_MODEL_CHART": "gpt-4o-2024-11-20",
+        "VISION_ROUTING_MODE": "legacy",
+    },
+    "gemini-flash": {
+        "VISION_PROVIDER": "gemini",
+        "VISION_MODEL_OCR": "gemini-2.5-flash-lite",
+        "VISION_MODEL_CHART": "gemini-2.5-flash-lite",
+        "VISION_ROUTING_MODE": "legacy",
+    },
+    "gemini-pro": {
+        "VISION_PROVIDER": "gemini",
+        "VISION_MODEL_OCR": "gemini-2.5-pro",
+        "VISION_MODEL_CHART": "gemini-2.5-pro",
+        "VISION_ROUTING_MODE": "legacy",
+    },
+    "anthropic": {
+        "VISION_PROVIDER": "anthropic",
+        "VISION_MODEL_OCR": "claude-sonnet-4-6",
+        "VISION_MODEL_CHART": "claude-sonnet-4-6",
+        "VISION_ROUTING_MODE": "legacy",
+    },
+    "two-stage": {
+        # Hybrid: fast Gemini Flash OCR -> Claude Sonnet chart-read, with
+        # OCR grounding blob passed to the premium reader (see B4).
+        "VISION_PROVIDER": "openai",  # base client; routing vars override per-call
+        "VISION_MODEL_OCR": "gemini-2.5-flash-lite",
+        "VISION_MODEL_CHART": "claude-sonnet-4-6",
+        "VISION_PROVIDER_OCR": "gemini",
+        "VISION_PROVIDER_CHART": "anthropic",
+        "VISION_ROUTING_MODE": "two_stage",
+    },
+}
+
+BAKEOFF_PROVIDER_ORDER: list[str] = [
+    "current",
+    "openai-vnext",
+    "gemini-flash",
+    "gemini-pro",
+    "anthropic",
+    # NOTE: "two-stage" is intentionally excluded from the default bake-off.
+    # The harness invokes VisionClient.analyze_image_for_text(), which
+    # bypasses VisionClient.analyze_image_targeted() — the only call site
+    # where VISION_ROUTING_MODE=two_stage actually fires. Benchmarking the
+    # real B4 two-stage path needs a harness that exercises
+    # analyze_image_targeted(task_type="chart_read"); deferred to a B5.x
+    # follow-up. The config for "two-stage" is still in PROVIDER_CONFIGS so
+    # the targeted harness can reuse it unchanged.
+]
+
+# Spend cap for the full bake-off sweep. Override via $MAX_BAKEOFF_USD.
+DEFAULT_MAX_BAKEOFF_USD = 15.0
+
+
 # ---- DB query -----------------------------------------------------------------
 
 _CORPUS_QUERY = """
@@ -241,19 +312,76 @@ def _load_manifest(path: Path) -> list[dict[str, Any]]:
     return corpus
 
 
-def _run_current_provider(
-    entry: dict[str, Any],
-) -> dict[str, Any]:
-    """Run the current production extraction path against one corpus image.
+class _ProviderEnv:
+    """Context manager that applies PROVIDER_CONFIGS[provider] to os.environ.
+
+    Restores the prior values on exit (unset keys stay unset). Scoped so each
+    call is independent and the process env is never permanently mutated.
+    """
+
+    def __init__(self, provider: str) -> None:
+        if provider not in PROVIDER_CONFIGS:
+            raise ValueError(
+                f"Unknown provider {provider!r}. Known: {sorted(PROVIDER_CONFIGS.keys())}"
+            )
+        self._overrides = PROVIDER_CONFIGS[provider]
+        self._prior: dict[str, str | None] = {}
+
+    def __enter__(self) -> _ProviderEnv:
+        for key, value in self._overrides.items():
+            self._prior[key] = os.environ.get(key)
+            os.environ[key] = value
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        for key, prior in self._prior.items():
+            if prior is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prior
+
+
+def _force_local_storage_for_fixtures() -> None:
+    """Point the image-storage abstraction at the local fixture tree.
+
+    The bake-off corpus manifest references paths like
+    ``Farfetch_Limited/g607688g09d00.jpg`` that only exist under
+    ``data/gold_standard/`` on the local filesystem — they are not R2 keys.
+    If ``.env`` has R2 credentials set (which is common on dev machines that
+    share prod config), ``get_image_storage()`` would otherwise return
+    ``R2Storage`` and every fixture read would 404.
+
+    Clears the R2 env vars, points ``IMAGE_CACHE_DIR`` at
+    ``data/gold_standard`` unless the caller set it explicitly, and resets
+    the module-level caches so the change is observed immediately.
+
+    Called at the top of benchmark modes (never from ``--build-corpus``,
+    which genuinely needs the configured prod storage).
+    """
+    for var in ("R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL"):
+        os.environ.pop(var, None)
+    if not os.environ.get("IMAGE_CACHE_DIR"):
+        os.environ["IMAGE_CACHE_DIR"] = str(REPO_ROOT / "data" / "gold_standard")
+    # Invalidate the cached resolver so the next call sees the new env.
+    from src.infra.image_storage import get_image_storage
+    from src.infra.paths import image_cache_dir
+
+    image_cache_dir.cache_clear()
+    get_image_storage.cache_clear()
+    logger.info("Benchmark storage: %s", os.environ["IMAGE_CACHE_DIR"])
+
+
+def _run_provider(entry: dict[str, Any], provider: str) -> dict[str, Any]:
+    """Run one vision provider against one corpus image.
 
     Returns a dict with benchmark fields compatible with ImageRunRecord.
     Does NOT re-persist any facts (read-only).
 
-    Production path: VisionClient (GPT-4o) -> analyze_image_for_text
-    We call analyze_image_for_text rather than the full OCR stage because:
-    - We cannot safely call the full pipeline without risking persistence.
-    - analyze_image_for_text returns contains_chart and chart_hint, which
-      is sufficient to measure chart detection P/R.
+    All providers exercise `VisionClient.analyze_image_for_text` — the same
+    method the prod chart-detection path uses. `PROVIDER_CONFIGS[provider]`
+    is applied to the process env for the duration of the call so the B2
+    `VisionClient` picks the right adapter + model, and B4's two-stage
+    routing fires for `provider == "two-stage"`.
     """
     from src.infra.image_storage import get_image_storage
     from src.llm.vision_client import VisionClient
@@ -261,60 +389,14 @@ def _run_current_provider(
     storage = get_image_storage()
     storage_key = entry.get("storage_key", "")
 
-    t0 = time.perf_counter()
-    try:
-        image_bytes = storage.get_bytes(storage_key)
-    except FileNotFoundError:
-        logger.warning("Image not found in storage: %s (img_id=%s)", storage_key, entry["img_id"])
-        return {
-            "img_id": entry["img_id"],
-            "predicted_relevant": False,
-            "predicted_chart_type": None,
-            "parse_failed": False,
-            "cost_usd": 0.0,
-            "latency_ms": 0,
-            "raw_output": "",
-            "title_extracted": "",
-            "legend_extracted": "",
-            "ocr_cells_extracted": [],
-            "axis_labels_extracted": [],
-            "tier1_facts_extracted": 0,
-            "skipped": True,
-            "skip_reason": "missing_bytes",
-        }
-
-    client = VisionClient()
-    try:
-        result = client.analyze_image_for_text(image_bytes)
-    except Exception as exc:
-        logger.warning("Vision API error for img_id=%s: %s", entry["img_id"], exc)
-        return {
-            "img_id": entry["img_id"],
-            "predicted_relevant": False,
-            "predicted_chart_type": None,
-            "parse_failed": True,
-            "cost_usd": 0.0,
-            "latency_ms": int((time.perf_counter() - t0) * 1000),
-            "raw_output": str(exc),
-            "title_extracted": "",
-            "legend_extracted": "",
-            "ocr_cells_extracted": [],
-            "axis_labels_extracted": [],
-            "tier1_facts_extracted": 0,
-            "skipped": False,
-            "skip_reason": None,
-        }
-
-    latency_ms = int((time.perf_counter() - t0) * 1000)
-
-    return {
+    skeleton = {
         "img_id": entry["img_id"],
-        "predicted_relevant": result.contains_chart,
-        "predicted_chart_type": result.chart_hint if result.contains_chart else None,
+        "predicted_relevant": False,
+        "predicted_chart_type": None,
         "parse_failed": False,
-        "cost_usd": result.cost_usd,
-        "latency_ms": latency_ms,
-        "raw_output": result.raw_response,
+        "cost_usd": 0.0,
+        "latency_ms": 0,
+        "raw_output": "",
         "title_extracted": "",
         "legend_extracted": "",
         "ocr_cells_extracted": [],
@@ -323,6 +405,45 @@ def _run_current_provider(
         "skipped": False,
         "skip_reason": None,
     }
+
+    t0 = time.perf_counter()
+    try:
+        image_bytes = storage.get_bytes(storage_key)
+    except FileNotFoundError:
+        logger.warning("Image not found in storage: %s (img_id=%s)", storage_key, entry["img_id"])
+        return {**skeleton, "skipped": True, "skip_reason": "missing_bytes"}
+
+    try:
+        with _ProviderEnv(provider):
+            client = VisionClient()
+            result = client.analyze_image_for_text(image_bytes)
+    except Exception as exc:
+        logger.warning(
+            "Vision API error for provider=%s img_id=%s: %s",
+            provider,
+            entry["img_id"],
+            exc,
+        )
+        return {
+            **skeleton,
+            "parse_failed": True,
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+            "raw_output": str(exc),
+        }
+
+    return {
+        **skeleton,
+        "predicted_relevant": result.contains_chart,
+        "predicted_chart_type": result.chart_hint if result.contains_chart else None,
+        "cost_usd": result.cost_usd,
+        "latency_ms": int((time.perf_counter() - t0) * 1000),
+        "raw_output": result.raw_response,
+    }
+
+
+def _run_current_provider(entry: dict[str, Any]) -> dict[str, Any]:
+    """Legacy shim — kept for back-compat with external callers / tests."""
+    return _run_provider(entry, "current")
 
 
 def _run_benchmark(
@@ -341,10 +462,11 @@ def _run_benchmark(
             "  [%d/%d] img_id=%s  stratum=%s", i + 1, n, entry["img_id"], entry.get("stratum", "?")
         )
 
-        if provider == "current":
-            result = _run_current_provider(entry)
-        else:
-            raise NotImplementedError(f"Provider {provider!r} not yet implemented (Wave B2).")
+        if provider not in PROVIDER_CONFIGS:
+            raise ValueError(
+                f"Unknown provider {provider!r}. Known: {sorted(PROVIDER_CONFIGS.keys())}"
+            )
+        result = _run_provider(entry, provider)
 
         result["reviewer_decision"] = entry["decision"]
         result["reviewer_chart_type"] = entry.get("chart_type")
@@ -442,8 +564,22 @@ Examples:
         "--provider",
         type=str,
         default="current",
-        choices=["current"],
-        help="Vision provider to benchmark.  'current' = prod GPT-4o path.",
+        choices=sorted(PROVIDER_CONFIGS.keys()),
+        help=(
+            "Vision provider to benchmark.  'current' = prod GPT-4o path; "
+            "'openai-vnext', 'gemini-flash', 'gemini-pro', 'anthropic', "
+            "'two-stage' exercise the Wave B2 / B4 provider adapters."
+        ),
+    )
+    parser.add_argument(
+        "--bakeoff",
+        action="store_true",
+        help=(
+            "Run the full Wave B5 sweep: every provider in PROVIDER_CONFIGS, "
+            "sequentially, with a cumulative spend cap ($MAX_BAKEOFF_USD, "
+            f"default ${DEFAULT_MAX_BAKEOFF_USD:.0f}). Writes per-provider "
+            "reports to data/image_benchmarks/bakeoff_<date>/ plus a summary."
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -481,6 +617,132 @@ Examples:
     return parser.parse_args()
 
 
+def _run_single_provider_report(
+    corpus: list[dict[str, Any]],
+    provider: str,
+    limit: int | None,
+    manifest_path: Path,
+    output_path: Path,
+) -> dict[str, Any]:
+    """Run one provider, aggregate metrics, write the JSON report, return it."""
+    logger.info("Running benchmark with provider=%r ...", provider)
+    run_records = _run_benchmark(corpus, provider, limit)
+
+    logger.info("Computing metrics ...")
+    eval_metrics = _build_eval_results(run_records)
+
+    report = {
+        "provider": provider,
+        "run_date": date.today().isoformat(),
+        "manifest_path": str(manifest_path),
+        "limit": limit,
+        "metrics": eval_metrics,
+        "run_records": run_records,
+    }
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, indent=2, default=str)
+
+    logger.info("\n=== Provider: %s ===", provider)
+    m = eval_metrics
+    logger.info(
+        "  Chart detection  P=%.3f  R=%.3f  F1=%.3f",
+        m["chart_detection_precision"],
+        m["chart_detection_recall"],
+        m["chart_detection_f1"],
+    )
+    logger.info("  Tier-1 fact recall     : %.3f", m["tier1_fact_recall"])
+    logger.info("  Parse failure rate     : %.3f", m["parse_failure_rate"])
+    logger.info(
+        "  Cost / image           : $%.5f  |  Latency: %dms",
+        m["mean_cost_usd"],
+        int(m["mean_latency_ms"]),
+    )
+    logger.info("  Report written to %s", output_path)
+    return report
+
+
+def _cumulative_cost(report: dict[str, Any]) -> float:
+    """Sum the per-image cost across the run records in one provider report."""
+    return sum(float(r.get("cost_usd", 0.0)) for r in report.get("run_records", []))
+
+
+def _run_bakeoff(
+    corpus: list[dict[str, Any]],
+    limit: int | None,
+    manifest_path: Path,
+    output_root: Path,
+    max_usd: float,
+) -> dict[str, Any]:
+    """Run every provider in PROVIDER_CONFIGS sequentially with a spend cap.
+
+    Aborts mid-sweep if cumulative cost crosses ``max_usd``. Writes a
+    per-provider JSON to ``output_root / <provider>.json`` plus a
+    ``summary.json`` comparing metrics across providers.
+    """
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    per_provider: dict[str, dict[str, Any]] = {}
+    cumulative = 0.0
+    aborted_at: str | None = None
+
+    for provider in BAKEOFF_PROVIDER_ORDER:
+        logger.info(
+            "\n--- Bake-off provider %s (cumulative spend: $%.4f / $%.2f cap) ---",
+            provider,
+            cumulative,
+            max_usd,
+        )
+        if cumulative >= max_usd:
+            logger.error(
+                "Spend cap $%.2f reached before provider=%s — aborting sweep.",
+                max_usd,
+                provider,
+            )
+            aborted_at = provider
+            break
+
+        provider_output = output_root / f"{provider}.json"
+        report = _run_single_provider_report(
+            corpus=corpus,
+            provider=provider,
+            limit=limit,
+            manifest_path=manifest_path,
+            output_path=provider_output,
+        )
+        per_provider[provider] = report
+        cumulative += _cumulative_cost(report)
+
+    summary = {
+        "run_date": date.today().isoformat(),
+        "manifest_path": str(manifest_path),
+        "providers_run": list(per_provider.keys()),
+        "aborted_at": aborted_at,
+        "spend_cap_usd": max_usd,
+        "total_cost_usd": round(cumulative, 6),
+        "by_provider": {
+            provider: {
+                "metrics": report["metrics"],
+                "report_path": str(output_root / f"{provider}.json"),
+            }
+            for provider, report in per_provider.items()
+        },
+    }
+    summary_path = output_root / "summary.json"
+    with open(summary_path, "w", encoding="utf-8") as fh:
+        json.dump(summary, fh, indent=2, default=str)
+
+    logger.info("\n=== Bake-off summary ===")
+    logger.info("  Providers run: %s", ", ".join(per_provider.keys()))
+    logger.info("  Total spend  : $%.4f (cap $%.2f)", cumulative, max_usd)
+    logger.info("  Summary JSON : %s", summary_path)
+    if aborted_at:
+        logger.warning("  Aborted before: %s", aborted_at)
+
+    return summary
+
+
 def main() -> None:
     load_dotenv()
 
@@ -492,21 +754,23 @@ def main() -> None:
 
     args = _parse_args()
 
-    db_url = (
-        args.database_url or os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
-    )
-    if not db_url:
-        logger.error("No database URL found.  Pass --database-url or set TEST_DATABASE_URL.")
-        sys.exit(1)
-
-    from src.infra.db import DatabaseAdapter
-
-    db = DatabaseAdapter(db_url)
-
     # ------------------------------------------------------------------ #
-    # Mode 1: build corpus manifest
+    # Mode 1: build corpus manifest (DB required)
     # ------------------------------------------------------------------ #
     if args.build_corpus:
+        db_url = (
+            args.database_url
+            or os.environ.get("TEST_DATABASE_URL")
+            or os.environ.get("DATABASE_URL")
+        )
+        if not db_url:
+            logger.error("No database URL found.  Pass --database-url or set TEST_DATABASE_URL.")
+            sys.exit(1)
+
+        from src.infra.db import DatabaseAdapter
+
+        db = DatabaseAdapter(db_url)
+
         logger.info("Querying v2_image_review_decisions for corpus...")
         rows = db.query(_CORPUS_QUERY, {})
         logger.info("  %d labeled images in DB", len(rows))
@@ -542,8 +806,10 @@ def main() -> None:
         return
 
     # ------------------------------------------------------------------ #
-    # Mode 2: run benchmark
+    # Mode 2: run benchmark — single provider or full Wave B5 bake-off
     # ------------------------------------------------------------------ #
+    _force_local_storage_for_fixtures()
+
     manifest_path = Path(args.manifest)
     logger.info("Loading corpus manifest from %s ...", manifest_path)
     corpus = _load_manifest(manifest_path)
@@ -552,56 +818,36 @@ def main() -> None:
     if args.limit:
         logger.info("  Limiting to %d images (--limit)", args.limit)
 
-    logger.info("Running benchmark with provider=%r ...", args.provider)
-    run_records = _run_benchmark(corpus, args.provider, args.limit)
+    if args.bakeoff:
+        max_usd_raw = os.environ.get("MAX_BAKEOFF_USD", "").strip()
+        max_usd = float(max_usd_raw) if max_usd_raw else DEFAULT_MAX_BAKEOFF_USD
+        output_root = (
+            Path(args.output)
+            if args.output
+            else BENCHMARK_OUTPUT_DIR / f"bakeoff_{date.today().isoformat()}"
+        )
+        _run_bakeoff(
+            corpus=corpus,
+            limit=args.limit,
+            manifest_path=manifest_path,
+            output_root=output_root,
+            max_usd=max_usd,
+        )
+        return
 
-    logger.info("Computing metrics ...")
-    eval_metrics = _build_eval_results(run_records)
-
-    # Determine output path
     if args.output:
         output_path = Path(args.output)
     else:
         BENCHMARK_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        output_path = BENCHMARK_OUTPUT_DIR / f"baseline_{date.today().isoformat()}.json"
+        output_path = BENCHMARK_OUTPUT_DIR / f"{args.provider}_{date.today().isoformat()}.json"
 
-    report = {
-        "provider": args.provider,
-        "run_date": date.today().isoformat(),
-        "manifest_path": str(manifest_path),
-        "limit": args.limit,
-        "metrics": eval_metrics,
-        "run_records": run_records,
-    }
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as fh:
-        json.dump(report, fh, indent=2, default=str)
-
-    logger.info("\n=== Benchmark Results ===")
-    m = eval_metrics
-    logger.info(
-        "  Chart detection  P=%.3f  R=%.3f  F1=%.3f",
-        m["chart_detection_precision"],
-        m["chart_detection_recall"],
-        m["chart_detection_f1"],
+    _run_single_provider_report(
+        corpus=corpus,
+        provider=args.provider,
+        limit=args.limit,
+        manifest_path=manifest_path,
+        output_path=output_path,
     )
-    logger.info("  OCR cell accuracy      : %.3f", m["ocr_cell_accuracy"])
-    logger.info("  Tier-1 fact recall     : %.3f", m["tier1_fact_recall"])
-    logger.info("  Parse failure rate     : %.3f", m["parse_failure_rate"])
-    logger.info(
-        "  Cost / image           : $%.5f  |  Latency: %dms",
-        m["mean_cost_usd"],
-        int(m["mean_latency_ms"]),
-    )
-    logger.info(
-        "  Images: total=%d  relevant=%d  not_relevant=%d  skipped=%d",
-        m["n_images"],
-        m["n_relevant"],
-        m["n_not_relevant"],
-        m.get("n_skipped", 0),
-    )
-    logger.info("\nReport written to %s", output_path)
 
 
 if __name__ == "__main__":
