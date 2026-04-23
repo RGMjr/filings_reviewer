@@ -72,6 +72,7 @@ Rules for any DB-touching command in this repo:
 | `R2_SECRET_ACCESS_KEY` | With `R2_BUCKET` | R2 API token secret |
 | `R2_ENDPOINT_URL` | With `R2_BUCKET` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
 | `IMAGE_CACHE_DIR` | Dev only (optional) | Override local filesystem image-cache root. Ignored when `R2_BUCKET` is set |
+| `METABASE_URL` | Optional | Target of the "Data Explorer" nav link in the Flask UI. Defaults to `https://filings-metabase.onrender.com` when unset. |
 
 ## Image Storage
 

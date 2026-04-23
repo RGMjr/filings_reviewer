@@ -25,7 +25,11 @@ review_images_bp = Blueprint("review_images", __name__)
 @app.context_processor
 def inject_app_globals():
     """Mirror real app's context processor."""
-    return {"app_name": "Filings Review", "app_version": "0.1.0"}
+    return {
+        "app_name": "Filings Review",
+        "app_version": "0.1.0",
+        "metabase_url": "https://filings-metabase.onrender.com",
+    }
 
 
 # --- Blueprint stub routes ---
