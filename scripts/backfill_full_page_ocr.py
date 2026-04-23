@@ -190,13 +190,17 @@ def process_filings(
     min_confidence_auto_accept: float,
 ) -> dict[str, Any]:
     """Run V2 extraction on each candidate with full-page-OCR enabled."""
+    from src.infra.paths import image_cache_dir
     from src.infra.sec_client import SECClient
 
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL not set")
     db = DatabaseAdapter(database_url)
-    sec = SECClient()
+    # image_cache_dir must be set so OCRExtractionStage._download_missing_images
+    # can cache downloaded bytes under v2_image_assets.file_path. Without it,
+    # get_image_cache_path() raises and the whole download path aborts.
+    sec = SECClient(image_cache_dir=image_cache_dir())
 
     config = PipelineConfig(
         enable_full_page_ocr=True,
@@ -228,11 +232,15 @@ def process_filings(
         try:
             filing_meta = lookup_filing(db, c.filing_id)
             html_path = _resolve_html_path(filing_meta, db)
+            # Normalize presentation-prefixed accession for downstream callers
+            # (pipeline.process uses it to build image-download URLs, which
+            # must be plain SEC archive paths).
+            accession_for_pipeline = _normalize_accession(c.accession_number or "")
             result = pipeline.process(
                 html_path=html_path,
                 filing_id=c.filing_id,
                 cik=c.cik,
-                accession_number=c.accession_number or "",
+                accession_number=accession_for_pipeline,
                 document_date=c.filing_date,
             )
             try:
@@ -271,6 +279,26 @@ def process_filings(
         "errors": sum(1 for r in results if r["status"] == "error"),
         "results": results,
     }
+
+
+def _normalize_accession(accession: str) -> str:
+    """Return the bare SEC accession token for presentation-prefixed values.
+
+    Rows onboarded via ``scripts/ingest_presentations.py`` (pre-2024 PayPal
+    8-Ks are the motivating case) store ``presentation:<cik>/<acc>/<filename>``
+    in ``filings.accession_number``. Downstream callers (``FilingFetcher``
+    path-traversal guard, ``OCRExtractionStage`` image-URL construction)
+    require the bare ``NNNNNNNNNN-NN-NNNNNN`` shape, so we unwrap here.
+    Non-prefixed values pass through unchanged.
+    """
+    if not accession:
+        return ""
+    if accession.startswith("presentation:"):
+        parts = accession[len("presentation:") :].split("/")
+        if len(parts) >= 2 and parts[1]:
+            return parts[1]
+        raise ValueError(f"malformed presentation: accession {accession!r}")
+    return accession
 
 
 def lookup_filing(db: DatabaseAdapter, filing_id: int) -> dict[str, Any]:
@@ -320,12 +348,14 @@ def _resolve_html_path(filing: dict[str, Any], db: DatabaseAdapter) -> Path:
     if not filing.get("sec_html_url"):
         raise ValueError(f"filing_id {filing['filing_id']} has no sec_html_url; cannot fetch")
 
+    accession_for_fetch = _normalize_accession(filing["accession_number"] or "")
+
     metadata = FilingMetadata(
         cik=filing["cik"],
         company_name="",  # Not needed for fetch
         form_type="",
         filing_date="",
-        accession_number=filing["accession_number"],
+        accession_number=accession_for_fetch,
         primary_doc_url=filing["sec_html_url"],
     )
     fetcher = FilingFetcher(db=db)

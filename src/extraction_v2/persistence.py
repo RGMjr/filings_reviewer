@@ -342,19 +342,17 @@ class V2PersistenceAdapter:
                             transcript_source=transcript_source,
                         )
 
-                        # 2. Persist segments
-                        seg_count = self._persist_segments_in_tx(cur, result.segments, filing_id)
-
-                        # 3. Persist tables and cells
+                        # 2. Persist tables and cells
                         table_count, cell_count = self._persist_tables_in_tx(
                             cur, result.tables, filing_id
                         )
 
-                    # 4. Persist images. img_id_map captures cases where an
+                    # 3. Persist images. img_id_map captures cases where an
                     # existing DB row's img_id was preserved on conflict —
                     # fresh in-memory ImageAsset.img_id values (random uuid4
                     # per run) differ from the stable DB value, so we must
-                    # remap before persisting facts.
+                    # remap before persisting segments (source_img_id FK)
+                    # and facts (source_locator.img_id).
                     img_count, img_id_map = self._persist_images_in_tx(
                         cur, result.images, filing_id, force=force
                     )
@@ -363,10 +361,21 @@ class V2PersistenceAdapter:
                         for image in result.images:
                             if image.img_id in img_id_map:
                                 image.img_id = img_id_map[image.img_id]
+                        for segment in result.segments:
+                            if (
+                                segment.source_img_id is not None
+                                and segment.source_img_id in img_id_map
+                            ):
+                                segment.source_img_id = img_id_map[segment.source_img_id]
                         for fact in result.facts:
                             locator = fact.source_locator
                             if locator is not None and locator.img_id in img_id_map:
                                 locator.img_id = img_id_map[locator.img_id]
+
+                    # 4. Persist segments — after images so the
+                    # v2_segments.source_img_id FK (added by sql/40 for OCR'd
+                    # segments) has a valid target row.
+                    seg_count = self._persist_segments_in_tx(cur, result.segments, filing_id)
 
                     # 5. Persist facts
                     fact_count = self._persist_facts_in_tx(
