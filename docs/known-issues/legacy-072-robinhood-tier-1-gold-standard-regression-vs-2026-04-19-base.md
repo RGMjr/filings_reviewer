@@ -1,20 +1,24 @@
 ---
-autonomy: review
+autonomy: n/a
 discovered: '2026-04-21'
 estimated: S
 id: 72
-note: Boto3 fix unblocks ingestion (stage 1); R2 image-bytes layer still needs separate
-  fix before baseline refresh
+note: 'Resolved end-to-end via PR #87 (boto3) + PR #102 (R2 upload) + manual HOOD
+  Neon backfill on 2026-04-22. Validator: HOOD recall 0.486 (baseline 0.3143), Tier
+  1 F1 0.686. Residual `cm_revenue_by_cohort` 10% recall tracked as #85.'
+pr_refs:
+- 87
+- 102
 severity: high
 slug: robinhood-tier-1-gold-standard-regression-vs-2026-04-19-base
 source: legacy
-status: open
+status: resolved
 title: Robinhood Tier 1 Gold-Standard Regression vs. 2026-04-19 Baseline
-touches:
-- pyproject.toml
-- uv.lock
-updated: '2026-04-21'
+touches: []
+updated: '2026-04-22'
 ---
+
+**Resolved**: 2026-04-22 — chart pipeline produces facts end-to-end on HOOD's S-1. Validator against Neon (post-backfill): HOOD **recall=0.486, F1=0.586** (vs baseline 0.3143 / 0.4231 — +15pp recall above baseline). Tier-1: **P=92.3%, R=54.5%, F1=68.6%**. `cm_balance_by_cohort` at 100/100/100. `cm_revenue_by_cohort` at 50/10/16.7 — residual gap tracked as Issue #85 (dedup stage collapses chart-sourced cohort facts at the fact-construction boundary); orthogonal to the original infra regression. Path to close: PR #87 restored `boto3` in `pyproject.toml`/`uv.lock` (unblocked ingestion); PR #102 wired `storage.put_bytes` into `_download_missing_images` (unblocked R2 chart-image reads); chart-only re-extract + R2 upload executed against prod Neon on 2026-04-22 — 12 new chart facts persisted, 17 chart images processed cleanly. Chart-only mode preserved 16 text-review + 20 image-review decisions on HOOD.
 
 ### Problem
 

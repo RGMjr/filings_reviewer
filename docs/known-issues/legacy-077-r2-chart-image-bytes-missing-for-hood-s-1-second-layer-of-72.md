@@ -1,18 +1,24 @@
 ---
-autonomy: skip
+autonomy: n/a
 discovered: '2026-04-22'
 estimated: M
 id: 77
-note: 'Second layer of #72 — R2 chart-image bytes missing/mis-keyed for HOOD S-1;
-  partial code fix shipped, prod backfill needs explicit auth (R2 + Neon writes)'
+note: 'Resolved end-to-end. Root cause was Case A (bytes never uploaded — _download_missing_images
+  wrote to local disk but never called storage.put_bytes). PR #102 fixed the code
+  path; manual HOOD prod backfill on 2026-04-22 populated R2 and repopulated chart_data
+  for the two cohort charts.'
+pr_refs:
+- 102
 severity: high
 slug: r2-chart-image-bytes-missing-for-hood-s-1-second-layer-of-72
 source: legacy
-status: partially-resolved
+status: resolved
 title: 'R2 Chart-Image Bytes Missing for HOOD S-1 (Second Layer of #72)'
 touches: []
 updated: '2026-04-22'
 ---
+
+**Resolved**: 2026-04-22 — PR #102 wired `storage.put_bytes` into `OCRExtractionStage._download_missing_images` (the existing call mirrors the correct pattern at `ingestion.py:956-969`). Manual HOOD prod backfill on 2026-04-22 via `uv run python scripts/batch_v2_extraction.py --filing-id 1545 --chart-only --force-reextract`: no `FileNotFoundError`, 17 chart images processed, 2 cohort charts populated `chart_data` (`e5f65961` Annual Revenue by Annual Cohort, `44e035d8` Cumulative Net Deposits by Annual Cohort), 12 chart facts persisted. Case A confirmed — no `pipeline/` prefix divergence; unprefixed keys are the live convention. Unblocks Issue #72 (closed same day).
 
 ### Problem
 
