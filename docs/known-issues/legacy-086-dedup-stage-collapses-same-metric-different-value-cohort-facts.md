@@ -2,7 +2,7 @@
 autonomy: review
 discovered: '2026-04-22'
 estimated: M
-id: 85
+id: 86
 note: Chart extractor produces per-cohort bar values (visible pre-dedup), but deduplication
   stage collapses same-metric different-value facts. Surfaced post-#72 resolution
   as the residual HOOD `cm_revenue_by_cohort` 9/10 FN pattern.
