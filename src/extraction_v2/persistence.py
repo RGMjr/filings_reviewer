@@ -28,6 +28,7 @@ from src.extraction_v2.models import (
     ImageClassificationRecord,
     MetricDefinition,
     MetricFact,
+    MetricPresence,
     Segment,
     SourceType,
     Table,
@@ -53,6 +54,7 @@ class PersistenceResult:
     images_upserted: int = 0
     facts_upserted: int = 0
     definitions_upserted: int = 0
+    presences_upserted: int = 0
     errors: list[str] | None = None
 
     @property
@@ -66,6 +68,7 @@ class PersistenceResult:
             + self.images_upserted
             + self.facts_upserted
             + self.definitions_upserted
+            + self.presences_upserted
         )
 
 
@@ -294,6 +297,7 @@ class V2PersistenceAdapter:
         *,
         force: bool = False,
         chart_only: bool = False,
+        presence_only: bool = False,
     ) -> PersistenceResult:
         """
         Persist a complete pipeline result in a single transaction.
@@ -311,10 +315,22 @@ class V2PersistenceAdapter:
                 images, definitions) run normally — they are idempotent
                 via ON CONFLICT and do not touch reviewer decisions.
                 Used for Issue #35 chart-fact backfills.
+            presence_only: If True, skip fact persistence entirely and
+                only write ``v2_text_metric_presence`` rows. Used by the
+                PR2 gold-standard backfill to populate presence for
+                reviewed filings without tripping the fact-level
+                ``ReviewedFilingError`` guard. Other idempotent writes
+                (documents, segments, tables, images, definitions,
+                image classifications) still run — presence records
+                reference segment IDs via ``evidence_segment_ids``, so
+                segment persistence must complete. Mutually exclusive
+                with ``chart_only``; combining raises ``ValueError``.
 
         Returns:
             PersistenceResult with counts and any errors
         """
+        if presence_only and chart_only:
+            raise ValueError("presence_only and chart_only are mutually exclusive")
         errors: list[str] = []
 
         try:
@@ -378,10 +394,19 @@ class V2PersistenceAdapter:
                     # segments) has a valid target row.
                     seg_count = self._persist_segments_in_tx(cur, result.segments, filing_id)
 
-                    # 5. Persist facts
-                    fact_count = self._persist_facts_in_tx(
-                        cur, result.facts, filing_id, force=force, chart_only=chart_only
-                    )
+                    # 5. Persist facts (skipped when presence_only=True —
+                    #    the whole point of that mode is to populate presence
+                    #    for reviewed filings without touching facts).
+                    if presence_only:
+                        fact_count = 0
+                    else:
+                        fact_count = self._persist_facts_in_tx(
+                            cur,
+                            result.facts,
+                            filing_id,
+                            force=force,
+                            chart_only=chart_only,
+                        )
 
                     # 6. Persist definitions
                     def_count = self._persist_definitions_in_tx(cur, result.definitions, filing_id)
@@ -392,11 +417,17 @@ class V2PersistenceAdapter:
                         cur, result.image_classifications
                     )
 
+                    # 8. Persist per-(doc, metric) presence records.
+                    #    Upsert-only; does not touch facts or reviewer
+                    #    decisions, so safe on reviewed filings regardless
+                    #    of presence_only / force.
+                    presence_count = self._persist_presence_in_tx(cur, result.presences, filing_id)
+
             logger.info(
                 f"Persisted pipeline result for filing_id={filing_id}: "
                 f"{seg_count} segments, {table_count} tables, {cell_count} cells, "
                 f"{img_count} images, {fact_count} facts, {def_count} definitions, "
-                f"{classify_count} image classifications"
+                f"{classify_count} image classifications, {presence_count} presences"
             )
 
             return PersistenceResult(
@@ -408,6 +439,7 @@ class V2PersistenceAdapter:
                 images_upserted=img_count,
                 facts_upserted=fact_count,
                 definitions_upserted=def_count,
+                presences_upserted=presence_count,
             )
 
         except ReviewedFilingError:
@@ -686,6 +718,78 @@ class V2PersistenceAdapter:
             ],
         )
         return len(records)
+
+    def _persist_presence_in_tx(
+        self,
+        cur: Any,
+        presences: list[MetricPresence],
+        filing_id: int,
+    ) -> int:
+        """Persist per-(doc, metric) presence records to v2_text_metric_presence.
+
+        Idempotent upsert on ``(doc_id, canonical_metric_id)``. Never
+        deletes from ``v2_metric_facts`` and never triggers
+        ``ReviewedFilingError`` — safe on reviewed filings regardless of
+        ``force`` / ``presence_only`` / ``chart_only`` flags. The
+        ``advisory_fact_ids`` column references facts that contributed to
+        the presence record but carries no FK constraint: facts may be
+        deleted (via ``force=True`` re-extraction) without cascading to
+        presence rows, which is the correct behavior — presence is
+        a document-level claim about metric disclosure, independent of
+        which specific fact rows currently back it.
+        """
+        if not presences:
+            return 0
+
+        cur.executemany(
+            """
+            INSERT INTO v2_text_metric_presence (
+                doc_id,
+                canonical_metric_id,
+                score,
+                detected_at_stage,
+                evidence_segment_ids,
+                advisory_value_count,
+                advisory_fact_ids,
+                pipeline_version,
+                created_at,
+                updated_at
+            ) VALUES (
+                %(doc_id)s,
+                %(canonical_metric_id)s,
+                %(score)s,
+                %(detected_at_stage)s,
+                %(evidence_segment_ids)s,
+                %(advisory_value_count)s,
+                %(advisory_fact_ids)s,
+                %(pipeline_version)s,
+                NOW(),
+                NOW()
+            )
+            ON CONFLICT (doc_id, canonical_metric_id) DO UPDATE SET
+                score = EXCLUDED.score,
+                detected_at_stage = EXCLUDED.detected_at_stage,
+                evidence_segment_ids = EXCLUDED.evidence_segment_ids,
+                advisory_value_count = EXCLUDED.advisory_value_count,
+                advisory_fact_ids = EXCLUDED.advisory_fact_ids,
+                pipeline_version = EXCLUDED.pipeline_version,
+                updated_at = NOW()
+            """,
+            [
+                {
+                    "doc_id": filing_id,
+                    "canonical_metric_id": p.canonical_metric_id,
+                    "score": p.score,
+                    "detected_at_stage": p.detected_at_stage,
+                    "evidence_segment_ids": json.dumps(p.evidence_segment_ids),
+                    "advisory_value_count": p.advisory_value_count,
+                    "advisory_fact_ids": json.dumps(p.advisory_fact_ids),
+                    "pipeline_version": "2.0.0",
+                }
+                for p in presences
+            ],
+        )
+        return len(presences)
 
     def _persist_images_in_tx(
         self,
