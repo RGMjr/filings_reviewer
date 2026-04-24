@@ -291,6 +291,18 @@ if [[ -f "$DIGEST_PATH" ]]; then
         --body-file "$DIGEST_PATH" >/dev/null \
         || log "digest PR create failed (may already exist)"
       gh pr merge --auto --squash >/dev/null || log "digest auto-merge enable failed"
+      # If main advanced while the sweep was running, the digest branch may be
+      # DIRTY before CI even starts. Poll once and merge main in to unblock.
+      sleep 5
+      _DIGEST_PR_NUM="$(gh pr view --head "$DIGEST_BRANCH" --json number --jq '.number' 2>/dev/null || echo "")"
+      if [[ -n "$_DIGEST_PR_NUM" ]]; then
+        _DIGEST_MERGE_STATUS="$(gh pr view "$_DIGEST_PR_NUM" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")"
+        if [[ "$_DIGEST_MERGE_STATUS" == "DIRTY" ]]; then
+          log "Digest PR #$_DIGEST_PR_NUM is DIRTY — merging main in via update-branch."
+          gh pr update-branch "$_DIGEST_PR_NUM" >/dev/null 2>&1 \
+            || log "digest PR update-branch failed — manual resolution required"
+        fi
+      fi
     else
       log "digest push failed — leaving branch local"
     fi
