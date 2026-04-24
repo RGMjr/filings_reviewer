@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 30 |
 | Partially Resolved | 1 |
 | Archived | 45 |
-| Resolved | 20 |
+| Resolved | 22 |
 
 
 ## Nightly Sweeper Classification
@@ -55,6 +55,7 @@
 | #98 | review | S | `src/gold_standard/v2_validator.py` `src/extraction_v2/stages/chart_fact_bridge.py` | PR #150 added the presence P/R/F1 infrastructure to the validator + baseline, but presence_f1 is emitted as None because v2_context.images[*].detected_metrics is not populated during the validator's in-memory pipeline run. Baseline refresh in PR 4b (2026-04-24) has presence_f1=null as a result. |
 | #99 | review | S | `scripts/run_nightly_sweep.sh` `scripts/write_sweep_digest.py` |  |
 | #100 | safe | S | `src/llm/vision_client.py` `src/extraction_v2/stages/image_classify.py` |  |
+| #101 | safe | S | `sql/` `tests/integration/conftest.py` |  |
 
 
 ## Open Issues
@@ -336,49 +337,6 @@ directly or pull up individual image-review pages.
   adds the UI-surfacing layer to that integration gap.
 - PR #139 — landed the three backfill fixes that made filing 1748
   ingest cleanly; this issue is the logical follow-up.
-
-## #90. Integration Tests Fail at Startup on sql/37 Migration-Checksum Drift
-
-**Status**: Open
-**Severity**: medium
-**Discovered**: 2026-04-23
-**Updated**: 2026-04-23
-
-### Problem
-
-Running `pytest` without `--ignore=tests/integration` fails before any
-test body executes with:
-
-```
-RuntimeError: Checksum mismatch for 37_create_analytics_role.sql:
-expected e7b06ff3…, got a589d96a…. Migration file was modified
-after it was applied.
-```
-
-Surfaced today while running the full suite for the B5.x chart-read
-commit gate. `sql/37_create_analytics_role.sql` has been edited after
-the shared test DB had already applied the earlier content (PRs #111
-touched it for hook guards), so the `schema_migrations` checksum no
-longer matches the file. Hitting this on any dev machine that rebuilds
-its test DB from a snapshot, or that runs integration tests after
-pulling a branch that touches migration 37.
-
-Unit-only runs (`pytest --ignore=tests/integration`) are unaffected —
-the full 3833-test unit suite passes cleanly. Blast radius is CI
-integration jobs + local integration runs.
-
-### Next Steps
-
-- Add a "rebuild test DB" runbook entry under
-  `docs/operations/setup-guide.md` documenting the drop/recreate
-  workflow when checksums drift after a migration edit.
-- Alternatively: loosen `scripts/apply_migrations.py:137` to `WARN` when
-  the file is in a known "intentional edit" allowlist (the hook-guard
-  migrations) rather than hard-failing. Risky — checksum mismatches
-  usually indicate a real problem. Prefer the runbook entry.
-- Could also add a `conftest.py` pre-check that drops the
-  `schema_migrations` row for a modified migration before re-applying,
-  scoped to test DBs only. More invasive.
 
 ## #91. gemini-pro Returns Empty Content on vision + response_format=json_object
 
@@ -1023,6 +981,36 @@ signal once the gate is flipped. Latency is captured correctly
   anticipation).
 - Backfill: the first few classify-enabled runs will have cost=0 in
   the table. Leave as-is; the plumbing fix applies forward.
+
+## #101. v2_audit_log Relation Missing in Test DB Causes Log Noise
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+Integration test runs emit repeated ERROR-level log lines:
+
+```
+Database error, rolling back: relation "v2_audit_log" does not exist
+LINE 2:             INSERT INTO v2_audit_log (
+```
+
+The table exists in prod but is absent from the test DB. Tests still pass
+(the insert is best-effort and the error is swallowed), but the noise can
+mask real errors and is confusing to read. Likely caused by a migration that
+creates `v2_audit_log` not being registered in `scripts/apply_migrations.py`
+MIGRATIONS list.
+
+### Next Steps
+
+- Identify which SQL file creates `v2_audit_log` (`grep -rl v2_audit_log sql/`).
+- If the migration exists but isn't registered in `MIGRATIONS`, add it.
+- If the table was never migrated (created out-of-band), add a migration.
+- Verify the insert is already guarded (`IF NOT EXISTS` / exception catch) so
+  the production code path is not affected.
 
 ## #5. Revenue Synonym Context Gating
 
@@ -1920,6 +1908,59 @@ whatever the validator produces under a fresh, CI-equivalent interpreter.
 - Add a pre-commit hook (or `local` hook in `.pre-commit-config.yaml`) that runs `python3 scripts/apply_all_migrations.py --dry-run` (which exits 1 when unregistered files are found) before each commit.
 - Alternatively, write a small standalone check script and register it as a `local` repo hook so it doesn't require a DB connection.
 - Verify the hook runs in CI as well (the pre-commit framework is already in use for ruff and the extraction guard).
+
+## #90. Integration Tests Fail at Startup on sql/37 Migration-Checksum Drift
+
+**Status**: Resolved
+**Severity**: medium
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-24
+
+### Problem
+
+Running `pytest` without `--ignore=tests/integration` fails before any
+test body executes with:
+
+```
+RuntimeError: Checksum mismatch for 37_create_analytics_role.sql:
+expected e7b06ff3…, got a589d96a…. Migration file was modified
+after it was applied.
+```
+
+Surfaced today while running the full suite for the B5.x chart-read
+commit gate. `sql/37_create_analytics_role.sql` has been edited after
+the shared test DB had already applied the earlier content (PRs #111
+touched it for hook guards), so the `schema_migrations` checksum no
+longer matches the file. Hitting this on any dev machine that rebuilds
+its test DB from a snapshot, or that runs integration tests after
+pulling a branch that touches migration 37.
+
+Unit-only runs (`pytest --ignore=tests/integration`) are unaffected —
+the full 3833-test unit suite passes cleanly. Blast radius is CI
+integration jobs + local integration runs.
+
+### Next Steps
+
+- Add a "rebuild test DB" runbook entry under
+  `docs/operations/setup-guide.md` documenting the drop/recreate
+  workflow when checksums drift after a migration edit.
+- Alternatively: loosen `scripts/apply_migrations.py:137` to `WARN` when
+  the file is in a known "intentional edit" allowlist (the hook-guard
+  migrations) rather than hard-failing. Risky — checksum mismatches
+  usually indicate a real problem. Prefer the runbook entry.
+- Could also add a `conftest.py` pre-check that drops the
+  `schema_migrations` row for a modified migration before re-applying,
+  scoped to test DBs only. More invasive.
+
+### Resolution
+
+Implemented Option A: added a `_CHECKSUM_REFRESH_ALLOWLIST` pre-check in
+`tests/integration/conftest.py::_apply_migrations_to_test_db`. Before the main
+migration loop runs, the fixture computes the current checksum for each allowlisted
+migration, compares it against the ledger, and deletes the stale row if they differ.
+The normal loop then re-applies the file and records the new checksum. Migration 37
+is the only entry in the allowlist. All other checksum mismatches continue to raise
+`RuntimeError` as before.
 
 ## #28. Mock-Server / Template-Contract Coupling
 
