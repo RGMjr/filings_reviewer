@@ -9,12 +9,8 @@
 |--------|-------|
 | Open | 31 |
 | Partially Resolved | 1 |
-| Archived | 46 |
-<<<<<<< HEAD
-| Resolved | 18 |
-=======
-| Resolved | 19 |
->>>>>>> origin/main
+| Archived | 45 |
+| Resolved | 20 |
 
 
 ## Nightly Sweeper Classification
@@ -1094,15 +1090,6 @@ Manual recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md` under t
 3. Add a CLI log line to the runner on SIGTERM that tells the operator "batch <id> interrupted — run `... --cleanup-stuck` to recover".
 
 ## Archived Issues
-
-## #1. Metric ID Mismatch Between Gold Standard and System
-
-**Status**: Archived
-**Severity**: n/a
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system taxonomy in `config/metric_keywords.yaml`. No remaining ID mismatches. See git log (2026-03-16) for full resolution details.
 
 ## #3. Gold Standard Methodology Questions
 
