@@ -1792,11 +1792,21 @@ class DatabaseAdapter:
                     ) DESC,
                     created_at DESC NULLS LAST
             )
-            SELECT {self._V2_IMAGE_CANDIDATE_SELECT}
+            SELECT {self._V2_IMAGE_CANDIDATE_SELECT},
+                ic.classification_id,
+                ic.predicted_metrics,
+                ic.confidence        AS classification_confidence
             FROM v2_image_assets v
             JOIN filings f ON v.doc_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            LEFT JOIN LATERAL (
+                SELECT classification_id, predicted_metrics, confidence
+                FROM v2_image_classifications
+                WHERE img_id = v.img_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) ic ON true
             WHERE v.doc_id = %(filing_id)s
               AND v.img_id IN (SELECT img_id FROM deduped_img)
               AND v.classification NOT IN ('decorative', 'logo', 'signature')
