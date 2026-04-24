@@ -84,6 +84,8 @@ MIGRATIONS = [
     "40_full_page_scan_and_ocr_provenance.sql",
     "42_add_detected_metrics_to_v2_image_assets.sql",
     "43_create_v2_image_metric_confirmations.sql",
+    "44_extend_image_rejection_reason_enum.sql",
+    "45_create_v2_image_classifications.sql",
 ]
 
 BOOTSTRAP_DDL = """

@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 29 |
 | Partially Resolved | 1 |
 | Archived | 46 |
-| Resolved | 16 |
+| Resolved | 18 |
 
 
 ## Nightly Sweeper Classification
@@ -844,78 +844,6 @@ The selector's Phase 3 status filter (issue #79) correctly excludes `status in {
 - Option C: A pre-commit check that warns (not fails) when a fragment's `pr_refs` all point at merged PRs but `status` is still `open`. Low-cost nudge.
 
 Recommend Option A — simplest, runs outside the happy path, no coupling to `/commit`.
-
-## #92. CLASSIFY_PROMPT Lives in Bake-off Harness — Move to VisionClient When Classify Lands in Prod
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-23
-**Updated**: 2026-04-23
-
-### Problem
-
-`CLASSIFY_PROMPT` (the per-image metric-disclosure classification
-prompt) is defined inline in `scripts/benchmark_vision.py` rather than
-in `src/llm/vision_client.py`. This was intentional for the 2026-04-23
-bake-off (PR B5.x.1) — validating the approach before touching prod
-routing. But if / when classify is adopted as a prod extraction gate,
-two prompt copies will exist and will drift. The harness has a `TODO`
-comment flagging the eventual home (next to the constant).
-
-### Next Steps
-
-- Promote `CLASSIFY_PROMPT` + `_build_classify_prompt` +
-  `_parse_classify_response` into a new
-  `VisionClient.analyze_image_for_metric_classification` helper
-  (alongside the existing `analyze_image_for_text` / `_targeted`
-  helpers).
-- Update `scripts/benchmark_vision.py::_run_provider_metric_classify`
-  to call the new helper instead of re-implementing the API wrapping +
-  parsing.
-- Coordinate with the full-page-OCR work (PRs #110 / #114 / #139)
-  which owns `analyze_image_for_text` — the two helpers should share
-  the `VisionClient` lifecycle and cache key style.
-- Expected to land alongside the `v2_image_classifications`
-  table/surface PR (tracked separately in
-  `project_image_extraction_program.md` follow-up #2).
-
-## #93. v2_image_review_decisions.rejection_reason Enum Lacks "table_handled_elsewhere"
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-23
-**Updated**: 2026-04-23
-
-### Problem
-
-When the metric-classify harness (PR B5.x.1) sees a table-in-image it
-returns `predicted_metrics=[]` + `rejection_reason="other"` because the
-existing enum on `v2_image_review_decisions.rejection_reason`
-(migration 29: `decorative`, `not_a_chart`, `wrong_subject`,
-`duplicate`, `unreadable`, `other`) has no "table" bucket. The detail
-is carried in the `reasoning` free-text field, but the bucketing is
-blurry — `"other"` mixes genuine unknowns with routed-elsewhere
-tables, which hurts downstream analytics.
-
-Tables are handled by the separate full-page-OCR pipeline
-(`VisionClient.analyze_image_for_text`, PRs #110 / #114 / #139), so a
-dedicated enum value would let reviewers + analytics distinguish
-"classifier chose not to classify — route elsewhere" from "classifier
-genuinely unsure".
-
-### Next Steps
-
-- Add a migration extending the enum:
-  `ALTER TYPE rejection_reason ADD VALUE 'table_handled_elsewhere';`
-  (or the Postgres check-constraint form, depending on how the enum
-  is modelled — check `sql/29_v2_image_review_decisions.sql`).
-- Update `REJECTION_REASONS` in `src/gold_standard/image_eval.py` and
-  `CLASSIFY_REJECTION_REASONS` in `scripts/benchmark_vision.py` to
-  include the new value.
-- Update the review UI surface so reviewers can pick the value
-  manually (and so the classifier's emission maps cleanly).
-- Back-fill any existing `"other"` rows whose `reasoning` references
-  a table — optional, tracked separately if useful.
 
 ## #94. v2_audit_log.check_v2_audit_http_method Rejects HEAD and OPTIONS Requests
 
@@ -2134,6 +2062,115 @@ attempt to re-fix issues whose fixes are already in `main`.
   must NOT appear in selector picks.
 - Optional: also emit a warning when such a fragment is encountered, so the
   author knows to set `autonomy: n/a` on resolved entries.
+
+## #92. CLASSIFY_PROMPT Lives in Bake-off Harness — Move to VisionClient When Classify Lands in Prod
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+**Resolved**: 2026-04-23 — see below.
+
+### Resolution (2026-04-23)
+
+Leg A of the tripod plan (PR #157) ported `CLASSIFY_PROMPT`,
+`CLASSIFY_REJECTION_REASONS`, `_build_classify_prompt`, and
+`_parse_classify_response` into `src/llm/vision_client.py`, exposed as
+`VisionClient.analyze_image_for_metric_classification`. Leg B (this PR)
+wires the new `ImageClassifyStage` to call that helper when
+`ENABLE_METRIC_CLASSIFY=true`.
+
+`scripts/benchmark_vision.py` still has its own copy of the prompt. The
+harness branch will rebase onto main and import from vision_client as a
+follow-up — tracked in the plan doc at `~/.claude/plans/let-s-tackle-known-issues-md-92-tidy-cake.md`,
+not as a new KI (it's a branch-only cleanup).
+
+### Problem
+
+`CLASSIFY_PROMPT` (the per-image metric-disclosure classification
+prompt) is defined inline in `scripts/benchmark_vision.py` rather than
+in `src/llm/vision_client.py`. This was intentional for the 2026-04-23
+bake-off (PR B5.x.1) — validating the approach before touching prod
+routing. But if / when classify is adopted as a prod extraction gate,
+two prompt copies will exist and will drift. The harness has a `TODO`
+comment flagging the eventual home (next to the constant).
+
+### Next Steps
+
+- Promote `CLASSIFY_PROMPT` + `_build_classify_prompt` +
+  `_parse_classify_response` into a new
+  `VisionClient.analyze_image_for_metric_classification` helper
+  (alongside the existing `analyze_image_for_text` / `_targeted`
+  helpers).
+- Update `scripts/benchmark_vision.py::_run_provider_metric_classify`
+  to call the new helper instead of re-implementing the API wrapping +
+  parsing.
+- Coordinate with the full-page-OCR work (PRs #110 / #114 / #139)
+  which owns `analyze_image_for_text` — the two helpers should share
+  the `VisionClient` lifecycle and cache key style.
+- Expected to land alongside the `v2_image_classifications`
+  table/surface PR (tracked separately in
+  `project_image_extraction_program.md` follow-up #2).
+
+## #93. v2_image_review_decisions.rejection_reason Enum Lacks "table_handled_elsewhere"
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+**Resolved**: 2026-04-23 — see below.
+
+### Resolution (2026-04-23)
+
+Landed with Leg B of the metric-classify tripod:
+
+- `sql/44_extend_image_rejection_reason_enum.sql` — widens the CHECK
+  constraint on `v2_image_review_decisions.rejection_reason`
+- `sql/45_create_v2_image_classifications.sql` — new classifier table
+  uses the same 7-value enum
+- `src/review/models.py::IMAGE_REJECTION_REASONS` — single-source tuple
+  now includes `table_handled_elsewhere`; `IMAGE_REJECTION_REASON_LABELS`
+  gets a human label for UI dropdowns
+- `src/llm/vision_client.py::CLASSIFY_REJECTION_REASONS` — the classify
+  prompt already emits `table_handled_elsewhere` (shipped in PR #157);
+  this PR closes the loop so the emission now has a valid downstream
+  slot.
+
+`scripts/benchmark_vision.py` still has its own frozenset copy; harness-side
+alignment tracked on the harness branch.
+
+### Problem
+
+When the metric-classify harness (PR B5.x.1) sees a table-in-image it
+returns `predicted_metrics=[]` + `rejection_reason="other"` because the
+existing enum on `v2_image_review_decisions.rejection_reason`
+(migration 29: `decorative`, `not_a_chart`, `wrong_subject`,
+`duplicate`, `unreadable`, `other`) has no "table" bucket. The detail
+is carried in the `reasoning` free-text field, but the bucketing is
+blurry — `"other"` mixes genuine unknowns with routed-elsewhere
+tables, which hurts downstream analytics.
+
+Tables are handled by the separate full-page-OCR pipeline
+(`VisionClient.analyze_image_for_text`, PRs #110 / #114 / #139), so a
+dedicated enum value would let reviewers + analytics distinguish
+"classifier chose not to classify — route elsewhere" from "classifier
+genuinely unsure".
+
+### Next Steps
+
+- Add a migration extending the enum:
+  `ALTER TYPE rejection_reason ADD VALUE 'table_handled_elsewhere';`
+  (or the Postgres check-constraint form, depending on how the enum
+  is modelled — check `sql/29_v2_image_review_decisions.sql`).
+- Update `REJECTION_REASONS` in `src/gold_standard/image_eval.py` and
+  `CLASSIFY_REJECTION_REASONS` in `scripts/benchmark_vision.py` to
+  include the new value.
+- Update the review UI surface so reviewers can pick the value
+  manually (and so the classifier's emission maps cleanly).
+- Back-fill any existing `"other"` rows whose `reasoning` references
+  a table — optional, tracked separately if useful.
 
 
 ## Change Log
