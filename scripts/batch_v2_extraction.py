@@ -40,6 +40,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -61,6 +62,28 @@ CHECKPOINT_FILE = LOGS_DIR / "batch_v2_progress.json"
 
 # Global shutdown flag (set by SIGINT handler)
 _shutdown_requested = False
+
+
+def _apply_classify_env_overrides(config: Any) -> None:
+    """Lift ENABLE_METRIC_CLASSIFY + VISION_CLASSIFY_* env vars onto an
+    explicit PipelineConfig. Mirrors V2Pipeline._apply_env_feature_flags,
+    which is skipped when an explicit config is passed."""
+    if os.environ.get("ENABLE_METRIC_CLASSIFY", "").strip().lower() in {"1", "true", "yes", "on"}:
+        config.enable_metric_classify = True
+    if os.environ.get("VISION_CLASSIFY_PROVIDER"):
+        config.vision_classify_provider = os.environ["VISION_CLASSIFY_PROVIDER"]
+    if os.environ.get("VISION_CLASSIFY_MODEL"):
+        config.vision_classify_model = os.environ["VISION_CLASSIFY_MODEL"]
+    threshold_raw = os.environ.get("VISION_CLASSIFY_THRESHOLD")
+    if threshold_raw:
+        try:
+            config.vision_classify_threshold = float(threshold_raw)
+        except ValueError:
+            logger.warning(
+                "Invalid VISION_CLASSIFY_THRESHOLD=%r; keeping default %s",
+                threshold_raw,
+                config.vision_classify_threshold,
+            )
 
 
 def _handle_sigint(signum: int, frame: object) -> None:
@@ -241,6 +264,10 @@ def _process_filing_worker(
             enable_chart_extraction=not config_dict.get("no_images", False),
             min_confidence_auto_accept=config_dict.get("min_confidence", 0.90),
         )
+        # Honor metric-classify env vars (V2Pipeline._apply_env_feature_flags
+        # skips lifting when an explicit config is passed; CLI callers need the
+        # same env-driven behavior the Render nightly cron enjoys).
+        _apply_classify_env_overrides(pipeline_config)
 
         # Run pipeline
         pipeline = V2Pipeline(config=pipeline_config)

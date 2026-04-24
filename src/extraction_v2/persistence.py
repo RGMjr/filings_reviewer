@@ -372,6 +372,9 @@ class V2PersistenceAdapter:
                             locator = fact.source_locator
                             if locator is not None and locator.img_id in img_id_map:
                                 locator.img_id = img_id_map[locator.img_id]
+                        for record in result.image_classifications:
+                            if record.img_id in img_id_map:
+                                record.img_id = img_id_map[record.img_id]
 
                     # 4. Persist segments — after images so the
                     # v2_segments.source_img_id FK (added by sql/40 for OCR'd
