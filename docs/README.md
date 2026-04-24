@@ -71,6 +71,7 @@ Instructions for setting up, running, and maintaining the system.
 | **[image-model-training-runbook.md](operations/image-model-training-runbook.md)** | Image relevance model: export → train → score pipeline | Developers |
 | **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
 | **[github-org-transfer.md](operations/github-org-transfer.md)** | Decision record + runbook: when/how to migrate from user repo to GitHub org (unlocks merge queue, teams, org rulesets) | DevOps |
+| **[text-pipeline-presence-pivot-plan.md](operations/text-pipeline-presence-pivot-plan.md)** | Text-extraction pivot to per-(doc, metric) presence: rollout plan + PR1 landed-interface contract for downstream PRs | Developers |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 

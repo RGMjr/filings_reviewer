@@ -7,7 +7,7 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 25 |
+| Open | 27 |
 | Partially Resolved | 1 |
 | Archived | 51 |
 | Resolved | 22 |
@@ -57,6 +57,8 @@
 | #100 | safe | S | `src/llm/vision_client.py` `src/extraction_v2/stages/image_classify.py` |  |
 | #101 | safe | S | `scripts/batch_v2_extraction.py` |  |
 | #102 | safe | XS | `docs/known-issues/` |  |
+| #103 | review | M | `src/extraction_v2/persistence.py` `src/extraction_v2/stages/ocr_extraction.py` `src/infra/image_storage.py` |  |
+| #104 | safe | M | `src/infra/sec_client.py` `src/extraction_v2/stages/ocr_extraction.py` `src/web/url_builders.py` |  |
 
 
 ## Open Issues
@@ -158,6 +160,37 @@ omission caused every run to silently extract nothing.
 - Consider adding a minimum-facts guard: if a filing has content and the pipeline
   returns 0 facts, treat it as a soft failure and log at `ERROR` level.
 - Add a test that injects a stage exception and asserts the batch exits non-zero.
+
+## #103. v2_image_assets.file_path Overwritten to NULL When SEC Download Fails During Force-Reextract
+
+**Status**: Open
+**Severity**: high
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+When `--force-reextract` runs on a filing whose images cannot be downloaded
+from SEC (e.g., malformed accession URLs — see #104), the OCR/chart stage
+emits in-memory `ImageAsset` records with `file_path=None`.
+`_persist_images_in_tx` then upserts these via `ON CONFLICT (doc_id, filename)
+DO UPDATE`, **overwriting any pre-existing R2 storage key with NULL**. Net
+effect: R2 cache references are orphaned, chart review UI breaks for those
+images, and the damage is not recoverable without a DB backup.
+
+Observed on 2026-04-24 during a test re-extraction of 20 PayPal 8-K filings
+(filing_ids 1599–1603, 1745–1759). Every chart image for the older presentations
+now has `file_path=NULL` despite having been previously cached in R2.
+
+### Next Steps
+
+- Modify `_persist_images_in_tx` to preserve an existing non-NULL `file_path`
+  when the inbound record's `file_path` is NULL (`COALESCE(EXCLUDED.file_path,
+  v2_image_assets.file_path)` on the upsert).
+- Or: skip the upsert entirely for records with `file_path=None` when a row
+  already exists (prefer the "don't touch it" over "partial overwrite").
+- Audit R2 bucket vs `v2_image_assets.file_path` to identify orphaned keys
+  from today's PayPal re-extraction so they can be either re-linked or purged.
 
 ## #58. 8-K Fetcher Returns Only Primary Doc; Earnings Content Lives in Exhibit 99.1
 
@@ -385,6 +418,40 @@ CI. The user has to cross-check with `gh pr list` to discover the gap.
    rename the existing category to `opened` and derive "merged" at digest time.
 3. Update the digest writer's section headers to match whichever taxonomy is
    chosen so the morning email is accurate.
+
+## #104. "presentation:" / "transcript:" Accession Prefix Blocks V2 Image Fetcher
+
+**Status**: Open
+**Severity**: medium
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+Filings ingested via `ingest_presentations.py` store `accession_number` in a
+synthetic format (`presentation:0001633917/0001633917-23-000070/q123file.htm`)
+rather than the bare `NNNNNNNNNN-NN-NNNNNN` SEC token. When the V2 OCR stage
+calls `SECClient.fetch_image(cik, accession, filename)`, the accession string
+is inserted into the EDGAR URL path verbatim, producing malformed URLs like
+`https://www.sec.gov/Archives/edgar/data/CIK/presentation:0001633917/...` →
+every request 404s.
+
+Observed today: all 13 chart-bearing PayPal 8-K presentations (filing_ids
+1747–1759) failed every image fetch, so the new `ImageClassifyStage` had
+zero candidates after the `file_path IS NOT NULL` filter. The V2 image
+pipeline effectively cannot run on any filing ingested through the
+presentation or transcript paths.
+
+### Next Steps
+
+- Extract the bare accession token (`re.search(r'\d{10}-\d{2}-\d{6}',
+  accession_number)`) in the image-URL construction paths, matching the
+  pattern sql/41 applies to the `filings.accession_number` backfill.
+- Or: store the synthetic key in a new column (`synthetic_accession` or
+  `source_id`) and keep `accession_number` strictly the bare SEC token.
+- Add an integration test that runs a presentation-ingested filing through
+  the V2 pipeline with `enable_metric_classify=True` and asserts chart
+  downloads succeed.
 
 ## #16. Farfetch Precision Drag — Table-Scale + Period Attribution
 
