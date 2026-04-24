@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 32 |
+| Open | 31 |
 | Partially Resolved | 1 |
 | Archived | 46 |
-| Resolved | 17 |
+| Resolved | 18 |
 
 
 ## Nightly Sweeper Classification
@@ -273,23 +273,6 @@ rollback).
    `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
 4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
    and re-extract 5 investor-deck-style filings to exercise Path B.
-
-## #88. No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
-
-**Status**: Open
-**Severity**: medium
-**Discovered**: 2026-04-23
-**Updated**: 2026-04-23
-
-### Problem
-
-`scripts/apply_all_migrations.py` has drifted twice (issues #46 and #85) because new SQL migration files land on disk without a corresponding entry in `MIGRATION_ORDER`. The `check_unregistered_migrations` guard only fires at runtime (`--dry-run`), not at commit time, so the drift isn't caught until someone runs the script.
-
-### Next Steps
-
-- Add a pre-commit hook (or `local` hook in `.pre-commit-config.yaml`) that runs `python3 scripts/apply_all_migrations.py --dry-run` (which exits 1 when unregistered files are found) before each commit.
-- Alternatively, write a small standalone check script and register it as a `local` repo hook so it doesn't require a DB connection.
-- Verify the hook runs in CI as well (the pre-commit framework is already in use for ruff and the extraction guard).
 
 ## #89. Image-OCR Segments + Re-OCR'd Images Not Surfaced in Review UI
 
@@ -1954,6 +1937,23 @@ whatever the validator produces under a fresh, CI-equivalent interpreter.
   failing silently to create a venv) is a repeatable footgun for future
   bisect work. Consider filing a separate issue if parallel-bisect becomes
   a recurring pattern.
+
+## #88. No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
+
+**Status**: Resolved
+**Severity**: medium
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+### Problem
+
+`scripts/apply_all_migrations.py` has drifted twice (issues #46 and #85) because new SQL migration files land on disk without a corresponding entry in `MIGRATION_ORDER`. The `check_unregistered_migrations` guard only fires at runtime (`--dry-run`), not at commit time, so the drift isn't caught until someone runs the script.
+
+### Next Steps
+
+- Add a pre-commit hook (or `local` hook in `.pre-commit-config.yaml`) that runs `python3 scripts/apply_all_migrations.py --dry-run` (which exits 1 when unregistered files are found) before each commit.
+- Alternatively, write a small standalone check script and register it as a `local` repo hook so it doesn't require a DB connection.
+- Verify the hook runs in CI as well (the pre-commit framework is already in use for ruff and the extraction guard).
 
 ## #28. Mock-Server / Template-Contract Coupling
 
