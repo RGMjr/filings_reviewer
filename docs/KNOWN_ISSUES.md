@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 32 |
 | Partially Resolved | 1 |
 | Archived | 45 |
-| Resolved | 20 |
+| Resolved | 21 |
 
 
 ## Nightly Sweeper Classification
@@ -55,6 +55,8 @@
 | #98 | review | S | `src/gold_standard/v2_validator.py` `src/extraction_v2/stages/chart_fact_bridge.py` | PR #150 added the presence P/R/F1 infrastructure to the validator + baseline, but presence_f1 is emitted as None because v2_context.images[*].detected_metrics is not populated during the validator's in-memory pipeline run. Baseline refresh in PR 4b (2026-04-24) has presence_f1=null as a result. |
 | #99 | review | S | `scripts/run_nightly_sweep.sh` `scripts/write_sweep_digest.py` |  |
 | #100 | safe | S | `src/llm/vision_client.py` `src/extraction_v2/stages/image_classify.py` |  |
+| #101 | safe | S | `scripts/batch_v2_extraction.py` |  |
+| #102 | safe | XS | `docs/known-issues/` |  |
 
 
 ## Open Issues
@@ -131,6 +133,31 @@ Pick one (or more) of:
 - **legacy-090** — integration tests fail on sql/37 checksum. Same class of problem.
 - Commit `8d09001` (#111) — added the cluster-DDL pre-commit guard and the `-- cluster-ddl-ok:` marker that caused this round's checksum drift.
 - PR #151 — shipped `v.detected_metrics` SELECT without enforcing migration apply; the trigger case for this issue.
+
+## #101. Extraction Cron Reports Success With 0 Facts on Fatal Pipeline Error
+
+**Status**: Open
+**Severity**: high
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+When the V2 pipeline crashes inside a stage (e.g., `ModuleNotFoundError: No module
+named 'boto3'` during ingestion), `batch_v2_extraction.py` catches the exception,
+persists 0 facts, and still increments the success counter. The final log line reads
+`"1/1 succeeded, 0 failed"` and the script exits 0 — so Render marks the cron job as
+successful with no alert. The issue was observed on 2026-04-24 when the boto3 lockfile
+omission caused every run to silently extract nothing.
+
+### Next Steps
+
+- In `batch_v2_extraction.py`, distinguish a pipeline exception (which should count as
+  a failure and exit non-zero) from a legitimate empty result (filing has no relevant
+  segments).
+- Consider adding a minimum-facts guard: if a filing has content and the pipeline
+  returns 0 facts, treat it as a soft failure and log at `ERROR` level.
+- Add a test that injects a stage exception and asserts the batch exits non-zero.
 
 ## #2. Low Farfetch Recall
 
@@ -1023,6 +1050,27 @@ signal once the gate is flipped. Latency is captured correctly
   anticipation).
 - Backfill: the first few classify-enabled runs will have cost=0 in
   the table. Leave as-is; the plumbing fix applies forward.
+
+## #102. Resolved/Archived Issues Retain Non-`n/a` Autonomy — Sweep Logs Noisy
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+The nightly sweep emits a warning per issue when `status` is `resolved` or `archived`
+but `autonomy` is still set to a selector value (`skip`, `safe`, `review`). As of
+2026-04-24, at least 12 fragments trigger this: #9, #11, #27, #28, #34, #35, #49,
+#60, #79, #85, #86, #88. The sweep still runs correctly, but the log output is noisy
+and obscures real selector warnings.
+
+### Next Steps
+
+- For each flagged fragment, set `autonomy: n/a` (the canonical value for closed issues).
+- Run the sweep selector locally to confirm zero warnings after the change.
+- The nightly sweep can self-fix this (autonomy: safe, XS) — mark as a sweep candidate.
 
 ## #5. Revenue Synonym Context Gating
 
