@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 30 |
 | Partially Resolved | 1 |
 | Archived | 45 |
-| Resolved | 20 |
+| Resolved | 21 |
 
 
 ## Nightly Sweeper Classification
