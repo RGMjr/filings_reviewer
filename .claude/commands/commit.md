@@ -113,8 +113,8 @@
 
      - <1–3 bullets: what would fix it>
      ```
-   - Do NOT hand-edit `docs/KNOWN_ISSUES.md` — it is auto-generated.
    - Do NOT stage the fragment yet — it's a separate follow-up commit (step 13).
+   - Note: `docs/KNOWN_ISSUES.md` is no longer tracked in git. CI regenerates it as a build artifact. Do not create or stage that file.
 
 10. **Show staged diff.** Run `git diff --cached --stat`.
 
@@ -128,8 +128,7 @@
 12. **Restore pre-existing staging.** Re-stage files that were unstaged in step 4.
 
 13. **Known-issues follow-up commit.** Only if step 9 produced new fragment files under `docs/known-issues/`:
-    - Run `python3 scripts/regenerate_known_issues.py` to update the rollup.
-    - `git add docs/known-issues/legacy-NNN-<slug>.md docs/KNOWN_ISSUES.md` (fragment + regenerated rollup only).
+    - `git add docs/known-issues/legacy-NNN-<slug>.md` (fragment only — the rollup `docs/KNOWN_ISSUES.md` is not tracked in git; CI regenerates it as a build artifact).
     - Commit: `docs(known-issues): log issue(s) #N[, #M] — [descriptor]` (matches commits `87b54f7`, `e96b6fb`).
     - Do NOT push yet — step 14 pushes both commits together.
 

@@ -277,12 +277,22 @@ At the end of Phase 5, update:
 
 ---
 
-## Open questions for Rob
+## Resolved decisions (was: Open questions for Rob)
 
-1. **PR-comment bot identity** — use `github-actions[bot]` or a project-specific PAT? Affects whether the comment appears as "bot" vs a real user.
-2. **Rollup discoverability** — is a CI artifact URL enough, or do we want a `gh-pages` branch / GitHub Pages site for a stable human-readable URL?
-3. **Phase 2 timing** — land during a known-quiet window (avoid overlapping with the image-pipeline modernization work)? Any other active multi-worktree efforts to coordinate around?
-4. **Legacy prefix** — keep `legacy-*` fragments named as-is forever, or plan a one-time renumber pass under `gh-*` after their issues are closed? Default to "as-is forever" (no rename).
+All four resolved 2026-04-24 with rationale:
+
+1. **PR-comment bot identity** → `github-actions[bot]` via `GITHUB_TOKEN`. Zero setup; no PAT rotation overhead.
+2. **Rollup discoverability** → CI artifact (Phase 1) + PR comment (Phase 3) only. No stable URL / gh-pages branch unless friction appears later.
+3. **Phase 2 timing** → landed immediately after Phase 1 (PR #185). PR #172 closed as superseded first. In-flight PRs #169, #173, #175 cleaned up post-merge (each needs a small rebase to drop the rollup diff).
+4. **Legacy-prefix policy** → freeze existing `legacy-*` names forever. New fragments use `gh-NNN-*` (Phase 4). Opportunistic migration only when a legacy issue is actively worked.
+
+## Phase status
+
+- Phase 1 — ✅ shipped in PR #185 (2026-04-24)
+- Phase 2 — 🚧 this PR
+- Phase 3 — ⏳ queued
+- Phase 4 — ⏳ queued
+- Phase 5 — ⏳ queued
 
 ---
 
