@@ -123,6 +123,11 @@ else
   git reset --hard origin/main --quiet
 fi
 
+# --- 2b. Sync fragment status from merged PRs ---
+log "Syncing fragment status from merged pr_refs..."
+python3 scripts/sync_known_issue_status.py --verbose \
+  || log "WARNING: sync_known_issue_status.py failed (exit $?) — continuing anyway"
+
 # --- 3. Selector ---
 INCLUDE_REVIEW_FLAG=""
 [[ "$INCLUDE_REVIEW" == "1" ]] && INCLUDE_REVIEW_FLAG="--include-review"
