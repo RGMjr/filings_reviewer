@@ -47,7 +47,7 @@ The cron still fires on schedule — it just exits `0` with a log line on the Re
 
 ## Classifying issues
 
-When you open a new issue via `/commit`'s step 9, the fragment defaults to `autonomy: skip`. To reclassify, edit the `autonomy:` field in the fragment file (`docs/known-issues/legacy-NNN-<slug>.md`) and commit:
+When you open a new issue via `/commit`'s step 9, the fragment defaults to `autonomy: skip`. To reclassify, edit the `autonomy:` field in the fragment file (`docs/known-issues/gh-N-<slug>.md` for new fragments, or `legacy-NNN-<slug>.md` for frozen pre-2026-04-24 fragments) and commit:
 
 - `safe` — single file or disjoint files; no schema/migration; no infra/credential change; existing test coverage. Sweeper auto-merges on green CI.
 - `review` — cross-module edits, judgment calls, new feature logic. Sweeper opens draft PR for morning approval.
