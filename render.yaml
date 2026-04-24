@@ -93,11 +93,11 @@ services:
       - fromGroup: filings-claude-secrets
       # Sweeper budgets (override defaults from run_nightly_sweep.sh).
       - key: SWEEP_MAX
-        value: "3"
+        value: "5"
       - key: SWEEP_INCLUDE_REVIEW
         value: "0"  # safe-only by default; flip to 1 to allow review-tier holds
       - key: SWEEP_WALL_BUDGET
-        value: "2700"  # 45 minutes total
+        value: "4500"  # 75 minutes total (5 issues x 15 min each)
       - key: SWEEP_PER_ISSUE
         value: "900"   # 15 minutes per issue
 

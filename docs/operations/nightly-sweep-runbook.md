@@ -5,7 +5,7 @@
 Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron service:
 
 1. Reads fragment frontmatter from `docs/known-issues/` to find eligible issues (autonomy `safe` or `review`, status `open` or `partially-resolved`).
-2. Picks up to 3 non-colliding issues tagged `Autonomy: safe` (default) or `review` (opt-in).
+2. Picks up to 5 non-colliding issues tagged `Autonomy: safe` (default) or `review` (opt-in).
 3. For each pick, creates an isolated git worktree and runs a Claude Code session that:
    - Reads the issue body.
    - Implements exactly what the "Next Steps" section asks.
@@ -77,9 +77,9 @@ Configurable via Render env vars on the `filings-nightly-sweep` service (default
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `SWEEP_MAX` | `3` | Max issues per run |
+| `SWEEP_MAX` | `5` | Max issues per run |
 | `SWEEP_INCLUDE_REVIEW` | `0` | If `1`, include `review` issues in selection |
-| `SWEEP_WALL_BUDGET` | `2700` s | Total wall-clock cap for a run (45 min) |
+| `SWEEP_WALL_BUDGET` | `4500` s | Total wall-clock cap for a run (75 min — 5 issues × 15 min) |
 | `SWEEP_PER_ISSUE` | `900` s | Per-issue wall-clock cap (15 min) |
 
 ## Guardrails

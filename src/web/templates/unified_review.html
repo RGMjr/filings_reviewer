@@ -1159,13 +1159,15 @@ function navigateFact(direction) {
 }
 
 function submitDecision(decision) {
+  const reviewerName = requireReviewerName();
+  if (!reviewerName) return;
   const reviewTime = Math.round((Date.now() - reviewStartTime) / 1000);
   const body = {
     fact_id: CURRENT_FACT_ID,
     decision: decision,
     review_time_seconds: reviewTime,
     reviewer_notes: document.getElementById('reviewer-notes')?.value || null,
-    reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
+    reviewer_id: reviewerName,
   };
 
   if (decision === 'reject') {
@@ -1250,6 +1252,8 @@ function hideCorrectForm() {
 }
 
 function addMissedMetric() {
+  const reviewerName = requireReviewerName();
+  if (!reviewerName) return;
   const body = {
     filing_id: FILING_ID,
     canonical_metric_id: document.getElementById('missed-metric-id').value,
@@ -1259,7 +1263,7 @@ function addMissedMetric() {
     period_type: document.getElementById('missed-period-type').value || null,
     period_end: document.getElementById('missed-period-end').value || null,
     scope: document.getElementById('missed-scope').value || 'company',
-    reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
+    reviewer_id: reviewerName,
     reviewer_notes: document.getElementById('missed-notes').value || null,
   };
   if (!body.canonical_metric_id || !body.value_raw || !body.unit) {

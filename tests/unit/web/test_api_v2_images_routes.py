@@ -65,6 +65,7 @@ class TestCreateImageDecisionV2:
                     "img_id": IMG_ID,
                     "decision": "relevant",
                     "chart_type": "cohort_table",
+                    "reviewer_id": "RGM",
                 }
             ),
             content_type="application/json",
@@ -105,33 +106,37 @@ class TestCreateImageDecisionV2:
         call_kwargs = mock_db.insert_image_review_decision_v2.call_args.kwargs
         assert call_kwargs["reviewer_id"] == "alice@example.com"
 
-    def test_reviewer_id_defaults_to_anonymous(self, client, monkeypatch):
+    @pytest.mark.parametrize(
+        "reviewer_id",
+        [None, "", "   ", "anonymous", "web_reviewer", "test", "test_user", "bulk:old_import"],
+    )
+    def test_reviewer_id_gate_blocks_missing_or_blocklisted(self, client, monkeypatch, reviewer_id):
+        """Gate rejects empty / blocklisted / bulk-prefixed reviewer_ids with 403.
+
+        Historical "anonymous" / "web_reviewer" fallbacks are no longer accepted —
+        clients must send a real name or land on the reviewer-modal prompt.
+        """
         mock_db = MagicMock()
         _patch_get_db(monkeypatch, mock_db)
-        mock_db.get_image_review_candidate_v2.return_value = {
+
+        body: dict[str, object] = {
             "img_id": IMG_ID,
-            "filing_id": 5,
-            "review_status": "pending",
-            "decision": None,
+            "decision": "relevant",
+            "chart_type": "cohort_table",
         }
-        mock_db.insert_image_review_decision_v2.return_value = 790
-        mock_db.get_next_pending_image_candidate_v2.return_value = None
+        if reviewer_id is not None:
+            body["reviewer_id"] = reviewer_id
 
         resp = client.post(
             "/api/v2/image-decisions",
-            data=json.dumps(
-                {
-                    "img_id": IMG_ID,
-                    "decision": "relevant",
-                    "chart_type": "cohort_table",
-                }
-            ),
+            data=json.dumps(body),
             content_type="application/json",
         )
 
-        assert resp.status_code == 201
-        call_kwargs = mock_db.insert_image_review_decision_v2.call_args.kwargs
-        assert call_kwargs["reviewer_id"] == "anonymous"
+        assert resp.status_code == 403
+        payload = resp.get_json()
+        assert payload["error"] == "reviewer_name_required"
+        mock_db.insert_image_review_decision_v2.assert_not_called()
 
     def test_missing_img_id_returns_400(self, client, monkeypatch):
         mock_db = MagicMock()
@@ -175,6 +180,7 @@ class TestCreateImageDecisionV2:
                     "img_id": IMG_ID,
                     "decision": "relevant",
                     "chart_type": "cohort_table",
+                    "reviewer_id": "RGM",
                 }
             ),
             content_type="application/json",
@@ -198,6 +204,7 @@ class TestCreateImageDecisionV2:
                     "img_id": IMG_ID,
                     "decision": "relevant",
                     "chart_type": "cohort_table",
+                    "reviewer_id": "RGM",
                 }
             ),
             content_type="application/json",

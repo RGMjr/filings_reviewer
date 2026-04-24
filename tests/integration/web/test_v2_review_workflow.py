@@ -85,9 +85,7 @@ class TestV2FilingList:
             # Page should contain filing/v2 related content
             assert b"v2" in response.data.lower() or b"filing" in response.data.lower()
         finally:
-            db_adapter.execute(
-                "DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id}
-            )
+            db_adapter.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
             db_adapter.execute("DELETE FROM companies WHERE cik = '0009991001'")
 
     def test_filing_list_empty(self, client):
@@ -130,9 +128,7 @@ class TestV2FactReview:
         )
         yield filing_id, fact_id
 
-        db_adapter.execute(
-            "DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id}
-        )
+        db_adapter.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
         db_adapter.execute("DELETE FROM companies WHERE cik = '0009992001'")
 
     def test_review_page_loads_with_facts(self, client, filing_with_facts):
@@ -172,9 +168,7 @@ class TestV2FactReview:
             response = client.get(f"/v2/review/{filing_id}?page=1&per_page=1")
             assert response.status_code == 200
         finally:
-            db_adapter.execute(
-                "DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id}
-            )
+            db_adapter.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
             db_adapter.execute("DELETE FROM companies WHERE cik = '0009992002'")
 
     def test_review_page_status_filter(self, client, db_adapter):
@@ -191,9 +185,7 @@ class TestV2FactReview:
             response = client.get(f"/v2/review/{filing_id}?status=pending_review")
             assert response.status_code == 200
         finally:
-            db_adapter.execute(
-                "DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id}
-            )
+            db_adapter.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
             db_adapter.execute("DELETE FROM companies WHERE cik = '0009992003'")
 
     def test_review_page_missing_filing_redirects(self, client):
@@ -231,9 +223,7 @@ class TestV2DecisionAPI:
         yield filing_id, fact_id
 
         # CASCADE handles v2_metric_facts + v2_review_decisions via FK
-        db_adapter.execute(
-            "DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id}
-        )
+        db_adapter.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
         db_adapter.execute("DELETE FROM companies WHERE cik = '0009993001'")
 
     def test_accept_decision(self, client, db_adapter, filing_and_fact):
@@ -242,7 +232,7 @@ class TestV2DecisionAPI:
 
         response = client.post(
             "/api/v2/decisions",
-            json={"fact_id": fact_id, "decision": "accept"},
+            json={"fact_id": fact_id, "decision": "accept", "reviewer_id": "RGM"},
         )
         assert response.status_code == 201
         data = json.loads(response.data)
@@ -268,6 +258,7 @@ class TestV2DecisionAPI:
                 "decision": "reject",
                 "rejection_reason": "Not a customer metric",
                 "rejection_category": "not_a_metric",
+                "reviewer_id": "RGM",
             },
         )
         assert response.status_code == 201
@@ -291,6 +282,7 @@ class TestV2DecisionAPI:
                 "decision": "correct",
                 "assigned_metric_id": "cm_active_customers_total",
                 "corrected_value": 9500,
+                "reviewer_id": "RGM",
             },
         )
         assert response.status_code == 201
@@ -307,13 +299,13 @@ class TestV2DecisionAPI:
 
         r1 = client.post(
             "/api/v2/decisions",
-            json={"fact_id": fact_id, "decision": "accept"},
+            json={"fact_id": fact_id, "decision": "accept", "reviewer_id": "RGM"},
         )
         assert r1.status_code == 201
 
         r2 = client.post(
             "/api/v2/decisions",
-            json={"fact_id": fact_id, "decision": "reject"},
+            json={"fact_id": fact_id, "decision": "reject", "reviewer_id": "RGM"},
         )
         assert r2.status_code == 409
         data = json.loads(r2.data)
@@ -326,6 +318,7 @@ class TestV2DecisionAPI:
             json={
                 "fact_id": "00000000-0000-0000-0000-000000000000",
                 "decision": "accept",
+                "reviewer_id": "RGM",
             },
         )
         assert response.status_code == 404
@@ -370,7 +363,7 @@ class TestV2DecisionAPI:
         # Create a decision first
         r = client.post(
             "/api/v2/decisions",
-            json={"fact_id": fact_id, "decision": "accept"},
+            json={"fact_id": fact_id, "decision": "accept", "reviewer_id": "RGM"},
         )
         assert r.status_code == 201
         decision_id = json.loads(r.data)["decision_id"]
@@ -392,9 +385,7 @@ class TestV2DecisionAPI:
 
     def test_undo_nonexistent_decision_404(self, client):
         """DELETE with a nonexistent decision_id returns 404."""
-        response = client.delete(
-            "/api/v2/decisions/00000000-0000-0000-0000-000000000000"
-        )
+        response = client.delete("/api/v2/decisions/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
         data = json.loads(response.data)
         assert data["status"] == "error"
@@ -425,7 +416,7 @@ class TestV2DecisionAPI:
         try:
             response = client.post(
                 "/api/v2/decisions",
-                json={"fact_id": fact_id_1, "decision": "accept"},
+                json={"fact_id": fact_id_1, "decision": "accept", "reviewer_id": "RGM"},
             )
             assert response.status_code == 201
             data = json.loads(response.data)
@@ -436,9 +427,7 @@ class TestV2DecisionAPI:
                 assert "fact_id" in data["next_fact"]
                 assert "url" in data["next_fact"]
         finally:
-            db_adapter.execute(
-                "DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id}
-            )
+            db_adapter.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
             db_adapter.execute("DELETE FROM companies WHERE cik = '0009993002'")
 
     def test_decision_response_structure(self, client, db_adapter, filing_and_fact):
@@ -452,6 +441,7 @@ class TestV2DecisionAPI:
                 "decision": "accept",
                 "reviewer_notes": "Looks good",
                 "review_time_seconds": 15,
+                "reviewer_id": "RGM",
             },
         )
         assert response.status_code == 201
@@ -515,7 +505,7 @@ class TestV2ReviewWorkflowEnd2End:
             # 4. Accept the first fact
             r_accept = client.post(
                 "/api/v2/decisions",
-                json={"fact_id": fact_id_1, "decision": "accept"},
+                json={"fact_id": fact_id_1, "decision": "accept", "reviewer_id": "RGM"},
             )
             assert r_accept.status_code == 201
             accept_data = json.loads(r_accept.data)
@@ -536,6 +526,7 @@ class TestV2ReviewWorkflowEnd2End:
                     "decision": "reject",
                     "rejection_category": "wrong_metric",
                     "rejection_reason": "This is a subtotal, not aggregate",
+                    "reviewer_id": "RGM",
                 },
             )
             assert r_reject.status_code == 201
@@ -561,7 +552,5 @@ class TestV2ReviewWorkflowEnd2End:
             assert r_review2.status_code == 200
 
         finally:
-            db_adapter.execute(
-                "DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id}
-            )
+            db_adapter.execute("DELETE FROM filings WHERE filing_id = %(id)s", {"id": filing_id})
             db_adapter.execute("DELETE FROM companies WHERE cik = '0009994001'")
