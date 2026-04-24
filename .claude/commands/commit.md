@@ -86,13 +86,13 @@
 
    **9e. Act.** "approve"/"all"/silent → file all `TO FILE`. "none"/"skip" → file nothing. Anything else → apply user edits, confirm revised list, file.
 
-   **9f. Write fragment files.** For each item:
-   - Find the highest existing id: `{ ls docs/known-issues/legacy-*.md docs/known-issues/gh-*.md 2>/dev/null; git ls-tree --name-only origin/main docs/known-issues/ 2>/dev/null; } | grep -oE '(legacy|gh)-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1`. Next id = that + 1. (Union of local files and `origin/main` prevents collisions when multiple branches are in flight.)
-   - Create `docs/known-issues/legacy-NNN-<kebab-slug>.md` with this exact structure:
+   **9f. Create a GitHub issue and write the fragment file.** For each item, GitHub assigns the id (no local allocation, no collisions):
+   - Create the issue first: `gh issue create --title "<Title>" --body "$(printf '%s\n\n%s\n' '<Problem: 1–3 sentences>' '## Next Steps\n\n- <1–3 bullets>')"`. Capture the returned issue number `N` from the URL (`gh` prints something like `https://github.com/<org>/<repo>/issues/N`).
+   - Name the fragment `docs/known-issues/gh-N-<kebab-slug>.md` with this structure:
      ```yaml
      ---
-     id: NNN
-     source: legacy
+     id: N
+     source: gh
      slug: <kebab-case-slug>
      title: <Title>
      status: open
@@ -102,6 +102,7 @@
      touches: []     # list of globs; required before sweeper will pick it up
      discovered: <today's date YYYY-MM-DD>
      updated: <today's date YYYY-MM-DD>
+     gh_issue: N
      note: <short one-line actionable summary>
      ---
 
@@ -115,6 +116,8 @@
      ```
    - Do NOT stage the fragment yet — it's a separate follow-up commit (step 13).
    - Note: `docs/KNOWN_ISSUES.md` is no longer tracked in git. CI regenerates it as a build artifact. Do not create or stage that file.
+   - Existing `legacy-NNN-*.md` fragments are frozen in place; do not rename or renumber them. All new fragments use the `gh-N-*` naming above.
+   - Prerequisite: `gh auth status` must return authenticated. In sweeper / CI contexts this is provided by `GITHUB_TOKEN`; for local interactive use, run `gh auth login` first if needed.
 
 10. **Show staged diff.** Run `git diff --cached --stat`.
 
@@ -128,7 +131,7 @@
 12. **Restore pre-existing staging.** Re-stage files that were unstaged in step 4.
 
 13. **Known-issues follow-up commit.** Only if step 9 produced new fragment files under `docs/known-issues/`:
-    - `git add docs/known-issues/legacy-NNN-<slug>.md` (fragment only — the rollup `docs/KNOWN_ISSUES.md` is not tracked in git; CI regenerates it as a build artifact).
+    - `git add docs/known-issues/gh-N-<slug>.md` (fragment only — the rollup `docs/KNOWN_ISSUES.md` is not tracked in git; CI regenerates it as a build artifact).
     - Commit: `docs(known-issues): log issue(s) #N[, #M] — [descriptor]` (matches commits `87b54f7`, `e96b6fb`).
     - Do NOT push yet — step 14 pushes both commits together.
 
