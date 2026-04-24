@@ -9,12 +9,8 @@
 |--------|-------|
 | Open | 31 |
 | Partially Resolved | 1 |
-| Archived | 46 |
-<<<<<<< HEAD
-| Resolved | 18 |
-=======
-| Resolved | 19 |
->>>>>>> origin/main
+| Archived | 45 |
+| Resolved | 20 |
 
 
 ## Nightly Sweeper Classification
@@ -1095,15 +1091,6 @@ Manual recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md` under t
 
 ## Archived Issues
 
-## #1. Metric ID Mismatch Between Gold Standard and System
-
-**Status**: Archived
-**Severity**: n/a
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-Gold standard CSV (`data/gold_standard/golden_set_251218.csv`) aligned to system taxonomy in `config/metric_keywords.yaml`. No remaining ID mismatches. See git log (2026-03-16) for full resolution details.
-
 ## #3. Gold Standard Methodology Questions
 
 **Status**: Archived
@@ -2175,7 +2162,6 @@ attempt to re-fix issues whose fixes are already in `main`.
 - Optional: also emit a warning when such a fragment is encountered, so the
   author knows to set `autonomy: n/a` on resolved entries.
 
-<<<<<<< HEAD
 ## #83. `TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`
 
 **Status**: Resolved
@@ -2192,7 +2178,7 @@ attempt to re-fix issues whose fixes are already in `main`.
 1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
 2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
 3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
-=======
+
 ## #92. CLASSIFY_PROMPT Lives in Bake-off Harness — Move to VisionClient When Classify Lands in Prod
 
 **Status**: Resolved
@@ -2301,7 +2287,6 @@ genuinely unsure".
   manually (and so the classifier's emission maps cleanly).
 - Back-fill any existing `"other"` rows whose `reasoning` references
   a table — optional, tracked separately if useful.
->>>>>>> origin/main
 
 ## #96. Chart-Presence Pivot — Multi-PR Rollout Tracking
 
