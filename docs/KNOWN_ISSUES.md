@@ -7,9 +7,9 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 25 |
 | Partially Resolved | 1 |
-| Archived | 45 |
+| Archived | 51 |
 | Resolved | 22 |
 
 
@@ -158,52 +158,6 @@ omission caused every run to silently extract nothing.
 - Consider adding a minimum-facts guard: if a filing has content and the pipeline
   returns 0 facts, treat it as a soft failure and log at `ERROR` level.
 - Add a test that injects a stage exception and asserts the batch exits non-zero.
-
-## #2. Low Farfetch Recall
-
-**Status**: Open
-**Severity**: medium
-**Discovered**: 2026-01-01
-**Updated**: 2026-01-01
-
-**Re-measured**: 2026-04-18
-
-### Current Farfetch Metrics (2026-04-18)
-
-Re-measured via `python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited" --fn-diagnostics`:
-
-- **Overall**: P=50.0%, R=36.7%, F1=42.3% (TP=11, FP=11, FN=19)
-- **Tier 1**: P=100%, R=10%, F1=18.2%
-- **Tier 2**: P=45%, R=90%, F1=60%
-
-Original "12.5%" figure (1 of 8 non-chart) is stale. The gold standard grew from 8 to ~30 Farfetch rows (49 total, 32 non-chart, 17 chart) since this issue was filed.
-
-### Per-Metric Breakdown
-
-| Metric | Tier | P | R | F1 | Notes |
-|---|---|---|---|---|---|
-| `cm_gross_margin_by_cohort` | T1 | 0% | 0% | 0% | 10 FNs — chart (see #15) |
-| `cm_ltv_to_cac_ratio` | T1 | 100% | 100% | 100% | ✓ (Issue #14 resolved 2026-04-18) |
-| `cm_ltv_to_cac_ratio_by_cohort` | T1 | 100% | 50% | 67% | Text FNs cleared (#14); 3 chart FNs remain (#20) |
-| `cm_revenue_by_cohort` | T1 | 0% | 0% | 0% | 2 FNs — chart (see #15) |
-| `cm_active_customers_total` | T2 | 29% | **100%** | 44% | Recall fine; 5 FPs (see #16) |
-| `cm_average_order_value` | T2 | 100% | 100% | 100% | ✓ |
-| `cm_cac_payback_period` | T2 | 0% | 0% | 0% | 1 FN — bare word-number (see #17) |
-| `cm_purchase_transactions_overall` | T2 | 25% | 100% | 40% | Recall fine; 4 FPs (see #16) |
-
-### Contributing Factors (Updated)
-
-1. ~~**Metric ID mismatch** (Issue #1)~~ — resolved
-2. ~~**URL issue** (Issue #6)~~ — resolved
-3. ~~**CAC Payback "six"**~~ — KNOWN_ISSUES.md previously claimed this was fixed; **claim was inaccurate**. Spelled-out number support was added only for scaled forms ("six million"), not for time-unit forms ("six months"). See #17.
-4. ~~**Take Rate patterns**~~ — void: `cm_take_rate` was removed from taxonomy 2026-01-02 (not a customer metric).
-5. ~~**Layout-table dedup collision**~~ — resolved 2026-04-18 via #14 (respectively-parser priority + cohort_hint).
-6. **Chart extraction blocked locally** — no `OPENAI_API_KEY` means chart-sourced gold rows can't be tested/recovered locally. See #15.
-7. **Table-scale + period precision drag** — see #16.
-
-### Next Steps
-
-Issue #2 is now an umbrella. Individual gaps are tracked in sub-issues #14–#19. Close or demote Issue #2 after those sub-issues are triaged.
 
 ## #58. 8-K Fetcher Returns Only Primary Doc; Earnings Content Lives in Exhibit 99.1
 
@@ -432,33 +386,6 @@ CI. The user has to cross-check with `gh pr list` to discover the gap.
 3. Update the digest writer's section headers to match whichever taxonomy is
    chosen so the morning email is accurate.
 
-## #4. Spelled-Out Number Parsing Limitations
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Current Support
-
-The system correctly parses:
-- Simple numbers: "six", "twenty", "ninety"
-- Teen numbers: "eleven", "fifteen", "nineteen"
-- Compound numbers: "twenty-one", "forty-five"
-- Magnitude words: "five million", "two billion"
-- Hundreds: "hundred", "one hundred", "two hundred"
-
-### Not Supported
-
-Complex numbers like:
-- "one hundred twenty-three" (compound hundreds)
-- "two thousand five hundred" (multi-magnitude)
-- "four hundred and fifty" (with "and")
-
-### Rationale
-
-These complex spelled-out numbers are rare in SEC filings - companies typically use numeric format for precision. The current implementation handles the common cases (e.g., "six months" for CAC payback period).
-
 ## #16. Farfetch Precision Drag — Table-Scale + Period Attribution
 
 **Status**: Open
@@ -557,52 +484,6 @@ broader cleanup window.
 - `scripts/onboard_tickers.py::REVIEW_DECISIONS_SQL` — inline caveat comment
 - commit `c353e83` — the bug that surfaced this
 
-## #39. `is_in_scope_phase1` Is a Misnomer Post-Issue-#7
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-19
-**Updated**: 2026-04-19
-
-### Problem
-
-`filings.is_in_scope_phase1` suggests "this filing is in the active
-universe." Its actual semantic is stricter: "this is an S-1/F-1 filing
-from a first-time non-SPAC non-investment-vehicle non-resource-extraction
-issuer" (classifiers.py:832-834). With 10-K support (Issue #7) landed,
-10-K rows correctly have `is_in_scope_phase1=FALSE` — but that reads as
-"out of scope" to anyone browsing `filings`. The column and query-time
-filter are now confusing.
-
-### Suggested Fix
-
-Two options:
-
-1. **Rename column** → `is_phase1_ipo_candidate` (scoped to S-1/F-1 by
-   design). Migration + updates to `filings` upserts, discovery SQL in
-   `scripts/onboard_tickers.py::_build_discovery_sql`, gold-standard
-   validator queries, any `WHERE is_in_scope_phase1 = ...` usage.
-2. **Add a form-aware companion column** `is_customer_metric_candidate`
-   that's true for S-1/F-1 FTI _and_ true for 10-K/10-K/A that pass basic
-   filters (non-SPAC, non-investment-vehicle, non-resource-extraction).
-   Leave `is_in_scope_phase1` as-is for historical callers.
-
-Option 2 is less disruptive but adds DB surface area. Option 1 is
-conceptually cleaner but requires a coordinated migration + code sweep.
-
-Bundle with Issue #38 if tackled — both are column-name clarifications in
-the same schema area.
-
-### Cross-References
-
-- `src/universe/classifiers.py:832-834` — `is_in_scope_phase1` definition
-- `scripts/onboard_tickers.py::_build_discovery_sql` — already has a
-  workaround (conditionally omits the Phase-1 filter for non-S-1/F-1
-  form types)
-- `docs/operations/TICKER_ONBOARDING.md` — "10-K onboarding semantics"
-  section documents the current confusing behavior
-- Issue #7 — introduced 10-K support that makes the misnomer visible
-
 ## #40. 10-K/A Supersession Semantics Undefined
 
 **Status**: Open
@@ -652,33 +533,6 @@ Lightweight either way — <30 LOC + tests + doc line.
 - `docs/operations/TICKER_ONBOARDING.md` — "10-K onboarding semantics"
 - Issue #7 — landed 10-K support without resolving this
 
-## #43. Spectrum Brands Co-Registrant Filings Still Have Uber HTML Cached on Disk
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-19
-**Updated**: 2026-04-19
-
-### Problem
-
-Filing_ids 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 913, 914, 915, 916, 919 all point `html_storage_path` at `data/filings/0001725792/000119312519149408/primary.htm`. That file contains **Uber S-1/A content**, not the Spectrum Brands 2019 S-1/A content these rows represent (accession `0001193125-19-149408`, co-registered by 15 Spectrum Brands entities). Root cause is the same pre-Issue-#6 FilingFetcher mis-save that caused Issue #30 — the URL column was fixed by the #30 resolution, but the cached HTML file was not replaced.
-
-### Why it's latent, not active
-
-All 15 rows have `v2_metric_facts_count = 0`, `v2_review_decisions_count = 0`, `v2_image_review_decisions_count = 0`. No extraction has run on these filings, so no facts are derived from the wrong HTML. Reviewer-facing UI links point to the correct SEC documents (fixed in Issue #30). The problem would only surface if/when someone runs `scripts/batch_v2_extraction.py` against these filing_ids — they'd get Uber facts attributed to Spectrum Brands.
-
-### Next Steps
-
-Pick one:
-
-1. **Refetch once, update all 15** (preferred): Call `FilingFetcher.fetch_filing()` for one co-registrant (e.g., the primary Spectrum Brands CIK `0001028985`) with the correct resolved URL, writing to a new storage path under `data/filings/0001028985/000119312519149408/primary.htm`. Then `UPDATE filings SET html_storage_path = <new path>, html_content = NULL WHERE filing_id IN (902, 903, ..., 919)`. Force-reextract not needed because `facts=0`.
-2. **Delete the stale file + clear paths**: Just `UPDATE filings SET html_storage_path = NULL, html_content = NULL, html_fetched_at = NULL, processing_status = 'pending' WHERE filing_id IN (...)` and let the normal `FilingFetcher` flow re-download on next run. Simpler, but reverts processing_status.
-3. **Remove from universe**: if Spectrum Brands debt-securities S-1/A is not actually in scope for customer-metrics analysis (these are consumer-goods entities, not tech/SaaS), consider deleting the 15 rows entirely — safe here because `facts=0 AND reviews=0`.
-
-### Context
-
-See Issue #30 resolution notes (now in archive) for full audit trail. Apply log at `data/audit/issue_30_applied_20260419T210109Z.jsonl`.
-
 ## #53. Chart Call Limit (10) Truncates OCR on High-Chart Filings
 
 **Status**: Open
@@ -701,27 +555,6 @@ Filings with lots of charts (Chewy has 16 chart-classified images; Snowflake has
 - Locate the limit in `src/extraction_v2/stages/ocr_extraction.py` (likely a module-level constant or `PipelineConfig` field) and either raise the default, convert to a per-filing override, or expose via CLI flag on `batch_v2_extraction.py`.
 - Re-run the Chewy smoke with the cap raised to quantify the missed-recall impact.
 - Consider prioritization: OCR charts in likely-Tier-1 sections first (MDA, financials) rather than HTML order.
-
-## #55. 28 Stuck 8-K Filings in Class (E) from Form-Filter Bypass
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-21
-**Updated**: 2026-04-21
-
-### Problem
-
-Of the 38 filings in `scripts/diagnostic_chart_evidence_coverage.py` Class (E) on Neon prod, **28 are 8-K filings** in `processing_status='processing'` with `html_storage_path IS NULL` and `html_content IS NULL`. The extraction system is designed for S-1/F-1 (see `DEFAULT_FORM_TYPES_S1F1` in `src/universe/universe_builder.py`), yet these 8-Ks reached ingestion far enough to have `v2_image_assets` chart-classified rows written, then stalled. This suggests a form-filter bypass somewhere in the ingestion path — possibly an early-path onboarding script, possibly a reviewer action, possibly a daily-cron edge case.
-
-Seven of the 28 additionally have 2–3 reviewer decisions each on text/table facts, which is even more puzzling for an allegedly out-of-scope form type.
-
-Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the original target/exclusion lists.
-
-### Next Steps
-
-- Trace how these 8-K filings entered the pipeline: `git log` the ingestion path around the 2026-04-xx window, `grep` for any codepath that calls `FilingFetcher` or `V2Pipeline.process` without a form-type gate.
-- Decide cleanup strategy: (a) retroactively delete the `filings` + `v2_image_assets` + `v2_metric_facts` rows for these 28 ids; or (b) reclassify to `processing_status='out_of_scope'` and update the Class (E) diagnostic to filter on `form_type IN ('S-1','S-1/A','F-1','F-1/A')`.
-- If reviewer decisions on 8-Ks are intentional (user-directed review for some reason), skip the deletion option and go with (b).
 
 ## #59. 8-K Section Classifier Produces Only `COVER` / `FINANCIALS` Labels
 
@@ -1029,31 +862,6 @@ and obscures real selector warnings.
 - Run the sweep selector locally to confirm zero warnings after the change.
 - The nightly sweep can self-fix this (autonomy: safe, XS) — mark as a sweep candidate.
 
-## #5. Revenue Synonym Context Gating
-
-**Status**: Open
-**Severity**: n/a
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Background
-
-Revenue-related metrics (GMV, TCV, ACV, Bookings, Billings) only generate review candidates when cohort/per-customer context is present. This is intentional to reduce false positives.
-
-### Current Behavior
-
-- ARR/MRR: Always generate candidates (inherently customer-related)
-- GMV/TCV/ACV/Bookings/Billings: Require context keywords within 1500 chars
-- Context keywords: cohort, vintage, per customer, per user, by account, etc.
-
-### Potential Issue
-
-Some valid per-customer GMV values may not have context keywords nearby, causing them to be missed.
-
-### Monitoring
-
-Review rejection rates for revenue synonyms to determine if context gating is too strict.
-
 ## Partially Resolved Issues
 
 ## #62. Local-Dev Stuck-Batch Recovery Is Manual
@@ -1079,6 +887,173 @@ Manual recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md` under t
 
 ## Archived Issues
 
+## #2. Low Farfetch Recall
+
+**Status**: Archived
+**Severity**: medium
+**Discovered**: 2026-01-01
+**Updated**: 2026-04-24
+
+**Re-measured**: 2026-04-18
+
+### Current Farfetch Metrics (2026-04-18)
+
+Re-measured via `python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited" --fn-diagnostics`:
+
+- **Overall**: P=50.0%, R=36.7%, F1=42.3% (TP=11, FP=11, FN=19)
+- **Tier 1**: P=100%, R=10%, F1=18.2%
+- **Tier 2**: P=45%, R=90%, F1=60%
+
+Original "12.5%" figure (1 of 8 non-chart) is stale. The gold standard grew from 8 to ~30 Farfetch rows (49 total, 32 non-chart, 17 chart) since this issue was filed.
+
+### Per-Metric Breakdown
+
+| Metric | Tier | P | R | F1 | Notes |
+|---|---|---|---|---|---|
+| `cm_gross_margin_by_cohort` | T1 | 0% | 0% | 0% | 10 FNs — chart (see #15) |
+| `cm_ltv_to_cac_ratio` | T1 | 100% | 100% | 100% | ✓ (Issue #14 resolved 2026-04-18) |
+| `cm_ltv_to_cac_ratio_by_cohort` | T1 | 100% | 50% | 67% | Text FNs cleared (#14); 3 chart FNs remain (#20) |
+| `cm_revenue_by_cohort` | T1 | 0% | 0% | 0% | 2 FNs — chart (see #15) |
+| `cm_active_customers_total` | T2 | 29% | **100%** | 44% | Recall fine; 5 FPs (see #16) |
+| `cm_average_order_value` | T2 | 100% | 100% | 100% | ✓ |
+| `cm_cac_payback_period` | T2 | 0% | 0% | 0% | 1 FN — bare word-number (see #17) |
+| `cm_purchase_transactions_overall` | T2 | 25% | 100% | 40% | Recall fine; 4 FPs (see #16) |
+
+### Contributing Factors (Updated)
+
+1. ~~**Metric ID mismatch** (Issue #1)~~ — resolved
+2. ~~**URL issue** (Issue #6)~~ — resolved
+3. ~~**CAC Payback "six"**~~ — KNOWN_ISSUES.md previously claimed this was fixed; **claim was inaccurate**. Spelled-out number support was added only for scaled forms ("six million"), not for time-unit forms ("six months"). See #17.
+4. ~~**Take Rate patterns**~~ — void: `cm_take_rate` was removed from taxonomy 2026-01-02 (not a customer metric).
+5. ~~**Layout-table dedup collision**~~ — resolved 2026-04-18 via #14 (respectively-parser priority + cohort_hint).
+6. **Chart extraction blocked locally** — no `OPENAI_API_KEY` means chart-sourced gold rows can't be tested/recovered locally. See #15.
+7. **Table-scale + period precision drag** — see #16.
+
+### Next Steps
+
+Issue #2 is now an umbrella. Individual gaps are tracked in sub-issues #14–#19. Close or demote Issue #2 after those sub-issues are triaged.
+
+## #4. Spelled-Out Number Parsing Limitations
+
+**Status**: Archived
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-24
+
+### Current Support
+
+The system correctly parses:
+- Simple numbers: "six", "twenty", "ninety"
+- Teen numbers: "eleven", "fifteen", "nineteen"
+- Compound numbers: "twenty-one", "forty-five"
+- Magnitude words: "five million", "two billion"
+- Hundreds: "hundred", "one hundred", "two hundred"
+
+### Not Supported
+
+Complex numbers like:
+- "one hundred twenty-three" (compound hundreds)
+- "two thousand five hundred" (multi-magnitude)
+- "four hundred and fifty" (with "and")
+
+### Rationale
+
+These complex spelled-out numbers are rare in SEC filings - companies typically use numeric format for precision. The current implementation handles the common cases (e.g., "six months" for CAC payback period).
+
+## #39. `is_in_scope_phase1` Is a Misnomer Post-Issue-#7
+
+**Status**: Archived
+**Severity**: low
+**Discovered**: 2026-04-19
+**Updated**: 2026-04-24
+
+### Problem
+
+`filings.is_in_scope_phase1` suggests "this filing is in the active
+universe." Its actual semantic is stricter: "this is an S-1/F-1 filing
+from a first-time non-SPAC non-investment-vehicle non-resource-extraction
+issuer" (classifiers.py:832-834). With 10-K support (Issue #7) landed,
+10-K rows correctly have `is_in_scope_phase1=FALSE` — but that reads as
+"out of scope" to anyone browsing `filings`. The column and query-time
+filter are now confusing.
+
+### Suggested Fix
+
+Two options:
+
+1. **Rename column** → `is_phase1_ipo_candidate` (scoped to S-1/F-1 by
+   design). Migration + updates to `filings` upserts, discovery SQL in
+   `scripts/onboard_tickers.py::_build_discovery_sql`, gold-standard
+   validator queries, any `WHERE is_in_scope_phase1 = ...` usage.
+2. **Add a form-aware companion column** `is_customer_metric_candidate`
+   that's true for S-1/F-1 FTI _and_ true for 10-K/10-K/A that pass basic
+   filters (non-SPAC, non-investment-vehicle, non-resource-extraction).
+   Leave `is_in_scope_phase1` as-is for historical callers.
+
+Option 2 is less disruptive but adds DB surface area. Option 1 is
+conceptually cleaner but requires a coordinated migration + code sweep.
+
+Bundle with Issue #38 if tackled — both are column-name clarifications in
+the same schema area.
+
+### Cross-References
+
+- `src/universe/classifiers.py:832-834` — `is_in_scope_phase1` definition
+- `scripts/onboard_tickers.py::_build_discovery_sql` — already has a
+  workaround (conditionally omits the Phase-1 filter for non-S-1/F-1
+  form types)
+- `docs/operations/TICKER_ONBOARDING.md` — "10-K onboarding semantics"
+  section documents the current confusing behavior
+- Issue #7 — introduced 10-K support that makes the misnomer visible
+
+## #43. Spectrum Brands Co-Registrant Filings Still Have Uber HTML Cached on Disk
+
+**Status**: Archived
+**Severity**: low
+**Discovered**: 2026-04-19
+**Updated**: 2026-04-24
+
+### Problem
+
+Filing_ids 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 913, 914, 915, 916, 919 all point `html_storage_path` at `data/filings/0001725792/000119312519149408/primary.htm`. That file contains **Uber S-1/A content**, not the Spectrum Brands 2019 S-1/A content these rows represent (accession `0001193125-19-149408`, co-registered by 15 Spectrum Brands entities). Root cause is the same pre-Issue-#6 FilingFetcher mis-save that caused Issue #30 — the URL column was fixed by the #30 resolution, but the cached HTML file was not replaced.
+
+### Why it's latent, not active
+
+All 15 rows have `v2_metric_facts_count = 0`, `v2_review_decisions_count = 0`, `v2_image_review_decisions_count = 0`. No extraction has run on these filings, so no facts are derived from the wrong HTML. Reviewer-facing UI links point to the correct SEC documents (fixed in Issue #30). The problem would only surface if/when someone runs `scripts/batch_v2_extraction.py` against these filing_ids — they'd get Uber facts attributed to Spectrum Brands.
+
+### Next Steps
+
+Pick one:
+
+1. **Refetch once, update all 15** (preferred): Call `FilingFetcher.fetch_filing()` for one co-registrant (e.g., the primary Spectrum Brands CIK `0001028985`) with the correct resolved URL, writing to a new storage path under `data/filings/0001028985/000119312519149408/primary.htm`. Then `UPDATE filings SET html_storage_path = <new path>, html_content = NULL WHERE filing_id IN (902, 903, ..., 919)`. Force-reextract not needed because `facts=0`.
+2. **Delete the stale file + clear paths**: Just `UPDATE filings SET html_storage_path = NULL, html_content = NULL, html_fetched_at = NULL, processing_status = 'pending' WHERE filing_id IN (...)` and let the normal `FilingFetcher` flow re-download on next run. Simpler, but reverts processing_status.
+3. **Remove from universe**: if Spectrum Brands debt-securities S-1/A is not actually in scope for customer-metrics analysis (these are consumer-goods entities, not tech/SaaS), consider deleting the 15 rows entirely — safe here because `facts=0 AND reviews=0`.
+
+### Context
+
+See Issue #30 resolution notes (now in archive) for full audit trail. Apply log at `data/audit/issue_30_applied_20260419T210109Z.jsonl`.
+
+## #55. 28 Stuck 8-K Filings in Class (E) from Form-Filter Bypass
+
+**Status**: Archived
+**Severity**: low
+**Discovered**: 2026-04-21
+**Updated**: 2026-04-24
+
+### Problem
+
+Of the 38 filings in `scripts/diagnostic_chart_evidence_coverage.py` Class (E) on Neon prod, **28 are 8-K filings** in `processing_status='processing'` with `html_storage_path IS NULL` and `html_content IS NULL`. The extraction system is designed for S-1/F-1 (see `DEFAULT_FORM_TYPES_S1F1` in `src/universe/universe_builder.py`), yet these 8-Ks reached ingestion far enough to have `v2_image_assets` chart-classified rows written, then stalled. This suggests a form-filter bypass somewhere in the ingestion path — possibly an early-path onboarding script, possibly a reviewer action, possibly a daily-cron edge case.
+
+Seven of the 28 additionally have 2–3 reviewer decisions each on text/table facts, which is even more puzzling for an allegedly out-of-scope form type.
+
+Filing ids captured in `data/audit/issue_35_prod_class_e_raw.txt` and the original target/exclusion lists.
+
+### Next Steps
+
+- Trace how these 8-K filings entered the pipeline: `git log` the ingestion path around the 2026-04-xx window, `grep` for any codepath that calls `FilingFetcher` or `V2Pipeline.process` without a form-type gate.
+- Decide cleanup strategy: (a) retroactively delete the `filings` + `v2_image_assets` + `v2_metric_facts` rows for these 28 ids; or (b) reclassify to `processing_status='out_of_scope'` and update the Class (E) diagnostic to filter on `form_type IN ('S-1','S-1/A','F-1','F-1/A')`.
+- If reviewer decisions on 8-Ks are intentional (user-directed review for some reason), skip the deletion option and go with (b).
+
 ## #3. Gold Standard Methodology Questions
 
 **Status**: Archived
@@ -1087,6 +1062,31 @@ Manual recovery SQL documented in `docs/operations/TICKER_ONBOARDING.md` under t
 **Updated**: 2026-04-22
 
 Created `docs/GOLD_STANDARD_SPECIFICATION.md` covering: metric ID alignment, value normalization rules, chart vs text classification, period format, negative examples, and duplicate group handling.
+
+## #5. Revenue Synonym Context Gating
+
+**Status**: Archived
+**Severity**: n/a
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-24
+
+### Background
+
+Revenue-related metrics (GMV, TCV, ACV, Bookings, Billings) only generate review candidates when cohort/per-customer context is present. This is intentional to reduce false positives.
+
+### Current Behavior
+
+- ARR/MRR: Always generate candidates (inherently customer-related)
+- GMV/TCV/ACV/Bookings/Billings: Require context keywords within 1500 chars
+- Context keywords: cohort, vintage, per customer, per user, by account, etc.
+
+### Potential Issue
+
+Some valid per-customer GMV values may not have context keywords nearby, causing them to be missed.
+
+### Monitoring
+
+Review rejection rates for revenue synonyms to determine if context gating is too strict.
 
 ## #6. FilingFetcher Downloads Directory Index Instead of Primary Document
 
@@ -2406,6 +2406,7 @@ The recall jump is the measurement-methodology shift from PR #150 landing: 82 `s
 
 ## Change Log
 
+- **2026-04-24**: Backlog trim — archived Issues #2 (Farfetch umbrella; sub-issues closed), #4 (spelled-out numbers, known limitation), #5 (revenue synonym gating, working as designed), #39 (`is_in_scope_phase1` cosmetic rename), #43 (Spectrum Brands cached HTML, latent), #55 (28 stuck 8-K filings, no owner). All no longer actionable; fragments retained for history.
 - **2026-01-01**: Initial document created after VAL-1 validation
 - **2026-01-01**: CAC payback period issue resolved (moved to "FIXED" section)
 - **2026-03-16**: Added Issue #6 — FilingFetcher directory index bug
