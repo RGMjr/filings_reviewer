@@ -13,6 +13,7 @@ touches:
   - scripts/apply_migrations.py
   - sql/37_create_analytics_role.sql
 updated: '2026-04-24'
+pr_refs: []
 ---
 
 ### Problem

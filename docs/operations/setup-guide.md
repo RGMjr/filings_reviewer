@@ -131,6 +131,25 @@ Connection string format:
 DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=require
 ```
 
+### Checksum Drift Recovery
+
+If `pytest` (integration tests) fails at startup with `RuntimeError: Checksum mismatch for NN_*.sql`, a migration file was edited after your test DB applied the original version.
+
+**Option A — Full reset (simplest):**
+```bash
+dropdb filings_analysis_test && createdb filings_analysis_test
+pytest tests/integration/ -x -q   # migrations re-apply automatically
+```
+
+**Option B — Surgical fix (single migration):**
+```sql
+-- Connect to your test DB, then:
+DELETE FROM schema_migrations WHERE id = '37_create_analytics_role.sql';
+```
+Then re-run `pytest`; `_apply_migrations_to_test_db` will re-apply that migration.
+
+Use Option A if multiple migrations drifted; Option B when only one file changed.
+
 ### Running migrations
 
 Once the database is reachable, apply all schema migrations in canonical order:
