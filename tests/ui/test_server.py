@@ -509,6 +509,11 @@ def ingest_batch(batch_id):
     return "Ingest Batch (stub)"
 
 
+@ingest_bp.route("/history")
+def ingest_history():
+    return "Ingest History (stub)"
+
+
 app.register_blueprint(ingest_bp, url_prefix="/ingest")
 
 

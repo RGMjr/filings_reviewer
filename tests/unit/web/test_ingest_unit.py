@@ -532,7 +532,7 @@ def test_ingest_preview_template_has_gap_banner_id(client):
     ):
         resp = client.post(
             "/ingest/preview",
-            data={"reviewer_name": "Rob", "company_name_ilike": "Acme"},
+            data={"reviewer_name": "Rob", "company_name_ilike": "Acme", "year": "2023"},
         )
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
@@ -554,7 +554,7 @@ def test_ingest_preview_template_has_section_ids(client):
     ):
         resp = client.post(
             "/ingest/preview",
-            data={"reviewer_name": "Rob", "company_name_ilike": "Acme"},
+            data={"reviewer_name": "Rob", "company_name_ilike": "Acme", "year": "2023"},
         )
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
