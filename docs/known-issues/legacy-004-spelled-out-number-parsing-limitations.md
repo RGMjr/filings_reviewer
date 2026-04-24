@@ -7,10 +7,10 @@ note: Known limitation; not actionable
 severity: low
 slug: spelled-out-number-parsing-limitations
 source: legacy
-status: open
+status: archived
 title: Spelled-Out Number Parsing Limitations
 touches: []
-updated: '2026-04-22'
+updated: '2026-04-24'
 ---
 
 ### Current Support

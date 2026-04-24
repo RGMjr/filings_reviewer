@@ -7,10 +7,10 @@ note: Latent; no action needed until re-extraction
 severity: low
 slug: spectrum-brands-co-registrant-filings-still-have-uber-html-c
 source: legacy
-status: open
+status: archived
 title: Spectrum Brands Co-Registrant Filings Still Have Uber HTML Cached on Disk
 touches: []
-updated: '2026-04-19'
+updated: '2026-04-24'
 ---
 
 ### Problem

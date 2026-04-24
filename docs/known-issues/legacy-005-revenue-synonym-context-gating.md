@@ -7,10 +7,10 @@ note: Working as designed
 severity: n/a
 slug: revenue-synonym-context-gating
 source: legacy
-status: open
+status: archived
 title: Revenue Synonym Context Gating
 touches: []
-updated: '2026-04-22'
+updated: '2026-04-24'
 ---
 
 ### Background

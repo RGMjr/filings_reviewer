@@ -7,10 +7,10 @@ note: Umbrella for Farfetch recall; sub-issues, stakeholder tuning
 severity: medium
 slug: low-farfetch-recall
 source: legacy
-status: open
+status: archived
 title: Low Farfetch Recall
 touches: []
-updated: '2026-01-01'
+updated: '2026-04-24'
 ---
 
 **Re-measured**: 2026-04-18
