@@ -143,7 +143,14 @@
 
 16. **Enable auto-merge.** `gh pr merge --auto --squash` (idempotent — no-op if already enabled). `--squash` keeps main's history linear, matching the repo's existing pattern. Never use `--admin`.
 
-17. **Report.** Final one-line summary to the user:
+17. **Conflict guard.** After enabling auto-merge, wait 5 seconds for GitHub to compute merge status, then check:
+    ```
+    gh pr view --json mergeable,mergeStateStatus
+    ```
+    - If `mergeStateStatus` is `DIRTY`: run `gh pr update-branch` (merges `main` into the PR branch). If it exits non-zero (real content conflict), warn: "Branch is DIRTY and update-branch failed — manual conflict resolution required."
+    - Any other status (`BLOCKED`, `CLEAN`, `UNKNOWN`): no action.
+
+18. **Report.** Final one-line summary to the user:
     ```
     PR #<n> opened/updated: <url>. Auto-merge enabled (squash). Waits on: Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright). Run /ci-fix if checks go red.
     ```
