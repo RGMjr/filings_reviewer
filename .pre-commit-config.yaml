@@ -75,3 +75,11 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         files: '^docs/known-issues/.*\.md$'
+
+      - id: migration-order-check
+        name: Migration order completeness
+        entry: python3 scripts/check_migration_order.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^(sql/.*\.sql$|scripts/apply_all_migrations\.py$)
