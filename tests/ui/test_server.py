@@ -232,6 +232,9 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "decision_notes": None,
     "image_index": 1,
     "detected_metrics": [],
+    "classification_id": None,
+    "predicted_metrics": None,
+    "classification_confidence": None,
 }
 
 MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
@@ -264,6 +267,9 @@ MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
         {"metric_id": "cm_revenue_by_cohort", "score": 0.71},
         {"metric_id": "cm_churn_rate", "score": 0.55},
     ],
+    "classification_id": None,
+    "predicted_metrics": None,
+    "classification_confidence": None,
 }
 
 MOCK_IMAGE_CANDIDATE_REVIEWED = {
@@ -289,6 +295,9 @@ MOCK_IMAGE_CANDIDATE_REVIEWED = {
     "decision_notes": "Clear cohort retention chart",
     "image_index": 2,
     "detected_metrics": [],
+    "classification_id": None,
+    "predicted_metrics": None,
+    "classification_confidence": None,
 }
 
 IMAGE_CHART_TYPES = [

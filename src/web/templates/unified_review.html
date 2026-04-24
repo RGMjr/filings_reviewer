@@ -872,18 +872,22 @@
              confirms each entry via accept / reject (reason) / correct
              (replace) and may add metrics the classifier missed. #}
           {% if current_image
-                and current_image.detected_metrics
+                and (current_image.detected_metrics or current_image.predicted_metrics)
                 and current_image.review_status in ('pending', 'reviewed')
                 and current_image.decision != 'not_relevant' %}
+          {% set active_metrics = current_image.predicted_metrics if current_image.predicted_metrics else current_image.detected_metrics %}
+          {% set metrics_source = 'vision' if current_image.predicted_metrics else 'keywords' %}
           <div class="card detected-metrics-card mt-3"
                id="detected-metrics-card"
                data-img-id="{{ current_image.img_id }}"
-               data-detected-metrics='{{ current_image.detected_metrics|tojson }}'
+               data-detected-metrics='{{ active_metrics|tojson }}'
+               data-source="{{ metrics_source }}"
+               data-classification-id="{{ current_image.classification_id or '' }}"
                data-confirmations='{{ (current_image_confirmations or [])|tojson }}'>
             <div class="card-header py-2 d-flex justify-content-between align-items-center">
-              <h6 class="mb-0">Detected metrics</h6>
+              <h6 class="mb-0">{% if metrics_source == 'vision' %}Predicted metrics (Vision){% else %}Detected metrics (Keywords){% endif %}</h6>
               <span class="badge bg-secondary">
-                {{ current_image.detected_metrics|length }} detected
+                {{ active_metrics|length }} detected
               </span>
             </div>
             <div class="card-body">
@@ -892,7 +896,7 @@
                 separately via <em>Add missed metric</em> if needed.
               </p>
               <ul class="list-group list-group-flush" id="detected-metrics-list">
-                {% for metric in current_image.detected_metrics %}
+                {% for metric in active_metrics %}
                 <li class="list-group-item detected-metric-row"
                     tabindex="0"
                     data-metric-id="{{ metric.metric_id }}"
