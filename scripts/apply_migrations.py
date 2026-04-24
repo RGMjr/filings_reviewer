@@ -86,6 +86,7 @@ MIGRATIONS = [
     "43_create_v2_image_metric_confirmations.sql",
     "44_extend_image_rejection_reason_enum.sql",
     "45_create_v2_image_classifications.sql",
+    "46_v2_text_metric_presence.sql",
 ]
 
 BOOTSTRAP_DDL = """
