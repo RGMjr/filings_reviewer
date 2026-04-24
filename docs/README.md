@@ -88,7 +88,7 @@ Active and historical plans for reference.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** (V1 GR methodology — V2 current baseline: see v2.7 changelog entry above) | Everyone |
-| **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Known issues and limitations (auto-generated from `docs/known-issues/` — edit fragments, not the rollup) | Developers |
+| **[known-issues/](known-issues/)** | Known issues (source-of-truth fragments). Rendered rollup is published as a CI build artifact on every main build — see `known-issues-rollup` on the Actions tab. | Developers |
 
 ### Archive (Historical Reference)
 

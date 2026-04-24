@@ -27,15 +27,14 @@ jobs:
       - name: Type check (mypy)
         run: uv run mypy src/review/ --strict
 
-      - name: Known-issues rollup is in sync with fragments
-        run: python3 scripts/regenerate_known_issues.py --check
+      - name: Known-issues fragments validate
+        # Phase 2: the rollup is no longer tracked in git. Fragments are the
+        # source of truth; this lint just confirms they parse cleanly.
+        run: uv run python3 scripts/regenerate_known_issues.py --validate
 
-  # Phase 1 of the known-issues system rethink
-  # (docs/operations/known-issues-system-rethink-plan.md):
-  # regenerate the rollup to a temp path and upload as a build artifact.
-  # This proves the CI-generated rollup pipeline works before Phase 2 flips
-  # the rollup out of git. Does NOT replace the byte-equality lint above;
-  # runs parallel to it.
+  # Known-issues rollup artifact: regenerate and publish the rollup as a
+  # build artifact on every CI run. Fragments in docs/known-issues/ are
+  # the source of truth; the rollup is derived.
   known-issues-artifact:
     name: Known-issues rollup artifact
     runs-on: ubuntu-latest
