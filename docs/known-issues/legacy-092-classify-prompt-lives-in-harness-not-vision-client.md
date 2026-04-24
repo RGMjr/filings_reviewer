@@ -6,14 +6,30 @@ id: 92
 severity: low
 slug: classify-prompt-lives-in-harness-not-vision-client
 source: legacy
-status: open
+status: resolved
 title: CLASSIFY_PROMPT Lives in Bake-off Harness — Move to VisionClient When Classify Lands in Prod
 touches:
   - scripts/benchmark_vision.py
   - src/llm/vision_client.py
-  - src/extraction_v2/stages/image_triage.py
+  - src/extraction_v2/stages/image_classify.py
 updated: '2026-04-23'
 ---
+
+**Resolved**: 2026-04-23 — see below.
+
+### Resolution (2026-04-23)
+
+Leg A of the tripod plan (PR #157) ported `CLASSIFY_PROMPT`,
+`CLASSIFY_REJECTION_REASONS`, `_build_classify_prompt`, and
+`_parse_classify_response` into `src/llm/vision_client.py`, exposed as
+`VisionClient.analyze_image_for_metric_classification`. Leg B (this PR)
+wires the new `ImageClassifyStage` to call that helper when
+`ENABLE_METRIC_CLASSIFY=true`.
+
+`scripts/benchmark_vision.py` still has its own copy of the prompt. The
+harness branch will rebase onto main and import from vision_client as a
+follow-up — tracked in the plan doc at `~/.claude/plans/let-s-tackle-known-issues-md-92-tidy-cake.md`,
+not as a new KI (it's a branch-only cleanup).
 
 ### Problem
 
