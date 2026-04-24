@@ -50,6 +50,16 @@ services:
     schedule: "0 6 * * *"  # Daily at 6am UTC
     envVars:
       - fromGroup: filings-shared-secrets
+      - key: ENABLE_METRIC_CLASSIFY
+        value: "false"  # Tripod Leg B (#92): Vision-API metric classify. Flip to "true" after smoke-test.
+      - key: VISION_CLASSIFY_PROVIDER
+        value: gemini
+      - key: VISION_CLASSIFY_MODEL
+        value: gemini-2.5-flash-lite  # 2026-04-23 bake-off winner
+      - key: VISION_CLASSIFY_THRESHOLD
+        value: "0.5"
+      - key: GEMINI_API_KEY
+        sync: false  # Set manually in Render dashboard
 
   - type: worker
     name: filings-onboarding-runner
@@ -83,11 +93,11 @@ services:
       - fromGroup: filings-claude-secrets
       # Sweeper budgets (override defaults from run_nightly_sweep.sh).
       - key: SWEEP_MAX
-        value: "3"
+        value: "5"
       - key: SWEEP_INCLUDE_REVIEW
         value: "0"  # safe-only by default; flip to 1 to allow review-tier holds
       - key: SWEEP_WALL_BUDGET
-        value: "2700"  # 45 minutes total
+        value: "4500"  # 75 minutes total (5 issues x 15 min each)
       - key: SWEEP_PER_ISSUE
         value: "900"   # 15 minutes per issue
 
