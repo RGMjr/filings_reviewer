@@ -2076,18 +2076,23 @@ class DatabaseAdapter:
         reviewer_id: str,
     ) -> int:
         """
-        Upsert per-metric confirmation decisions for a chart image.
+        Upsert per-metric confirmation decisions for a chart image, and
+        promote accept/correct/add decisions into v2_metric_facts.
 
         Each entry in *confirmations* must have at minimum:
-          - decision: 'accept' | 'reject' | 'correct' | 'add'
+          - decision: 'accept' | 'reject' | 'correct' | 'add' | 'skip'
           - detected_metric_id: str | None
           - confirmed_metric_id: str | None
           - rejection_reason: str | None
 
-        On conflict (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
-        the existing row is updated with the new decision values.
+        Fact-promotion rules (all inside one tx):
+          accept  → insert chart fact for (img_id, detected_metric_id) if none exists
+          correct → delete fact for detected_metric_id; insert for confirmed_metric_id
+          add     → insert chart fact for (img_id, confirmed_metric_id) if none exists
+          reject  → delete fact for detected_metric_id (if no other accept remains)
+          skip    → delete fact for detected_metric_id (if no other accept remains)
 
-        Returns the number of rows upserted.
+        Returns the number of confirmation rows upserted.
         """
         if not confirmations:
             return 0
@@ -2111,19 +2116,48 @@ class DatabaseAdapter:
         count = 0
         with self.get_connection() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+                    {"img_id": img_id},
+                )
+                doc_row = cur.fetchone()
+                if doc_row is None:
+                    raise ValueError(f"Image not found: img_id={img_id}")
+                doc_id = doc_row["doc_id"]
+
                 for entry in confirmations:
+                    decision = entry["decision"]
+                    detected_metric_id = entry.get("detected_metric_id")
+                    confirmed_metric_id = entry.get("confirmed_metric_id")
+
                     cur.execute(
                         upsert_sql,
                         {
                             "img_id": img_id,
-                            "detected_metric_id": entry.get("detected_metric_id"),
-                            "confirmed_metric_id": entry.get("confirmed_metric_id"),
-                            "decision": entry["decision"],
+                            "detected_metric_id": detected_metric_id,
+                            "confirmed_metric_id": confirmed_metric_id,
+                            "decision": decision,
                             "rejection_reason": entry.get("rejection_reason"),
                             "reviewer_id": reviewer_id,
                         },
                     )
                     count += 1
+
+                    if decision == "accept":
+                        self._promote_chart_fact(
+                            cur, doc_id, img_id, detected_metric_id, reviewer_id
+                        )
+                    elif decision == "correct":
+                        self._demote_chart_fact(cur, doc_id, img_id, detected_metric_id)
+                        self._promote_chart_fact(
+                            cur, doc_id, img_id, confirmed_metric_id, reviewer_id
+                        )
+                    elif decision == "add":
+                        self._promote_chart_fact(
+                            cur, doc_id, img_id, confirmed_metric_id, reviewer_id
+                        )
+                    elif decision in ("reject", "skip"):
+                        self._demote_chart_fact(cur, doc_id, img_id, detected_metric_id)
 
         logger.debug(
             "Upserted %d image metric confirmations: img_id=%s reviewer_id=%s",
@@ -2132,6 +2166,152 @@ class DatabaseAdapter:
             reviewer_id,
         )
         return count
+
+    def _promote_chart_fact(
+        self,
+        cur,
+        doc_id: int,
+        img_id: str,
+        metric_id: str | None,
+        reviewer_id: str,
+    ) -> None:
+        """
+        Insert a v2_metric_facts row for a reviewer-accepted chart metric.
+        Idempotent: skips if ANY chart fact already exists for (doc_id, metric_id).
+        The `idx_v2_metric_facts_identity_unique` index does not include
+        img_id, so two images disclosing the same metric in the same filing
+        collapse to one presence-level fact. Per-image provenance stays in
+        v2_image_metric_confirmations. Value-less (presence-only) —
+        value_raw is a marker; unit is 'other'.
+        """
+        if not metric_id:
+            return
+        cur.execute(
+            """
+            SELECT fact_id FROM v2_metric_facts
+            WHERE doc_id = %(doc_id)s
+              AND canonical_metric_id = %(metric_id)s
+              AND source_type = 'chart'
+            LIMIT 1
+            """,
+            {"doc_id": doc_id, "metric_id": metric_id},
+        )
+        if cur.fetchone() is not None:
+            return
+        cur.execute(
+            """
+            INSERT INTO v2_metric_facts (
+                doc_id, canonical_metric_id, value_raw, unit,
+                source_type, source_locator,
+                confidence, extraction_method, requires_review, review_status,
+                pipeline_version
+            ) VALUES (
+                %(doc_id)s, %(metric_id)s, '', 'other',
+                'chart', %(source_locator)s::jsonb,
+                1.0, 'manual', FALSE, 'accepted',
+                '2.0.0'
+            )
+            """,
+            {
+                "doc_id": doc_id,
+                "metric_id": metric_id,
+                "source_locator": json.dumps({"img_id": img_id}),
+            },
+        )
+
+    def _demote_chart_fact(
+        self,
+        cur,
+        doc_id: int,
+        img_id: str,
+        metric_id: str | None,
+    ) -> None:
+        """
+        Delete the chart-sourced v2_metric_facts row for (doc_id, metric_id)
+        only when no accept/correct/add confirmation still references this
+        metric from any image in this filing. Mirrors _promote_chart_fact's
+        one-fact-per-(filing, metric) semantic. Idempotent.
+
+        Callers must upsert/delete the current confirmation BEFORE invoking
+        this helper so the query reflects the post-decision state.
+        """
+        if not metric_id:
+            return
+        cur.execute(
+            """
+            SELECT 1
+              FROM v2_image_metric_confirmations imc
+              JOIN v2_image_assets ia ON ia.img_id = imc.img_id
+             WHERE ia.doc_id = %(doc_id)s
+               AND (
+                   (imc.decision = 'accept'  AND imc.detected_metric_id  = %(metric_id)s) OR
+                   (imc.decision = 'correct' AND imc.confirmed_metric_id = %(metric_id)s) OR
+                   (imc.decision = 'add'     AND imc.confirmed_metric_id = %(metric_id)s)
+               )
+             LIMIT 1
+            """,
+            {"doc_id": doc_id, "metric_id": metric_id},
+        )
+        if cur.fetchone() is not None:
+            return
+        cur.execute(
+            """
+            DELETE FROM v2_metric_facts
+            WHERE doc_id = %(doc_id)s
+              AND canonical_metric_id = %(metric_id)s
+              AND source_type = 'chart'
+            """,
+            {"doc_id": doc_id, "metric_id": metric_id},
+        )
+
+    def delete_image_metric_confirmation(
+        self,
+        confirmation_id: str,
+        reviewer_id: str,
+    ) -> dict[str, Any] | None:
+        """
+        Delete a single confirmation row (scoped to reviewer_id) and roll back
+        any promoted chart fact. Returns the deleted row or None if not found.
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM v2_image_metric_confirmations
+                    WHERE id = %(confirmation_id)s
+                      AND reviewer_id = %(reviewer_id)s
+                    RETURNING
+                        id::text AS confirmation_id,
+                        img_id::text AS img_id,
+                        detected_metric_id,
+                        confirmed_metric_id,
+                        decision,
+                        rejection_reason,
+                        reviewer_id
+                    """,
+                    {"confirmation_id": confirmation_id, "reviewer_id": reviewer_id},
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+
+                cur.execute(
+                    "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+                    {"img_id": row["img_id"]},
+                )
+                doc_row = cur.fetchone()
+                if doc_row is not None:
+                    doc_id = doc_row["doc_id"]
+                    metric_id = row["confirmed_metric_id"] or row["detected_metric_id"]
+                    self._demote_chart_fact(cur, doc_id, row["img_id"], metric_id)
+
+        logger.debug(
+            "Deleted image metric confirmation %s (reviewer=%s, decision=%s)",
+            confirmation_id,
+            reviewer_id,
+            row["decision"],
+        )
+        return row
 
     def get_image_metric_confirmations(self, img_id: str) -> list[dict[str, Any]]:
         """

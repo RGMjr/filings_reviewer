@@ -100,6 +100,8 @@ MIGRATION_ORDER = [
     "44_extend_image_rejection_reason_enum.sql",
     "45_create_v2_image_classifications.sql",
     "46_v2_text_metric_presence.sql",
+    "46_extend_audit_http_method_constraint.sql",
+    "47_add_skip_to_image_metric_confirmations.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.

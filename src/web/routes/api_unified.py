@@ -13,12 +13,6 @@ from typing import Any
 import psycopg
 from flask import Blueprint, jsonify, request
 
-from src.infra.validation import ValidationError
-from src.review.models import (
-    IMAGE_CHART_TYPES,
-    IMAGE_DECISIONS,
-    IMAGE_REJECTION_REASONS,
-)
 from src.shared.keyword_config import _load_config
 from src.web.app import get_db
 from src.web.middleware import insert_audit_log_entry, register_api_auth, register_timing
@@ -246,164 +240,8 @@ def undo_decision(decision_id: str):
 
 
 # =============================================================================
-# Image Decision Recording (from api_images.py)
+# Image Skip / Unskip (image-grain "defer the whole image" actions)
 # =============================================================================
-
-
-@api_unified_bp.route("/image-decisions", methods=["POST"])
-def create_image_decision():
-    """
-    Record a review decision for an image candidate.
-
-    Request Body:
-        {
-            "image_candidate_id": int,
-            "decision": "relevant" | "not_relevant",
-            "chart_type": str (required if decision="relevant"),
-            "rejection_reason": str (required if decision="not_relevant"),
-            "reviewer_notes": str (optional),
-            "review_time_seconds": int (optional)
-        }
-
-    Returns:
-        201: Decision created successfully
-        {
-            "status": "success",
-            "decision_id": int,
-            "next_candidate": {
-                "image_candidate_id": int,
-                "url": str
-            } | null,
-            "message": str (if no next candidate)
-        }
-
-        400: Validation errors
-        {
-            "status": "error",
-            "message": str
-        }
-
-        404: Candidate not found
-        {
-            "status": "error",
-            "message": str
-        }
-
-        409: Candidate already has a decision
-        {
-            "status": "error",
-            "message": str
-        }
-
-        500: Internal server error
-        {
-            "status": "error",
-            "message": str
-        }
-    """
-    db = get_db()
-
-    try:
-        # Parse request JSON
-        if not request.is_json:
-            return (
-                jsonify({"status": "error", "message": "Request must be JSON"}),
-                400,
-            )
-
-        data = request.get_json()
-
-        # Validate request
-        error = _validate_image_decision_request(data)
-        if error:
-            logger.warning(f"Validation error: {error}")
-            return jsonify({"status": "error", "message": error}), 400
-
-        reviewer_id, gate_reject = _require_reviewer_id(data)
-        if gate_reject is not None:
-            return gate_reject
-
-        # Extract fields
-        img_id = data["img_id"]
-        decision = data["decision"]
-        chart_type = data.get("chart_type")
-        rejection_reason = data.get("rejection_reason")
-        reviewer_notes = data.get("reviewer_notes")
-        review_time_seconds = data.get("review_time_seconds")
-
-        # Validate candidate exists
-        candidate = db.get_image_review_candidate_v2(img_id)
-        if not candidate:
-            logger.warning(f"V2 image not found: {img_id}")
-            return (
-                jsonify({"status": "error", "message": "Image candidate not found"}),
-                404,
-            )
-
-        # Check for existing decision
-        if candidate.get("decision"):
-            logger.warning(f"V2 image {img_id} already has decision")
-            return (
-                jsonify({"status": "error", "message": "Candidate already has a decision"}),
-                409,
-            )
-
-        # Insert the decision (also updates v2_image_assets.review_status atomically)
-        decision_id = db.insert_image_review_decision_v2(
-            img_id=img_id,
-            decision=decision,
-            chart_type=chart_type,
-            rejection_reason=rejection_reason,
-            reviewer_id=reviewer_id,
-            reviewer_notes=reviewer_notes,
-            review_time_seconds=review_time_seconds,
-        )
-
-        logger.info(f"Created v2 image decision {decision_id} for img_id={img_id}: {decision}")
-
-        # Get next candidate for navigation
-        filing_id = candidate["filing_id"]
-        next_cand = _get_next_image_candidate_info(db, filing_id, img_id)
-
-        response: dict[str, Any] = {
-            "status": "success",
-            "decision_id": decision_id,
-            "next_candidate": next_cand,
-        }
-
-        if not next_cand:
-            response["message"] = "All candidates reviewed for this filing"
-
-        return jsonify(response), 201
-
-    except ValidationError as e:
-        logger.warning(f"Validation error creating image decision: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 400
-
-    except psycopg.errors.UniqueViolation:
-        logger.warning(f"Duplicate decision for v2 image {data.get('img_id')}")
-        return (
-            jsonify({"status": "error", "message": "Candidate already has a decision"}),
-            409,
-        )
-
-    except psycopg.errors.ForeignKeyViolation as e:
-        logger.warning(f"Foreign key violation: {e}")
-        return (
-            jsonify({"status": "error", "message": "Invalid img_id"}),
-            400,
-        )
-
-    except psycopg.DatabaseError as e:
-        logger.error(f"Database error creating image decision: {e}", exc_info=True)
-        return (
-            jsonify({"status": "error", "message": "Database error occurred"}),
-            500,
-        )
-
-    except Exception as e:
-        logger.error(f"Unexpected error creating image decision: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
 @api_unified_bp.route("/image-candidates/<uuid:img_id>/skip", methods=["POST"])
@@ -503,73 +341,6 @@ def unskip_image_candidate(img_id):
 
     except Exception as e:
         logger.error(f"Unexpected error unskipping v2 image: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": "Internal server error"}), 500
-
-
-@api_unified_bp.route("/image-decisions/<int:image_decision_id>", methods=["DELETE"])
-def delete_image_decision(image_decision_id: int):
-    """
-    Delete (undo) an image review decision.
-
-    Resets the candidate's status back to 'pending'.
-
-    Returns:
-        200: Decision deleted successfully
-        {
-            "status": "success",
-            "candidate_id": int
-        }
-
-        404: Decision not found
-        {
-            "status": "error",
-            "message": str
-        }
-
-        500: Internal server error
-        {
-            "status": "error",
-            "message": str
-        }
-    """
-    db = get_db()
-
-    try:
-        # Look up img_id before deleting (for response body)
-        rows = db.query(
-            "SELECT img_id FROM v2_image_review_decisions WHERE image_decision_id = %(id)s",
-            {"id": image_decision_id},
-        )
-        if not rows:
-            logger.warning(f"V2 image decision not found for undo: {image_decision_id}")
-            return (
-                jsonify({"status": "error", "message": "Decision not found"}),
-                404,
-            )
-
-        img_id_str = str(rows[0]["img_id"])
-
-        success = db.delete_image_review_decision_v2(image_decision_id)
-        if not success:
-            logger.error(f"Failed to delete v2 image decision {image_decision_id}")
-            return (
-                jsonify({"status": "error", "message": "Failed to delete decision"}),
-                500,
-            )
-
-        logger.info(f"Deleted v2 image decision {image_decision_id}")
-
-        return jsonify({"status": "success", "img_id": img_id_str}), 200
-
-    except psycopg.DatabaseError as e:
-        logger.error(f"Database error deleting image decision: {e}", exc_info=True)
-        return (
-            jsonify({"status": "error", "message": "Database error occurred"}),
-            500,
-        )
-
-    except Exception as e:
-        logger.error(f"Unexpected error deleting image decision: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
@@ -736,7 +507,7 @@ def list_metrics():
 # Image Metric Confirmations
 # =============================================================================
 
-_VALID_IMAGE_METRIC_DECISIONS = ("accept", "reject", "correct", "add")
+_VALID_IMAGE_METRIC_DECISIONS = ("accept", "reject", "correct", "add", "skip")
 
 
 @api_unified_bp.route("/image-metric-confirmations", methods=["POST"])
@@ -849,6 +620,13 @@ def create_image_metric_confirmations():
                 if rejection_reason:
                     return jsonify({"error": f"{prefix}: add must not have rejection_reason"}), 400
 
+            elif decision == "skip":
+                if not detected_metric_id:
+                    return jsonify({"error": f"{prefix}: skip requires detected_metric_id"}), 400
+                if rejection_reason:
+                    return jsonify({"error": f"{prefix}: skip must not have rejection_reason"}), 400
+                confirmed_metric_id = None
+
             validated.append(
                 {
                     "detected_metric_id": detected_metric_id,
@@ -881,6 +659,57 @@ def create_image_metric_confirmations():
 
     except Exception as e:
         logger.error(f"Error in image-metric-confirmations: {e}", exc_info=True)
+        return jsonify({"error": "internal server error"}), 500
+
+
+@api_unified_bp.route("/image-metric-confirmations/<uuid:confirmation_id>", methods=["DELETE"])
+def delete_image_metric_confirmation(confirmation_id):
+    """
+    Undo a single per-metric confirmation. Deletes the confirmation row
+    and rolls back any promoted chart fact in v2_metric_facts.
+
+    Reviewer identity must be forwarded via the `X-Reviewer-Id` header or
+    the `reviewer_id` query parameter — same gate as the POST side.
+    """
+    db = get_db()
+
+    data: dict[str, Any] = {}
+    header_reviewer = request.headers.get("X-Reviewer-Id")
+    if header_reviewer:
+        data["reviewer_id"] = header_reviewer
+    if "reviewer_id" in request.args:
+        data["reviewer_id"] = request.args["reviewer_id"]
+    if request.is_json:
+        try:
+            body = request.get_json(silent=True) or {}
+            if isinstance(body, dict) and body.get("reviewer_id"):
+                data["reviewer_id"] = body["reviewer_id"]
+        except Exception:
+            pass
+
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    try:
+        deleted = db.delete_image_metric_confirmation(str(confirmation_id), reviewer_id)
+        if deleted is None:
+            return jsonify({"error": "confirmation not found or not owned by this reviewer"}), 404
+
+        return jsonify({"ok": True, "deleted": deleted}), 200
+
+    except psycopg.DatabaseError as e:
+        logger.error(
+            f"Database error deleting image-metric-confirmation {confirmation_id}: {e}",
+            exc_info=True,
+        )
+        return jsonify({"error": "database error"}), 500
+
+    except Exception as e:
+        logger.error(
+            f"Error deleting image-metric-confirmation {confirmation_id}: {e}",
+            exc_info=True,
+        )
         return jsonify({"error": "internal server error"}), 500
 
 
@@ -951,69 +780,6 @@ def _get_next_pending_fact(db, filing_id: int, current_fact_id: str) -> dict | N
 # =============================================================================
 # Helper Functions (from api_images.py)
 # =============================================================================
-
-
-def _validate_image_decision_request(data: dict[str, Any]) -> str | None:
-    """
-    Validate image decision request data.
-
-    Args:
-        data: Request JSON data
-
-    Returns:
-        Error message if validation fails, None if valid
-    """
-    # Validate img_id (UUID string — v2_image_assets.img_id)
-    img_id = data.get("img_id")
-    if not img_id:
-        return "img_id is required"
-    if not isinstance(img_id, str):
-        return "img_id must be a UUID string"
-    try:
-        _uuid.UUID(img_id)
-    except (ValueError, AttributeError):
-        return "img_id must be a valid UUID"
-
-    # Validate decision
-    decision = data.get("decision")
-    if not decision:
-        return "decision is required"
-    if decision not in IMAGE_DECISIONS:
-        return f"decision must be one of: {', '.join(IMAGE_DECISIONS)}"
-
-    # Validate chart_type (required for relevant)
-    chart_type = data.get("chart_type")
-    if decision == "relevant":
-        if not chart_type:
-            return "chart_type is required when decision is 'relevant'"
-        if chart_type not in IMAGE_CHART_TYPES:
-            return f"chart_type must be one of: {', '.join(IMAGE_CHART_TYPES)}"
-    elif chart_type and chart_type not in IMAGE_CHART_TYPES:
-        # Also validate if provided for not_relevant (even though not required)
-        return f"chart_type must be one of: {', '.join(IMAGE_CHART_TYPES)}"
-
-    # Validate rejection_reason (required for not_relevant)
-    rejection_reason = data.get("rejection_reason")
-    if decision == "not_relevant":
-        if not rejection_reason:
-            return "rejection_reason is required when decision is 'not_relevant'"
-        if rejection_reason not in IMAGE_REJECTION_REASONS:
-            return f"rejection_reason must be one of: {', '.join(IMAGE_REJECTION_REASONS)}"
-    elif rejection_reason and rejection_reason not in IMAGE_REJECTION_REASONS:
-        # Also validate if provided for relevant (even though not required)
-        return f"rejection_reason must be one of: {', '.join(IMAGE_REJECTION_REASONS)}"
-
-    # Validate optional fields
-    reviewer_notes = data.get("reviewer_notes")
-    if reviewer_notes and len(reviewer_notes) > 1000:
-        return "reviewer_notes must be 1000 characters or less"
-
-    review_time_seconds = data.get("review_time_seconds")
-    if review_time_seconds is not None:
-        if not isinstance(review_time_seconds, int) or review_time_seconds < 0:
-            return "review_time_seconds must be a non-negative integer"
-
-    return None
 
 
 def _get_next_image_candidate_info(

@@ -820,3 +820,66 @@ class TestPresenceOnlyMode:
             persistence_adapter.persist_pipeline_result(
                 result, test_filing_id, presence_only=True, chart_only=True
             )
+
+
+def _seed_image_and_confirmation(
+    db_adapter: DatabaseAdapter,
+    filing_id: int,
+    reviewer_id: str = "conf-reviewer@example.com",
+) -> str:
+    """Insert one chart image + one accept confirmation; return the img_id."""
+    img_id = str(uuid.uuid4())
+    with db_adapter.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO v2_image_assets (
+                    img_id, doc_id, filename, dom_locator, classification, processed
+                ) VALUES (
+                    %(img_id)s, %(doc_id)s, 'guard_confirmation_test.png',
+                    '/html/body/img[1]', 'chart', TRUE
+                )
+                """,
+                {"img_id": img_id, "doc_id": filing_id},
+            )
+            cur.execute(
+                """
+                INSERT INTO v2_image_metric_confirmations (
+                    img_id, detected_metric_id, confirmed_metric_id,
+                    decision, reviewer_id
+                ) VALUES (
+                    %(img_id)s, 'cm_revenue_by_cohort', 'cm_revenue_by_cohort',
+                    'accept', %(reviewer_id)s
+                )
+                """,
+                {"img_id": img_id, "reviewer_id": reviewer_id},
+            )
+    return img_id
+
+
+class TestGuardOnImageMetricConfirmations:
+    def test_raises_when_confirmation_exists_without_force(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        _seed_image_and_confirmation(db_adapter, test_filing_id)
+
+        new_fact = _make_fact(test_filing_id, value=100.0)
+        with pytest.raises(ReviewedFilingError) as excinfo:
+            persistence_adapter.persist_facts([new_fact], test_filing_id)
+
+        assert excinfo.value.filing_id == test_filing_id
+        assert excinfo.value.context == "image metric confirmations"
+
+    def test_force_purges_with_confirmations(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        _seed_image_and_confirmation(db_adapter, test_filing_id)
+        new_fact = _make_fact(test_filing_id, value=200.0)
+        count = persistence_adapter.persist_facts([new_fact], test_filing_id, force=True)
+        assert count == 1
