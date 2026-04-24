@@ -44,6 +44,37 @@ V2_REJECTION_CATEGORIES = (
 
 VALID_UNITS = ("percent", "currency", "count", "ratio", "basis_points", "other")
 
+# Reviewer-id gate: decision-writing endpoints must carry a real reviewer name.
+# Empty / NULL / fallback sentinels / historical bulk prefixes are all rejected
+# with 403 so the client is forced to open the "Who are you?" modal in base.html.
+# See .claude/rules/web.md "Reviewer identity invariant".
+_BLOCKED_REVIEWER_IDS = frozenset({"", "anonymous", "web_reviewer", "test", "test_user"})
+
+
+def _require_reviewer_id(data: dict[str, Any]) -> tuple[str | None, tuple[Any, int] | None]:
+    """Validate the reviewer_id in a decision payload.
+
+    Returns (reviewer_id, None) when the caller can proceed, or
+    (None, (json_response, status_code)) when the request must be rejected.
+    """
+    raw = data.get("reviewer_id")
+    rid = (raw or "").strip() if isinstance(raw, str) else ""
+    if not rid or rid in _BLOCKED_REVIEWER_IDS or rid.startswith("bulk:"):
+        return None, (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": "reviewer_name_required",
+                    "message": (
+                        "Set your reviewer name before making decisions. "
+                        "The UI will open a prompt — enter a name, then retry."
+                    ),
+                }
+            ),
+            403,
+        )
+    return rid, None
+
 
 @api_unified_bp.after_request
 def _log_request_complete(response):
@@ -105,6 +136,10 @@ def create_decision():
         if errors:
             return jsonify({"status": "error", "errors": errors}), 400
 
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
+
         fact_id = data["fact_id"]
         decision = data["decision"]
 
@@ -127,7 +162,7 @@ def create_decision():
         decision_id = db.insert_v2_review_decision(
             fact_id=fact_id,
             decision=decision,
-            reviewer_id=data.get("reviewer_id", "web_reviewer"),
+            reviewer_id=reviewer_id,
             assigned_metric_id=data.get("assigned_metric_id"),
             corrected_value=data.get("corrected_value"),
             rejection_reason=data.get("rejection_reason"),
@@ -284,6 +319,10 @@ def create_image_decision():
             logger.warning(f"Validation error: {error}")
             return jsonify({"status": "error", "message": error}), 400
 
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
+
         # Extract fields
         img_id = data["img_id"]
         decision = data["decision"]
@@ -291,7 +330,6 @@ def create_image_decision():
         rejection_reason = data.get("rejection_reason")
         reviewer_notes = data.get("reviewer_notes")
         review_time_seconds = data.get("review_time_seconds")
-        reviewer_id = data.get("reviewer_id", "anonymous")
 
         # Validate candidate exists
         candidate = db.get_image_review_candidate_v2(img_id)
@@ -595,12 +633,12 @@ def add_missed_metric():
         elif unit not in VALID_UNITS:
             errors["unit"] = f"Must be one of: {', '.join(VALID_UNITS)}"
 
-        reviewer_id = data.get("reviewer_id") or "anonymous"
-        if not reviewer_id:
-            errors["reviewer_id"] = "Required field"
-
         if errors:
             return jsonify({"status": "error", "errors": errors}), 400
+
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
 
         period_end = data.get("period_end") or None
         period_type = data.get("period_type") or None
@@ -743,7 +781,9 @@ def create_image_metric_confirmations():
         except (ValueError, AttributeError):
             return jsonify({"error": "img_id must be a valid UUID"}), 400
 
-        reviewer_id = data.get("reviewer_id") or "anonymous"
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
 
         decisions_raw = data.get("decisions")
         if decisions_raw is None:
