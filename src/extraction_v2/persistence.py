@@ -25,6 +25,7 @@ from src.extraction_v2.models import (
     ChartData,
     Document,
     ImageAsset,
+    ImageClassificationRecord,
     MetricDefinition,
     MetricFact,
     Segment,
@@ -385,10 +386,17 @@ class V2PersistenceAdapter:
                     # 6. Persist definitions
                     def_count = self._persist_definitions_in_tx(cur, result.definitions, filing_id)
 
+                    # 7. Persist image classifications (Vision API audit trail).
+                    #    Append-only, independent of fact/image cascade.
+                    classify_count = self._persist_image_classifications_in_tx(
+                        cur, result.image_classifications
+                    )
+
             logger.info(
                 f"Persisted pipeline result for filing_id={filing_id}: "
                 f"{seg_count} segments, {table_count} tables, {cell_count} cells, "
-                f"{img_count} images, {fact_count} facts, {def_count} definitions"
+                f"{img_count} images, {fact_count} facts, {def_count} definitions, "
+                f"{classify_count} image classifications"
             )
 
             return PersistenceResult(
@@ -619,6 +627,65 @@ class V2PersistenceAdapter:
     # Classifications the UI filters out (UI predicate:
     # classification NOT IN ('decorative', 'logo', 'signature')).
     _HIDDEN_IMAGE_CLASSIFICATIONS = frozenset({"decorative", "logo", "signature"})
+
+    def _persist_image_classifications_in_tx(
+        self,
+        cur: Any,
+        records: list[ImageClassificationRecord],
+    ) -> int:
+        """Persist Vision API classify records to v2_image_classifications.
+
+        Append-only: multiple rows per img_id accumulate across extraction
+        re-runs. The table's ON DELETE CASCADE against v2_image_assets
+        handles cleanup when an asset is deleted, so no guard or dedup is
+        needed here. Skips silently when ``records`` is empty.
+        """
+        if not records:
+            return 0
+
+        cur.executemany(
+            """
+            INSERT INTO v2_image_classifications (
+                img_id,
+                predicted_metrics,
+                confidence,
+                rejection_reason,
+                reasoning,
+                provider,
+                model,
+                prompt_version,
+                cost_usd,
+                latency_ms
+            ) VALUES (
+                %(img_id)s,
+                %(predicted_metrics)s,
+                %(confidence)s,
+                %(rejection_reason)s,
+                %(reasoning)s,
+                %(provider)s,
+                %(model)s,
+                %(prompt_version)s,
+                %(cost_usd)s,
+                %(latency_ms)s
+            )
+            """,
+            [
+                {
+                    "img_id": r.img_id,
+                    "predicted_metrics": json.dumps(r.predicted_metrics),
+                    "confidence": r.confidence,
+                    "rejection_reason": r.rejection_reason,
+                    "reasoning": r.reasoning,
+                    "provider": r.provider,
+                    "model": r.model,
+                    "prompt_version": r.prompt_version,
+                    "cost_usd": r.cost_usd,
+                    "latency_ms": r.latency_ms,
+                }
+                for r in records
+            ],
+        )
+        return len(records)
 
     def _persist_images_in_tx(
         self,
