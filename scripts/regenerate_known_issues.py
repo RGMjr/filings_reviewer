@@ -9,6 +9,7 @@ Usage:
     python3 scripts/regenerate_known_issues.py                    # write rollup
     python3 scripts/regenerate_known_issues.py --check            # exit 1 on drift
     python3 scripts/regenerate_known_issues.py --stage            # `git add` rollup
+    python3 scripts/regenerate_known_issues.py --validate         # fragments only, no rollup
 """
 
 from __future__ import annotations
@@ -232,11 +233,42 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="After writing, run `git add <output>` (for pre-commit hook use)",
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help=(
+            "Validate fragment frontmatter only. Does NOT write or compare "
+            "against any rollup. Exits 0 if all fragments parse cleanly."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not args.fragments_dir.exists():
         print(f"fragments directory does not exist: {args.fragments_dir}", file=sys.stderr)
         return 1
+
+    if args.validate:
+        try:
+            fragments = load_all_fragments(args.fragments_dir)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        failures: list[tuple[Path, list[str]]] = []
+        for fragment in fragments:
+            errors = validate_fragment(fragment)
+            if errors:
+                failures.append((fragment.path, errors))
+        if failures:
+            for path, errors in failures:
+                for err in errors:
+                    print(f"{path}: {err}", file=sys.stderr)
+            print(
+                f"FAIL: {len(failures)} fragment(s) failed validation.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"OK: {len(fragments)} fragment(s) validated.")
+        return 0
 
     changelog_path = args.changelog or args.fragments_dir / "CHANGELOG.md"
     changelog = changelog_path.read_text(encoding="utf-8") if changelog_path.exists() else ""

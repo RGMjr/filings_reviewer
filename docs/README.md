@@ -71,6 +71,7 @@ Instructions for setting up, running, and maintaining the system.
 | **[image-model-training-runbook.md](operations/image-model-training-runbook.md)** | Image relevance model: export → train → score pipeline | Developers |
 | **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
 | **[github-org-transfer.md](operations/github-org-transfer.md)** | Decision record + runbook: when/how to migrate from user repo to GitHub org (unlocks merge queue, teams, org rulesets) | DevOps |
+| **[text-pipeline-presence-pivot-plan.md](operations/text-pipeline-presence-pivot-plan.md)** | Text-extraction pivot to per-(doc, metric) presence: rollout plan + PR1 landed-interface contract for downstream PRs | Developers |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 
@@ -87,7 +88,7 @@ Active and historical plans for reference.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** (V1 GR methodology — V2 current baseline: see v2.7 changelog entry above) | Everyone |
-| **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** | Known issues and limitations (auto-generated from `docs/known-issues/` — edit fragments, not the rollup) | Developers |
+| **[known-issues/](known-issues/)** | Known issues (source-of-truth fragments). Rendered rollup is published as a CI build artifact on every main build — see `known-issues-rollup` on the Actions tab. | Developers |
 
 ### Archive (Historical Reference)
 

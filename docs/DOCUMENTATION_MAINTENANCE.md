@@ -8,7 +8,7 @@
 - `CLAUDE.md` — architecture, commands list, test coverage percentage
 - `docs/README.md` — version history, implementation status table
 - `docs/PROJECT_TASK_INVENTORY.md` — task counts and plan statuses
-- `docs/known-issues/` — fragment files (one per issue); `docs/KNOWN_ISSUES.md` is auto-generated from these and must NOT be edited directly. To archive a resolved issue, update its fragment's `status:` field to `archived`.
+- `docs/known-issues/` — fragment files (one per issue). Fragments are the single source of truth. The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run. To archive a resolved issue, update its fragment's `status:` field to `archived`.
 
 **Primary execution mechanism**: Run `/doc-audit` for all quarterly freshness checks. The command audits all critical-path docs and reports findings without auto-fixing.
 

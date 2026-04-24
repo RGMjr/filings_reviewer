@@ -340,7 +340,7 @@ Output:
 - Snap (filing_id=33) contains wrong company data (RMR Group Inc. instead of Snap)
 - Root cause confirmed (2026-03-19): CIK 0001644378 = RMR Group Inc., not Snap
 - Snap correct CIK: 0001564408, S-1/A 2017-02-27, accession 0001193125-17-056992
-- Fix blocked on local dev validation DB rebuild — see KNOWN_ISSUES.md #9
+- Fix blocked on local dev validation DB rebuild — see [known issue #9](../../known-issues/legacy-009-snap-filing-id-32-33-mislabeled-data.md)
 
 **Deliverables**:
 1. ✅ 3 of 4 filings fully reviewed (Snap had data issue)
