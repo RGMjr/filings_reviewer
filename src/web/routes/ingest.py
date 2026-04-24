@@ -2,10 +2,12 @@
 Flask HTML blueprint for batch ingestion UI.
 
 Routes:
-  GET  /ingest/             — Criteria form
-  POST /ingest/preview      — Resolve criteria, discover candidates, render preview
-  POST /ingest/start        — Create batch rows, spawn runner, redirect to progress page
-  GET  /ingest/batch/<uuid> — Progress page (server-rendered initial state; Wave C adds polling)
+  GET  /ingest/                          — Criteria form
+  POST /ingest/preview                   — Resolve criteria, discover candidates, render preview
+  POST /ingest/start                     — Create batch rows, spawn runner, redirect to progress page
+  GET  /ingest/history                   — Browse all past batches with filtering
+  GET  /ingest/batch/<uuid>              — Progress page (server-rendered initial state; polling via JS)
+  POST /ingest/batch/<uuid>/retry-failed — Re-queue failed filings and re-spawn the runner
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from flask import (
     Blueprint,
     current_app,
     flash,
+    jsonify,
     make_response,
     redirect,
     render_template,
@@ -418,13 +421,22 @@ _POPULATE_YEAR_MAX = 2030
 
 @ingest_bp.route("/populate", methods=["POST"])
 def populate():
-    """Create a kind='populate' batch and redirect to its progress page."""
+    """Create a kind='populate' batch.
+
+    Regular form submission: redirect to batch progress page.
+    XHR (X-Requested-With: XMLHttpRequest): return JSON {"batch_id": "..."} so
+    the ingest_preview.js inline flow can poll status without a page navigation.
+    """
+    is_xhr = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     reviewer_name = request.form.get("reviewer_name", "").strip()
     year_raw = request.form.get("year", "").strip()
     form_type = request.form.get("form_type", "").strip()
 
     # Validate reviewer_name
     if not reviewer_name:
+        if is_xhr:
+            return jsonify({"error": "Reviewer name is required."}), 400
         flash("Reviewer name is required.", "danger")
         return redirect(url_for("ingest.ingest_form")), 400
 
@@ -432,19 +444,24 @@ def populate():
     try:
         year = int(year_raw)
     except (ValueError, TypeError):
+        if is_xhr:
+            return jsonify({"error": "Year must be a valid integer."}), 400
         flash("Year must be a valid integer.", "danger")
         return redirect(url_for("ingest.ingest_form")), 400
 
     if not (_POPULATE_YEAR_MIN <= year <= _POPULATE_YEAR_MAX):
-        flash(f"Year must be between {_POPULATE_YEAR_MIN} and {_POPULATE_YEAR_MAX}.", "danger")
+        msg = f"Year must be between {_POPULATE_YEAR_MIN} and {_POPULATE_YEAR_MAX}."
+        if is_xhr:
+            return jsonify({"error": msg}), 400
+        flash(msg, "danger")
         return redirect(url_for("ingest.ingest_form")), 400
 
     # Validate form_type
     if not form_type or form_type not in FORM_TYPE_BUNDLES:
-        flash(
-            f"Unknown form type {form_type!r}. Known: {', '.join(sorted(FORM_TYPE_BUNDLES))}.",
-            "danger",
-        )
+        msg = f"Unknown form type {form_type!r}. Known: {', '.join(sorted(FORM_TYPE_BUNDLES))}."
+        if is_xhr:
+            return jsonify({"error": msg}), 400
+        flash(msg, "danger")
         return redirect(url_for("ingest.ingest_form")), 400
 
     db = get_db()
@@ -472,6 +489,8 @@ def populate():
                 batch_id = str(row["batch_id"])
     except Exception as exc:
         logger.error("Failed to create populate batch: %s", exc, exc_info=True)
+        if is_xhr:
+            return jsonify({"error": "Database error creating batch. Please try again."}), 500
         flash("Database error creating batch. Please try again.", "danger")
         return redirect(url_for("ingest.ingest_form")), 500
 
@@ -491,15 +510,98 @@ def populate():
             logger.info("Spawned onboarding_runner for populate batch_id=%s", batch_id)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to spawn runner for populate batch %s: %s", batch_id, exc)
-            flash(
-                "Batch created but runner could not be spawned. "
-                "Contact an administrator to start processing.",
-                "warning",
-            )
+            if not is_xhr:
+                flash(
+                    "Batch created but runner could not be spawned. "
+                    "Contact an administrator to start processing.",
+                    "warning",
+                )
+
+    if is_xhr:
+        return jsonify({"batch_id": batch_id}), 202
 
     resp = redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
     resp.set_cookie("ingest_reviewer", reviewer_name, max_age=30 * 24 * 3600)
     return resp
+
+
+# ---------------------------------------------------------------------------
+# GET /ingest/history
+# ---------------------------------------------------------------------------
+
+
+@ingest_bp.route("/history", methods=["GET"])
+def ingest_history():
+    reviewer_filter = request.args.get("reviewer", "").strip()
+    status_filter = request.args.get("status", "").strip()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+
+    where_clauses = []
+    params: dict[str, Any] = {}
+
+    if reviewer_filter:
+        where_clauses.append("b.reviewer_id ILIKE %(reviewer)s")
+        params["reviewer"] = f"%{reviewer_filter}%"
+
+    if status_filter:
+        where_clauses.append("b.status = %(status)s")
+        params["status"] = status_filter
+
+    if date_from:
+        where_clauses.append("b.created_at >= %(date_from)s")
+        params["date_from"] = date_from
+
+    if date_to:
+        where_clauses.append("b.created_at <= %(date_to)s::date + interval '1 day'")
+        params["date_to"] = date_to
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    db = get_db()
+
+    rows = db.query(
+        f"""
+        SELECT
+            b.batch_id,
+            b.kind,
+            b.status,
+            b.reviewer_id,
+            b.created_at,
+            b.criteria,
+            COUNT(ibf.filing_id)                                                  AS total_filings,
+            COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'complete')  AS persisted_count,
+            COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'failed')    AS failed_count
+        FROM v2_ingest_batches b
+        LEFT JOIN v2_ingest_batch_filings ibf ON ibf.batch_id = b.batch_id
+        {where_sql}
+        GROUP BY b.batch_id, b.kind, b.status, b.reviewer_id, b.created_at, b.criteria
+        ORDER BY b.created_at DESC
+        """,
+        params,
+    )
+
+    batches = []
+    for row in rows:
+        d = dict(row)
+        # Deserialize criteria JSONB if returned as string
+        if isinstance(d.get("criteria"), str):
+            try:
+                d["criteria"] = json.loads(d["criteria"])
+            except (ValueError, TypeError):
+                d["criteria"] = {}
+        elif d.get("criteria") is None:
+            d["criteria"] = {}
+        batches.append(d)
+
+    return render_template(
+        "ingest_history.html",
+        batches=batches,
+        reviewer_filter=reviewer_filter,
+        status_filter=status_filter,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -585,3 +687,97 @@ def ingest_batch(batch_id: str):
         total=total,
         done=done,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /ingest/batch/<uuid>/retry-failed
+# ---------------------------------------------------------------------------
+
+
+@ingest_bp.route("/batch/<batch_id>/retry-failed", methods=["POST"])
+def ingest_retry_failed(batch_id: str):
+    """Re-queue all failed filings in a batch and re-spawn the runner.
+
+    Idempotent: if no filings are in 'failed' state, redirects back with a
+    neutral flash message.  The batch must not be currently running.
+    """
+    try:
+        _uuid.UUID(batch_id)
+    except ValueError:
+        flash("Invalid batch ID.", "danger")
+        return redirect(url_for("ingest.ingest_form"))
+
+    db = get_db()
+
+    # Fetch the batch to validate state
+    batch_rows = db.query(
+        "SELECT batch_id, status FROM v2_ingest_batches WHERE batch_id = %(batch_id)s",
+        {"batch_id": batch_id},
+    )
+    if not batch_rows:
+        flash("Batch not found.", "danger")
+        return redirect(url_for("ingest.ingest_history"))
+
+    batch_status = batch_rows[0]["status"]
+    if batch_status == "running":
+        flash("Cannot retry while the batch is still running.", "warning")
+        return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+
+    # Reset failed filings → queued and clear error/timing columns
+    reset_rows = db.query(
+        """
+        UPDATE v2_ingest_batch_filings
+        SET current_status = 'queued',
+            error          = NULL,
+            started_at     = NULL,
+            finished_at    = NULL
+        WHERE batch_id     = %(batch_id)s
+          AND current_status = 'failed'
+        RETURNING filing_id
+        """,
+        {"batch_id": batch_id},
+    )
+
+    if not reset_rows:
+        flash("No failed filings to retry.", "info")
+        return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+
+    retry_count = len(reset_rows)
+
+    # Re-open the batch so the runner picks it up
+    db.query(
+        """
+        UPDATE v2_ingest_batches
+        SET status      = 'queued',
+            finished_at = NULL,
+            error       = NULL
+        WHERE batch_id = %(batch_id)s
+        """,
+        {"batch_id": batch_id},
+    )
+
+    # Spawn the runner (guarded by config flag for tests)
+    if current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
+        log_dir = _PROJECT_ROOT / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_path = log_dir / f"ingest_runner_{batch_id}.log"
+        try:
+            subprocess.Popen(
+                [sys.executable, "-m", "src.universe.onboarding_runner", "--batch-id", batch_id],
+                start_new_session=True,
+                stdout=open(log_path, "ab"),  # noqa: SIM115
+                stderr=subprocess.STDOUT,
+                cwd=str(_PROJECT_ROOT),
+            )
+            logger.info("Spawned retry runner for batch_id=%s (%d filings)", batch_id, retry_count)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to spawn retry runner for batch %s: %s", batch_id, exc)
+            flash(
+                "Filings re-queued but runner could not be spawned. "
+                "Contact an administrator to start processing.",
+                "warning",
+            )
+            return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+
+    flash(f"Re-queued {retry_count} failed filing(s). Runner restarted.", "success")
+    return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))

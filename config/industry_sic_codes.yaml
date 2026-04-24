@@ -39,6 +39,118 @@ industries:
       # Additional codes may be appended here as needed (e.g. 7380 for
       # miscellaneous business services, 7382 for home security services).
 
+  saas_cloud:
+    description: "SaaS and cloud software platforms"
+    sic_codes:
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE
+      - "7371"  # SERVICES-COMPUTER PROGRAMMING SERVICES
+      - "7374"  # SERVICES-COMPUTER PROCESSING & DATA PREPARATION
+      - "7379"  # SERVICES-SERVICES-COMPUTER RELATED SERVICES, NEC
+      - "7370"  # SERVICES-COMPUTER PROGRAMMING, DATA PROCESSING, ETC.
+
+  fintech_payments:
+    description: "Financial technology, payments, and lending platforms"
+    sic_codes:
+      - "6099"  # FUNCTIONS RELATED TO DEPOSITORY BANKING, NEC
+      - "6141"  # PERSONAL CREDIT INSTITUTIONS
+      - "6153"  # SHORT-TERM BUSINESS CREDIT INSTITUTIONS, EXCEPT AGRICULTURAL
+      - "6159"  # FEDERAL-SPONSORED CREDIT AGENCIES — NOT CHARTERED (used by some non-bank lenders)
+      - "6199"  # FINANCE SERVICES
+      - "7389"  # SERVICES-SERVICES, NEC (payment processing platforms)
+      - "6211"  # SECURITY BROKERS, DEALERS & FLOTATION COMPANIES
+
+  marketplace_ecommerce:
+    description: "Online marketplaces and e-commerce platforms"
+    sic_codes:
+      - "5961"  # RETAIL-CATALOG & MAIL-ORDER HOUSES
+      - "5999"  # RETAIL STORES, NEC
+      - "7389"  # SERVICES-SERVICES, NEC (marketplace platform services)
+      - "5940"  # SPORTING GOODS STORES & BICYCLE SHOPS
+      - "5900"  # RETAIL-RETAIL STORES, NEC
+
+  healthtech_digital_health:
+    description: "Healthcare IT, digital health, and health information platforms"
+    sic_codes:
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (health IT software)
+      - "8099"  # HEALTH SERVICES, NEC
+      - "8049"  # OFFICES & CLINICS OF OTHER HEALTH PRACTITIONERS
+      - "8011"  # OFFICES & CLINICS OF DOCTORS OF MEDICINE
+      - "8000"  # HEALTH SERVICES
+      - "5047"  # WHOLESALE-MEDICAL & HOSPITAL EQUIPMENT & SUPPLIES
+
+  cybersecurity:
+    description: "Cybersecurity software and managed security services"
+    sic_codes:
+      - "7382"  # SERVICES-HOME SECURITY SERVICES INC
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (security software)
+      - "7371"  # SERVICES-COMPUTER PROGRAMMING SERVICES
+      - "7379"  # SERVICES-SERVICES-COMPUTER RELATED SERVICES, NEC
+
+  data_analytics:
+    description: "Data management, analytics, and business intelligence platforms"
+    sic_codes:
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (analytics platforms)
+      - "7374"  # SERVICES-COMPUTER PROCESSING & DATA PREPARATION
+      - "7379"  # SERVICES-SERVICES-COMPUTER RELATED SERVICES, NEC
+      - "7389"  # SERVICES-SERVICES, NEC (data services)
+
+  consumer_internet:
+    description: "Consumer internet, social, and digital media platforms"
+    sic_codes:
+      - "7375"  # SERVICES-COMPUTER RENTAL & LEASING, NEC (internet platforms)
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (consumer apps)
+      - "4813"  # TELEPHONE COMMUNICATIONS (NO RADIO TELEPHONE)
+      - "7812"  # SERVICES-MOTION PICTURE, VIDEOTAPE PRODUCTION
+      - "7941"  # PROFESSIONAL SPORTS CLUBS
+      - "7389"  # SERVICES-SERVICES, NEC (digital media)
+
+  edtech:
+    description: "Educational technology and online learning platforms"
+    sic_codes:
+      - "8200"  # EDUCATIONAL SERVICES
+      - "8211"  # ELEMENTARY & SECONDARY SCHOOLS
+      - "8220"  # COLLEGES, UNIVERSITIES & PROFESSIONAL SCHOOLS
+      - "8249"  # VOCATIONAL SCHOOLS, NEC
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (learning management software)
+
+  insurtech:
+    description: "Insurance technology platforms and digital insurance carriers"
+    sic_codes:
+      - "6311"  # LIFE INSURANCE
+      - "6321"  # ACCIDENT AND HEALTH INSURANCE
+      - "6331"  # FIRE, MARINE & CASUALTY INSURANCE
+      - "6351"  # SURETY INSURANCE
+      - "6411"  # INSURANCE AGENTS, BROKERS & SERVICE
+      - "6399"  # INSURANCE CARRIERS, NEC
+
+  proptech:
+    description: "Real estate technology, platforms, and digital property services"
+    sic_codes:
+      - "6500"  # REAL ESTATE
+      - "6510"  # REAL ESTATE DEALERS (FOR THEIR OWN ACCOUNT)
+      - "6512"  # OPERATORS OF APARTMENT BUILDINGS
+      - "6531"  # REAL ESTATE AGENTS AND MANAGERS
+      - "6552"  # LAND SUBDIVIDERS & DEVELOPERS (NO CEMETERIES)
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (real estate platforms)
+
+  logistics_supply_chain:
+    description: "Logistics, freight, and supply chain technology platforms"
+    sic_codes:
+      - "4210"  # TRUCKING & COURIER SERVICES (NO AIR)
+      - "4213"  # TRUCKING, EXCEPT LOCAL
+      - "4215"  # COURIER SERVICES (NO AIR)
+      - "4731"  # FREIGHT TRANSPORTATION ARRANGEMENT
+      - "7389"  # SERVICES-SERVICES, NEC (logistics tech platforms)
+      - "4522"  # AIR TRANSPORTATION, NONSCHEDULED
+      - "4400"  # WATER TRANSPORTATION
+
+  hr_tech:
+    description: "Human resources technology, workforce management, and talent platforms"
+    sic_codes:
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (HR software)
+      - "7374"  # SERVICES-COMPUTER PROCESSING & DATA PREPARATION (payroll processing)
+      - "7361"  # HELP SUPPLY SERVICES
+
 aliases:
   saas: software
   "computer services": software
@@ -47,3 +159,37 @@ aliases:
   "food stores": grocery_retail
   "industrial": industrial_services
   "business services": industrial_services
+  "cloud": saas_cloud
+  "cloud software": saas_cloud
+  "saas cloud": saas_cloud
+  "fintech": fintech_payments
+  "payments": fintech_payments
+  "lending": fintech_payments
+  "marketplace": marketplace_ecommerce
+  "ecommerce": marketplace_ecommerce
+  "e-commerce": marketplace_ecommerce
+  "online retail": marketplace_ecommerce
+  "healthtech": healthtech_digital_health
+  "digital health": healthtech_digital_health
+  "health it": healthtech_digital_health
+  "security": cybersecurity
+  "infosec": cybersecurity
+  "data": data_analytics
+  "analytics": data_analytics
+  "bi": data_analytics
+  "consumer internet": consumer_internet
+  "social media": consumer_internet
+  "digital media": consumer_internet
+  "edtech": edtech
+  "education technology": edtech
+  "online learning": edtech
+  "insurtech": insurtech
+  "insurance tech": insurtech
+  "proptech": proptech
+  "real estate tech": proptech
+  "logistics": logistics_supply_chain
+  "supply chain": logistics_supply_chain
+  "freight": logistics_supply_chain
+  "hr tech": hr_tech
+  "human resources": hr_tech
+  "workforce": hr_tech

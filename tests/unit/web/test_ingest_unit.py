@@ -445,3 +445,119 @@ def test_volume_band_alert_class():
     assert _volume_band_alert_class(VolumeBand.HARD_WARN) == "alert-warning"
     assert _volume_band_alert_class(VolumeBand.REFINE) == "alert-danger"
     assert _volume_band_alert_class(VolumeBand.BLOCK) == "alert-danger"
+
+
+# ---------------------------------------------------------------------------
+# POST /ingest/populate — XHR inline flow
+# ---------------------------------------------------------------------------
+
+
+def test_populate_xhr_returns_json_batch_id(client):
+    """POST /ingest/populate with XHR header returns JSON {batch_id: ...} 202."""
+    mock_db = _make_db_mock(batch_id="cccccccc-dddd-eeee-ffff-111111111111")
+    with patch("src.web.routes.ingest.get_db", return_value=mock_db):
+        resp = client.post(
+            "/ingest/populate",
+            data={
+                "reviewer_name": "Rob",
+                "year": "2023",
+                "form_type": "s1f1",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+    assert resp.status_code == 202
+    body = resp.get_json()
+    assert body is not None
+    assert "batch_id" in body
+    assert body["batch_id"] == "cccccccc-dddd-eeee-ffff-111111111111"
+
+
+def test_populate_xhr_missing_reviewer_returns_json_error(client):
+    """POST /ingest/populate XHR without reviewer_name returns JSON 400."""
+    resp = client.post(
+        "/ingest/populate",
+        data={"year": "2023", "form_type": "s1f1"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body is not None
+    assert "error" in body
+
+
+def test_populate_xhr_invalid_form_type_returns_json_error(client):
+    """POST /ingest/populate XHR with unknown form_type returns JSON 400."""
+    resp = client.post(
+        "/ingest/populate",
+        data={"reviewer_name": "Rob", "year": "2023", "form_type": "bogus"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body is not None
+    assert "error" in body
+
+
+def test_populate_non_xhr_still_redirects(client):
+    """POST /ingest/populate without XHR header still redirects (302)."""
+    mock_db = _make_db_mock(batch_id="dddddddd-eeee-ffff-0000-222222222222")
+    with patch("src.web.routes.ingest.get_db", return_value=mock_db):
+        resp = client.post(
+            "/ingest/populate",
+            data={
+                "reviewer_name": "Rob",
+                "year": "2023",
+                "form_type": "s1f1",
+            },
+        )
+    assert resp.status_code == 302
+    assert "/ingest/batch/" in resp.headers["Location"]
+
+
+def test_ingest_preview_template_has_gap_banner_id(client):
+    """Rendered ingest_preview.html includes id='gap-banner' and gap-populate-form class."""
+    from src.universe.onboarding import DiscoveryResult
+
+    class _Gap:
+        year = 2023
+        form_type = "s1f1"
+
+    mock_db = MagicMock()
+    with (
+        patch("src.web.routes.ingest.get_db", return_value=mock_db),
+        patch(
+            "src.web.routes.ingest.discover",
+            return_value=DiscoveryResult(new=[], already_extracted=[], gaps=[_Gap()]),
+        ),
+    ):
+        resp = client.post(
+            "/ingest/preview",
+            data={"reviewer_name": "Rob", "company_name_ilike": "Acme", "year": "2023"},
+        )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="gap-banner"' in body
+    assert "gap-populate-form" in body
+
+
+def test_ingest_preview_template_has_section_ids(client):
+    """Rendered ingest_preview.html includes the three section wrapper IDs."""
+    from src.universe.onboarding import DiscoveryResult
+
+    mock_db = MagicMock()
+    with (
+        patch("src.web.routes.ingest.get_db", return_value=mock_db),
+        patch(
+            "src.web.routes.ingest.discover",
+            return_value=DiscoveryResult(new=[], already_extracted=[], gaps=[]),
+        ),
+    ):
+        resp = client.post(
+            "/ingest/preview",
+            data={"reviewer_name": "Rob", "company_name_ilike": "Acme", "year": "2023"},
+        )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="section-new"' in body
+    assert 'id="section-no-review"' in body
+    assert 'id="section-reviewed"' in body
