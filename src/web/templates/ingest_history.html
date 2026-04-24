@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Ingest History — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-12">
+
+    <h2 class="mb-3">Ingest History</h2>
+
+    <!-- Filter controls -->
+    <form method="GET" action="{{ url_for('ingest.ingest_history') }}" class="mb-4">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label for="filter-reviewer" class="form-label form-label-sm fw-semibold">Reviewer</label>
+          <input type="text" id="filter-reviewer" name="reviewer"
+                 class="form-control form-control-sm"
+                 placeholder="Filter by reviewer…"
+                 value="{{ reviewer_filter }}">
+        </div>
+        <div class="col-md-2">
+          <label for="filter-status" class="form-label form-label-sm fw-semibold">Status</label>
+          <select id="filter-status" name="status" class="form-select form-select-sm">
+            <option value="" {% if not status_filter %}selected{% endif %}>All</option>
+            <option value="running"  {% if status_filter == 'running'  %}selected{% endif %}>Running</option>
+            <option value="complete" {% if status_filter == 'complete' %}selected{% endif %}>Complete</option>
+            <option value="failed"   {% if status_filter == 'failed'   %}selected{% endif %}>Failed</option>
+            <option value="pending"  {% if status_filter == 'pending'  %}selected{% endif %}>Pending</option>
+            <option value="queued"   {% if status_filter == 'queued'   %}selected{% endif %}>Queued</option>
+            <option value="cancelled" {% if status_filter == 'cancelled' %}selected{% endif %}>Cancelled</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="filter-date-from" class="form-label form-label-sm fw-semibold">From</label>
+          <input type="date" id="filter-date-from" name="date_from"
+                 class="form-control form-control-sm"
+                 value="{{ date_from }}">
+        </div>
+        <div class="col-md-2">
+          <label for="filter-date-to" class="form-label form-label-sm fw-semibold">To</label>
+          <input type="date" id="filter-date-to" name="date_to"
+                 class="form-control form-control-sm"
+                 value="{{ date_to }}">
+        </div>
+        <div class="col-md-1">
+          <button type="submit" class="btn btn-primary btn-sm w-100">Filter</button>
+        </div>
+        {% if reviewer_filter or status_filter or date_from or date_to %}
+        <div class="col-md-1">
+          <a href="{{ url_for('ingest.ingest_history') }}" class="btn btn-outline-secondary btn-sm w-100">Clear</a>
+        </div>
+        {% endif %}
+      </div>
+    </form>
+
+    {% if batches %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Batch ID</th>
+            <th>Reviewer</th>
+            <th>Created At</th>
+            <th>Kind</th>
+            <th>Status</th>
+            <th>Total</th>
+            <th>Persisted</th>
+            <th>Failed</th>
+            <th>Criteria</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in batches %}
+          <tr>
+            <td>
+              <a href="{{ url_for('ingest.ingest_batch', batch_id=b.batch_id) }}"
+                 class="font-monospace">{{ b.batch_id | string | truncate(8, end='') }}</a>
+            </td>
+            <td>{{ b.reviewer_id or '—' }}</td>
+            <td class="text-nowrap">
+              {{ b.created_at.strftime('%Y-%m-%d %H:%M') if b.created_at else '—' }}
+            </td>
+            <td>
+              {% if b.kind == 'onboard' %}
+              <span class="badge bg-primary">onboard</span>
+              {% elif b.kind == 'populate' %}
+              <span class="badge bg-info text-dark">populate</span>
+              {% elif b.kind == 'refresh' %}
+              <span class="badge bg-warning text-dark">refresh</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ b.kind }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if b.status == 'running' %}
+              <span class="badge bg-primary">running</span>
+              {% elif b.status == 'complete' %}
+              <span class="badge bg-success">complete</span>
+              {% elif b.status == 'failed' %}
+              <span class="badge bg-danger">failed</span>
+              {% elif b.status in ('pending', 'queued') %}
+              <span class="badge bg-secondary">{{ b.status }}</span>
+              {% elif b.status == 'cancelled' %}
+              <span class="badge bg-warning text-dark">cancelled</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ b.status }}</span>
+              {% endif %}
+            </td>
+            <td>{{ b.total_filings if b.total_filings else '—' }}</td>
+            <td>{{ b.persisted_count if b.persisted_count else '—' }}</td>
+            <td>{{ b.failed_count if b.failed_count else '—' }}</td>
+            <td class="text-muted small">
+              {% set crit = b.criteria %}
+              {% if crit %}
+                {% set ft = crit.get('form_types') or crit.get('form_type') %}
+                {% if ft is string %}
+                  {{ ft }}
+                {% elif ft %}
+                  {{ ft | join(', ') }}
+                {% endif %}
+                {% set yr = crit.get('year') or crit.get('year_range') %}
+                {% if yr %}
+                  &nbsp;{{ yr }}
+                {% endif %}
+              {% else %}
+              —
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-muted small">{{ batches | length }} batch{{ 'es' if batches | length != 1 else '' }} shown.</p>
+    {% else %}
+    <p class="text-muted">No batches found{% if reviewer_filter or status_filter or date_from or date_to %} matching the current filters{% endif %}.</p>
+    {% endif %}
+
+    <div class="mt-3">
+      <a href="{{ url_for('ingest.ingest_form') }}" class="btn btn-outline-secondary btn-sm">
+        Start New Batch
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

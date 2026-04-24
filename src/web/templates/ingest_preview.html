@@ -14,13 +14,13 @@
 
     <!-- Gap banner — click a button to spawn a populate batch for that (year, form_type) combo -->
     {% if gaps %}
-    <div class="alert alert-info mb-3" role="alert">
+    <div class="alert alert-info mb-3" id="gap-banner" role="alert">
       <strong>Universe gaps detected</strong> — the following (year, form_type) combinations have
-      no filings in the database yet. Click to populate; you'll be redirected to the populate batch's
-      progress page. Re-run the preview after it completes to discover the new filings.
+      no filings in the database yet. Click to populate inline; the preview will refresh automatically
+      when the populate batch completes.
       <div class="mt-2 d-flex gap-2 flex-wrap">
         {% for gap in gaps %}
-        <form action="{{ url_for('ingest.populate') }}" method="POST" class="d-inline">
+        <form action="{{ url_for('ingest.populate') }}" method="POST" class="gap-populate-form d-inline">
           <input type="hidden" name="year" value="{{ gap.year }}">
           <input type="hidden" name="form_type" value="{{ gap.form_type }}">
           <input type="hidden" name="reviewer_name" value="{{ reviewer_name }}">
@@ -44,6 +44,7 @@
       <!-- ================================================================
            Section 1: New filings
       ================================================================ -->
+      <div id="section-new">
       <h4 class="mt-4">New Filings <span class="badge bg-primary">{{ new_candidates | length }}</span></h4>
       {% if new_candidates %}
       <p class="text-muted small">
@@ -89,10 +90,12 @@
       {% else %}
       <p class="text-muted">No new filings found for these criteria.</p>
       {% endif %}
+      </div><!-- /section-new -->
 
       <!-- ================================================================
            Section 2: Already extracted — no review decisions
       ================================================================ -->
+      <div id="section-no-review">
       <h4 class="mt-4">
         Already Extracted — No Review Decisions
         <span class="badge bg-secondary">{{ already_no_review | length }}</span>
@@ -142,10 +145,12 @@
       {% else %}
       <p class="text-muted">None.</p>
       {% endif %}
+      </div><!-- /section-no-review -->
 
       <!-- ================================================================
            Section 3: Already extracted — has review decisions
       ================================================================ -->
+      <div id="section-reviewed">
       <h4 class="mt-4">
         Already Extracted — Has Review Decisions
         <span class="badge bg-warning text-dark">{{ already_reviewed | length }}</span>
@@ -199,6 +204,7 @@
       {% else %}
       <p class="text-muted">None.</p>
       {% endif %}
+      </div><!-- /section-reviewed -->
 
       <!-- Large-batch acknowledgement (shown only for HARD_WARN) -->
       {% if band.value == 'hard_warn' %}
@@ -238,6 +244,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/ingest_preview.js') }}"></script>
 <script>
 (function () {
   'use strict';

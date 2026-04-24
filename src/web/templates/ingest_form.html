@@ -19,13 +19,32 @@
       <!-- Industry multi-select -->
       <div class="mb-3">
         <label for="industries" class="form-label fw-semibold">Industries</label>
-        <select id="industries" name="industries" class="form-select" multiple size="6">
+        <input type="text" id="industry_search" class="form-control form-control-sm mb-1"
+               placeholder="Search industries..." autocomplete="off">
+        <select id="industries" name="industries" class="form-select" multiple size="8">
           {% for ind in industries %}
           <option value="{{ ind.key }}" {% if ind.key in selected_industries %}selected{% endif %}>{{ ind.label }}</option>
           {% endfor %}
         </select>
         <div class="form-text">Hold Ctrl / Cmd to select multiple industries. Provide an industry, SIC code, or company name filter.</div>
       </div>
+
+      <script>
+        (function () {
+          var searchInput = document.getElementById('industry_search');
+          var select = document.getElementById('industries');
+          searchInput.addEventListener('input', function () {
+            var term = this.value.toLowerCase();
+            var options = select.querySelectorAll('option');
+            for (var i = 0; i < options.length; i++) {
+              var opt = options[i];
+              var match = opt.textContent.toLowerCase().indexOf(term) !== -1;
+              opt.hidden = !match;
+              // Never deselect already-selected options even when hidden
+            }
+          });
+        })();
+      </script>
 
       <!-- Direct SIC codes -->
       <div class="mb-3">
