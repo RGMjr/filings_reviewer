@@ -6,7 +6,7 @@ id: 94
 severity: low
 slug: v2-audit-log-check-constraint-rejects-head-options
 source: legacy
-status: open
+status: resolved
 title: v2_audit_log.check_v2_audit_http_method Rejects HEAD and OPTIONS Requests
 touches:
   - sql/31_drop_v1_review_tables.sql

@@ -12,7 +12,7 @@ touches:
   - tests/integration/conftest.py
   - scripts/apply_migrations.py
   - sql/37_create_analytics_role.sql
-updated: '2026-04-23'
+updated: '2026-04-24'
 pr_refs: []
 ---
 
@@ -51,3 +51,13 @@ integration jobs + local integration runs.
 - Could also add a `conftest.py` pre-check that drops the
   `schema_migrations` row for a modified migration before re-applying,
   scoped to test DBs only. More invasive.
+
+### Resolution
+
+Implemented Option A: added a `_CHECKSUM_REFRESH_ALLOWLIST` pre-check in
+`tests/integration/conftest.py::_apply_migrations_to_test_db`. Before the main
+migration loop runs, the fixture computes the current checksum for each allowlisted
+migration, compares it against the ledger, and deletes the stale row if they differ.
+The normal loop then re-applies the file and records the new checksum. Migration 37
+is the only entry in the allowlist. All other checksum mismatches continue to raise
+`RuntimeError` as before.

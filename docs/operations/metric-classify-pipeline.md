@@ -109,8 +109,31 @@ If spot-checks show higher burn than expected:
   does not currently surface `cost_usd` in its return dict, so
   `v2_image_classifications.cost_usd` is persisted as 0 until this is
   plumbed. Track as a follow-up KI.
-- **Leg C (review-UI)** — existing `detected-metrics` card + confirmations
-  API (PRs #151 / #154) cover most of what was planned. Post-Leg-B, a
-  small PR swaps the card's data source from `detected_metrics` (rule-based)
-  to `v2_image_classifications` (Vision) or renders both side-by-side for
-  reviewer comparison.
+- **Leg C (review-UI)** — shipped. See "Reviewer UI" section below.
+
+## Reviewer UI
+
+The Images tab in the review UI surfaces classifier predictions alongside the
+existing rule-based signal. **Source priority:** `v2_image_classifications.predicted_metrics`
+(Vision) is shown when a classification row exists for the image; the card
+falls back to `v2_image_assets.detected_metrics` (Keywords) when it does not.
+
+The card header label indicates which source is active:
+
+- **"Predicted metrics (Vision)"** — classifier output from `v2_image_classifications`
+- **"Detected metrics (Keywords)"** — rule-based output from `v2_image_assets`
+
+Reviewer decisions (accept / reject / correct / add) are recorded in
+`v2_image_metric_confirmations` regardless of which source powers the card.
+The confirmation endpoint (`POST /api/v2/image-metric-confirmations`) is
+unchanged — both sources produce `{metric_id, score}` shaped entries.
+
+The `data-classification-id` attribute on the card div carries the
+`v2_image_classifications.classification_id` of the row that supplied the
+predictions (empty string when falling back to rule-based), for future
+training-signal queries.
+
+**While `ENABLE_METRIC_CLASSIFY=false` (current prod default):** no
+classification rows exist, so every image shows the Keywords card. Behavior
+is identical to pre-Leg-C. The Vision path activates automatically once the
+gate is flipped.
