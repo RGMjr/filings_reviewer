@@ -2,7 +2,7 @@
 autonomy: safe
 discovered: '2026-04-24'
 estimated: S
-id: 102
+id: 107
 severity: low
 slug: contract-test-lacks-vision-branch-coverage
 source: legacy

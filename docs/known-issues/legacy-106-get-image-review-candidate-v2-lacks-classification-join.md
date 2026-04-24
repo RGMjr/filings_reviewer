@@ -2,7 +2,7 @@
 autonomy: safe
 discovered: '2026-04-24'
 estimated: S
-id: 101
+id: 106
 severity: low
 slug: get-image-review-candidate-v2-lacks-classification-join
 source: legacy
