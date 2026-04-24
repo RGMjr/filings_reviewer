@@ -74,9 +74,9 @@ services:
       - key: OPENAI_API_KEY
         sync: false
 
-  # Autonomous nightly sweeper for docs/KNOWN_ISSUES.md. Parses the
-  # "Nightly Sweeper Classification" table, picks up to 3 non-colliding
-  # safe/review issues, and attempts to work each in an isolated worktree.
+  # Autonomous nightly sweeper for known-issue fragments in docs/known-issues/.
+  # Reads frontmatter, picks up to 3 non-colliding safe/review issues, and
+  # attempts to work each in an isolated worktree.
   # Safe issues auto-merge on green CI; review issues open draft PRs for
   # the morning review. See docs/operations/nightly-sweep-runbook.md.
   #

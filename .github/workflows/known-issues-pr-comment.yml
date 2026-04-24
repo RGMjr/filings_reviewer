@@ -1,0 +1,109 @@
+name: Known-issues PR comment
+
+# Phase 3 of the known-issues system rethink: post (or update) a PR comment
+# showing the known-issues rollup diff vs the base branch. Restores the
+# "see which issues changed in this PR" signal that the previously tracked
+# rollup used to provide. See docs/operations/known-issues-system-rethink-plan.md.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/known-issues/**'
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  post-diff:
+    name: Post known-issues rollup diff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Regenerate rollup at PR head
+        run: uv run python3 scripts/regenerate_known_issues.py --output /tmp/pr-rollup.md
+
+      - name: Regenerate rollup at base branch
+        run: |
+          git worktree add /tmp/base-tree "origin/${{ github.base_ref }}"
+          cd /tmp/base-tree
+          uv run python3 scripts/regenerate_known_issues.py --output /tmp/base-rollup.md
+
+      - name: Compute diff
+        id: diff
+        run: |
+          if diff -u /tmp/base-rollup.md /tmp/pr-rollup.md > /tmp/rollup.diff; then
+            echo "has_diff=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
+          fi
+          # GitHub comment body limit is ~65k chars. Truncate diff if it would
+          # push the rendered comment near that limit.
+          DIFF_BYTES=$(wc -c < /tmp/rollup.diff)
+          if [ "$DIFF_BYTES" -gt 55000 ]; then
+            head -c 55000 /tmp/rollup.diff > /tmp/rollup.diff.trunc
+            printf '\n\n... [diff truncated at 55k of %d chars; download full rollup from the `known-issues-rollup` build artifact]\n' "$DIFF_BYTES" >> /tmp/rollup.diff.trunc
+            mv /tmp/rollup.diff.trunc /tmp/rollup.diff
+          fi
+
+      - name: Find existing bot comment
+        id: find-comment
+        uses: peter-evans/find-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 'known-issues-pr-diff-bot'
+
+      - name: Build comment body (diff present)
+        if: steps.diff.outputs.has_diff == 'true'
+        id: build-diff
+        run: |
+          {
+            echo 'body<<EOF_COMMENT_BODY'
+            echo '<!-- known-issues-pr-diff-bot -->'
+            echo '## Known-issues rollup diff'
+            echo ''
+            echo 'This PR changes the rendered `docs/KNOWN_ISSUES.md` rollup. The file is not tracked in git (CI regenerates it as an artifact); preview shown below.'
+            echo ''
+            echo '<details>'
+            echo '<summary>Click to expand diff vs `${{ github.base_ref }}`</summary>'
+            echo ''
+            echo '```diff'
+            cat /tmp/rollup.diff
+            echo '```'
+            echo ''
+            echo '</details>'
+            echo ''
+            echo 'Regenerate locally: `python3 scripts/regenerate_known_issues.py --output /tmp/KNOWN_ISSUES.md`'
+            echo 'EOF_COMMENT_BODY'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build comment body (no diff)
+        if: steps.diff.outputs.has_diff == 'false'
+        id: build-nodiff
+        run: |
+          {
+            echo 'body<<EOF_COMMENT_BODY'
+            echo '<!-- known-issues-pr-diff-bot -->'
+            echo '## Known-issues rollup'
+            echo ''
+            echo 'Fragments under `docs/known-issues/` were changed in this PR, but the rendered rollup is unchanged vs `${{ github.base_ref }}` (likely a non-rendered frontmatter field such as `touches:` or `pr_refs:`).'
+            echo 'EOF_COMMENT_BODY'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: ${{ steps.build-diff.outputs.body || steps.build-nodiff.outputs.body }}
+          edit-mode: replace

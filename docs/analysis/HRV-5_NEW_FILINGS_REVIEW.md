@@ -35,7 +35,7 @@ accession `0001193125-17-056992`, URL:
 **Impact**: No candidates were generated for Snap, reducing the expected metric yield.
 
 **Status (2026-03-19)**: Investigation complete. Fix blocked on local dev validation DB rebuild
-(DB is empty). See `docs/KNOWN_ISSUES.md` issue #9 for resolution steps.
+(DB is empty). See [known issue #9](../known-issues/legacy-009-snap-filing-id-32-33-mislabeled-data.md) for resolution steps.
 
 ## Snowflake Review
 
