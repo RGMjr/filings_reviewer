@@ -87,7 +87,7 @@
    **9e. Act.** "approve"/"all"/silent → file all `TO FILE`. "none"/"skip" → file nothing. Anything else → apply user edits, confirm revised list, file.
 
    **9f. Write fragment files.** For each item:
-   - Find the highest existing id: `ls docs/known-issues/legacy-*.md docs/known-issues/gh-*.md 2>/dev/null | grep -oE '(legacy|gh)-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1`. Next id = that + 1.
+   - Find the highest existing id: `{ ls docs/known-issues/legacy-*.md docs/known-issues/gh-*.md 2>/dev/null; git ls-tree --name-only origin/main docs/known-issues/ 2>/dev/null; } | grep -oE '(legacy|gh)-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1`. Next id = that + 1. (Union of local files and `origin/main` prevents collisions when multiple branches are in flight.)
    - Create `docs/known-issues/legacy-NNN-<kebab-slug>.md` with this exact structure:
      ```yaml
      ---
