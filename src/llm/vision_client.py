@@ -50,6 +50,8 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from openai import APIConnectionError, APIError, RateLimitError
 
@@ -633,6 +635,58 @@ class VisionClient:
             raw_response=response.content,
         )
 
+    def analyze_image_for_metric_classification(
+        self,
+        image_bytes: bytes,
+        *,
+        detail: str = "high",
+        max_tokens: int = 400,
+    ) -> dict[str, Any] | None:
+        """Classify which customer metrics are disclosed in a chart image.
+
+        Sends the image to the Vision LLM using ``CLASSIFY_PROMPT`` and
+        ``response_format={"type": "json_object"}``, then parses and
+        normalises the response via ``_parse_classify_response``.
+
+        Args:
+            image_bytes: Raw JPEG/PNG/GIF/WebP bytes.
+            detail: Image detail level passed to ``analyze_image``.
+                Default ``"high"`` — metric-classify needs full resolution.
+            max_tokens: Ceiling on output tokens. 400 comfortably fits the
+                compact JSON response schema.
+
+        Returns:
+            Parsed dict with keys ``predicted_metrics``, ``confidence``,
+            ``rejection_reason``, and ``reasoning``; or ``None`` on API
+            failure or unparseable response.
+
+        Notes:
+            - Uses the module-level ``CLASSIFY_PROMPT`` constant (built from
+              ``config/metric_keywords.yaml`` at import time).
+            - No prod pipeline stage wires this yet — Leg B adds that.
+        """
+        try:
+            response = self.analyze_image(
+                image_bytes=image_bytes,
+                prompt=CLASSIFY_PROMPT,
+                detail=detail,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+        except Exception:
+            logger.exception("analyze_image_for_metric_classification: API call failed")
+            return None
+
+        parsed = _parse_classify_response(response.content)
+        if parsed is None:
+            logger.warning(
+                "analyze_image_for_metric_classification: failed to parse response "
+                "(len=%d, first_80=%r)",
+                len(response.content),
+                response.content[:80],
+            )
+        return parsed
+
     @staticmethod
     def _parse_text_ocr_json(content: str) -> dict | None:
         """Parse the JSON body of an ``analyze_image_for_text`` response.
@@ -658,6 +712,170 @@ class VisionClient:
             return json.loads(repaired)
         except json.JSONDecodeError:
             return None
+
+
+# ---------------------------------------------------------------------------
+# Metric-classify helpers — ported from metric-classify-harness
+# ---------------------------------------------------------------------------
+
+# Repo root: two levels up from src/llm/vision_client.py
+_REPO_ROOT = Path(__file__).parent.parent.parent
+
+
+def _load_tier_metric_ids() -> tuple[list[str], list[str]]:
+    """Return ``(tier1_ids, tier2_ids)`` from config/metric_keywords.yaml.
+
+    Reads yaml at call time so the prompt can never drift from the
+    authoritative tier assignment in CLAUDE.md. Returns deterministically
+    sorted ids (alphabetical) so the prompt is stable across runs.
+    """
+    import yaml
+
+    yaml_path = _REPO_ROOT / "config" / "metric_keywords.yaml"
+    with yaml_path.open(encoding="utf-8") as fh:
+        cfg = yaml.safe_load(fh) or {}
+
+    tier1: list[str] = []
+    tier2: list[str] = []
+    for metric_id, body in cfg.items():
+        if not isinstance(body, dict):
+            continue
+        tier = body.get("tier")
+        if tier == 1:
+            tier1.append(metric_id)
+        elif tier == 2:
+            tier2.append(metric_id)
+    return sorted(tier1), sorted(tier2)
+
+
+#: Allowed ``rejection_reason`` values in a metric-classify response.
+#: ``table_handled_elsewhere`` is added here (preemptive #93 fix) so this
+#: frozenset is the single-source of truth; ``v2_image_review_decisions``
+#: CHECK constraint will reference it once Leg B lands.
+CLASSIFY_REJECTION_REASONS: frozenset[str] = frozenset(
+    {
+        "decorative",
+        "not_a_chart",
+        "wrong_subject",
+        "duplicate",
+        "unreadable",
+        "other",
+        "table_handled_elsewhere",
+    }
+)
+
+
+def _build_classify_prompt(tier1: list[str], tier2: list[str]) -> str:
+    """Assemble the metric-classification prompt.
+
+    Returns JSON-only; paired with ``response_format={"type": "json_object"}``
+    on the API call. Tier lists are injected from ``metric_keywords.yaml``
+    at import time so tier assignments are always in sync with CLAUDE.md.
+    """
+    tier1_block = "\n".join(f"  - {m}" for m in tier1)
+    tier2_block = "\n".join(f"  - {m}" for m in tier2)
+    reasons = sorted(CLASSIFY_REJECTION_REASONS)
+    reasons_block = ", ".join(reasons)
+    return (
+        "You are classifying a customer-metrics disclosure image from an SEC "
+        "filing.\n\n"
+        f"TIER-1 metrics (must-not-miss; {len(tier1)}):\n{tier1_block}\n\n"
+        f"TIER-2 metrics (nice-to-have; {len(tier2)}):\n{tier2_block}\n\n"
+        "A metric is DISCLOSED in this image if the image depicts meaningful "
+        "chart data for that metric — even if data points are unlabeled, axes "
+        "are missing, or numeric values aren't visible. Base your judgment on "
+        "the chart SHAPE (cohort parfait / layer cake / stacked-area-by-cohort "
+        "/ triangle / retention curve / bar-by-cohort), the title, the legend, "
+        "and any surrounding text. Labeled values are sufficient evidence; "
+        "they are NOT required. Unlabeled cohort-waterfall / layer-cake "
+        "visuals are valid disclosures when the shape depicts per-cohort data.\n\n"
+        "Images that are TABLES of numbers should be returned with "
+        'predicted_metrics=[] and rejection_reason="other" (tables are handled '
+        "by a different pipeline).\n\n"
+        "Return JSON exactly:\n"
+        "{\n"
+        '  "predicted_metrics": [metric_ids from the lists above; [] if none],\n'
+        '  "confidence": float in 0.0 to 1.0 over the predicted set,\n'
+        f'  "rejection_reason": one of {{{reasons_block}}} when '
+        "predicted_metrics is empty, else null,\n"
+        '  "reasoning": one sentence explaining the call (for audit)\n'
+        "}\n\n"
+        "Only emit metric_ids exactly as listed above."
+    )
+
+
+_TIER1_METRIC_IDS, _TIER2_METRIC_IDS = _load_tier_metric_ids()
+
+#: Pre-built classification prompt (stable across runs; built from yaml at import).
+CLASSIFY_PROMPT: str = _build_classify_prompt(_TIER1_METRIC_IDS, _TIER2_METRIC_IDS)
+
+
+def _strip_markdown_fences(raw: str) -> str:
+    """Strip ```json … ``` fences that Gemini often wraps JSON responses in.
+
+    Returns the stripped payload when the full content is a single fenced
+    block; otherwise returns ``raw`` unchanged. Conservative: only triggers
+    when the text starts with \"```\" so clean JSON is left alone.
+    """
+    if not raw:
+        return raw
+    stripped = raw.strip()
+    if not stripped.startswith("```"):
+        return raw
+    first_newline = stripped.find("\n")
+    if first_newline == -1:
+        return raw
+    body = stripped[first_newline + 1 :]
+    if body.rstrip().endswith("```"):
+        body = body.rstrip()[:-3]
+    return body
+
+
+def _parse_classify_response(raw: str) -> dict[str, Any] | None:
+    """Parse and lightly normalise the metric-classify JSON response.
+
+    Returns ``None`` if JSON parsing fails. Accepts missing optional fields
+    and coerces common shape bugs (e.g. ``null`` confidence → 0.0, string
+    metric list → wrapped in list, unknown rejection_reason → ``"other"``)
+    so minor provider drift doesn't bubble up as a parse failure.
+    """
+    try:
+        obj = json.loads(_strip_markdown_fences(raw))
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+
+    raw_metrics = obj.get("predicted_metrics", []) or []
+    if isinstance(raw_metrics, str):
+        raw_metrics = [raw_metrics]
+    known_ids = set(_TIER1_METRIC_IDS) | set(_TIER2_METRIC_IDS)
+    metrics = [str(m).strip() for m in raw_metrics if str(m).strip() in known_ids]
+
+    try:
+        confidence = float(obj.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    reason = obj.get("rejection_reason")
+    if reason is not None:
+        reason = str(reason).strip()
+        if reason not in CLASSIFY_REJECTION_REASONS:
+            reason = "other"
+        if metrics:
+            # Classifier emitted metrics AND a reason; the schema says the
+            # reason only applies when metrics is empty. Drop it to keep
+            # downstream scoring unambiguous.
+            reason = None
+    reasoning = str(obj.get("reasoning") or "")
+
+    return {
+        "predicted_metrics": metrics,
+        "confidence": confidence,
+        "rejection_reason": reason,
+        "reasoning": reasoning,
+    }
 
 
 def _repair_truncated_json_object(text: str) -> str | None:
