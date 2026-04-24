@@ -6,14 +6,42 @@ Strategic direction memo: `~/.claude/projects/.../memory/project_presence_first_
 
 ## Program status
 
-| PR | Scope | Status |
-|---|---|---|
-| PR1 | Schema + presence emission + `presence_only` persistence mode | **Landed** (this PR) |
-| PR2 | Gold-standard presence derivation + validator + Tier 1 gate flip | Pending |
-| PR3 | Reviewer UI surfaces presence (`v2_text_presence_confirmations`) | Pending |
-| PR4 | Tier-1 definition/methodology LLM classifier | Pending |
+| PR | Scope | Status | Migration |
+|---|---|---|---|
+| PR1 | Schema + presence emission + `presence_only` persistence mode | **Landed** (PR #182) | sql/46 |
+| PR2 | Gold-standard presence derivation + validator + Tier 1 gate flip | Pending | — |
+| PR3 | Reviewer UI surfaces presence (`v2_text_presence_confirmations`) | Pending | sql/48 |
+| PR4 | Tier-1 definition/methodology LLM classifier | Pending | sql/49 |
+| PR5 | MetricPresenceStage chart-contribution removal (cleanup) | Pending | — |
 
 Full plan files live under `~/.claude/plans/text-presence-pr*.md` and `~/.claude/plans/text-presence-pivot-index.md`.
+
+## Cross-pivot coordination with image-review redesign
+
+A parallel image-review redesign (`~/.claude/plans/our-disclosures-review-web-deep-blossom.md`) is in flight and will land at **sql/47** with three artifacts that the text pivot depends on:
+
+- `v2_image_metric_presence` (per-image grain, reviewable)
+- `v2_image_presence_confirmations` (reviewer decisions: `accept/reject/correct/skip/add`)
+- `v_doc_metric_presence` **VIEW** (UNION of text + image presence at doc grain):
+  ```sql
+  CREATE VIEW v_doc_metric_presence AS
+    SELECT doc_id, canonical_metric_id AS metric_id, 'text' AS source
+      FROM v2_text_metric_presence
+    UNION
+    SELECT ia.doc_id, imp.metric_id, 'image' AS source
+      FROM v2_image_metric_presence imp
+      JOIN v2_image_assets ia USING (img_id);
+  ```
+
+### Agreement (2026-04-24)
+
+1. **`ImageAsset.detected_metrics` in-memory contract is being dropped** by image-review Wave 2. The list is no longer populated after Wave 1 transition ends. Dual-write during the transition keeps the chart-source branch in `MetricPresenceStage` (src/extraction_v2/stages/metric_presence.py:86-95) working until PR5 removes it.
+2. **Text-presence stops aggregating chart contribution.** PR5 (this program) removes the chart-source branch in `MetricPresenceStage` after image-review Wave 1 lands. Non-blocking — image-review agreed to dual-write.
+3. **PR2 queries `v_doc_metric_presence`, not `v2_text_metric_presence`,** for Tier 1 gate math. The view captures both text and image presence symmetrically.
+4. **Landing order for the gate transition:** image-review Wave 2 Agent C resets the chart-fact recall baseline FIRST; text PR2 flips the Tier 1 gate from fact-recall to presence-recall SECOND.
+5. **Per-table ownership:** `v2_text_metric_presence` owns text at doc grain; `v2_image_metric_presence` owns image at per-image grain. No unified confirmations table.
+
+Full rationale in `~/.claude/plans/text-presence-pivot-index.md` and memory `project_text_image_presence_coordination.md`.
 
 ---
 
