@@ -2,7 +2,7 @@
 autonomy: safe
 discovered: '2026-04-24'
 estimated: S
-id: 101
+id: 105
 severity: low
 slug: v2-audit-log-relation-missing-in-test-db
 source: legacy
