@@ -141,7 +141,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: Audit dependencies
-        run: uv run pip-audit
+        run: uv run pip-audit --skip-editable
 
   integration-tests:
     name: Integration Tests
