@@ -406,6 +406,7 @@ class TestAnalyzeImageForMetricClassification:
         assert result["confidence"] == pytest.approx(0.88)
         assert result["rejection_reason"] is None
         assert result["reasoning"] == "Cohort parfait visible."
+        assert result["_cost_usd"] == pytest.approx(0.001)
 
     def test_api_error_returns_none(self):
         """An exception from analyze_image is caught and returns None."""

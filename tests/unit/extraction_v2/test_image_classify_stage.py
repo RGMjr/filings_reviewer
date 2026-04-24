@@ -67,12 +67,15 @@ def _make_context(images, *, enabled: bool = True) -> PipelineContext:
     )
 
 
-def _happy_parse_return(metric_ids, confidence, *, rejection_reason=None, reasoning="ok"):
+def _happy_parse_return(
+    metric_ids, confidence, *, rejection_reason=None, reasoning="ok", cost_usd=0.0
+):
     return {
         "predicted_metrics": list(metric_ids),
         "confidence": confidence,
         "rejection_reason": rejection_reason,
         "reasoning": reasoning,
+        "_cost_usd": cost_usd,
     }
 
 
@@ -115,7 +118,9 @@ class TestClassifiablePath:
     def test_emits_record_on_happy_path(self, mock_client_cls, mock_storage, chart_image):
         mock_storage.return_value.get_bytes.return_value = b"PNGBYTES"
         mock_client_cls.return_value.analyze_image_for_metric_classification.return_value = (
-            _happy_parse_return(["cm_revenue_by_cohort"], 0.87, reasoning="cohort-bar shape")
+            _happy_parse_return(
+                ["cm_revenue_by_cohort"], 0.87, reasoning="cohort-bar shape", cost_usd=0.0042
+            )
         )
 
         context = _make_context([chart_image])
@@ -135,7 +140,7 @@ class TestClassifiablePath:
         assert rec.model == "gemini-2.5-flash-lite"
         assert rec.prompt_version == ImageClassifyStage.PROMPT_VERSION
         assert rec.latency_ms >= 0
-        assert rec.cost_usd == 0.0  # helper doesn't surface cost yet
+        assert rec.cost_usd == pytest.approx(0.0042)
 
     @patch("src.extraction_v2.stages.image_classify.get_image_storage")
     @patch("src.extraction_v2.stages.image_classify.VisionClient")

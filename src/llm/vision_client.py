@@ -685,6 +685,8 @@ class VisionClient:
                 len(response.content),
                 response.content[:80],
             )
+            return None
+        parsed["_cost_usd"] = response.cost_usd
         return parsed
 
     @staticmethod
