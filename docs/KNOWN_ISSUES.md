@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 32 |
+| Open | 31 |
 | Partially Resolved | 1 |
 | Archived | 46 |
-| Resolved | 17 |
+| Resolved | 18 |
 
 
 ## Nightly Sweeper Classification
@@ -808,23 +808,6 @@ Phase-3 unit tests exercise `ImageTriageStage._detect_full_page_scan_filing`, `O
 1. Create a minimal fixture: a stub HTML document with a handful of `<img>` tags pointing at portrait-page-sized dummy JPGs, seeded under `tests/integration/fixtures/full_page_ocr/`.
 2. Add `tests/integration/extraction_v2/test_full_page_ocr_pipeline.py` that constructs a `PipelineConfig(enable_full_page_ocr=True)`, runs `V2Pipeline.process` with a mocked `VisionClient`, and asserts segment + fact + image-asset state end-to-end.
 3. Alternative: once the prod rollout backfill completes on a real PayPal 8-K, capture its vision responses as VCR cassettes and build the fixture from that.
-
-## #83. `TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-`OCRExtractionStage.TIER1_KEYWORDS_RE` is a hand-curated regex alternation listing Tier-1 metric phrases (cohort, retention, ltv, cac, etc.). The authoritative source of Tier-1 metrics is `config/metric_keywords.yaml` (`tier: 1` entries' `patterns` + `specific_patterns`). Adding a new Tier-1 metric today requires two edits in lockstep; miss the regex update and Path B silently under-matches.
-
-### Next Steps
-
-1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
-2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
-3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
 
 ## #84. Fragment Status Drift After PR Merge (Needs Auto-Update Mechanism)
 
@@ -2195,6 +2178,23 @@ attempt to re-fix issues whose fixes are already in `main`.
   must NOT appear in selector picks.
 - Optional: also emit a warning when such a fragment is encountered, so the
   author knows to set `autonomy: n/a` on resolved entries.
+
+## #83. `TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-23
+
+### Problem
+
+`OCRExtractionStage.TIER1_KEYWORDS_RE` is a hand-curated regex alternation listing Tier-1 metric phrases (cohort, retention, ltv, cac, etc.). The authoritative source of Tier-1 metrics is `config/metric_keywords.yaml` (`tier: 1` entries' `patterns` + `specific_patterns`). Adding a new Tier-1 metric today requires two edits in lockstep; miss the regex update and Path B silently under-matches.
+
+### Next Steps
+
+1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
+2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
+3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
 
 ## #96. Chart-Presence Pivot — Multi-PR Rollout Tracking
 
