@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 32 |
 | Partially Resolved | 1 |
 | Archived | 45 |
-| Resolved | 20 |
+| Resolved | 21 |
 
 
 ## Nightly Sweeper Classification
@@ -55,6 +55,8 @@
 | #98 | review | S | `src/gold_standard/v2_validator.py` `src/extraction_v2/stages/chart_fact_bridge.py` | PR #150 added the presence P/R/F1 infrastructure to the validator + baseline, but presence_f1 is emitted as None because v2_context.images[*].detected_metrics is not populated during the validator's in-memory pipeline run. Baseline refresh in PR 4b (2026-04-24) has presence_f1=null as a result. |
 | #99 | review | S | `scripts/run_nightly_sweep.sh` `scripts/write_sweep_digest.py` |  |
 | #100 | safe | S | `src/llm/vision_client.py` `src/extraction_v2/stages/image_classify.py` |  |
+| #101 | safe | S | `src/infra/db.py` `src/web/routes/api_unified.py` |  |
+| #102 | safe | S | `tests/ui/test_server.py` `tests/unit/test_mock_server_contract.py` |  |
 
 
 ## Open Issues
@@ -1023,6 +1025,58 @@ signal once the gate is flipped. Latency is captured correctly
   anticipation).
 - Backfill: the first few classify-enabled runs will have cost=0 in
   the table. Leave as-is; the plumbing fix applies forward.
+
+## #101. get_image_review_candidate_v2 Missing Classification LATERAL Join
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+`DatabaseAdapter.get_image_review_candidate_v2` (single-image fetch used in
+`api_unified.py` at lines ~335, ~423, ~478) does not include the LATERAL join
+to `v2_image_classifications` added in Leg C. The function returns a dict
+without `classification_id`, `predicted_metrics`, or `classification_confidence`.
+Currently not a bug — the three callers don't surface classification data — but
+is a latent gap if any future caller or API endpoint needs Vision output from
+the single-image path.
+
+### Next Steps
+
+- Apply the same `LEFT JOIN LATERAL (...) ic ON true` pattern from
+  `get_image_review_candidates_for_filing_v2` to `get_image_review_candidate_v2`.
+- Add the three columns (`ic.classification_id`, `ic.predicted_metrics`,
+  `ic.confidence AS classification_confidence`) to the single-image SELECT.
+- Verify API endpoints at `api_unified.py:335`, `:423`, `:478` still pass
+  their existing tests after the change.
+
+## #102. Mock Server Contract Test Never Exercises "Predicted Metrics (Vision)" Label Branch
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+All three image mock candidates in `tests/ui/test_server.py` have
+`predicted_metrics=None`, so the contract test (`test_mock_server_contract.py`)
+always renders the `metrics_source == 'keywords'` branch of the Detected Metrics
+card in `unified_review.html`. The `{% if metrics_source == 'vision' %}Predicted
+metrics (Vision){% endif %}` label path is never exercised by any automated test,
+so a regression in that branch (e.g., a Jinja2 scoping error or missing
+attribute) would only be caught by a human reviewer.
+
+### Next Steps
+
+- Add a `MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION` fixture to
+  `tests/ui/test_server.py` with non-None `predicted_metrics` and
+  `classification_id`.
+- Add a `/images-tab-vision` route that passes this fixture as `current_image`.
+- Add `/images-tab-vision` to `SMOKE_ROUTES` in `test_mock_server_contract.py`
+  so the contract test exercises the Vision label path.
 
 ## #5. Revenue Synonym Context Gating
 
