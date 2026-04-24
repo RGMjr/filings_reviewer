@@ -3,14 +3,16 @@ autonomy: skip
 discovered: '2026-04-19'
 estimated: L
 id: 35
-note: 'Backfill; needs coordination with #53/#54'
+note: 'Dissolved by the chart-presence pivot (2026-04-23). Historical filings no
+  longer need chart-fact backfill — the chart pipeline no longer produces facts.
+  detected_metrics backfill on historical filings is tracked separately.'
 severity: low
 slug: pre-2026-04-17-filings-missing-chart-sourced-facts
 source: legacy
-status: partially-resolved
+status: resolved
 title: Pre-2026-04-17 Filings Missing Chart-Sourced Facts
 touches: []
-updated: '2026-04-19'
+updated: '2026-04-23'
 ---
 
 **Partial resolution**: 2026-04-21 (PR #50 landed `chart_only` surgical backfill mode)
@@ -47,3 +49,11 @@ Root cause of the sparse gain: the original 38-filing Class (E) baseline conflat
 - Issue #55 — 28 stuck 8-K filings in Class (E) (form-filter bypass during ingestion)
 - PR #50 — `feat(persistence): add chart_only mode for surgical Issue #35 backfills`
 - Session artifacts: `data/audit/issue_35_presmoke_snapshot.sql`, `data/audit/issue_35_presmoke_gs.txt`, `logs/issue_35_prod_smoke{,2,3}.log`
+
+### Resolution (2026-04-23)
+
+The chart-presence pivot (#86, PRs #147/#150/#151/#154) makes the chart-fact backfill concern moot:
+
+- The chart pipeline no longer emits per-value `v2_metric_facts` rows. Historical filings that never had chart facts now have nothing to backfill on that table.
+- The new signal is image-level `detected_metrics` on `v2_image_assets`. Historical filings do need a one-time `detected_metrics` backfill, but that is a *different* operation from the Issue #35 chart-fact backfill — cheaper, idempotent, no reviewer-CASCADE risk, and no Tier-1 recall gain depends on it. It will run via a scheduled cron or as a separate operational PR after PR 4b drains the legacy chart-fact rows.
+- The original Issue #35 scope (surgical chart-fact re-extraction via `chart_only=True`) still exists on the persistence layer and is reused by PR 4b's drain step; the mode is no longer needed for backfill but is useful for the one-shot DELETE pass.

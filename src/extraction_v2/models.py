@@ -671,6 +671,48 @@ class DetectedMetric:
 
 
 @dataclass
+class MetricPresence:
+    """Per-(doc, metric) presence signal emitted by MetricPresenceStage.
+
+    Persisted to `v2_text_metric_presence` (sql/46). Aggregates signals
+    across the text pipeline (facts from html_table / text / ocr_table
+    sources) and the chart pipeline (`ImageAsset.detected_metrics`) into
+    one record per `(doc_id, canonical_metric_id)` pair.
+
+    Primary scoring surface for the Tier 1 regression gate under the
+    presence-first pivot — see `docs/operations/text-pipeline-presence-pivot-plan.md`.
+    """
+
+    canonical_metric_id: str
+    score: float
+    detected_at_stage: str
+    evidence_segment_ids: list[str] = field(default_factory=list)
+    advisory_value_count: int = 0
+    advisory_fact_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ImageClassificationRecord:
+    """Vision API metric-classify output for one image.
+
+    Persisted to `v2_image_classifications` (sql/45). Distinct from
+    `DetectedMetric` (rule-based, in `v2_image_assets.detected_metrics`) and
+    from `v2_image_metric_confirmations` (reviewer decisions).
+    """
+
+    img_id: str
+    predicted_metrics: list[dict]  # [{"metric_id": str, "score": float}, ...]
+    confidence: float
+    rejection_reason: str | None
+    reasoning: str | None
+    provider: str
+    model: str
+    prompt_version: int
+    cost_usd: float
+    latency_ms: int
+
+
+@dataclass
 class DataPoint:
     """Single data point extracted from a chart."""
 

@@ -125,7 +125,7 @@ def test_filing_list_default_pagination(client, mock_db, mock_render_template):
     client.get("/v2/review/filings")
 
     mock_db.get_unified_filings_for_review.assert_called_once_with(
-        document_type=None,
+        tab=None,
         limit=50,
         offset=0,
         hide_completed=False,
@@ -143,7 +143,7 @@ def test_filing_list_custom_page(client, mock_db, mock_render_template):
     client.get("/v2/review/filings?page=2&per_page=25")
 
     mock_db.get_unified_filings_for_review.assert_called_once_with(
-        document_type=None,
+        tab=None,
         limit=25,
         offset=25,
         hide_completed=False,
@@ -161,7 +161,7 @@ def test_filing_list_per_page_cap(client, mock_db, mock_render_template):
     client.get("/v2/review/filings?per_page=999")
 
     mock_db.get_unified_filings_for_review.assert_called_once_with(
-        document_type=None,
+        tab=None,
         limit=200,
         offset=0,
         hide_completed=False,
@@ -339,7 +339,7 @@ def test_next_filing_preserves_sort_order(client, mock_db, mock_render_template)
 
     mock_db.get_next_filing_with_pending_work.assert_called_once_with(
         current_filing_id=1,
-        document_type=None,
+        tab=None,
         hide_completed=False,
         sort_by="company",
         sort_dir="asc",
@@ -358,7 +358,7 @@ def test_next_filing_threads_reviewer_filter(client, mock_db, mock_render_templa
 
     mock_db.get_next_filing_with_pending_work.assert_called_once_with(
         current_filing_id=1,
-        document_type=None,
+        tab=None,
         hide_completed=False,
         sort_by="date",
         sort_dir="desc",

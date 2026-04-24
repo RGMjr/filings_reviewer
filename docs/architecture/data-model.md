@@ -355,6 +355,7 @@ CREATE TABLE v2_image_assets (
     ocr_table_id        UUID REFERENCES v2_tables(table_id),
     chart_type          TEXT,
     chart_data          JSONB,
+    detected_metrics    JSONB NOT NULL DEFAULT '[]',  -- [{metric_id, score}], #86
 
     -- Processing + review
     processed           BOOLEAN NOT NULL DEFAULT FALSE,
@@ -371,6 +372,7 @@ CREATE TABLE v2_image_assets (
 - `review_status` ∈ `pending`, `reviewed`, `skipped`, `auto_rejected`. `auto_rejected` was added in migration 20 for low-predicted-relevance images.
 - `predicted_relevance` (added in migration 19) is a 4-decimal score used to auto-defer low-relevance images from the review queue.
 - `section_type` uses the full transcript/presentation enum.
+- `detected_metrics` (added in `sql/42_add_detected_metrics_to_v2_image_assets.sql`, chart-presence pivot #86) is a JSONB array of `{metric_id, score}` pairs emitted by `ChartMetricClassifier.classify_all(...)` above `PipelineConfig.chart_presence_min_score`. Under the pivot this replaces per-value chart `v2_metric_facts` rows; reviewers confirm entries via `v2_image_metric_confirmations` (see below).
 
 Indexes on `doc_id`, `classification`, `review_status`, `relevance_score`, `predicted_relevance` (partial), plus `(doc_id, review_status) WHERE review_status='pending'` for the review queue.
 
@@ -541,6 +543,52 @@ Semantic CHECK guards:
 
 ---
 
+#### `v2_image_metric_confirmations`
+
+**Grain:** One row per `(img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))` — enforced by the unique index below. Added in `sql/43_create_v2_image_metric_confirmations.sql` (chart-presence pivot, #86).
+
+```sql
+CREATE TABLE v2_image_metric_confirmations (
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    img_id                  UUID NOT NULL
+                                REFERENCES v2_image_assets(img_id) ON DELETE CASCADE,
+    detected_metric_id      TEXT NULL,   -- what the classifier said (NULL when decision='add')
+    confirmed_metric_id     TEXT NULL,   -- what the reviewer says is actually there (NULL when decision='reject')
+    decision                TEXT NOT NULL CHECK (decision IN ('accept','reject','correct','add')),
+    rejection_reason        TEXT NULL,   -- required when decision='reject'; optional for 'correct'
+    reviewer_id             TEXT NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_v2_image_metric_confirmations_img_id
+    ON v2_image_metric_confirmations(img_id);
+
+CREATE UNIQUE INDEX idx_v2_image_metric_confirmations_unique
+    ON v2_image_metric_confirmations(
+        img_id,
+        reviewer_id,
+        COALESCE(detected_metric_id, confirmed_metric_id, '')
+    );
+```
+
+Decision semantics (enforced at API level in `src/web/routes/api_unified.py::create_image_metric_confirmations`):
+
+| `decision` | `detected_metric_id` | `confirmed_metric_id` | `rejection_reason` |
+|---|---|---|---|
+| `accept` | required | `= detected_metric_id` | must be NULL |
+| `reject` | required | NULL | required (enum below) |
+| `correct` | required | required, `!= detected_metric_id` | optional (free-text) |
+| `add` | NULL (reviewer added a missed metric) | required | must be NULL |
+
+Rejection-reason enum (suggested values surfaced in the UI, not a CHECK constraint so free-text "other" remains open): `not_present`, `decorative`, `unrelated_chart`, `similar_metric_misclassified`, `too_low_confidence`, `other`.
+
+Upsert flow: `DatabaseAdapter.insert_image_metric_confirmations(img_id, confirmations, reviewer_id)` (`src/infra/db.py`) uses `ON CONFLICT` on the unique index to update `decision`, `confirmed_metric_id`, `rejection_reason`, `updated_at`. Row-reads go through `DatabaseAdapter.get_image_metric_confirmations(img_id)`.
+
+This table is the reviewer-adjudication surface for `v2_image_assets.detected_metrics` under the chart-presence pivot. It replaces the per-value chart-fact review path that existed pre-#86. Values (when CMASB needs them) enter via `POST /api/v2/missed-metric`, not via this table.
+
+---
+
 ### V1 residual
 
 These tables are live but on a retirement path. See `docs/architecture/v1-table-deprecation-plan.md` for migration roadmaps and difficulty assessments. The V2 pipeline does not read them; they support the legacy candidate-review UI and gold-standard tooling.
@@ -635,11 +683,20 @@ Every fact carries two JSONB payloads:
 
 ### Source types and cross-source confirmation
 
-`source_type` ∈ `html_table`, `ocr_table`, `text`, `chart`. The `DeduplicationStage` annotates facts with `cross_source_confirmed = TRUE` when CHART and TEXT/TABLE facts agree on the same `(metric, period, value)` slot, and records the confirming types in `confirming_source_types` (e.g., `{CHART,TEXT}`).
+`source_type` ∈ `html_table`, `ocr_table`, `text`, `chart`. The `chart` variant is retained in the enum for historical rows and schema compatibility, but the chart-presence pivot (#86) stops emitting new `source_type='chart'` rows — the chart pipeline now writes to `v2_image_assets.detected_metrics` and reviewer adjudications to `v2_image_metric_confirmations`. Any residual rows on main are scheduled for drain in PR #86-4b.
 
-### Chart-bridge facts
+`DeduplicationStage` still annotates text/table facts with `cross_source_confirmed = TRUE` when different text/table sources agree on the same `(metric, period, value)` slot, and records the confirming types in `confirming_source_types` (e.g., `{HTML_TABLE,TEXT}`). The previous CHART↔TEXT/TABLE confirmation branch is dormant post-pivot.
 
-Facts sourced from chart images (`source_type = 'chart'`) use `scope = 'customer_type'` with `cohort_def` storing the tenure-bucket label (e.g., `"1-2 Years"`) when the chart encodes tenure-scoped metrics such as LTV/CAC. These facts bypass `CohortParser` and are not classified as acquisition cohorts. See `src/extraction_v2/stages/chart_fact_bridge.py` for the bridge logic.
+### Chart emission under the presence pivot
+
+Charts produce an image-level *presence* signal, not per-value facts. The chart pipeline path is:
+
+1. `ImageTriageStage` flags an image as `classification='chart'`.
+2. Vision → `chart_data` JSONB on `v2_image_assets`.
+3. `ChartFactBridgeStage` runs `ChartMetricClassifier.classify_all(chart_data, nearby_text)` and writes `[{metric_id, score}, ...]` to `v2_image_assets.detected_metrics` for scores ≥ `PipelineConfig.chart_presence_min_score`. No `v2_metric_facts` row is emitted.
+4. Reviewers adjudicate via `v2_image_metric_confirmations` (accept / reject / correct / add). Values (if needed) come through the manual entry path at `POST /api/v2/missed-metric`.
+
+Gold-standard validation treats chart-native metrics via presence P/R/F1; see `docs/GOLD_STANDARD_SPECIFICATION.md`.
 
 ### Definitions
 
@@ -733,7 +790,7 @@ Note: historical duplicate migration numbers (04/08/09/10/11/12) reflect prior s
 
 ## Known Discrepancies
 
-- **Identity index column count — fix prepared, pending prod apply.** `sql/23_chart_source_dedup.sql` defines `idx_v2_metric_facts_identity_unique` with 9 columns including `source_type`. The live DB index has 8 columns (no `source_type`), likely because a pg_dump schema snapshot taken before sql/23 was applied was used to recreate the DB at some point after the migration was recorded. `sql/33_fix_identity_index.sql` idempotently drops and recreates the index with all 9 columns. See KNOWN_ISSUES.md Issue #13. Once sql/33 is applied to prod this discrepancy is resolved.
+- **Identity index column count — fix prepared, pending prod apply.** `sql/23_chart_source_dedup.sql` defines `idx_v2_metric_facts_identity_unique` with 9 columns including `source_type`. The live DB index has 8 columns (no `source_type`), likely because a pg_dump schema snapshot taken before sql/23 was applied was used to recreate the DB at some point after the migration was recorded. `sql/33_fix_identity_index.sql` idempotently drops and recreates the index with all 9 columns. See [known issue #13](../known-issues/legacy-013-v2-metric-facts-identity-index-drift.md). Once sql/33 is applied to prod this discrepancy is resolved.
 
 ---
 

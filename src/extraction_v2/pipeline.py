@@ -1,7 +1,7 @@
 """
 V2 Extraction Pipeline Orchestrator.
 
-This module orchestrates the 12-stage extraction pipeline, plus an optional
+This module orchestrates the 15-stage extraction pipeline, plus an optional
 Chart Fact Bridge that runs after validation when enable_chart_fact_bridge=True:
 
 1. Ingestion & Parsing         → Segments with XPath locators
@@ -42,9 +42,11 @@ from src.extraction_v2.models import (
     BoundValue,
     Document,
     ImageAsset,
+    ImageClassificationRecord,
     MetricCandidate,
     MetricDefinition,
     MetricFact,
+    MetricPresence,
     Segment,
     Table,
 )
@@ -54,8 +56,10 @@ from src.extraction_v2.stages.deduplication import DeduplicationStage
 from src.extraction_v2.stages.definition_extraction import DefinitionExtractionStage
 from src.extraction_v2.stages.fact_construction import FactConstructionStage
 from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterStage
+from src.extraction_v2.stages.image_classify import ImageClassifyStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.metric_presence import MetricPresenceStage
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
@@ -86,6 +90,7 @@ class PipelineStage(str, Enum):
     IMAGE_TRIAGE = "image_triage"
     OCR_CHART_EXTRACTION = "ocr_chart_extraction"
     CHART_FACT_BRIDGE = "chart_fact_bridge"
+    IMAGE_CLASSIFY = "image_classify"
     CANDIDATE_GENERATION = "candidate_generation"
     VALUE_BINDING = "value_binding"
     FALSE_POSITIVE_FILTER = "false_positive_filter"
@@ -94,6 +99,7 @@ class PipelineStage(str, Enum):
     DEFINITION_EXTRACTION = "definition_extraction"
     DEDUPLICATION = "deduplication"
     VALIDATION = "validation"
+    METRIC_PRESENCE = "metric_presence"
 
 
 @dataclass
@@ -179,6 +185,16 @@ class PipelineConfig:
     chart-sourced text candidates no longer enter the text pipeline. Set True
     for debug/comparison runs only."""
 
+    # Vision-API metric classify (Leg B of tripod plan — parallel signal to
+    # the rule-based detected_metrics that ChartFactBridgeStage emits).
+    enable_metric_classify: bool = False
+    vision_classify_provider: str = "gemini"
+    vision_classify_model: str = "gemini-2.5-flash-lite"
+    vision_classify_threshold: float = 0.5
+    """Confidence floor for deriving a `predicted_relevant` signal downstream.
+    Records below the floor are still persisted with their true confidence —
+    the floor does not gate persistence, only the boolean interpretation."""
+
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
         """Create a config tuned for earnings call transcripts."""
@@ -236,6 +252,8 @@ class PipelineResult:
     total_duration_ms: int
     success: bool
     definitions: list[MetricDefinition] = field(default_factory=list)
+    image_classifications: list[ImageClassificationRecord] = field(default_factory=list)
+    presences: list[MetricPresence] = field(default_factory=list)
     error_message: str | None = None
     context: Any | None = None  # PipelineContext — only set when retain_context=True
 
@@ -322,6 +340,12 @@ class PipelineContext:
     facts: list[MetricFact] = field(default_factory=list)
     deduplicated_facts: list[MetricFact] | None = None  # Populated by Stage 10; None = not yet run
     definitions: list[MetricDefinition] = field(default_factory=list)
+    image_classifications: list[ImageClassificationRecord] = field(
+        default_factory=list
+    )  # Populated by ImageClassifyStage when enabled
+    presences: list[MetricPresence] = field(
+        default_factory=list
+    )  # Populated by MetricPresenceStage (final stage)
 
     # Diagnostics (only populated when config.retain_context=True)
     _pre_filter_bound_values: list[BoundValue] = field(default_factory=list)  # Before FP filter
@@ -361,7 +385,7 @@ class V2Pipeline:
     """
     V2 Extraction Pipeline Orchestrator.
 
-    Coordinates the 12-stage extraction process for a single filing.
+    Coordinates the 15-stage extraction process for a single filing.
     """
 
     def __init__(
@@ -399,6 +423,23 @@ class V2Pipeline:
             self.config.enable_full_page_ocr = True
         if _env_truthy("IMAGE_KEYWORD_PRESCAN_ENABLED"):
             self.config.enable_image_keyword_prescan = True
+        if _env_truthy("ENABLE_METRIC_CLASSIFY"):
+            self.config.enable_metric_classify = True
+        if os.environ.get("VISION_CLASSIFY_PROVIDER"):
+            self.config.vision_classify_provider = os.environ["VISION_CLASSIFY_PROVIDER"]
+        if os.environ.get("VISION_CLASSIFY_MODEL"):
+            self.config.vision_classify_model = os.environ["VISION_CLASSIFY_MODEL"]
+        if os.environ.get("VISION_CLASSIFY_THRESHOLD"):
+            try:
+                self.config.vision_classify_threshold = float(
+                    os.environ["VISION_CLASSIFY_THRESHOLD"]
+                )
+            except ValueError:
+                logger.warning(
+                    "Invalid VISION_CLASSIFY_THRESHOLD=%r; keeping default %s",
+                    os.environ["VISION_CLASSIFY_THRESHOLD"],
+                    self.config.vision_classify_threshold,
+                )
 
     def _check_vision_api_availability(self) -> None:
         """Check if OPENAI_API_KEY is set; disable image/chart extraction if not."""
@@ -449,6 +490,10 @@ class V2Pipeline:
         if self.config.enable_chart_fact_bridge:
             self._stages.append((PipelineStage.CHART_FACT_BRIDGE, ChartFactBridgeStage()))
 
+        # Stage 5.6: Vision-API metric classify (additive to 5.5)
+        if self.config.enable_metric_classify:
+            self._stages.append((PipelineStage.IMAGE_CLASSIFY, ImageClassifyStage()))
+
         # Stage 6: Metric Candidate Generation
         self._stages.append((PipelineStage.CANDIDATE_GENERATION, CandidateGenerationStage()))
 
@@ -472,6 +517,12 @@ class V2Pipeline:
 
         # Stage 11: Validation & Review Routing
         self._stages.append((PipelineStage.VALIDATION, ValidationStage()))
+
+        # Stage 12: Metric Presence — final stage. Aggregates dedup'd facts,
+        # chart detected_metrics, and definitions into per-(doc, metric)
+        # presence records. Primary scoring surface under the text-presence
+        # pivot (see docs/operations/text-pipeline-presence-pivot-plan.md).
+        self._stages.append((PipelineStage.METRIC_PRESENCE, MetricPresenceStage()))
 
     def process(
         self,
@@ -598,6 +649,8 @@ class V2Pipeline:
             total_duration_ms=total_ms,
             success=True,
             definitions=context.definitions,
+            image_classifications=context.image_classifications,
+            presences=context.presences,
             context=context if self.config.retain_context else None,
         )
 
@@ -621,6 +674,7 @@ class V2Pipeline:
             total_duration_ms=total_ms,
             success=False,
             definitions=[],
+            presences=[],
             error_message=error_message,
         )
 

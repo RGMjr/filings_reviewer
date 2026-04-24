@@ -4,7 +4,7 @@
   "_generated_date": "2026-04-23",
   "_seed": 42,
   "_total_labeled_in_db": 7,
-  "_note": "Gold-standard-fixture corpus for the Wave B5 vision bake-off. Seven chart images from two image-rich filings in data/gold_standard/: three Farfetch S-1 charts (cohort-revenue, LTV/CAC) and four Slack S-1 MD&A charts. Run the bake-off with `IMAGE_CACHE_DIR=data/gold_standard python3 scripts/benchmark_vision.py --bakeoff` so LocalFilesystemStorage resolves the storage_key values below. To expand, either re-run `--build-corpus --database-url $TEST_DATABASE_URL` once the DB has v2_image_review_decisions, or hand-add entries here.",
+  "_note": "Gold-standard-fixture corpus for the Wave B5 vision bake-off. Seven chart images from two image-rich filings in data/gold_standard/: three Farfetch S-1 charts (cohort-revenue, cohort GMV, LTV/CAC-by-cohort) and four Slack S-1 MD&A charts (paid-customers timeline, ARR-by-cohort, paid-customers bar, paid-customers >$100K bar). Run the bake-off with `IMAGE_CACHE_DIR=data/gold_standard python3 scripts/benchmark_vision.py --bakeoff` so LocalFilesystemStorage resolves the storage_key values below. `ground_truth_metric_ids` is the hand-annotated primary truth for --mode metric-classify, assigned by visual inspection of each JPG on 2026-04-23. To expand, either re-run `--build-corpus --database-url $TEST_DATABASE_URL` once the DB has v2_image_review_decisions, or hand-add entries here.",
   "corpus": [
     {
       "img_id": "gs-farfetch-g607688g09d00",
@@ -22,7 +22,8 @@
       "cik": "1720990",
       "company_name": "Farfetch Limited",
       "relevance_score": 0.85,
-      "ground_truth_value_ids": [10001, 10100]
+      "ground_truth_value_ids": [10001, 10100],
+      "ground_truth_metric_ids": ["cm_revenue_by_cohort"]
     },
     {
       "img_id": "gs-farfetch-g607688g12o45",
@@ -32,14 +33,15 @@
       "decision": "relevant",
       "chart_type": "chart",
       "rejection_reason": null,
-      "reviewer_notes": "Farfetch S-1 chart; the LTV/CAC tenure chart referenced in Issue #29 context (file naming pattern g6*.jpg is the S-1 MDA figures set).",
+      "reviewer_notes": "Farfetch S-1 chart; marketplace GMV (USDm) stacked-area cohort parfait 2010-2017 with 44.4% New / 55.6% Existing call-outs. Despite Issue #29 context suggesting LTV/CAC this is GMV-by-cohort per visual inspection (2026-04-23).",
       "storage_key": "Farfetch_Limited/g607688g12o45.jpg",
       "accession_number": "",
       "filing_key": "",
       "filename": "g607688g12o45.jpg",
       "cik": "1720990",
       "company_name": "Farfetch Limited",
-      "relevance_score": 0.85
+      "relevance_score": 0.85,
+      "ground_truth_metric_ids": ["cm_transactions_by_cohort"]
     },
     {
       "img_id": "gs-farfetch-g607688g54x53",
@@ -49,14 +51,15 @@
       "decision": "relevant",
       "chart_type": "chart",
       "rejection_reason": null,
-      "reviewer_notes": "Farfetch S-1 chart; third MDA figure (gross-margin-by-cohort or similar per Issue #20 context).",
+      "reviewer_notes": "Farfetch S-1 chart; LTV/CAC ratios by cohort (2015, 2016, 2017) at 6mo / 12mo / 24mo tenure — 1.42x / 1.53x / 1.77x / 1.81x / 2.04x / 2.71x. (Corrects earlier Issue #20 gross-margin-by-cohort guess per visual inspection 2026-04-23.)",
       "storage_key": "Farfetch_Limited/g607688g54x53.jpg",
       "accession_number": "",
       "filing_key": "",
       "filename": "g607688g54x53.jpg",
       "cik": "1720990",
       "company_name": "Farfetch Limited",
-      "relevance_score": 0.85
+      "relevance_score": 0.85,
+      "ground_truth_metric_ids": ["cm_ltv_to_cac_ratio_by_cohort"]
     },
     {
       "img_id": "gs-slack-mda1c",
@@ -66,14 +69,15 @@
       "decision": "relevant",
       "chart_type": "chart",
       "rejection_reason": null,
-      "reviewer_notes": "Slack S-1 MD&A figure; ARR / cohort revenue visualization (extracted_values.csv row 10000 references 'chart' as the value for cm_arr).",
+      "reviewer_notes": "Slack S-1 MD&A 'Product and Partnerships Timeline' — paid-customers line chart (FY2015-FY2020) overlaid with product/partnership milestones. Y-axis labeled 'Paid Customers'. Earlier extracted_values.csv hook to cm_arr is a taxonomy drift — visual inspection (2026-04-23) maps to a customer-count metric.",
       "storage_key": "Slack_Technologies/mda1c.jpg",
       "accession_number": "",
       "filing_key": "",
       "filename": "mda1c.jpg",
       "cik": "1764925",
       "company_name": "Slack Technologies",
-      "relevance_score": 0.85
+      "relevance_score": 0.85,
+      "ground_truth_metric_ids": ["cm_customers_period_end"]
     },
     {
       "img_id": "gs-slack-mdaa2",
@@ -83,14 +87,15 @@
       "decision": "relevant",
       "chart_type": "chart",
       "rejection_reason": null,
-      "reviewer_notes": "Slack S-1 MD&A figure #2.",
+      "reviewer_notes": "Slack S-1 MD&A 'Annual Recurring Revenue (ARR) by Annual Cohort through January 31, 2019' — layer-cake cohort parfait, FY2015-FY2019 cohorts stacked. Primary signal: ARR by cohort (cm_revenue_by_cohort); also carries cm_arr as the aggregate metric.",
       "storage_key": "Slack_Technologies/mdaa2.jpg",
       "accession_number": "",
       "filing_key": "",
       "filename": "mdaa2.jpg",
       "cik": "1764925",
       "company_name": "Slack Technologies",
-      "relevance_score": 0.85
+      "relevance_score": 0.85,
+      "ground_truth_metric_ids": ["cm_revenue_by_cohort", "cm_arr"]
     },
     {
       "img_id": "gs-slack-mdaa3",
@@ -100,14 +105,15 @@
       "decision": "relevant",
       "chart_type": "chart",
       "rejection_reason": null,
-      "reviewer_notes": "Slack S-1 MD&A figure #3.",
+      "reviewer_notes": "Slack S-1 MD&A 'Paid Customers' — three-bar chart FY2017/2018/2019 with counts 37,000 / 59,000 / 88,000 and YoY Growth +59% / +49% call-outs. Total paid customers period-end (Tier 2: cm_customers_period_end).",
       "storage_key": "Slack_Technologies/mdaa3.jpg",
       "accession_number": "",
       "filing_key": "",
       "filename": "mdaa3.jpg",
       "cik": "1764925",
       "company_name": "Slack Technologies",
-      "relevance_score": 0.85
+      "relevance_score": 0.85,
+      "ground_truth_metric_ids": ["cm_customers_period_end"]
     },
     {
       "img_id": "gs-slack-mdaa4",
@@ -117,14 +123,15 @@
       "decision": "relevant",
       "chart_type": "chart",
       "rejection_reason": null,
-      "reviewer_notes": "Slack S-1 MD&A figure #4.",
+      "reviewer_notes": "Slack S-1 MD&A 'Paid Customers > $100,000' — three-bar chart FY2017/2018/2019 with counts 135 / 298 / 575 and YoY Growth +121% / +93% call-outs. Large-customer threshold metric (Tier 1: cm_large_customers_period_end).",
       "storage_key": "Slack_Technologies/mdaa4.jpg",
       "accession_number": "",
       "filing_key": "",
       "filename": "mdaa4.jpg",
       "cik": "1764925",
       "company_name": "Slack Technologies",
-      "relevance_score": 0.85
+      "relevance_score": 0.85,
+      "ground_truth_metric_ids": ["cm_large_customers_period_end"]
     }
   ]
 }

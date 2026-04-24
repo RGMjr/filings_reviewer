@@ -456,6 +456,7 @@ def _register_context_processors(app: Flask) -> None:
         return {
             "app_name": "CMASB Disclosures Review",
             "app_version": "0.5.0",
+            "metabase_url": os.environ.get("METABASE_URL", "https://filings-metabase.onrender.com"),
         }
 
 

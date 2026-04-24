@@ -24,7 +24,7 @@ This document specifies the architecture and implementation of the metric extrac
 
 ## V2 Pipeline Overview
 
-The V2 pipeline (`src/extraction_v2/`) implements a 14-stage extraction workflow. It is the production pipeline for all SEC filing, transcript, and presentation extraction.
+The V2 pipeline (`src/extraction_v2/`) implements a 15-stage extraction workflow. It is the production pipeline for all SEC filing, transcript, and presentation extraction.
 
 **Module:** `src/extraction_v2/pipeline.py`
 **Class:** `V2Pipeline`
@@ -152,53 +152,35 @@ The V2 pipeline (`src/extraction_v2/`) implements a 14-stage extraction workflow
 
 ---
 
-## Chart Fact Bridge
+## Chart Fact Bridge — Metric-Presence Emission
 
-The `ChartFactBridgeStage` runs after Stage 13 (Validation) when `enable_chart_fact_bridge=True` in `PipelineConfig`. It converts raw `ChartData` outputs from Stage 5 (OCR & Chart Extraction) into `MetricFact` objects using the `CohortParser` and metric-specific regime logic, then merges them into the main fact list before persistence.
+The `ChartFactBridgeStage` runs after Stage 13 (Validation) and emits image-level *metric-presence* records. For each processed image with `chart_data` above the vision-confidence threshold, it calls `ChartMetricClassifier.classify_all(chart, nearby_text)` and writes the resulting `[{metric_id, score}, ...]` list to `v2_image_assets.detected_metrics` (JSONB, default `[]`) for scores ≥ `PipelineConfig.chart_presence_min_score`.
 
-### Supported Metrics (5 total)
+Under the chart-presence pivot (#86, 2026-04-23) the stage does **not** emit per-value `MetricFact` rows. Reviewers adjudicate detections via `v2_image_metric_confirmations` (accept / reject / correct / add); values, when CMASB needs them, come through the manual entry path (`POST /api/v2/missed-metric`).
 
-| Metric | Coverage phase |
-|--------|---------------|
-| `cm_balance_by_cohort` | Phase 1 (2026-04-16) |
-| `cm_gross_margin_by_cohort` | Phase 1 (2026-04-16) |
-| `cm_revenue_by_cohort` | Phase 2 (2026-04-16) |
-| `cm_transactions_by_cohort` | Phase 2 (2026-04-16) |
-| `cm_ltv_to_cac_ratio` | Phase 2 (2026-04-16) |
+### Classifier-supported metrics
 
-### Extraction Regimes
+The classifier currently scores against these metric ids (see `_SUPPORTED_METRICS` in `src/extraction_v2/chart/metric_classifier.py`):
 
-| Regime | Confidence | Trigger |
-|--------|-----------|---------|
-| series-year | 0.85 | Series names contain 4-digit year (cohort vintage) |
-| elapsed-period | 0.80 | X-axis labels match "Year N" / "Month N" format |
-| annotations-only | 0.55 | Value source is chart annotations only; `requires_review=True` |
+- `cm_balance_by_cohort`
+- `cm_gross_margin_by_cohort`
+- `cm_revenue_by_cohort`
+- `cm_transactions_by_cohort`
+- `cm_ltv_to_cac_ratio`
 
-### Hallucination Guards (Phase 3)
+New metrics join by extending `_SUPPORTED_METRICS` and tuning cohort / metric gates. No changes to the bridge stage itself are needed per-metric.
 
-Five guards run inside `ChartFactBridgeStage` to prevent low-quality chart extractions from reaching the fact list:
-
-| Guard | Description |
-|-------|-------------|
-| **Guard 1 — Image confidence gate** | Skips any image whose `image.confidence < chart_image_min_confidence` (default 0.6). Images with weak vision-model confidence are discarded before any bridging attempt. |
-| **Guard 2 — Label-required gate** | In the LTV/CAC and cohort branches, skips any `DataPoint` whose `label is None`. Only points with explicit data labels are extracted; unlabeled points are not interpolated from axes. |
-| **Guard 3 — Axis-range sanity** | Rejects points where `abs(y) > labeled_max * chart_axis_range_multiplier` (default 10×). Eliminates outlier extractions caused by scale misreads or OCR artifacts. |
-| **Guard 4 — Cohort-year sanity** | Rejects cohort periods whose `period_end.year > filing_date.year + 1`. Prevents future-dated cohorts produced by label misparse. |
-| **Guard 5 — Fact review threshold** | Sets `requires_review=True` on any fact whose `fact.confidence < chart_fact_review_threshold` (default 0.80). These facts enter the review queue rather than auto-accepting. |
-
-### Config Knobs (Phase 3)
-
-Three new `PipelineConfig` fields control the Phase 3 guards:
+### Config
 
 | Field | Default | Purpose |
 |-------|---------|---------|
-| `chart_image_min_confidence` | `0.6` | Skip images below this vision confidence score (Guard 1) |
-| `chart_fact_review_threshold` | `0.80` | Flag facts for human review below this confidence (Guard 5) |
-| `chart_axis_range_multiplier` | `10.0` | Reject outlier data points whose absolute value exceeds N× the labeled max (Guard 3) |
+| `chart_image_min_confidence` | `0.6` | Skip images below this vision-model confidence score |
+| `chart_presence_min_score` | `0.5` | Minimum classifier score to emit a `(metric_id, score)` pair into `detected_metrics` |
+| `enable_chart_candidate_emission` | `False` | Gates `_scan_chart` in `candidate_generation.py`. Leave `False`; re-enabling resurrects chart-annotation false positives. |
 
-### LTV/CAC Bucket Bypass
+### Retired mechanics (pre-#86)
 
-`cm_ltv_to_cac_ratio` bypasses `CohortParser` entirely. Series names are treated as tenure bucket labels (e.g., "1-2 Years") and facts are written with `scope=CUSTOMER_TYPE`. See the data-model doc for the `CUSTOMER_TYPE` scope semantics.
+The per-value value-emission path — `CohortParser` regime dispatch, `unit_inference`, Phase 3 hallucination guards (label-required / axis-range / cohort-year / fact-review-threshold), LTV/CAC tenure-bucket bypass into `MetricFact` rows — is no longer in use. The `CohortParser` class was removed in PR 4a; historical references to its regimes (`series-year`, `elapsed-period`, `annotations-only`, `customer-type`) may appear in resolved known-issues fragments but do not reflect current pipeline behavior.
 
 ---
 
@@ -236,7 +218,7 @@ Three new `PipelineConfig` fields control the Phase 3 guards:
 ## Key Files
 
 - **`src/extraction_v2/models.py`** — Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
-- **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 14-stage workflow and configuration
+- **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 15-stage workflow and configuration
 - **`src/extraction_v2/persistence.py`** — Database write layer (V2PersistenceAdapter)
 - **`src/extraction_v2/table_reconstructor.py`** — Table reconstruction with colspan/rowspan resolution
 - **`src/extraction_v2/stages/ingestion.py`** — HTML parsing with XPath locators and segment extraction
@@ -476,7 +458,7 @@ class SegmentEnricher:
     def __init__(self, weights: FormulaWeights | None = None) -> None:
         """
         Initialize enricher with optional custom formula weights.
-        
+
         Args:
             weights: Optional FormulaWeights configuration. If None, uses
                      FormulaWeights.default() which matches production behavior.

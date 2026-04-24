@@ -42,6 +42,7 @@ def make_entry(
     period_start: date | None = None,
     period_end: date | None = None,
     period: str = "",
+    segment_type: str = "text",
 ) -> GoldStandardEntry:
     """Build a GoldStandardEntry with sensible defaults."""
     return GoldStandardEntry(
@@ -55,7 +56,7 @@ def make_entry(
         period=period,
         definition="",
         quote_context="",
-        segment_type="text",
+        segment_type=segment_type,
         is_definition_only=is_definition_only,
         value_context="",
         detection_difficulty="easy",
@@ -1991,6 +1992,7 @@ class TestDiagnosefalseNegative:
     def test_retain_context_false_no_context(self) -> None:
         """With retain_context=False, PipelineResult.context is None."""
         from src.extraction_v2.models import Document
+
         result = PipelineResult(
             document=Document(),
             facts=[],
@@ -2050,12 +2052,16 @@ class TestPrintFNDiagnostics:
         diag1 = FNDiagnostic(
             entry=entry1,
             company_name="Co1",
-            root_cause=FNRootCause(category="no_candidate", detail="x", stage="candidate_generation"),
+            root_cause=FNRootCause(
+                category="no_candidate", detail="x", stage="candidate_generation"
+            ),
         )
         diag2 = FNDiagnostic(
             entry=entry2,
             company_name="Co1",
-            root_cause=FNRootCause(category="fp_filtered", detail="y", stage="false_positive_filter"),
+            root_cause=FNRootCause(
+                category="fp_filtered", detail="y", stage="false_positive_filter"
+            ),
         )
         result = ValidationResult(
             company_name="Co1",
@@ -2190,9 +2196,7 @@ class TestValidateAllSubsetFlags:
         companies = ["A", "B", "C", "D", "E"]
         mock_load.return_value = _make_stub_entries(companies)
         mock_find_path.return_value = Path("/fake/filing.htm")
-        mock_validate_filing.side_effect = [
-            _make_validation_result(name) for name in companies[:2]
-        ]
+        mock_validate_filing.side_effect = [_make_validation_result(name) for name in companies[:2]]
 
         validator = V2GoldStandardValidator(gold_standard_path="/dev/null")
         results = validator.validate_all(limit=2)
@@ -2213,24 +2217,18 @@ class TestValidateAllSubsetFlags:
         companies = ["A", "B", "C", "D", "E"]
         mock_load.return_value = _make_stub_entries(companies)
         mock_find_path.return_value = Path("/fake/filing.htm")
-        mock_validate_filing.side_effect = [
-            _make_validation_result(name) for name in ["A", "B"]
-        ]
+        mock_validate_filing.side_effect = [_make_validation_result(name) for name in ["A", "B"]]
 
         validator = V2GoldStandardValidator(gold_standard_path="/dev/null")
         validator.validate_all(companies=["A", "B", "C"], limit=2)
 
         assert mock_validate_filing.call_count == 2
         # Both calls must be from within {A, B, C}
-        called_names = {
-            call.args[0] for call in mock_validate_filing.call_args_list
-        }
+        called_names = {call.args[0] for call in mock_validate_filing.call_args_list}
         assert called_names <= {"A", "B", "C"}
 
     @patch("src.gold_standard.v2_validator.V2GoldStandardValidator.load_gold_standard")
-    def test_validate_all_unknown_company_raises(
-        self, mock_load: MagicMock
-    ) -> None:
+    def test_validate_all_unknown_company_raises(self, mock_load: MagicMock) -> None:
         """Requesting a company name not in the CSV raises ValueError with valid names."""
         mock_load.return_value = _make_stub_entries(["RealCo", "AnotherCo"])
 
@@ -2257,9 +2255,7 @@ class TestRunValidationGuardsAndWorkers:
             run_validation(update_baseline=True, limit=3)
 
     @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
-    def test_run_validation_threads_workers(
-        self, mock_validator_cls: MagicMock
-    ) -> None:
+    def test_run_validation_threads_workers(self, mock_validator_cls: MagicMock) -> None:
         """run_validation(max_workers=4) passes max_workers=4 to validate_all."""
         mock_instance = mock_validator_cls.return_value
         mock_instance.validate_all.return_value = []
@@ -2316,9 +2312,7 @@ class TestStageTimingSummary:
         captured = capsys.readouterr()
         assert captured.out == ""
 
-    def test_all_results_missing_timings_silent(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_all_results_missing_timings_silent(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Results with empty stage_timings → silent return."""
         result = _make_validation_result("TestCo")
         V2GoldStandardValidator.print_stage_timing_summary([result])
@@ -2354,9 +2348,7 @@ class TestStageTimingSummary:
 class TestDeriveChartNativeMetrics:
     """Tests for _derive_chart_native_metrics()."""
 
-    def _write_rows(
-        self, path: Path, rows: list[tuple[str, str]]
-    ) -> None:
+    def _write_rows(self, path: Path, rows: list[tuple[str, str]]) -> None:
         """Write (metric_name, segment_type) rows to a gold standard CSV."""
         full_rows = [
             {
@@ -2384,18 +2376,14 @@ class TestDeriveChartNativeMetrics:
     def test_classifies_pure_chart_metric(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "gs.csv"
         # 5 rows all chart → chart-native
-        self._write_rows(
-            csv_path, [("cm_balance_by_cohort", "chart")] * 5
-        )
+        self._write_rows(csv_path, [("cm_balance_by_cohort", "chart")] * 5)
         native = _derive_chart_native_metrics(csv_path)
         assert "cm_balance_by_cohort" in native
 
     def test_borderline_metric_excluded(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "gs.csv"
         # 10 rows: 6 chart, 4 text → 60% chart, below 80% threshold
-        rows = [("cm_revenue_by_cohort", "chart")] * 6 + [
-            ("cm_revenue_by_cohort", "text")
-        ] * 4
+        rows = [("cm_revenue_by_cohort", "chart")] * 6 + [("cm_revenue_by_cohort", "text")] * 4
         self._write_rows(csv_path, rows)
         native = _derive_chart_native_metrics(csv_path)
         assert "cm_revenue_by_cohort" not in native
@@ -2422,50 +2410,45 @@ class TestCrossSourceGate:
         # Build a gold standard where cm_balance_by_cohort is chart-native
         # and cm_arr is text-derivable.
         csv_path = tmp_path / "gs.csv"
-        rows = (
-            [
-                {
-                    "Document URL": "https://sec.gov/x",
-                    "Company": "TestCo",
-                    "Standard Metric Name": "cm_balance_by_cohort",
-                    "Name in the text": "",
-                    "Raw value": "1",
-                    "Scaled value": "",
-                    "Scale/unit": "",
-                    "Period": "",
-                    "Definition": "",
-                    "Quote/context": "",
-                    "segment_type": "chart",
-                    "is_definition_only": "",
-                    "value_context": "",
-                    "detection_difficulty": "easy",
-                    "period_start": "",
-                    "period_end": "",
-                }
-            ]
-            * 5
-            + [
-                {
-                    "Document URL": "https://sec.gov/y",
-                    "Company": "TestCo",
-                    "Standard Metric Name": "cm_arr",
-                    "Name in the text": "",
-                    "Raw value": "1",
-                    "Scaled value": "",
-                    "Scale/unit": "",
-                    "Period": "",
-                    "Definition": "",
-                    "Quote/context": "",
-                    "segment_type": "text",
-                    "is_definition_only": "",
-                    "value_context": "",
-                    "detection_difficulty": "easy",
-                    "period_start": "",
-                    "period_end": "",
-                }
-            ]
-            * 5
-        )
+        rows = [
+            {
+                "Document URL": "https://sec.gov/x",
+                "Company": "TestCo",
+                "Standard Metric Name": "cm_balance_by_cohort",
+                "Name in the text": "",
+                "Raw value": "1",
+                "Scaled value": "",
+                "Scale/unit": "",
+                "Period": "",
+                "Definition": "",
+                "Quote/context": "",
+                "segment_type": "chart",
+                "is_definition_only": "",
+                "value_context": "",
+                "detection_difficulty": "easy",
+                "period_start": "",
+                "period_end": "",
+            }
+        ] * 5 + [
+            {
+                "Document URL": "https://sec.gov/y",
+                "Company": "TestCo",
+                "Standard Metric Name": "cm_arr",
+                "Name in the text": "",
+                "Raw value": "1",
+                "Scaled value": "",
+                "Scale/unit": "",
+                "Period": "",
+                "Definition": "",
+                "Quote/context": "",
+                "segment_type": "text",
+                "is_definition_only": "",
+                "value_context": "",
+                "detection_difficulty": "easy",
+                "period_start": "",
+                "period_end": "",
+            }
+        ] * 5
         write_gold_standard_csv(csv_path, rows)
 
         # Configure a validator that uses the synthetic CSV for chart-native
@@ -2517,9 +2500,7 @@ class TestCrossSourceGate:
         assert result.chart_facts_total == 5
         assert result.chart_facts_text_derivable_total == 3
         assert result.chart_facts_text_derivable_cross_confirmed == 1
-        assert result.chart_facts_by_chart_native_metric == {
-            "cm_balance_by_cohort": 2
-        }
+        assert result.chart_facts_by_chart_native_metric == {"cm_balance_by_cohort": 2}
 
     def test_gate_warning_respects_text_derivable_threshold(
         self, capsys: pytest.CaptureFixture[str]
@@ -2564,3 +2545,288 @@ class TestCrossSourceGate:
         assert "Chart-native metrics" in out_b
         assert "cm_balance_by_cohort: 10 chart facts" in out_b
         assert "WARNING" not in out_b
+
+
+# =============================================================================
+# Chart-presence pivot (PR 2 of #86 series)
+# =============================================================================
+
+
+class TestChartPresenceNormalization:
+    """Q2a: segment_type='chart' entries are presence-only regardless of raw_value."""
+
+    def test_chart_segment_with_literal_chart_value_has_no_numeric_value(self) -> None:
+        entry = make_entry(raw_value="chart", segment_type="chart")
+        assert entry.has_numeric_value is False
+        assert entry.is_chart_presence_entry is True
+
+    def test_chart_segment_with_numeric_raw_value_forced_to_none(self) -> None:
+        # Covers the 3 Farfetch LTV/CAC rows with numeric raw_values like "3.5x".
+        entry = make_entry(raw_value="3.5", segment_type="chart")
+        assert entry.has_numeric_value is False
+        assert entry.is_chart_presence_entry is True
+
+    def test_text_segment_with_numeric_still_has_value(self) -> None:
+        entry = make_entry(raw_value="1000", segment_type="text")
+        assert entry.has_numeric_value is True
+        assert entry.is_chart_presence_entry is False
+
+    def test_table_segment_with_numeric_still_has_value(self) -> None:
+        entry = make_entry(raw_value="1000", segment_type="table")
+        assert entry.has_numeric_value is True
+        assert entry.is_chart_presence_entry is False
+
+
+def _make_validator_no_pipeline() -> V2GoldStandardValidator:
+    """Build a validator instance without triggering pipeline construction."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as tf:
+        # Minimal CSV header — body doesn't matter for the helpers under test.
+        tf.write(
+            "document_url,company_name,metric_id,name_in_text,raw_value,scaled_value,"
+            "scale_unit,period,definition,quote_context,segment_type,is_definition_only,"
+            "value_context,detection_difficulty,period_start,period_end\n"
+        )
+        path = Path(tf.name)
+    try:
+        return V2GoldStandardValidator(gold_standard_path=path)
+    finally:
+        path.unlink(missing_ok=True)
+
+
+class TestChartGoldPresenceSet:
+    """_chart_gold_presence_set collects metric_ids from chart-segment gold rows."""
+
+    def test_returns_chart_metric_ids_only(self) -> None:
+        validator = _make_validator_no_pipeline()
+        entries = [
+            make_entry(metric_id="cm_revenue_by_cohort", segment_type="chart", raw_value="chart"),
+            make_entry(metric_id="cm_dau", segment_type="text", raw_value="1000"),
+            make_entry(metric_id="cm_balance_by_cohort", segment_type="chart", raw_value="chart"),
+        ]
+
+        result = validator._chart_gold_presence_set(entries)
+
+        assert result == {"cm_revenue_by_cohort", "cm_balance_by_cohort"}
+
+    def test_excludes_not_a_customer_metric(self) -> None:
+        validator = _make_validator_no_pipeline()
+        entries = [
+            make_entry(
+                metric_id="cm_not_a_customer_metric", segment_type="chart", raw_value="chart"
+            ),
+            make_entry(metric_id="cm_revenue_by_cohort", segment_type="chart", raw_value="chart"),
+        ]
+
+        result = validator._chart_gold_presence_set(entries)
+
+        assert result == {"cm_revenue_by_cohort"}
+
+
+class TestChartPresenceSetFromContext:
+    """_chart_presence_set_from_context unions detected_metrics from all images, above threshold."""
+
+    def test_union_across_images_above_threshold(self) -> None:
+        from src.extraction_v2.models import DetectedMetric, ImageAsset
+
+        validator = _make_validator_no_pipeline()
+        context = MagicMock(spec=PipelineContext)
+        context.config = PipelineConfig()
+        img1 = ImageAsset(img_id="img1")
+        img1.detected_metrics = [
+            DetectedMetric(metric_id="cm_revenue_by_cohort", score=0.9),
+            DetectedMetric(metric_id="cm_balance_by_cohort", score=0.3),  # below default 0.5
+        ]
+        img2 = ImageAsset(img_id="img2")
+        img2.detected_metrics = [
+            DetectedMetric(metric_id="cm_gross_margin_by_cohort", score=0.7),
+            DetectedMetric(metric_id="cm_revenue_by_cohort", score=0.6),  # dup
+        ]
+        context.images = [img1, img2]
+
+        result = validator._chart_presence_set_from_context(context)
+
+        assert result == {"cm_revenue_by_cohort", "cm_gross_margin_by_cohort"}
+
+    def test_threshold_override(self) -> None:
+        from src.extraction_v2.models import DetectedMetric, ImageAsset
+
+        validator = _make_validator_no_pipeline()
+        context = MagicMock(spec=PipelineContext)
+        context.config = PipelineConfig()
+        img = ImageAsset(img_id="img1")
+        img.detected_metrics = [
+            DetectedMetric(metric_id="cm_revenue_by_cohort", score=0.4),
+        ]
+        context.images = [img]
+
+        # Default threshold (0.5) excludes; explicit lower threshold includes.
+        assert validator._chart_presence_set_from_context(context) == set()
+        assert validator._chart_presence_set_from_context(context, threshold=0.3) == {
+            "cm_revenue_by_cohort"
+        }
+
+
+class TestValidationResultPresenceProperties:
+    """Presence F1 is the harmonic mean of presence_precision and presence_recall."""
+
+    def test_presence_f1_perfect(self) -> None:
+        result = ValidationResult(
+            company_name="X",
+            filing_path="/tmp/x.html",
+            total_expected=0,
+            matched=0,
+            missed=0,
+            extra=0,
+            true_positives=0,
+            false_positives=0,
+            false_negatives=0,
+            presence_tp=5,
+            presence_fp=0,
+            presence_fn=0,
+        )
+        assert result.presence_precision == 1.0
+        assert result.presence_recall == 1.0
+        assert result.presence_f1 == 1.0
+
+    def test_presence_f1_zero_when_no_evidence(self) -> None:
+        result = ValidationResult(
+            company_name="X",
+            filing_path="/tmp/x.html",
+            total_expected=0,
+            matched=0,
+            missed=0,
+            extra=0,
+            true_positives=0,
+            false_positives=0,
+            false_negatives=0,
+        )
+        assert result.presence_f1 == 0.0
+
+    def test_presence_f1_mixed(self) -> None:
+        # TP=4, FP=1, FN=1 → P=0.8, R=0.8, F1=0.8
+        result = ValidationResult(
+            company_name="X",
+            filing_path="/tmp/x.html",
+            total_expected=0,
+            matched=0,
+            missed=0,
+            extra=0,
+            true_positives=0,
+            false_positives=0,
+            false_negatives=0,
+            presence_tp=4,
+            presence_fp=1,
+            presence_fn=1,
+        )
+        assert result.presence_precision == pytest.approx(0.8)
+        assert result.presence_recall == pytest.approx(0.8)
+        assert result.presence_f1 == pytest.approx(0.8)
+
+
+class TestAggregateMetricsPresence:
+    """AggregateMetrics sums presence counts across filings and to_baseline_metrics passes presence_f1."""
+
+    def test_presence_f1_propagates_to_baseline_metrics_when_evaluated(self) -> None:
+        agg = AggregateMetrics(
+            precision=0.9,
+            recall=0.8,
+            f1=0.85,
+            total_true_positives=100,
+            total_false_positives=10,
+            total_false_negatives=25,
+            total_presence_tp=4,
+            total_presence_fp=1,
+            total_presence_fn=1,
+        )
+        baseline = agg.to_baseline_metrics(description="test")
+        assert baseline.presence_f1 == pytest.approx(0.8)
+
+    def test_presence_f1_omitted_when_no_presence_rows(self) -> None:
+        agg = AggregateMetrics(
+            precision=0.9,
+            recall=0.8,
+            f1=0.85,
+            total_true_positives=100,
+            total_false_positives=10,
+            total_false_negatives=25,
+            # No presence rows — presence_f1 should be None on baseline.
+        )
+        baseline = agg.to_baseline_metrics(description="test")
+        assert baseline.presence_f1 is None
+
+
+class TestBaselineMetricsPresenceF1Serialization:
+    """BaselineMetrics round-trips presence_f1 through JSON and tolerates absence."""
+
+    def test_round_trip_with_presence_f1(self) -> None:
+        original = BaselineMetrics(
+            baseline_date="2026-04-23T00:00:00+00:00",
+            description="test",
+            overall=MetricScores(precision=0.9, recall=0.8, f1=0.85),
+            by_company={},
+            presence_f1=0.72,
+        )
+        data = original.to_dict()
+        assert data["presence_f1"] == 0.72
+        restored = BaselineMetrics.from_dict(data)
+        assert restored.presence_f1 == 0.72
+
+    def test_tolerates_missing_presence_f1_on_legacy_baseline(self) -> None:
+        legacy_data = {
+            "baseline_date": "2026-01-01T00:00:00+00:00",
+            "description": "legacy",
+            "overall": {"precision": 0.9, "recall": 0.8, "f1": 0.85},
+            "by_company": {},
+            # No presence_f1 key.
+        }
+        restored = BaselineMetrics.from_dict(legacy_data)
+        assert restored.presence_f1 is None
+        # And re-serializing does not invent the field.
+        assert "presence_f1" not in restored.to_dict()
+
+
+class TestCompareBaselinePresenceRegression:
+    """compare_to_baseline detects presence_f1 regression and tolerates absence."""
+
+    def _make_baseline(self, f1: float, presence_f1: float | None = None) -> BaselineMetrics:
+        return BaselineMetrics(
+            baseline_date="2026-04-23T00:00:00+00:00",
+            description=None,
+            overall=MetricScores(precision=f1, recall=f1, f1=f1),
+            by_company={},
+            presence_f1=presence_f1,
+        )
+
+    def test_presence_f1_regression_flagged(self) -> None:
+        from src.gold_standard.baseline import compare_to_baseline
+
+        baseline = self._make_baseline(0.85, presence_f1=0.80)
+        current = self._make_baseline(0.85, presence_f1=0.60)
+
+        result = compare_to_baseline(current, baseline)
+
+        assert "presence_f1" in result.regressed_metrics
+        assert result.has_regression is True
+        assert result.presence_f1_delta == pytest.approx(-0.20)
+
+    def test_presence_f1_improvement_not_flagged(self) -> None:
+        from src.gold_standard.baseline import compare_to_baseline
+
+        baseline = self._make_baseline(0.85, presence_f1=0.60)
+        current = self._make_baseline(0.85, presence_f1=0.80)
+
+        result = compare_to_baseline(current, baseline)
+
+        assert "presence_f1" not in result.regressed_metrics
+        assert result.presence_f1_delta == pytest.approx(0.20)
+
+    def test_legacy_baseline_without_presence_f1_skipped(self) -> None:
+        from src.gold_standard.baseline import compare_to_baseline
+
+        baseline = self._make_baseline(0.85, presence_f1=None)
+        current = self._make_baseline(0.85, presence_f1=0.60)
+
+        result = compare_to_baseline(current, baseline)
+
+        assert "presence_f1" not in result.regressed_metrics
+        assert result.presence_f1_delta is None

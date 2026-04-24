@@ -79,7 +79,7 @@ Writers (2):
 
 ## Migration history
 
-Issue #34 in `docs/KNOWN_ISSUES.md`:
+[Known issue #34](../known-issues/legacy-034-v2-image-assets-file-path-rooted-in-tmpdir-purged-by-os.md):
 
 - **Phase 1 (commit `cf0c756`)** — Moved local cache from TMPDIR to
   `<repo>/data/image_cache/`; introduced `image_cache_dir()` helper; added

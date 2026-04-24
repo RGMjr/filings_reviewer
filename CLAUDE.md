@@ -26,7 +26,7 @@ Local guards (`.claude/settings.json`): `git push origin main`, `git push --forc
 
 See `docs/development/CONTRIBUTING.md` for the full flow.
 
-**Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 3 eligible issues (autonomy `safe`, status `open` or `partially-resolved`) from `docs/known-issues/` fragment frontmatter (rollup `docs/KNOWN_ISSUES.md` is auto-generated — do NOT edit directly), auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Ships paused via `.claude/sweep.pause`. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs.
+**Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 5 eligible issues (autonomy `safe`, status `open` or `partially-resolved`) from `docs/known-issues/` fragment frontmatter, auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Ships paused via `.claude/sweep.pause`. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs. The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run (see `.github/workflows/ci.yml` job `known-issues-artifact`).
 
 ## Key Commands
 
@@ -41,7 +41,7 @@ mypy src/review/ --strict          # Type checking
 
 ## Database
 
-PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_tables`, `v2_audit_log`, `v2_ingest_batches`, `v2_ingest_batch_filings`. Shared: `companies`, `filings`. V1 review tables (`review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions`, `learned_patterns`, `review_audit_log`) are retired — drop migration at `sql/31_drop_v1_review_tables.sql`. Schema files in `sql/` (00-40). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_image_metric_confirmations`, `v2_image_classifications`, `v2_tables`, `v2_audit_log`, `v2_ingest_batches`, `v2_ingest_batch_filings`. Shared: `companies`, `filings`. V1 review tables (`review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions`, `learned_patterns`, `review_audit_log`) are retired — drop migration at `sql/31_drop_v1_review_tables.sql`. Schema files in `sql/` (00-45). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 Image bytes live in Cloudflare R2 (prod) / local filesystem (dev) via `src/infra/image_storage.py`, NOT in Postgres. `v2_image_assets.file_path` stores an opaque storage key (e.g. `pipeline/<cik>/<accession>/<filename>`) — see `.claude/rules/infrastructure.md#image-storage`.
 
@@ -78,7 +78,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 1. **Rule-based first, LLM second**: Keyword matching before expensive LLM calls
 2. **Provenance tracking**: Every extracted value links to source segment
 3. **Idempotent operations**: Re-running any stage is safe (upserts)
-4. **Conservative classification**: "Require BOTH" signals to minimize false positives
+4. **Conservative classification**: "Require BOTH" signals to minimize false positives. Chart signals are presence-only — the chart pipeline writes `(metric_id, score)` pairs to `v2_image_assets.detected_metrics`; reviewers confirm metric coverage per image via `v2_image_metric_confirmations` (accept / reject / correct / add). Values, when CMASB needs them, come through the existing manual entry path (`POST /api/v2/missed-metric`). The pipeline does not emit per-value chart `v2_metric_facts` rows (chart-presence pivot, #86, 2026-04-23).
 5. **Image pipeline is active**: Do not delete image-processing code (`src/llm/vision_client.py`, `src/extraction_v2/` image/OCR stages, `src/web/routes/review_unified.py` + `api_unified.py` image endpoints, image scripts). The image review system is complete and in use.
 6. **Reviewed-filing guard**: Re-extraction of a filing with human review decisions requires explicit `force=True` / `--force-reextract`. Enforced in `V2PersistenceAdapter._persist_facts_in_tx`; raises `ReviewedFilingError` otherwise. Prevents silent CASCADE-destruction of reviewer work via `v2_review_decisions.fact_id ON DELETE CASCADE`.
 

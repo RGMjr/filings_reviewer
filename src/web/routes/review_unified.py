@@ -49,8 +49,11 @@ V2_REVIEW_STATUSES = ("pending_review", "accepted", "rejected", "corrected", "au
 # Valid sort options
 V2_SORT_OPTIONS = ("confidence_desc", "confidence_asc", "metric", "period")
 
-# Valid document types for the filing list filter
-VALID_DOCUMENT_TYPES = ("sec_filing", "earnings_call", "investor_presentation")
+# Valid analytical tab keys for the filing list filter. Stored in the URL under
+# ?document_type=<tab> so existing bookmarks keep the same param name; the value
+# space changed in the 2026-04 tab rename (was: sec_filing / earnings_call /
+# investor_presentation — kept for bookmark compat fall-through to "all").
+VALID_TABS = ("ipo", "earnings", "investor_day")
 
 # Valid sort columns for the filing list
 VALID_FILING_SORT_COLUMNS = {"company", "date", "text_progress", "image_progress"}
@@ -131,8 +134,8 @@ def filing_list():
     page = max(1, request.args.get("page", 1, type=int))
     per_page = min(200, max(1, request.args.get("per_page", 50, type=int)))
 
-    raw_type = request.args.get("document_type")
-    document_type = raw_type if raw_type in VALID_DOCUMENT_TYPES else None
+    raw_tab = request.args.get("document_type")
+    tab = raw_tab if raw_tab in VALID_TABS else None
     hide_completed = request.args.get("hide_completed", "0") == "1"
 
     raw_sort_by = request.args.get("sort_by", "date")
@@ -144,12 +147,12 @@ def filing_list():
 
     try:
         total = db.get_unified_filings_for_review_count(
-            document_type=document_type,
+            tab=tab,
             hide_completed=hide_completed,
             reviewer_ids=reviewer_ids or None,
         )
         filings = db.get_unified_filings_for_review(
-            document_type=document_type,
+            tab=tab,
             limit=per_page,
             offset=(page - 1) * per_page,
             hide_completed=hide_completed,
@@ -173,7 +176,7 @@ def filing_list():
     return render_template(
         "unified_filing_list.html",
         filings=filings,
-        current_document_type=document_type or "all",
+        current_document_type=tab or "all",
         hide_completed=hide_completed,
         page=page,
         per_page=per_page,
@@ -259,9 +262,7 @@ def review_filing(filing_id: int):
         if list_sort_dir not in ("asc", "desc"):
             list_sort_dir = "desc"
         raw_list_doc_type = request.args.get("list_document_type", "")
-        list_document_type = (
-            raw_list_doc_type if raw_list_doc_type in VALID_DOCUMENT_TYPES else None
-        )
+        list_document_type = raw_list_doc_type if raw_list_doc_type in VALID_TABS else None
         list_hide_completed = request.args.get("list_hide_completed", "0") == "1"
         list_reviewer_ids = [r for r in request.args.getlist("list_reviewer_id") if r]
 
@@ -329,7 +330,6 @@ def review_filing(filing_id: int):
         # Enrich sparse evidence with live segment/table context
         if current_fact:
             current_fact = _enrich_sparse_evidence(db, filing_id, current_fact)
-            current_fact["_chart_image_status"] = _resolve_chart_image_status(db, current_fact)
 
         # Calculate progress
         pending_count = sum(1 for f in all_facts if f["review_status"] == "pending_review")
@@ -398,6 +398,28 @@ def review_filing(filing_id: int):
 
         current_image = _select_current_image(image_candidates, request.args.get("img_id"))
 
+        # Per-metric confirmations for the currently-focused image
+        # (chart-presence pivot, #86 PR 3b). Loaded only for the active image
+        # since the full queue does not need prior decisions preloaded.
+        current_image_confirmations: list[dict[str, Any]] = []
+        if current_image and current_image.get("img_id"):
+            try:
+                current_image_confirmations = db.get_image_metric_confirmations(
+                    current_image["img_id"]
+                )
+                for c in current_image_confirmations:
+                    for ts_key in ("created_at", "updated_at"):
+                        ts = c.get(ts_key)
+                        if ts is not None and hasattr(ts, "isoformat"):
+                            c[ts_key] = ts.isoformat()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to load image metric confirmations for img_id=%s: %s",
+                    current_image.get("img_id"),
+                    exc,
+                )
+                current_image_confirmations = []
+
         # Image progress counts
         image_pending = sum(1 for c in all_image_candidates if c["review_status"] == "pending")
         image_reviewed = sum(1 for c in all_image_candidates if c["review_status"] == "reviewed")
@@ -453,6 +475,7 @@ def review_filing(filing_id: int):
             image_candidates=image_candidates,
             all_image_candidates=all_image_candidates,
             current_image=current_image,
+            current_image_confirmations=current_image_confirmations,
             image_pending=image_pending,
             image_reviewed=image_reviewed,
             image_skipped=image_skipped,
@@ -486,14 +509,14 @@ def next_filing():
         sort_by = raw_sort if raw_sort in VALID_FILING_SORT_COLUMNS else "date"
         raw_dir = request.args.get("list_sort_dir", "desc")
         sort_dir = "asc" if raw_dir == "asc" else "desc"
-        raw_doc_type = request.args.get("list_document_type", "")
-        document_type = raw_doc_type if raw_doc_type in VALID_DOCUMENT_TYPES else None
+        raw_list_tab = request.args.get("list_document_type", "")
+        list_tab = raw_list_tab if raw_list_tab in VALID_TABS else None
         hide_completed = request.args.get("list_hide_completed", "0") == "1"
         reviewer_ids = [r for r in request.args.getlist("list_reviewer_id") if r]
 
         next_id = db.get_next_filing_with_pending_work(
             current_filing_id=current_filing_id,
-            document_type=document_type,
+            tab=list_tab,
             hide_completed=hide_completed,
             sort_by=sort_by,
             sort_dir=sort_dir,
@@ -509,8 +532,8 @@ def next_filing():
                 ("list_sort_dir", sort_dir),
                 ("list_hide_completed", 1 if hide_completed else 0),
             ]
-            if document_type:
-                params_list.append(("list_document_type", document_type))
+            if list_tab:
+                params_list.append(("list_document_type", list_tab))
             for rid in reviewer_ids:
                 params_list.append(("list_reviewer_id", rid))
             return redirect(f"/v2/review/{next_id}?{urlencode(params_list)}")
@@ -520,8 +543,8 @@ def next_filing():
             ("sort_by", sort_by),
             ("sort_dir", sort_dir),
         ]
-        if document_type:
-            list_params_list.append(("document_type", document_type))
+        if list_tab:
+            list_params_list.append(("document_type", list_tab))
         for rid in reviewer_ids:
             list_params_list.append(("reviewer_id", rid))
         return redirect(url_for("review_unified.filing_list") + "?" + urlencode(list_params_list))
@@ -600,60 +623,6 @@ def image_crop(img_id: str) -> Response:
 # =============================================================================
 # Helpers
 # =============================================================================
-
-
-def _resolve_chart_image_status(db: Any, fact: dict) -> dict | None:
-    """
-    Pre-compute whether a chart-sourced fact's linked image will render.
-
-    Mirrors the validation in `image_crop` (asset row exists → file_path under
-    data/ → file exists on disk) so the template can show a targeted placeholder
-    when any of those fail. Returns None for non-chart facts.
-
-    Status values:
-      - "ok"              image will render
-      - "missing_img_id"  chart fact, but source_locator.img_id is null
-      - "asset_missing"   img_id set, but no v2_image_assets row (orphaned)
-      - "file_missing"    asset row present, file_path empty or not on disk
-                          (covers TMPDIR-cached paths purged by the OS)
-    """
-    source_type = fact.get("source_type")
-    if source_type not in ("chart", "CHART"):
-        return None
-
-    loc = fact.get("source_locator") or {}
-    if not isinstance(loc, dict):
-        return {"status": "missing_img_id"}
-
-    img_id = loc.get("img_id")
-    if not img_id:
-        return {"status": "missing_img_id"}
-
-    try:
-        rows = db.query(
-            "SELECT file_path FROM v2_image_assets WHERE img_id = %(img_id)s",
-            {"img_id": img_id},
-        )
-    except Exception as exc:
-        logger.warning("chart_image_status: query failed img_id=%s err=%s", img_id, exc)
-        return {"status": "asset_missing"}
-
-    if not rows:
-        return {"status": "asset_missing"}
-
-    file_path = rows[0].get("file_path")
-    if not file_path:
-        return {"status": "file_missing"}
-
-    from src.infra.image_storage import InvalidStorageKeyError, get_image_storage
-
-    try:
-        if not get_image_storage().exists(file_path):
-            return {"status": "file_missing"}
-    except InvalidStorageKeyError:
-        return {"status": "file_missing"}
-
-    return {"status": "ok"}
 
 
 def _enrich_sparse_evidence(db: Any, filing_id: int, fact: dict) -> dict:

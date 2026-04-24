@@ -3,21 +3,24 @@ autonomy: n/a
 discovered: '2026-04-22'
 estimated: —
 id: 83
+pr_refs: []
 severity: low
 slug: tier1-keywords-re-drifts-from-config-metric-keywords-yaml
 source: legacy
-status: open
+status: resolved
 title: '`TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`'
 touches: []
-updated: '2026-04-22'
+updated: '2026-04-24'
 ---
 
 ### Problem
 
 `OCRExtractionStage.TIER1_KEYWORDS_RE` is a hand-curated regex alternation listing Tier-1 metric phrases (cohort, retention, ltv, cac, etc.). The authoritative source of Tier-1 metrics is `config/metric_keywords.yaml` (`tier: 1` entries' `patterns` + `specific_patterns`). Adding a new Tier-1 metric today requires two edits in lockstep; miss the regex update and Path B silently under-matches.
 
-### Next Steps
+### Resolution
 
-1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
-2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
-3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
+`get_tier1_keywords_re()` added to `src/shared/keyword_config.py` (lru-cached, reads
+`tier: 1` entries' `patterns` + `specific_patterns` from YAML). `OCRExtractionStage`
+imports and uses this canonical function; the local `_build_tier1_re()` helper was removed.
+Unit tests in `tests/unit/shared/test_keyword_config_tier1.py` verify the wiring and
+that representative Tier-1 phrases (including `cm_large_customers_period_end`) match.

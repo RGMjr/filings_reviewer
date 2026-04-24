@@ -29,6 +29,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Analytical tab → SQL fragment. Tabs are the UI grouping (IPO vs Earnings vs
+# Investor Day) and combine `v2_documents.document_type` with `filings.form_type`.
+# Keys are validated server-side before use — fragments are string-constant SQL,
+# no user input is interpolated.
+TAB_SQL_FILTERS: dict[str, str] = {
+    "ipo": ("d.document_type = 'sec_filing' AND f.form_type IN ('S-1', 'S-1/A', 'F-1', 'F-1/A')"),
+    "earnings": (
+        "(d.document_type = 'earnings_call' "
+        "OR (d.document_type = 'sec_filing' "
+        "AND f.form_type IN ('8-K', '8-K/A', '10-K', '10-K/A', '10-Q', '10-Q/A')))"
+    ),
+    "investor_day": "d.document_type = 'investor_presentation'",
+}
+
+
+def tab_filter_sql(tab: str | None) -> str:
+    """Return the SQL AND-fragment for a tab key, or '' if tab is None/unknown.
+
+    Callers splice the result into a WHERE clause alongside other filters —
+    the returned string is empty or begins with 'AND ' so it is safe to append.
+    """
+    if tab and tab in TAB_SQL_FILTERS:
+        return "AND " + TAB_SQL_FILTERS[tab]
+    return ""
+
+
 class DatabaseAdapter:
     """
     Database adapter for Postgres operations.
@@ -684,7 +710,7 @@ class DatabaseAdapter:
 
     def get_v2_filings_with_facts(
         self,
-        document_type: str | None = None,
+        tab: str | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
@@ -692,7 +718,8 @@ class DatabaseAdapter:
         Get filings that have V2 extraction results, with fact counts and review progress.
 
         Args:
-            document_type: Optional filter — "sec_filing" or "earnings_call".
+            tab: Optional analytical tab key — see TAB_SQL_FILTERS for the
+                 supported keys ("ipo", "earnings", "investor_day").
             limit: Maximum number of rows to return. None returns all rows.
             offset: Number of rows to skip (for pagination).
 
@@ -701,9 +728,9 @@ class DatabaseAdapter:
         """
         conditions: list[str] = ["(f.is_spac IS NOT TRUE)"]
         params: dict[str, Any] = {}
-        if document_type is not None:
-            conditions.append("d.document_type = %(document_type)s")
-            params["document_type"] = document_type
+        tab_fragment = tab_filter_sql(tab).removeprefix("AND ").strip()
+        if tab_fragment:
+            conditions.append(tab_fragment)
         where_clause = "WHERE " + " AND ".join(conditions)
 
         sql = f"""
@@ -757,7 +784,7 @@ class DatabaseAdapter:
 
     def get_unified_filings_for_review(
         self,
-        document_type: str | None = None,
+        tab: str | None = None,
         limit: int = 50,
         offset: int = 0,
         hide_completed: bool = False,
@@ -772,8 +799,8 @@ class DatabaseAdapter:
         image candidates. Used by the unified filing list page.
 
         Args:
-            document_type: Optional filter — "sec_filing" or "earnings_call"
-                           (applied against v2_documents.document_type).
+            tab: Optional analytical tab key — see TAB_SQL_FILTERS for the
+                 supported keys ("ipo", "earnings", "investor_day").
             limit: Maximum number of rows to return.
             offset: Number of rows to skip (for pagination).
             hide_completed: If True, exclude filings with 0 pending text facts
@@ -797,13 +824,10 @@ class DatabaseAdapter:
         # Secondary sort for stable ordering
         secondary = "" if sort_by == "company" else ", c.company_name"
 
-        doc_type_filter = ""
+        doc_type_filter = tab_filter_sql(tab)
         completed_filter = ""
         reviewer_filter = ""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
-        if document_type is not None:
-            doc_type_filter = "AND d.document_type = %(document_type)s"
-            params["document_type"] = document_type
         if hide_completed:
             completed_filter = (
                 "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
@@ -821,6 +845,7 @@ class DatabaseAdapter:
                     COUNT(mf.fact_id)                                                      AS fact_count,
                     COUNT(CASE WHEN mf.review_status = 'pending_review'             THEN 1 END) AS facts_pending,
                     COUNT(CASE WHEN mf.review_status IN ('accepted', 'auto_accepted') THEN 1 END) AS facts_accepted,
+                    COUNT(CASE WHEN mf.review_status = 'auto_accepted'              THEN 1 END) AS facts_auto_accepted,
                     COUNT(CASE WHEN mf.review_status IN ('rejected', 'corrected')   THEN 1 END) AS facts_rejected
                 FROM v2_metric_facts mf
                 GROUP BY mf.doc_id
@@ -863,11 +888,12 @@ class DatabaseAdapter:
                 f.form_type,
                 f.filing_date,
                 d.document_type,
-                COALESCE(tp.fact_count,      0) AS fact_count,
-                COALESCE(tp.facts_pending,   0) AS facts_pending,
-                COALESCE(tp.facts_accepted,  0) AS facts_accepted,
-                COALESCE(tp.facts_rejected,  0) AS facts_rejected,
-                COALESCE(ip.image_count,     0) AS image_count,
+                COALESCE(tp.fact_count,         0) AS fact_count,
+                COALESCE(tp.facts_pending,      0) AS facts_pending,
+                COALESCE(tp.facts_accepted,     0) AS facts_accepted,
+                COALESCE(tp.facts_auto_accepted, 0) AS facts_auto_accepted,
+                COALESCE(tp.facts_rejected,     0) AS facts_rejected,
+                COALESCE(ip.image_count,        0) AS image_count,
                 COALESCE(ip.images_pending,  0) AS images_pending,
                 COALESCE(ip.images_reviewed, 0) AS images_reviewed,
                 COALESCE(rp.reviewers, ARRAY[]::text[]) AS reviewers
@@ -888,14 +914,14 @@ class DatabaseAdapter:
 
     def get_unified_filings_for_review_count(
         self,
-        document_type: str | None = None,
+        tab: str | None = None,
         hide_completed: bool = False,
         reviewer_ids: list[str] | None = None,
     ) -> int:
         """Return total count of filings eligible for unified review.
 
         Args:
-            document_type: Optional filter — "sec_filing" or "earnings_call".
+            tab: Optional analytical tab key — see TAB_SQL_FILTERS.
             hide_completed: If True, exclude filings with 0 pending text facts
                             and 0 pending image candidates.
             reviewer_ids: If non-empty, restrict to filings touched by any
@@ -906,13 +932,10 @@ class DatabaseAdapter:
         Returns:
             Total number of matching filings.
         """
-        doc_type_filter = ""
+        doc_type_filter = tab_filter_sql(tab)
         completed_filter = ""
         reviewer_filter = ""
         params: dict[str, Any] = {}
-        if document_type is not None:
-            doc_type_filter = "AND d.document_type = %(document_type)s"
-            params["document_type"] = document_type
         if hide_completed:
             completed_filter = """
                 AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)
@@ -975,7 +998,7 @@ class DatabaseAdapter:
     def get_next_filing_with_pending_work(
         self,
         current_filing_id: int,
-        document_type: str | None = None,
+        tab: str | None = None,
         hide_completed: bool = False,
         sort_by: str = "date",
         sort_dir: str = "desc",
@@ -991,7 +1014,7 @@ class DatabaseAdapter:
 
         Args:
             current_filing_id: The filing_id of the filing currently being reviewed.
-            document_type: Optional filter — "sec_filing" or "earnings_call".
+            tab: Optional analytical tab key — see TAB_SQL_FILTERS.
             hide_completed: If True, restrict candidates to filings with pending work.
             sort_by: Column to sort by (same options as get_unified_filings_for_review).
             sort_dir: "asc" or "desc".
@@ -1011,13 +1034,10 @@ class DatabaseAdapter:
         order_col = sort_map.get(sort_by, "f.filing_date")
         order_dir = "ASC" if sort_dir == "asc" else "DESC"
 
-        doc_type_filter = ""
+        doc_type_filter = tab_filter_sql(tab)
         completed_filter = ""
         reviewer_filter = ""
         params: dict[str, Any] = {"current_filing_id": current_filing_id}
-        if document_type is not None:
-            doc_type_filter = "AND d.document_type = %(document_type)s"
-            params["document_type"] = document_type
         if hide_completed:
             completed_filter = (
                 "AND (COALESCE(tp.facts_pending, 0) > 0 OR COALESCE(ip.images_pending, 0) > 0)"
@@ -1686,6 +1706,7 @@ class DatabaseAdapter:
                 THEN 'tier_2_large'
             ELSE 'tier_3_all'
         END AS detection_tier,
+        v.detected_metrics,
         v.created_at,
         d.image_decision_id,
         d.decision,
@@ -1771,11 +1792,21 @@ class DatabaseAdapter:
                     ) DESC,
                     created_at DESC NULLS LAST
             )
-            SELECT {self._V2_IMAGE_CANDIDATE_SELECT}
+            SELECT {self._V2_IMAGE_CANDIDATE_SELECT},
+                ic.classification_id,
+                ic.predicted_metrics,
+                ic.confidence        AS classification_confidence
             FROM v2_image_assets v
             JOIN filings f ON v.doc_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            LEFT JOIN LATERAL (
+                SELECT classification_id, predicted_metrics, confidence
+                FROM v2_image_classifications
+                WHERE img_id = v.img_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) ic ON true
             WHERE v.doc_id = %(filing_id)s
               AND v.img_id IN (SELECT img_id FROM deduped_img)
               AND v.classification NOT IN ('decorative', 'logo', 'signature')
@@ -2033,6 +2064,95 @@ class DatabaseAdapter:
             "auto_rejected_count": row["auto_rejected_count"] or 0,
             "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
         }
+
+    # =============================================================================
+    # V2 Image Metric Confirmation Methods (v2_image_metric_confirmations)
+    # =============================================================================
+
+    def insert_image_metric_confirmations(
+        self,
+        img_id: str,
+        confirmations: list[dict[str, Any]],
+        reviewer_id: str,
+    ) -> int:
+        """
+        Upsert per-metric confirmation decisions for a chart image.
+
+        Each entry in *confirmations* must have at minimum:
+          - decision: 'accept' | 'reject' | 'correct' | 'add'
+          - detected_metric_id: str | None
+          - confirmed_metric_id: str | None
+          - rejection_reason: str | None
+
+        On conflict (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
+        the existing row is updated with the new decision values.
+
+        Returns the number of rows upserted.
+        """
+        if not confirmations:
+            return 0
+
+        upsert_sql = """
+            INSERT INTO v2_image_metric_confirmations (
+                img_id, detected_metric_id, confirmed_metric_id,
+                decision, rejection_reason, reviewer_id
+            ) VALUES (
+                %(img_id)s, %(detected_metric_id)s, %(confirmed_metric_id)s,
+                %(decision)s, %(rejection_reason)s, %(reviewer_id)s
+            )
+            ON CONFLICT (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
+            DO UPDATE SET
+                decision            = EXCLUDED.decision,
+                confirmed_metric_id = EXCLUDED.confirmed_metric_id,
+                rejection_reason    = EXCLUDED.rejection_reason,
+                updated_at          = now()
+        """
+
+        count = 0
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                for entry in confirmations:
+                    cur.execute(
+                        upsert_sql,
+                        {
+                            "img_id": img_id,
+                            "detected_metric_id": entry.get("detected_metric_id"),
+                            "confirmed_metric_id": entry.get("confirmed_metric_id"),
+                            "decision": entry["decision"],
+                            "rejection_reason": entry.get("rejection_reason"),
+                            "reviewer_id": reviewer_id,
+                        },
+                    )
+                    count += 1
+
+        logger.debug(
+            "Upserted %d image metric confirmations: img_id=%s reviewer_id=%s",
+            count,
+            img_id,
+            reviewer_id,
+        )
+        return count
+
+    def get_image_metric_confirmations(self, img_id: str) -> list[dict[str, Any]]:
+        """
+        Return all metric confirmation rows for *img_id*, ordered by created_at.
+        """
+        sql = """
+            SELECT
+                id::text AS confirmation_id,
+                img_id::text,
+                detected_metric_id,
+                confirmed_metric_id,
+                decision,
+                rejection_reason,
+                reviewer_id,
+                created_at,
+                updated_at
+            FROM v2_image_metric_confirmations
+            WHERE img_id = %(img_id)s
+            ORDER BY created_at ASC
+        """
+        return self.query(sql, {"img_id": img_id})
 
 
 # =============================================================================

@@ -37,6 +37,7 @@ from src.extraction_v2.models import (
     SegmentType,
     Table,
 )
+from src.shared.keyword_config import get_tier1_keywords_re
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
@@ -120,29 +121,11 @@ class OCRExtractionStage:
 
     # Tier-1 keyword regex used by Path B to decide whether an OCR'd
     # ambiguous image should escalate to the chart/table extraction path.
-    # Curated from the Tier-1 metric list in CLAUDE.md plus phrases that
-    # appear in ``config/metric_keywords.yaml`` ``patterns``. Kept short
-    # and precision-first — false negatives are tolerable (the image just
-    # stays UNKNOWN), but false positives spend an extra vision call.
-    TIER1_KEYWORDS_RE: re.Pattern[str] = re.compile(
-        r"\b("
-        r"cohort|cohorts"
-        r"|retention\s+rate|customer\s+retention|net\s+revenue\s+retention|nrr"
-        r"|gross\s+revenue\s+retention|grr|dollar\s+retention"
-        r"|lifetime\s+value|ltv"
-        r"|customer\s+acquisition\s+cost|cac"
-        r"|ltv\s*(?:/|to|:)\s*cac"
-        r"|revenue\s+concentration|customer\s+concentration"
-        r"|top\s+\d+\s+customers?"
-        r"|revenue\s+by\s+cohort|cohort\s+revenue"
-        r"|gross\s+margin\s+by\s+cohort"
-        r"|transactions\s+by\s+cohort"
-        r"|balance\s+by\s+cohort"
-        r"|new\s+customers\s+acquired"
-        r"|customers\s+by\s+tenure"
-        r")\b",
-        re.IGNORECASE,
-    )
+    # Built automatically from ``config/metric_keywords.yaml`` (tier == 1
+    # entries' ``patterns`` + ``specific_patterns``) via ``_build_tier1_re()``.
+    # False negatives are tolerable (the image just stays UNKNOWN), but false
+    # positives spend an extra vision call.
+    TIER1_KEYWORDS_RE: re.Pattern[str] = get_tier1_keywords_re()
 
     def __init__(
         self,

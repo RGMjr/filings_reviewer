@@ -25,7 +25,11 @@ review_images_bp = Blueprint("review_images", __name__)
 @app.context_processor
 def inject_app_globals():
     """Mirror real app's context processor."""
-    return {"app_name": "Filings Review", "app_version": "0.1.0"}
+    return {
+        "app_name": "Filings Review",
+        "app_version": "0.1.0",
+        "metabase_url": "https://filings-metabase.onrender.com",
+    }
 
 
 # --- Blueprint stub routes ---
@@ -58,6 +62,15 @@ MOCK_FILING = {
     "company_name": "Acme Corp",
     "form_type": "S-1",
     "accession_number": "0001234567-25-000001",
+    "cik": "0001234567",
+    "ticker": None,
+}
+
+MOCK_FILING_B = {
+    "filing_id": 2,
+    "company_name": "Acme Corp B",
+    "form_type": "S-1",
+    "accession_number": "0001234567-25-000002",
     "cik": "0001234567",
     "ticker": None,
 }
@@ -218,6 +231,45 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "rejection_reason": None,
     "decision_notes": None,
     "image_index": 1,
+    "detected_metrics": [],
+    "classification_id": None,
+    "predicted_metrics": None,
+    "classification_confidence": None,
+}
+
+MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
+    **{
+        "image_candidate_id": 12,
+        "img_id": "img-detected-12",
+        "filing_id": 1,
+        "image_url": "https://via.placeholder.com/400x300?text=Chart3",
+        "image_src_url": "https://via.placeholder.com/400x300?text=Chart3",
+        "image_alt": "Cohort Retention Chart",
+        "image_src": "chart3.png",
+        "image_width": 600,
+        "image_height": 400,
+        "review_status": "pending",
+        "decision": None,
+        "image_decision_id": None,
+        "detection_tier": "tier_1_cohort",
+        "cohort_confidence": 0.90,
+        "preceding_text": "Retention by cohort.",
+        "detected_keywords": ["retention", "cohort"],
+        "is_decorative": False,
+        "chart_type": None,
+        "rejection_reason": None,
+        "decision_notes": None,
+        "image_index": 3,
+    },
+    "detected_metrics": [
+        {"metric_id": "cm_customer_retention_rate", "score": 0.95},
+        {"metric_id": "cm_net_revenue_retention", "score": 0.82},
+        {"metric_id": "cm_revenue_by_cohort", "score": 0.71},
+        {"metric_id": "cm_churn_rate", "score": 0.55},
+    ],
+    "classification_id": None,
+    "predicted_metrics": None,
+    "classification_confidence": None,
 }
 
 MOCK_IMAGE_CANDIDATE_REVIEWED = {
@@ -242,6 +294,10 @@ MOCK_IMAGE_CANDIDATE_REVIEWED = {
     "rejection_reason": None,
     "decision_notes": "Clear cohort retention chart",
     "image_index": 2,
+    "detected_metrics": [],
+    "classification_id": None,
+    "predicted_metrics": None,
+    "classification_confidence": None,
 }
 
 IMAGE_CHART_TYPES = [
@@ -275,6 +331,7 @@ def _shared_template_vars(
     image_candidates=_UNSET,
     all_image_candidates=_UNSET,
     current_image=_UNSET,
+    current_image_confirmations=None,
     facts=_UNSET,
 ):
     """Build shared template context."""
@@ -315,6 +372,7 @@ def _shared_template_vars(
         image_candidates=image_candidates,
         all_image_candidates=all_image_candidates,
         current_image=current_image,
+        current_image_confirmations=current_image_confirmations or [],
         image_pending=1,
         image_reviewed=1,
         image_skipped=0,
@@ -411,6 +469,292 @@ def review_images_tab_reviewed():
     )
 
 
+@app.route("/images-tab-detected")
+def review_images_tab_detected():
+    """Images tab with a current image carrying detected_metrics (PR 3b)."""
+    return render_template(
+        "unified_review.html",
+        **_shared_template_vars(
+            active_tab="images",
+            current_image=MOCK_IMAGE_CANDIDATE_WITH_DETECTED,
+            image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            all_image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+        ),
+    )
+
+
+@app.route("/images-tab-detected-preseeded")
+def review_images_tab_detected_preseeded():
+    """Images tab with detected_metrics and pre-existing reviewer confirmations."""
+    preseeded = [
+        {
+            "confirmation_id": "c-1",
+            "img_id": MOCK_IMAGE_CANDIDATE_WITH_DETECTED["img_id"],
+            "detected_metric_id": "cm_customer_retention_rate",
+            "confirmed_metric_id": "cm_customer_retention_rate",
+            "decision": "accept",
+            "rejection_reason": None,
+            "reviewer_id": "test_reviewer",
+            "created_at": "2026-04-23T00:00:00+00:00",
+            "updated_at": "2026-04-23T00:00:00+00:00",
+        },
+    ]
+    return render_template(
+        "unified_review.html",
+        **_shared_template_vars(
+            active_tab="images",
+            current_image=MOCK_IMAGE_CANDIDATE_WITH_DETECTED,
+            image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            all_image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            current_image_confirmations=preseeded,
+        ),
+    )
+
+
+# ---- Cross-filing auto-advance routes ----
+
+MOCK_FACT_LAST_PENDING = {
+    "fact_id": "fact-last-001",
+    "canonical_metric_id": "cm_net_revenue_retention",
+    "review_status": "pending_review",
+    "confidence": 0.90,
+    "value_raw": "120%",
+    "value": 120.0,
+    "unit": "percent",
+    "period_start": "2024-01-01",
+    "period_end": "2024-12-31",
+    "period_type": "annual",
+    "scope": "company",
+    "scope_detail": None,
+    "customer_type": None,
+    "source_type": "text",
+    "extraction_method": "keyword",
+    "review_reason": "Last pending fact in filing A",
+    "evidence_pack": {
+        "context_before": "Filing A context",
+        "highlighted_html": "<mark>net revenue retention</mark> was 120%",
+        "context_after": "for fiscal year 2024.",
+        "header_path": ["Key Metrics"],
+        "stub_path": None,
+        "snippet_html": None,
+    },
+    "source_locator": {"segment_id": "99", "img_id": None},
+    "_table_context": None,
+    "_segment_context": None,
+    "decision_id": None,
+    "decision": None,
+    "decision_metric_id": None,
+    "corrected_value": None,
+    "rejection_reason": None,
+    "rejection_category": None,
+    "reviewer_notes": None,
+    "reviewer_id": None,
+    "confirming_source_types": None,
+    "_chart_image_status": None,
+}
+
+MOCK_FACT_B_PENDING = {
+    "fact_id": "fact-b-001",
+    "canonical_metric_id": "cm_total_customers",
+    "review_status": "pending_review",
+    "confidence": 0.80,
+    "value_raw": "75,000",
+    "value": 75000.0,
+    "unit": "count",
+    "period_start": None,
+    "period_end": "2024-12-31",
+    "period_type": "annual",
+    "scope": "company",
+    "scope_detail": None,
+    "customer_type": None,
+    "source_type": "text",
+    "extraction_method": "keyword",
+    "review_reason": None,
+    "evidence_pack": {},
+    "source_locator": {"segment_id": "100", "img_id": None},
+    "_table_context": None,
+    "_segment_context": None,
+    "decision_id": None,
+    "decision": None,
+    "decision_metric_id": None,
+    "corrected_value": None,
+    "rejection_reason": None,
+    "rejection_category": None,
+    "reviewer_notes": None,
+    "reviewer_id": None,
+    "confirming_source_types": None,
+    "_chart_image_status": None,
+}
+
+MOCK_IMAGE_CANDIDATE_A_LAST = {
+    "image_candidate_id": 20,
+    "img_id": "img-a-last-20",
+    "filing_id": 1,
+    "image_url": "https://via.placeholder.com/400x300?text=FilingA",
+    "image_src_url": "https://via.placeholder.com/400x300?text=FilingA",
+    "image_alt": "Filing A Last Image",
+    "image_src": "chart_a_last.png",
+    "image_width": 400,
+    "image_height": 300,
+    "review_status": "pending",
+    "decision": None,
+    "image_decision_id": None,
+    "detection_tier": "tier_1_cohort",
+    "cohort_confidence": 0.88,
+    "preceding_text": "Last pending chart in filing A.",
+    "detected_keywords": ["retention"],
+    "is_decorative": False,
+    "chart_type": None,
+    "rejection_reason": None,
+    "decision_notes": None,
+    "image_index": 1,
+    "detected_metrics": [],
+}
+
+MOCK_IMAGE_CANDIDATE_B_PENDING = {
+    "image_candidate_id": 21,
+    "img_id": "img-b-pending-21",
+    "filing_id": 2,
+    "image_url": "https://via.placeholder.com/400x300?text=FilingB",
+    "image_src_url": "https://via.placeholder.com/400x300?text=FilingB",
+    "image_alt": "Filing B Pending Image",
+    "image_src": "chart_b_pending.png",
+    "image_width": 400,
+    "image_height": 300,
+    "review_status": "pending",
+    "decision": None,
+    "image_decision_id": None,
+    "detection_tier": "tier_1_cohort",
+    "cohort_confidence": 0.75,
+    "preceding_text": "Pending chart in filing B.",
+    "detected_keywords": ["cohort"],
+    "is_decorative": False,
+    "chart_type": None,
+    "rejection_reason": None,
+    "decision_notes": None,
+    "image_index": 1,
+    "detected_metrics": [],
+}
+
+
+def _cross_filing_template_vars_a_text():
+    """Template vars for filing A with exactly one pending text fact, no pending images."""
+    base = _shared_template_vars(
+        active_tab="text",
+        current_fact=MOCK_FACT_LAST_PENDING,
+        facts=[MOCK_FACT_LAST_PENDING],
+        image_candidates=[],
+        all_image_candidates=[],
+        current_image=None,
+    )
+    base["filing"] = MOCK_FILING
+    base["pending_count"] = 1
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 1
+    base["total_facts_unfiltered"] = 1
+    base["image_pending"] = 0
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "/filing-b-pending"
+    return base
+
+
+def _cross_filing_template_vars_b_text():
+    """Template vars for filing B with one pending text fact."""
+    base = _shared_template_vars(
+        active_tab="text",
+        current_fact=MOCK_FACT_B_PENDING,
+        facts=[MOCK_FACT_B_PENDING],
+        image_candidates=[],
+        all_image_candidates=[],
+        current_image=None,
+    )
+    base["filing"] = MOCK_FILING_B
+    base["pending_count"] = 1
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 1
+    base["total_facts_unfiltered"] = 1
+    base["image_pending"] = 0
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "#"
+    return base
+
+
+def _cross_filing_template_vars_a_images():
+    """Template vars for filing A images tab: one pending image, no pending text facts."""
+    base = _shared_template_vars(
+        active_tab="images",
+        current_fact=None,
+        facts=[],
+        image_candidates=[MOCK_IMAGE_CANDIDATE_A_LAST],
+        all_image_candidates=[MOCK_IMAGE_CANDIDATE_A_LAST],
+        current_image=MOCK_IMAGE_CANDIDATE_A_LAST,
+    )
+    base["filing"] = MOCK_FILING
+    base["pending_count"] = 0
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 0
+    base["total_facts_unfiltered"] = 0
+    base["image_pending"] = 1
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "/filing-b-images-pending"
+    return base
+
+
+def _cross_filing_template_vars_b_images():
+    """Template vars for filing B images tab with one pending image."""
+    base = _shared_template_vars(
+        active_tab="images",
+        current_fact=None,
+        facts=[],
+        image_candidates=[MOCK_IMAGE_CANDIDATE_B_PENDING],
+        all_image_candidates=[MOCK_IMAGE_CANDIDATE_B_PENDING],
+        current_image=MOCK_IMAGE_CANDIDATE_B_PENDING,
+    )
+    base["filing"] = MOCK_FILING_B
+    base["pending_count"] = 0
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 0
+    base["total_facts_unfiltered"] = 0
+    base["image_pending"] = 1
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "#"
+    return base
+
+
+@app.route("/filing-a-last-pending")
+def filing_a_last_pending():
+    """Filing A: single pending text fact, no pending images. Accepting this fact should
+    trigger auto-advance to /filing-b-pending via NEXT_FILING_URL."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_a_text())
+
+
+@app.route("/filing-b-pending")
+def filing_b_pending():
+    """Filing B: one pending text fact with distinct company name (Acme Corp B)."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_b_text())
+
+
+@app.route("/filing-a-images-last-pending")
+def filing_a_images_last_pending():
+    """Filing A images tab: last pending image, no pending text facts. Deciding on this
+    image should trigger navigateAfterQueueEmpty → advance to /filing-b-images-pending."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_a_images())
+
+
+@app.route("/filing-b-images-pending")
+def filing_b_images_pending():
+    """Filing B images tab: one pending image with distinct company name (Acme Corp B)."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_b_images())
+
+
 # --- Mock API endpoints ---
 
 
@@ -452,6 +796,60 @@ def mock_create_image_decision():
             "message": "All candidates reviewed for this filing",
         }
     ), 201
+
+
+@app.route("/api/v2/metrics/list", methods=["GET"])
+def mock_metrics_list():
+    return jsonify(
+        [
+            {
+                "metric_id": "cm_customer_retention_rate",
+                "display_name": "Customer Retention Rate",
+                "tier": "tier_1",
+            },
+            {
+                "metric_id": "cm_net_revenue_retention",
+                "display_name": "Net Revenue Retention",
+                "tier": "tier_1",
+            },
+            {
+                "metric_id": "cm_revenue_by_cohort",
+                "display_name": "Revenue by Cohort",
+                "tier": "tier_1",
+            },
+            {"metric_id": "cm_churn_rate", "display_name": "Churn Rate", "tier": "tier_2"},
+            {
+                "metric_id": "cm_lifetime_value_per_customer",
+                "display_name": "Lifetime Value per Customer",
+                "tier": "tier_1",
+            },
+        ]
+    ), 200
+
+
+@app.route("/api/v2/image-metric-confirmations", methods=["POST"])
+def mock_create_image_metric_confirmations():
+    data = request.get_json(silent=True) or {}
+    decisions = data.get("decisions", [])
+    img_id = data.get("img_id")
+    confirmations = []
+    for i, d in enumerate(decisions):
+        confirmations.append(
+            {
+                "confirmation_id": f"c-new-{i}",
+                "img_id": img_id,
+                "detected_metric_id": d.get("detected_metric_id"),
+                "confirmed_metric_id": d.get("confirmed_metric_id"),
+                "decision": d.get("decision"),
+                "rejection_reason": d.get("rejection_reason"),
+                "reviewer_id": data.get("reviewer_id", "anonymous"),
+                "created_at": "2026-04-23T00:00:00+00:00",
+                "updated_at": "2026-04-23T00:00:00+00:00",
+            }
+        )
+    return jsonify(
+        {"ok": True, "upserted": len(confirmations), "confirmations": confirmations}
+    ), 200
 
 
 @app.route("/api/v2/missed-metric", methods=["POST"])

@@ -152,20 +152,6 @@ specific files by name.
 
 ## Known-issues triage
 
-New issues surfaced during contribution go into a new `docs/known-issues/legacy-NNN-<slug>.md` fragment file (see the frontmatter template in the `/commit` skill or existing fragments for the expected shape). The pre-commit hook regenerates `docs/KNOWN_ISSUES.md` automatically when you stage a fragment — do NOT edit the rollup directly.
+New issues surfaced during contribution go into a new `docs/known-issues/gh-N-<slug>.md` fragment file, where `N` is the GitHub issue number returned by `gh issue create`. The `/commit` skill step 9 automates this — see the frontmatter template there. Existing `legacy-NNN-*.md` fragments (pre-2026-04-24) are frozen in place; do not rename them. Fragments are the source of truth.
 
-### Merge conflicts on `docs/KNOWN_ISSUES.md`
-
-`docs/KNOWN_ISSUES.md` is auto-generated from `docs/known-issues/*.md`. When
-you hit a merge conflict on the rollup, don't resolve the conflict markers
-by hand — the file is fully deterministic given the fragment set, so:
-
-1. `git merge --abort` if the merge isn't otherwise useful, or just accept
-   either side for this file.
-2. `rm docs/KNOWN_ISSUES.md`
-3. `python3 scripts/regenerate_known_issues.py`
-4. `git add docs/KNOWN_ISSUES.md && git commit`
-
-If the conflict is *also* on `docs/known-issues/legacy-NNN-*.md` fragment
-files, resolve those conflicts normally first (they carry the real
-information) — then regenerate the rollup as above.
+The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run (`.github/workflows/ci.yml` job `known-issues-artifact`). Download the latest rendered rollup from the Actions tab of any `main` build. To regenerate locally for preview: `python3 scripts/regenerate_known_issues.py --output /tmp/KNOWN_ISSUES.md`.

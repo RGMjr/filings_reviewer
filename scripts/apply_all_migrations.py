@@ -95,11 +95,17 @@ MIGRATION_ORDER = [
     "39_v2_ingest_batches.sql",
     "40_full_page_scan_and_ocr_provenance.sql",
     "41_normalize_accession_numbers.sql",
+    "42_add_detected_metrics_to_v2_image_assets.sql",
+    "43_create_v2_image_metric_confirmations.sql",
+    "44_extend_image_rejection_reason_enum.sql",
+    "45_create_v2_image_classifications.sql",
+    "46_v2_text_metric_presence.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
 EXCLUDED_FILES = {
     "register_gold_standard_filings.sql",
+    "seed_snap_s1a.sql",
 }
 
 

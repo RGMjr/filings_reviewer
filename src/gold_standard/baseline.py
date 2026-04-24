@@ -50,6 +50,11 @@ class BaselineMetrics:
     overall: MetricScores
     by_company: dict[str, MetricScores]
     unique_recall: float | None = None  # Recall after deduplicating repeated gold entries
+    # Chart-presence F1 (post-PR-1 chart-stage pivot). Independent of the
+    # value-level overall metrics; measures whether the classifier surfaces
+    # expected chart-native metrics on any image in the filing. None on
+    # pre-pivot baselines — loader tolerates missing field.
+    presence_f1: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
@@ -57,12 +62,12 @@ class BaselineMetrics:
             "baseline_date": self.baseline_date,
             "description": self.description,
             "overall": asdict(self.overall),
-            "by_company": {
-                company: asdict(scores) for company, scores in self.by_company.items()
-            },
+            "by_company": {company: asdict(scores) for company, scores in self.by_company.items()},
         }
         if self.unique_recall is not None:
             d["unique_recall"] = self.unique_recall
+        if self.presence_f1 is not None:
+            d["presence_f1"] = self.presence_f1
         return d
 
     @classmethod
@@ -104,9 +109,7 @@ class BaselineMetrics:
                     f1=scores["f1"],
                 )
             except KeyError as e:
-                raise ValueError(
-                    f"Missing field in scores for company '{company}': {e}"
-                ) from e
+                raise ValueError(f"Missing field in scores for company '{company}': {e}") from e
 
         return cls(
             baseline_date=data["baseline_date"],
@@ -114,6 +117,7 @@ class BaselineMetrics:
             overall=overall,
             by_company=by_company,
             unique_recall=data.get("unique_recall"),
+            presence_f1=data.get("presence_f1"),
         )
 
 
@@ -127,6 +131,10 @@ class ComparisonResult:
     has_regression: bool  # True if any metric dropped beyond tolerance
     regressed_companies: list[str]  # Companies with regressions
     regressed_metrics: list[str]  # Which overall metrics regressed
+    # Chart-presence F1 delta (post-PR-1 pivot). None when either baseline or
+    # current lacks a presence_f1 value (pre-pivot baseline, or no chart gold
+    # rows evaluated in this run).
+    presence_f1_delta: float | None = None
 
     def summary(self) -> str:
         """Generate a human-readable summary."""
@@ -134,6 +142,8 @@ class ComparisonResult:
         parts.append(f"Precision: {self.precision_delta:+.1%}")
         parts.append(f"Recall: {self.recall_delta:+.1%}")
         parts.append(f"F1: {self.f1_delta:+.1%}")
+        if self.presence_f1_delta is not None:
+            parts.append(f"Presence-F1: {self.presence_f1_delta:+.1%}")
 
         if self.has_regression:
             parts.append(f"REGRESSION DETECTED in: {', '.join(self.regressed_metrics)}")
@@ -182,8 +192,7 @@ def load_baseline(path: str | Path) -> BaselineMetrics:
 
     if not path.exists():
         raise FileNotFoundError(
-            f"Baseline file not found: {path}. "
-            f"Run validation with --update-baseline to create one."
+            f"Baseline file not found: {path}. Run validation with --update-baseline to create one."
         )
 
     with open(path, encoding="utf-8") as f:
@@ -248,6 +257,15 @@ def compare_to_baseline(
         if company_regressed:
             regressed_companies.append(company)
 
+    # Chart-presence F1 regression (Q1-5 pivot). Only compared when both the
+    # baseline and current run have a presence_f1 value; tolerates pre-pivot
+    # baselines (None → skip check).
+    presence_f1_delta: float | None = None
+    if current.presence_f1 is not None and baseline.presence_f1 is not None:
+        presence_f1_delta = current.presence_f1 - baseline.presence_f1
+        if presence_f1_delta < -tolerance:
+            regressed_metrics.append("presence_f1")
+
     has_regression = bool(regressed_metrics) or bool(regressed_companies)
 
     return ComparisonResult(
@@ -257,6 +275,7 @@ def compare_to_baseline(
         has_regression=has_regression,
         regressed_companies=sorted(regressed_companies),
         regressed_metrics=regressed_metrics,
+        presence_f1_delta=presence_f1_delta,
     )
 
 

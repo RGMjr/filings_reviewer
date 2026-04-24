@@ -19,6 +19,7 @@ from src.review.models import (
     IMAGE_DECISIONS,
     IMAGE_REJECTION_REASONS,
 )
+from src.shared.keyword_config import _load_config
 from src.web.app import get_db
 from src.web.middleware import insert_audit_log_entry, register_api_auth, register_timing
 
@@ -42,6 +43,37 @@ V2_REJECTION_CATEGORIES = (
 )
 
 VALID_UNITS = ("percent", "currency", "count", "ratio", "basis_points", "other")
+
+# Reviewer-id gate: decision-writing endpoints must carry a real reviewer name.
+# Empty / NULL / fallback sentinels / historical bulk prefixes are all rejected
+# with 403 so the client is forced to open the "Who are you?" modal in base.html.
+# See .claude/rules/web.md "Reviewer identity invariant".
+_BLOCKED_REVIEWER_IDS = frozenset({"", "anonymous", "web_reviewer", "test", "test_user"})
+
+
+def _require_reviewer_id(data: dict[str, Any]) -> tuple[str | None, tuple[Any, int] | None]:
+    """Validate the reviewer_id in a decision payload.
+
+    Returns (reviewer_id, None) when the caller can proceed, or
+    (None, (json_response, status_code)) when the request must be rejected.
+    """
+    raw = data.get("reviewer_id")
+    rid = (raw or "").strip() if isinstance(raw, str) else ""
+    if not rid or rid in _BLOCKED_REVIEWER_IDS or rid.startswith("bulk:"):
+        return None, (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": "reviewer_name_required",
+                    "message": (
+                        "Set your reviewer name before making decisions. "
+                        "The UI will open a prompt — enter a name, then retry."
+                    ),
+                }
+            ),
+            403,
+        )
+    return rid, None
 
 
 @api_unified_bp.after_request
@@ -104,6 +136,10 @@ def create_decision():
         if errors:
             return jsonify({"status": "error", "errors": errors}), 400
 
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
+
         fact_id = data["fact_id"]
         decision = data["decision"]
 
@@ -126,7 +162,7 @@ def create_decision():
         decision_id = db.insert_v2_review_decision(
             fact_id=fact_id,
             decision=decision,
-            reviewer_id=data.get("reviewer_id", "web_reviewer"),
+            reviewer_id=reviewer_id,
             assigned_metric_id=data.get("assigned_metric_id"),
             corrected_value=data.get("corrected_value"),
             rejection_reason=data.get("rejection_reason"),
@@ -283,6 +319,10 @@ def create_image_decision():
             logger.warning(f"Validation error: {error}")
             return jsonify({"status": "error", "message": error}), 400
 
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
+
         # Extract fields
         img_id = data["img_id"]
         decision = data["decision"]
@@ -290,7 +330,6 @@ def create_image_decision():
         rejection_reason = data.get("rejection_reason")
         reviewer_notes = data.get("reviewer_notes")
         review_time_seconds = data.get("review_time_seconds")
-        reviewer_id = data.get("reviewer_id", "anonymous")
 
         # Validate candidate exists
         candidate = db.get_image_review_candidate_v2(img_id)
@@ -594,12 +633,12 @@ def add_missed_metric():
         elif unit not in VALID_UNITS:
             errors["unit"] = f"Must be one of: {', '.join(VALID_UNITS)}"
 
-        reviewer_id = data.get("reviewer_id") or "anonymous"
-        if not reviewer_id:
-            errors["reviewer_id"] = "Required field"
-
         if errors:
             return jsonify({"status": "error", "errors": errors}), 400
+
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
 
         period_end = data.get("period_end") or None
         period_type = data.get("period_type") or None
@@ -631,6 +670,218 @@ def add_missed_metric():
     except Exception as e:
         logger.error(f"Error adding missed metric: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Internal server error"}), 500
+
+
+# =============================================================================
+# Metric List (for metric-picker autocomplete)
+# =============================================================================
+
+# Tier-1 metric IDs per CLAUDE.md; used as fallback when YAML has no tier field.
+_TIER_1_METRICS = frozenset(
+    {
+        "cm_customer_retention_rate",
+        "cm_net_revenue_retention",
+        "cm_gross_revenue_retention",
+        "cm_revenue_by_cohort",
+        "cm_transactions_by_cohort",
+        "cm_balance_by_cohort",
+        "cm_gross_margin_by_cohort",
+        "cm_revenue_concentration",
+        "cm_lifetime_value_per_customer",
+        "cm_customer_acquisition_cost",
+        "cm_ltv_to_cac_ratio",
+        "cm_ltv_to_cac_ratio_by_cohort",
+        "cm_large_customers_period_end",
+        "cm_new_customers_acquired",
+        "cm_customers_period_end_by_tenure",
+    }
+)
+
+
+@api_unified_bp.route("/metrics/list", methods=["GET"])
+def list_metrics():
+    """
+    Return the full list of active metrics for the metric-picker autocomplete.
+
+    Response: JSON array of {metric_id, display_name, tier} objects.
+    Sourced from config/metric_keywords.yaml via the shared keyword_config loader.
+    """
+    try:
+        config = _load_config()
+        result = []
+        for metric_id, metric_cfg in config.items():
+            if metric_id.startswith("_"):
+                continue
+            if metric_cfg.get("status") == "deprecated":
+                continue
+            yaml_tier = metric_cfg.get("tier")
+            if yaml_tier is not None:
+                tier = f"tier_{yaml_tier}"
+            else:
+                tier = "tier_1" if metric_id in _TIER_1_METRICS else "tier_2"
+            result.append(
+                {
+                    "metric_id": metric_id,
+                    "display_name": metric_cfg.get("display_name") or metric_id,
+                    "tier": tier,
+                }
+            )
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Error loading metrics list: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to load metrics"}), 500
+
+
+# =============================================================================
+# Image Metric Confirmations
+# =============================================================================
+
+_VALID_IMAGE_METRIC_DECISIONS = ("accept", "reject", "correct", "add")
+
+
+@api_unified_bp.route("/image-metric-confirmations", methods=["POST"])
+def create_image_metric_confirmations():
+    """
+    Record per-metric confirmation decisions for a chart image.
+
+    Request Body:
+        {
+            "img_id": "<uuid>",
+            "reviewer_id": "<string>",   (optional — defaults to "anonymous")
+            "decisions": [
+                {"detected_metric_id": "...", "decision": "accept"},
+                {"detected_metric_id": "...", "decision": "reject",
+                 "rejection_reason": "not_present"},
+                {"detected_metric_id": "...", "decision": "correct",
+                 "confirmed_metric_id": "..."},
+                {"detected_metric_id": null, "decision": "add",
+                 "confirmed_metric_id": "..."}
+            ]
+        }
+
+    Returns:
+        200: {"ok": true, "upserted": <int>, "confirmations": [...]}
+        400: {"error": "<reason>"}
+        500: {"error": "database error"}
+    """
+    db = get_db()
+
+    try:
+        if not request.is_json:
+            return jsonify({"error": "Request must be JSON"}), 400
+
+        data = request.get_json()
+
+        # Validate img_id
+        img_id_raw = data.get("img_id")
+        if not img_id_raw:
+            return jsonify({"error": "img_id is required"}), 400
+        try:
+            img_id = str(_uuid.UUID(str(img_id_raw)))
+        except (ValueError, AttributeError):
+            return jsonify({"error": "img_id must be a valid UUID"}), 400
+
+        reviewer_id, gate_reject = _require_reviewer_id(data)
+        if gate_reject is not None:
+            return gate_reject
+
+        decisions_raw = data.get("decisions")
+        if decisions_raw is None:
+            return jsonify({"error": "decisions is required"}), 400
+        if not isinstance(decisions_raw, list):
+            return jsonify({"error": "decisions must be a list"}), 400
+
+        validated: list[dict[str, Any]] = []
+        for i, d in enumerate(decisions_raw):
+            prefix = f"decisions[{i}]"
+            if not isinstance(d, dict):
+                return jsonify({"error": f"{prefix}: must be an object"}), 400
+
+            decision = d.get("decision")
+            if decision not in _VALID_IMAGE_METRIC_DECISIONS:
+                return jsonify(
+                    {
+                        "error": f"{prefix}.decision must be one of: {', '.join(_VALID_IMAGE_METRIC_DECISIONS)}"
+                    }
+                ), 400
+
+            detected_metric_id = d.get("detected_metric_id") or None
+            confirmed_metric_id = d.get("confirmed_metric_id") or None
+            rejection_reason = d.get("rejection_reason") or None
+
+            if decision == "accept":
+                if not detected_metric_id:
+                    return jsonify({"error": f"{prefix}: accept requires detected_metric_id"}), 400
+                if rejection_reason:
+                    return jsonify(
+                        {"error": f"{prefix}: accept must not have rejection_reason"}
+                    ), 400
+                confirmed_metric_id = confirmed_metric_id or detected_metric_id
+
+            elif decision == "reject":
+                if not detected_metric_id:
+                    return jsonify({"error": f"{prefix}: reject requires detected_metric_id"}), 400
+                if not rejection_reason:
+                    return jsonify({"error": f"{prefix}: reject requires rejection_reason"}), 400
+                confirmed_metric_id = None
+
+            elif decision == "correct":
+                if not detected_metric_id:
+                    return jsonify({"error": f"{prefix}: correct requires detected_metric_id"}), 400
+                if not confirmed_metric_id:
+                    return jsonify(
+                        {"error": f"{prefix}: correct requires confirmed_metric_id"}
+                    ), 400
+                if detected_metric_id == confirmed_metric_id:
+                    return jsonify(
+                        {
+                            "error": f"{prefix}: correct requires detected_metric_id != confirmed_metric_id"
+                        }
+                    ), 400
+
+            elif decision == "add":
+                if detected_metric_id:
+                    return jsonify(
+                        {"error": f"{prefix}: add must have null detected_metric_id"}
+                    ), 400
+                if not confirmed_metric_id:
+                    return jsonify({"error": f"{prefix}: add requires confirmed_metric_id"}), 400
+                if rejection_reason:
+                    return jsonify({"error": f"{prefix}: add must not have rejection_reason"}), 400
+
+            validated.append(
+                {
+                    "detected_metric_id": detected_metric_id,
+                    "confirmed_metric_id": confirmed_metric_id,
+                    "decision": decision,
+                    "rejection_reason": rejection_reason,
+                }
+            )
+
+        upserted = db.insert_image_metric_confirmations(img_id, validated, reviewer_id)
+        confirmations = db.get_image_metric_confirmations(img_id)
+
+        # Convert datetime objects to ISO strings for JSON serialisation
+        serialised = []
+        for row in confirmations:
+            r = dict(row)
+            for k in ("created_at", "updated_at"):
+                if r.get(k) is not None and hasattr(r[k], "isoformat"):
+                    r[k] = r[k].isoformat()
+            serialised.append(r)
+
+        return jsonify({"ok": True, "upserted": upserted, "confirmations": serialised}), 200
+
+    except psycopg.errors.ForeignKeyViolation:
+        return jsonify({"error": "img_id not found in v2_image_assets"}), 400
+
+    except psycopg.DatabaseError as e:
+        logger.error(f"Database error in image-metric-confirmations: {e}", exc_info=True)
+        return jsonify({"error": "database error"}), 500
+
+    except Exception as e:
+        logger.error(f"Error in image-metric-confirmations: {e}", exc_info=True)
+        return jsonify({"error": "internal server error"}), 500
 
 
 # =============================================================================

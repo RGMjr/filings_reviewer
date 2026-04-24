@@ -72,6 +72,12 @@ Rules for any DB-touching command in this repo:
 | `R2_SECRET_ACCESS_KEY` | With `R2_BUCKET` | R2 API token secret |
 | `R2_ENDPOINT_URL` | With `R2_BUCKET` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
 | `IMAGE_CACHE_DIR` | Dev only (optional) | Override local filesystem image-cache root. Ignored when `R2_BUCKET` is set |
+| `METABASE_URL` | Optional | Target of the "Data Explorer" nav link in the Flask UI. Defaults to `https://filings-metabase.onrender.com` when unset. |
+| `ENABLE_METRIC_CLASSIFY` | Optional | Feature gate for the Vision-API metric-classify stage (`src/extraction_v2/stages/image_classify.py`). Default off. When `true`, every chart / table_image runs `VisionClient.analyze_image_for_metric_classification` and the result lands in `v2_image_classifications`. |
+| `VISION_CLASSIFY_PROVIDER` | With `ENABLE_METRIC_CLASSIFY` | Provider for the classify call (default `gemini`). Independent of `VISION_PROVIDER` so classify and OCR can pick different cost-optimal providers. |
+| `VISION_CLASSIFY_MODEL` | With `ENABLE_METRIC_CLASSIFY` | Model id (default `gemini-2.5-flash-lite`, per 2026-04-23 bake-off). |
+| `VISION_CLASSIFY_THRESHOLD` | With `ENABLE_METRIC_CLASSIFY` | Confidence floor (default `0.5`) for the downstream `predicted_relevant` signal. Records below the floor are still persisted. |
+| `GEMINI_API_KEY` | With `VISION_CLASSIFY_PROVIDER=gemini` | Google AI Studio key for Gemini vision calls. Set manually in Render. |
 
 ## Image Storage
 

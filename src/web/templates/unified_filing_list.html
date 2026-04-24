@@ -8,7 +8,11 @@
 {%- macro list_url(doc_type='__keep__', sort_by_=None, sort_dir_=None, page_=None, include_reviewers=True, extra=None) -%}
   {%- set dt = (current_document_type if doc_type == '__keep__' else doc_type) -%}
   {%- set kwargs = {'sort_by': sort_by_ or sort_by, 'sort_dir': sort_dir_ or sort_dir} -%}
-  {%- if dt and dt != 'all' %}{% set _ = kwargs.update({'document_type': dt}) %}{% endif -%}
+  {# Always emit document_type= (empty string = explicit All) so the restore JS
+     can distinguish an intentional All click from a fresh visit. Mirrors the
+     reviewer_id sentinel pattern already in use below. #}
+  {%- if dt and dt != 'all' %}{% set _ = kwargs.update({'document_type': dt}) %}
+  {%- else %}{% set _ = kwargs.update({'document_type': ''}) %}{% endif -%}
   {%- if hide_completed %}{% set _ = kwargs.update({'hide_completed': 1}) %}{% endif -%}
   {%- if page_ %}{% set _ = kwargs.update({'page': page_, 'per_page': per_page}) %}{% endif -%}
   {%- if include_reviewers and reviewers %}{% set _ = kwargs.update({'reviewer_id': reviewers}) %}
@@ -31,17 +35,17 @@
            class="btn {% if current_document_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
           All
         </a>
-        <a href="{{ list_url(doc_type='sec_filing') }}"
-           class="btn {% if current_document_type == 'sec_filing' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-          SEC Filings
+        <a href="{{ list_url(doc_type='ipo') }}"
+           class="btn {% if current_document_type == 'ipo' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          IPO Filings
         </a>
-        <a href="{{ list_url(doc_type='earnings_call') }}"
-           class="btn {% if current_document_type == 'earnings_call' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-          Earnings Calls
+        <a href="{{ list_url(doc_type='earnings') }}"
+           class="btn {% if current_document_type == 'earnings' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          Earnings
         </a>
-        <a href="{{ list_url(doc_type='investor_presentation') }}"
-           class="btn {% if current_document_type == 'investor_presentation' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-          Presentations
+        <a href="{{ list_url(doc_type='investor_day') }}"
+           class="btn {% if current_document_type == 'investor_day' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+          Investor Day
         </a>
       </div>
     </div>
@@ -53,7 +57,8 @@
         <div class="filing-reviewer-menu" style="position: absolute; z-index: 1000; background: white; border: 1px solid #dee2e6; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,.1); padding: 10px; margin-top: 4px; min-width: 220px; max-height: 320px; overflow-y: auto;">
           {% if all_reviewers %}
           <form method="get">
-            {% if current_document_type and current_document_type != 'all' %}<input type="hidden" name="document_type" value="{{ current_document_type }}">{% endif %}
+            {# Always carry document_type; empty value = explicit All (matches macro/JS invariant). #}
+            <input type="hidden" name="document_type" value="{% if current_document_type and current_document_type != 'all' %}{{ current_document_type }}{% endif %}">
             {% if hide_completed %}<input type="hidden" name="hide_completed" value="1">{% endif %}
             <input type="hidden" name="sort_by" value="{{ sort_by }}">
             <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
@@ -125,6 +130,7 @@
           {% set fact_total = f.fact_count or 0 %}
           {% set facts_pending = f.facts_pending or 0 %}
           {% set facts_accepted = f.facts_accepted or 0 %}
+          {% set facts_auto_accepted = f.facts_auto_accepted or 0 %}
           {% set facts_rejected = f.facts_rejected or 0 %}
           {% set image_count = f.image_count or 0 %}
           {% set images_pending = f.images_pending or 0 %}
@@ -135,10 +141,16 @@
               <br><small class="text-muted font-monospace" style="font-size: 0.75em;">{{ f.accession_number }}</small>
             </td>
             <td>
+              {%- set ipo_forms = ('S-1', 'S-1/A', 'F-1', 'F-1/A') -%}
+              {%- set earnings_forms = ('8-K', '8-K/A', '10-K', '10-K/A', '10-Q', '10-Q/A') -%}
               {% if f.document_type == 'earnings_call' %}
-              <span class="badge bg-info text-dark">Earnings Call</span>
+              <span class="badge bg-info text-dark">Earnings</span>
               {% elif f.document_type == 'investor_presentation' %}
-              <span class="badge bg-warning text-dark">Presentation</span>
+              <span class="badge bg-warning text-dark">Investor Day</span>
+              {% elif f.form_type in ipo_forms %}
+              <span class="badge bg-primary">IPO</span>
+              {% elif f.form_type in earnings_forms %}
+              <span class="badge bg-info text-dark">Earnings</span>
               {% else %}
               <span class="badge bg-light text-dark border">SEC</span>
               {% endif %}
@@ -165,10 +177,29 @@
             </td>
             <td>
               {% if fact_total > 0 %}
+              {# Auto-accepted review link: mirrors the Review button below but pre-filters to status=auto_accepted. #}
+              {%- set auto_review_kwargs = {
+                'filing_id': f.filing_id,
+                'status': 'auto_accepted',
+                'list_sort_by': sort_by,
+                'list_sort_dir': sort_dir,
+                'list_hide_completed': 1 if hide_completed else 0
+              } -%}
+              {%- if current_document_type and current_document_type != 'all' -%}
+                {% set _ = auto_review_kwargs.update({'list_document_type': current_document_type}) %}
+              {%- endif -%}
+              {%- if reviewers -%}
+                {% set _ = auto_review_kwargs.update({'list_reviewer_id': reviewers}) %}
+              {%- endif -%}
               <small class="text-muted">
                 <span class="badge bg-warning text-dark">{{ facts_pending }}</span> pending
                 &middot;
                 <span class="text-success">{{ facts_accepted }}</span> accepted
+                {% if facts_auto_accepted > 0 %}
+                (<a href="{{ url_for('review_unified.review_filing', **auto_review_kwargs) }}"
+                    title="Facts auto-accepted at extraction time when confidence cleared threshold. Click to review."
+                    style="text-decoration: none;">&#9889; {{ facts_auto_accepted }} auto</a>)
+                {% endif %}
                 &middot;
                 <span class="text-danger">{{ facts_rejected }}</span> rejected
               </small>
@@ -308,7 +339,10 @@
     HIDE:      'hideCompleted'            // legacy "1"
   };
   var VALID_SORT_COLS = ['company', 'date', 'text_progress', 'image_progress'];
-  var VALID_DOC_TYPES = ['sec_filing', 'earnings_call', 'investor_presentation'];
+  // Old values ('sec_filing', 'earnings_call', 'investor_presentation') remain in
+  // existing users' localStorage; they silently fail the includes() check below
+  // and get ignored on next load — self-healing fallback to "All".
+  var VALID_DOC_TYPES = ['ipo', 'earnings', 'investor_day'];
 
   var url = new URL(window.location.href);
   var params = url.searchParams;
@@ -366,7 +400,9 @@
   }
   // For document_type: only apply stored value if URL completely omits it.
   // An empty `document_type=` param means "All" and must not be overridden.
-  if (!params.has('document_type')) {
+  // The macro always emits the param (empty for All, value otherwise) so a
+  // null return here means "no one set it" — i.e. a fresh visit.
+  if (params.get('document_type') === null) {
     var savedDocType = localStorage.getItem(KEYS.DOC_TYPE);
     if (savedDocType && VALID_DOC_TYPES.includes(savedDocType)) {
       params.set('document_type', savedDocType);
