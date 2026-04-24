@@ -1,16 +1,19 @@
 ---
-autonomy: skip
+autonomy: n/a
 discovered: '2026-04-18'
 estimated: M
 id: 16
-note: Precision tuning; data-driven, needs judgment
+note: 'Dissolved by presence-first pivot (2026-04-24). Issue is purely value-level
+  precision (table-scale inference, period attribution); facts are advisory under
+  the pivot and the Tier 1 gate no longer counts these FPs. See
+  docs/operations/text-pipeline-presence-pivot-plan.md.'
 severity: low
 slug: farfetch-precision-drag-table-scale-period-attribution
 source: legacy
-status: open
+status: archived
 title: Farfetch Precision Drag — Table-Scale + Period Attribution
 touches: []
-updated: '2026-04-18'
+updated: '2026-04-24'
 ---
 
 ### Problem
