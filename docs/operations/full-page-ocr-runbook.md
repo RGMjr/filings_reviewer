@@ -25,7 +25,10 @@ appended to `context.segments` with `source_type='image_ocr'` and
 `source_img_id` pointing at the asset. The existing `candidate_generation
 → value_binding → fact_construction` pipeline runs unchanged on those
 segments. If the vision response flags the page as chart-bearing, the
-existing chart-extraction path runs on the same image as a second pass.
+existing chart-extraction path runs on the same image as a second pass
+— under the chart-presence pivot (#86) that pass populates
+`v2_image_assets.detected_metrics` (metric-presence signals) rather than
+emitting per-value `v2_metric_facts` rows.
 
 Per-filing cap: `MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT = 30`. Chart
 re-passes share `MAX_CHART_CALLS_PER_DOCUMENT = 10`.

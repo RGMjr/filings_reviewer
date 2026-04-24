@@ -8,9 +8,9 @@
 | Status | Count |
 |--------|-------|
 | Open | 31 |
-| Partially Resolved | 2 |
+| Partially Resolved | 1 |
 | Archived | 46 |
-| Resolved | 14 |
+| Resolved | 16 |
 
 
 ## Nightly Sweeper Classification
@@ -27,13 +27,13 @@
 | #27 | skip | S | — | Stale assertions — needs judgment on test rewrite |
 | #28 | skip | L | — | Root architecture issue; no single-file fix |
 | #34 | skip | — | — | Cross-referenced only; closes when dependents close |
-| #35 | skip | L | — | Backfill; needs coordination with #53/#54 |
+| #35 | skip | L | — | Dissolved by the chart-presence pivot (2026-04-23). Historical filings no longer need chart-fact backfill — the chart pipeline no longer produces facts. detected_metrics backfill on historical filings is tracked separately. |
 | #38 | review | M | `sql/*.sql` `src/*/*.py` `src/web/routes/*.py` `tests/**/*.py` | Column rename + callsite sweep; needs callsite audit |
 | #39 | skip | M | — | Column rename; needs migration ordering decision |
 | #40 | skip | — | — | Stakeholder decision (supersession semantics) |
 | #43 | skip | — | — | Latent; no action needed until re-extraction |
 | #49 | skip | M | — | Resolved 2026-04-23 — cannot reproduce on main; retained in table for audit trail |
-| #53 | skip | M | — | Chart call limit; needs data-driven tuning |
+| #53 | skip | M | — | Chart call limit; needs data-driven tuning. Post-#86 chart-presence pivot (2026-04-23), truncation affects presence coverage only (missed detected_metrics signals) — no per-value correctness impact because the pipeline no longer emits per-value chart facts. |
 | #55 | skip | S | — | Data cleanup; needs inspection of stuck filings |
 | #58 | review | S | `src/filing_fetcher/*.py` `tests/unit/filing_fetcher/*.py` | 8-K Exhibit 99.1 fetch; feature add, needs validator run |
 | #59 | review | S | `src/extraction_v2/classifier*.py` `tests/unit/extraction_v2/*classifier*` | New classifier patterns; FP risk |
@@ -47,7 +47,7 @@
 | #80 | review | S | `src/infra/image_storage.py` `src/gold_standard/v2_validator.py` `.claude/rules/infrastructure.md` | Add env-scoped guard against unintended prod R2 writes from CLI tools; design call (storage-layer vs validator-layer) needed |
 | #84 | review | S | `scripts/known_issues_selector.py` `.claude/commands/commit.md` | Cross-reference pr_refs with GitHub API; auto-update status=resolved on merge |
 | #85 | safe | XS | `scripts/apply_all_migrations.py` | Recurrence of Issue |
-| #86 | review | M | `src/extraction_v2/stages/deduplication.py` | Chart extractor produces per-cohort bar values (visible pre-dedup), but deduplication stage collapses same-metric different-value facts. Surfaced post-#72 resolution as the residual HOOD `cm_revenue_by_cohort` 9/10 FN pattern. |
+| #86 | review | M | `src/extraction_v2/stages/deduplication.py` | Dissolved by the chart-presence pivot (PRs #147/#150/#151/#154, 2026-04-23). Chart pipeline no longer emits per-value facts, so the dedup identity-key collapse root cause no longer exists. Residual chart facts drain in PR 4b. |
 | #88 | skip | S | `scripts/apply_all_migrations.py` `.pre-commit-config.yaml` | Add a pre-commit hook that fails if any sql/NN_*.sql on disk lacks an entry in MIGRATION_ORDER or EXCLUDED_FILES. |
 | #94 | safe | S | `sql/31_drop_v1_review_tables.sql` `sql/` `src/web/middleware.py` |  |
 | #95 | review | M | `scripts/apply_migrations.py` `render.yaml` `src/web/app.py` `sql/` |  |
@@ -271,51 +271,6 @@ rollback).
    `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
 4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
    and re-extract 5 investor-deck-style filings to exercise Path B.
-
-## #86. Dedup Stage Collapses Same-Metric Different-Value Cohort Facts
-
-**Status**: Open
-**Severity**: medium
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-On HOOD's S-1, the Annual Revenue by Annual Cohort chart produces candidate per-cohort bar values pre-dedup — gold-standard values $17, $62, $44, $56, $87, $45, $130, $186, $175 all appear in the pre-dedup candidate set — but only one ($87) survives to the persisted fact set. Running `python3 -m src.gold_standard.v2_validator --companies "Robinhood Markets, Inc." --fn-diagnostics` after the 2026-04-22 HOOD backfill (#72, #77) classifies all 9 missing cohort values as `DEDUP_COLLISION` with the diagnostic:
-
-> *"Value-matching fact (17.0) existed pre-dedup but was collapsed into a sibling with different value; 1 match(es) pre-dedup, 2 total post-dedup"*
-
-Same pattern repeats for 62.0, 45.0, 130.0, 186.0, 56.0, 175.0, 326.0 (eight more). The same failure mode also produces HOOD's pre-existing `cm_customer_acquisition_cost` FN (expected $20, collapsed into a sibling).
-
-### Impact
-
-| Metric | Tier | Current P/R/F1 (post-#72 backfill) | Gap vs. perfect |
-|---|---|---|---|
-| `cm_revenue_by_cohort` | T1 | 50% / 10% / 16.7% | 9 cohort FNs (all `dedup_collision`) |
-| `cm_customer_acquisition_cost` | T1 | 100% / 50% / 66.7% | 1 FN (dedup collision on value 20) |
-
-HOOD's overall Tier 1 F1 is 68.6% post-backfill; closing this gap could push it well above 80%. Not a Tier 1 blocker on its own (HOOD T1 recall is already above the pre-scrub 0.3143 baseline thanks to `cm_balance_by_cohort` at 100/100/100), but it's the single biggest remaining per-metric recall gain available without new extractor work.
-
-### Candidate root causes (not yet narrowed)
-
-1. **Post-transfer collision collapse merges too aggressively.** The validator run logged `Post-transfer collision collapse: merged 18 colliding primaries` then `Fuzzy period dedup: removed 4 duplicate-value facts (68 → 28)`. The first step is the suspect — collapsing facts that share `(canonical_metric_id, period, source_type)` but differ in `value` is exactly what's happening here. A cohort chart legitimately has N distinct bars for the same `canonical_metric_id` and effectively no period (period is the cohort dimension, encoded in `cohort_def` / `cohort_type`, not `period_start`/`period_end`).
-2. **Identity-key doesn't include `cohort_def`/`cohort_type`.** If the dedup identity key skips those cohort-specific columns for chart-sourced facts, every bar value collapses into one.
-3. **`source_locator.img_id` isn't part of the identity either.** Even if two facts came from different bars of the same image, distinctness on img_id + bar position is probably what uniquely identifies a cohort bar.
-
-### Next Steps
-
-1. Read `src/extraction_v2/stages/deduplication.py` and identify which columns form the identity key for the "post-transfer collision collapse" step. Confirm whether chart-sourced cohort facts are being merged on a key that excludes `value`, `cohort_def`, or the bar-position portion of `source_locator`.
-2. Add a regression test in `tests/unit/extraction_v2/` that constructs 10 chart-sourced `cm_revenue_by_cohort` facts with identical `canonical_metric_id`/`source_type`/`period_*` and distinct `value`+`cohort_def`; assert all 10 survive the stage.
-3. Fix: extend the dedup identity to include `cohort_def` (and/or the bar-position within `source_locator`) for chart-sourced cohort metrics. Should be a narrow change in `_collision_identity_key` or equivalent.
-4. Re-run the HOOD validator; expect `cm_revenue_by_cohort` recall to jump from 10% toward 100% and `cm_customer_acquisition_cost` to move from 50% to 100%.
-5. Refresh the v2 baseline once the gain is observed (still gated on Issue #78 / Chewy lxml regression per PR #102 body, if unresolved).
-
-### Cross-references
-
-- Issue #72 — HOOD Tier 1 regression (resolved 2026-04-22; this issue is the residual).
-- Issue #77 — R2 chart-image bytes (resolved 2026-04-22; unrelated root cause).
-- Issue #14 — Farfetch LTV/CAC dedup collision on layout-table misclassification (different failure mode but related stage).
-- Validator diagnostic output on HOOD post-backfill: `dedup_collision: 16 (89%)`.
 
 ## #88. No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
 
@@ -726,7 +681,7 @@ See Issue #30 resolution notes (now in archive) for full audit trail. Apply log 
 **Status**: Open
 **Severity**: low
 **Discovered**: 2026-04-21
-**Updated**: 2026-04-21
+**Updated**: 2026-04-23
 
 ### Problem
 
@@ -1013,6 +968,43 @@ quietly since `sql/31` was applied.
 - Verify after: tail `filings-reviewer` Render logs for 5 minutes and
   confirm the `check_v2_audit_http_method` violation is gone.
 
+## #96. Chart-Presence Pivot — Multi-PR Rollout Tracking
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+**PR refs**: #147, #150, #151, #154
+
+### Problem
+
+The chart-stage pivot for Issue #86 replaces per-value chart `v2_metric_facts` emission with image-level metric-presence records on `v2_image_assets.detected_metrics`, adjudicated via `v2_image_metric_confirmations` (accept / reject / correct / add). Shipped as a four-PR sequence to bound scope, unblock parallel review, and isolate the prod drain from the code + docs cleanup.
+
+### Rollout
+
+| PR | Scope | Status |
+|---|---|---|
+| [#147](https://github.com/RGMjr/filings_reviewer/pull/147) | `ChartFactBridgeStage` rewrite (emit presence on `v2_image_assets.detected_metrics`, no facts). `sql/42` adds the JSONB column. `_scan_chart` gated off. | Merged 2026-04-23 |
+| [#150](https://github.com/RGMjr/filings_reviewer/pull/150) | Gold-standard validator: presence P/R/F1; baseline schema extended; chart-row `Raw value` forced advisory. | Merged 2026-04-23 |
+| [#151](https://github.com/RGMjr/filings_reviewer/pull/151) | `sql/43_create_v2_image_metric_confirmations`; `DatabaseAdapter.insert/get_image_metric_confirmations`; `GET /api/v2/metrics/list`; `POST /api/v2/image-metric-confirmations`; Chart Evidence block + `_resolve_chart_image_status` deleted. | Merged 2026-04-23 |
+| [#154](https://github.com/RGMjr/filings_reviewer/pull/154) | Detected metrics card in `unified_review.html`; `review_images_v2.js` module (A/R/C/N focus-scoped keyboard); Playwright spec. | Merged 2026-04-23 |
+| PR 4a | Code + docs cleanup: delete `CohortParser`, rewrite `.claude/rules/v2-pipeline.md`, update `docs/architecture/data-model.md`, `CLAUDE.md` §4, `docs/development/metric-lifecycle-process.md`, close legacy-086/035 known-issues. | Open (this PR) |
+| PR 4b | Prod drain (`DELETE FROM v2_metric_facts WHERE source_type='chart'` — Option B per user decision, or `scripts/batch_v2_extraction.py --chart-only` — Option A), `pg_dump` snapshot pre-drain, baseline refresh. | Pending |
+
+### Next Steps
+
+1. Land PR 4a (this PR).
+2. Ask user for drain method (Option A re-extract vs Option B SQL DELETE).
+3. Cut PR 4b worktree; execute the drain with approval gates at each step; refresh baseline.
+4. Close this fragment (`status: resolved`) in PR 4b.
+
+### Cross-References
+
+- Parent plan: `~/.claude/plans/pick-up-issue-86-tranquil-piglet.md`
+- PR 4a plan: `~/.claude/plans/let-s-move-on-to-snoopy-flamingo.md`
+- Dissolved issues: legacy-086 (dedup collapse), legacy-035 (chart-fact backfill).
+- Reduced-severity reference: legacy-053 (chart call limit — now affects presence coverage only).
+
 ## #5. Revenue Synonym Context Gating
 
 **Status**: Open
@@ -1039,48 +1031,6 @@ Some valid per-customer GMV values may not have context keywords nearby, causing
 Review rejection rates for revenue synonyms to determine if context gating is too strict.
 
 ## Partially Resolved Issues
-
-## #35. Pre-2026-04-17 Filings Missing Chart-Sourced Facts
-
-**Status**: Partially Resolved
-**Severity**: low
-**Discovered**: 2026-04-19
-**Updated**: 2026-04-19
-
-**Partial resolution**: 2026-04-21 (PR #50 landed `chart_only` surgical backfill mode)
-
-### Update 2026-04-21 — investigation outcome
-
-Backfill mechanism shipped via PR #50 (`V2PersistenceAdapter.persist_*(chart_only=True)` + `scripts/batch_v2_extraction.py --chart-only`). The mode scopes the DELETE-then-INSERT to `source_type='chart'` and the reviewed-filing guard to chart-fact decisions only, so text facts and their reviewer decisions are preserved — allowing surgical re-extraction on filings with accumulated reviewer work without CASCADE-destroying it.
-
-Neon-prod quantification on 2026-04-21 revised the problem size sharply:
-
-- 38 Class (E) filings total → **28 are stuck 8-K filings** in `processing_status='processing'` that shouldn't have been ingested (see Issue #55 below), and **10 are in-scope S-1/F-1** (8 non-reviewed + 2 reviewed) — the real backfill target is ≤10 filings, not 38.
-- Of those ≤10, all 8 non-reviewed candidates have accumulated 81 reviewer decisions across them, making the guard's preservation the binding constraint (which `chart_only` solves).
-
-Three smokes on Neon (1547 Samsara, 1541 Flywire, 1146 Chewy) confirmed:
-
-- Mechanism is safe: reviewer decisions fully preserved across all three runs; text/html_table facts untouched.
-- Recall gain is sparse: only 1 chart fact produced across 3 filings (Chewy), and that fact was a low-confidence (0.508) misbind of `cm_customer_acquisition_cost`=$3 — a reviewer-gated false positive.
-
-Root cause of the sparse gain: the original 38-filing Class (E) baseline conflates (a) filings where pre-fix OCR dropped Tier 1 cohort/NRR chart data with (b) filings whose charts aren't Tier 1 metrics at all (market-size, process diagrams, photos). Only (a) recovers under re-extraction; most of the 38-filing set is (b).
-
-### Remaining work
-
-- Full 5-filing Phase 4' (1442, 1543, 1549 Snowflake, 1550 Tenable, 1146-remainder) deferred: expected recall gain doesn't justify the reviewer-curation overhead until Issues #53 and #54 (chart-call-limit truncation and chart-bridge low-confidence misbinds) are investigated.
-- Class (E) diagnostic should narrow to S-1/F-1 form types (and exclude filings whose charts don't include Tier 1 metrics) to avoid overstating the gap in future audits.
-- 2 reviewed filings (1542, 1543) still in Class (E) under chart_only's guard — acceptable; they preserve reviewer work.
-
-### Cross-References
-
-- `.claude/rules/v2-pipeline.md#chart-only-re-extraction-chart_onlytrue` — mechanism documentation
-- Issue #34 — R2 backend (Phases 1 + 3 resolved 2026-04-19)
-- Issue #24 — Class (B) orphan img_id refs (still open; independent of Issue #35 scope)
-- Issue #53 — chart call limit (10) truncates OCR for high-chart filings
-- Issue #54 — chart-bridge emits low-confidence misbinds on non-Tier-1 charts
-- Issue #55 — 28 stuck 8-K filings in Class (E) (form-filter bypass during ingestion)
-- PR #50 — `feat(persistence): add chart_only mode for surgical Issue #35 backfills`
-- Session artifacts: `data/audit/issue_35_presmoke_snapshot.sql`, `data/audit/issue_35_presmoke_gs.txt`, `logs/issue_35_prod_smoke{,2,3}.log`
 
 ## #62. Local-Dev Stuck-Batch Recovery Is Manual
 
@@ -1786,6 +1736,66 @@ This is a recurrence of Issue #46 (resolved 2026-04-20 by extending the list thr
 - Confirm the migration itself is idempotent (it uses `ALTER TABLE ... DROP CONSTRAINT IF EXISTS` / `ADD COLUMN IF NOT EXISTS`, so re-running on a DB where it was already applied manually should be safe, but verify before registering).
 - Consider a pre-commit hook that fails if any `sql/NN_*.sql` file is on disk without a matching entry in `MIGRATION_ORDER` or `EXCLUDED_FILES`. That would close the drift class, not just this one recurrence.
 
+## #86. Dedup Stage Collapses Same-Metric Different-Value Cohort Facts
+
+**Status**: Resolved
+**Severity**: medium
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-23
+
+### Problem
+
+On HOOD's S-1, the Annual Revenue by Annual Cohort chart produces candidate per-cohort bar values pre-dedup — gold-standard values $17, $62, $44, $56, $87, $45, $130, $186, $175 all appear in the pre-dedup candidate set — but only one ($87) survives to the persisted fact set. Running `python3 -m src.gold_standard.v2_validator --companies "Robinhood Markets, Inc." --fn-diagnostics` after the 2026-04-22 HOOD backfill (#72, #77) classifies all 9 missing cohort values as `DEDUP_COLLISION` with the diagnostic:
+
+> *"Value-matching fact (17.0) existed pre-dedup but was collapsed into a sibling with different value; 1 match(es) pre-dedup, 2 total post-dedup"*
+
+Same pattern repeats for 62.0, 45.0, 130.0, 186.0, 56.0, 175.0, 326.0 (eight more). The same failure mode also produces HOOD's pre-existing `cm_customer_acquisition_cost` FN (expected $20, collapsed into a sibling).
+
+### Impact
+
+| Metric | Tier | Current P/R/F1 (post-#72 backfill) | Gap vs. perfect |
+|---|---|---|---|
+| `cm_revenue_by_cohort` | T1 | 50% / 10% / 16.7% | 9 cohort FNs (all `dedup_collision`) |
+| `cm_customer_acquisition_cost` | T1 | 100% / 50% / 66.7% | 1 FN (dedup collision on value 20) |
+
+HOOD's overall Tier 1 F1 is 68.6% post-backfill; closing this gap could push it well above 80%. Not a Tier 1 blocker on its own (HOOD T1 recall is already above the pre-scrub 0.3143 baseline thanks to `cm_balance_by_cohort` at 100/100/100), but it's the single biggest remaining per-metric recall gain available without new extractor work.
+
+### Candidate root causes (not yet narrowed)
+
+1. **Post-transfer collision collapse merges too aggressively.** The validator run logged `Post-transfer collision collapse: merged 18 colliding primaries` then `Fuzzy period dedup: removed 4 duplicate-value facts (68 → 28)`. The first step is the suspect — collapsing facts that share `(canonical_metric_id, period, source_type)` but differ in `value` is exactly what's happening here. A cohort chart legitimately has N distinct bars for the same `canonical_metric_id` and effectively no period (period is the cohort dimension, encoded in `cohort_def` / `cohort_type`, not `period_start`/`period_end`).
+2. **Identity-key doesn't include `cohort_def`/`cohort_type`.** If the dedup identity key skips those cohort-specific columns for chart-sourced facts, every bar value collapses into one.
+3. **`source_locator.img_id` isn't part of the identity either.** Even if two facts came from different bars of the same image, distinctness on img_id + bar position is probably what uniquely identifies a cohort bar.
+
+### Next Steps
+
+1. Read `src/extraction_v2/stages/deduplication.py` and identify which columns form the identity key for the "post-transfer collision collapse" step. Confirm whether chart-sourced cohort facts are being merged on a key that excludes `value`, `cohort_def`, or the bar-position portion of `source_locator`.
+2. Add a regression test in `tests/unit/extraction_v2/` that constructs 10 chart-sourced `cm_revenue_by_cohort` facts with identical `canonical_metric_id`/`source_type`/`period_*` and distinct `value`+`cohort_def`; assert all 10 survive the stage.
+3. Fix: extend the dedup identity to include `cohort_def` (and/or the bar-position within `source_locator`) for chart-sourced cohort metrics. Should be a narrow change in `_collision_identity_key` or equivalent.
+4. Re-run the HOOD validator; expect `cm_revenue_by_cohort` recall to jump from 10% toward 100% and `cm_customer_acquisition_cost` to move from 50% to 100%.
+5. Refresh the v2 baseline once the gain is observed (still gated on Issue #78 / Chewy lxml regression per PR #102 body, if unresolved).
+
+### Cross-references
+
+- Issue #72 — HOOD Tier 1 regression (resolved 2026-04-22; this issue was the residual).
+- Issue #77 — R2 chart-image bytes (resolved 2026-04-22; unrelated root cause).
+- Issue #14 — Farfetch LTV/CAC dedup collision on layout-table misclassification (different failure mode but related stage).
+- Validator diagnostic output on HOOD post-backfill: `dedup_collision: 16 (89%)`.
+
+### Resolution (2026-04-23)
+
+Dissolved by the chart-presence pivot — see parent plan `~/.claude/plans/pick-up-issue-86-tranquil-piglet.md`. Under the new model, `ChartFactBridgeStage` no longer emits per-value `v2_metric_facts` rows; it writes `(metric_id, score)` presence records to `v2_image_assets.detected_metrics`. Reviewers confirm per-metric coverage via `v2_image_metric_confirmations` (accept / reject / correct / add). Because the chart pipeline no longer produces same-identity different-value groups, the `post-transfer collision collapse` step in `DeduplicationStage` can no longer collide chart-sourced cohort facts — the root cause is gone.
+
+No code change was made to `src/extraction_v2/stages/deduplication.py`; the bug is structurally impossible post-pivot.
+
+Shipped across four PRs:
+
+- [PR #147](https://github.com/RGMjr/filings_reviewer/pull/147) — `ChartFactBridgeStage` rewrite (emit presence, not facts).
+- [PR #150](https://github.com/RGMjr/filings_reviewer/pull/150) — Gold-standard validator: presence P/R/F1; `_derive_chart_native_metrics` drives the chart-vs-text split.
+- [PR #151](https://github.com/RGMjr/filings_reviewer/pull/151) — `v2_image_metric_confirmations` schema + `GET /api/v2/metrics/list` + `POST /api/v2/image-metric-confirmations`.
+- [PR #154](https://github.com/RGMjr/filings_reviewer/pull/154) — Reviewer UI: Detected metrics card + per-row A/R/C/Add + Playwright coverage.
+
+The HOOD `cm_revenue_by_cohort` 9/10 FN pattern is expected to resolve: the 10 cohort bars now count as **one** presence TP rather than requiring 10 value-level TPs. Any historical `cm_revenue_by_cohort` chart facts persisted pre-pivot are drained in PR 4b.
+
 ## #87. Text Recall Regression on Farfetch + Robinhood Between 04-19 and 04-22 Baselines
 
 **Status**: Resolved
@@ -1904,6 +1914,56 @@ Related surface: the mock also ships stubs for `POST /api/v2/decisions`, `DELETE
 The contract test exposed latent drift already on main — `filing.ticker`, `source_locator.img_id`, fact `confirming_source_types`, fact `_chart_image_status`, image-candidate `image_src_url` were all referenced by production templates but missing from mock context. These were added to the mock dicts in the same commit so the test lands green.
 
 Remaining narrow gaps (POST stub shape drift; non-rendering template files) are out of the contract test's scope — revisit if they become a real source of failure.
+
+## #35. Pre-2026-04-17 Filings Missing Chart-Sourced Facts
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-19
+**Updated**: 2026-04-23
+
+**Partial resolution**: 2026-04-21 (PR #50 landed `chart_only` surgical backfill mode)
+
+### Update 2026-04-21 — investigation outcome
+
+Backfill mechanism shipped via PR #50 (`V2PersistenceAdapter.persist_*(chart_only=True)` + `scripts/batch_v2_extraction.py --chart-only`). The mode scopes the DELETE-then-INSERT to `source_type='chart'` and the reviewed-filing guard to chart-fact decisions only, so text facts and their reviewer decisions are preserved — allowing surgical re-extraction on filings with accumulated reviewer work without CASCADE-destroying it.
+
+Neon-prod quantification on 2026-04-21 revised the problem size sharply:
+
+- 38 Class (E) filings total → **28 are stuck 8-K filings** in `processing_status='processing'` that shouldn't have been ingested (see Issue #55 below), and **10 are in-scope S-1/F-1** (8 non-reviewed + 2 reviewed) — the real backfill target is ≤10 filings, not 38.
+- Of those ≤10, all 8 non-reviewed candidates have accumulated 81 reviewer decisions across them, making the guard's preservation the binding constraint (which `chart_only` solves).
+
+Three smokes on Neon (1547 Samsara, 1541 Flywire, 1146 Chewy) confirmed:
+
+- Mechanism is safe: reviewer decisions fully preserved across all three runs; text/html_table facts untouched.
+- Recall gain is sparse: only 1 chart fact produced across 3 filings (Chewy), and that fact was a low-confidence (0.508) misbind of `cm_customer_acquisition_cost`=$3 — a reviewer-gated false positive.
+
+Root cause of the sparse gain: the original 38-filing Class (E) baseline conflates (a) filings where pre-fix OCR dropped Tier 1 cohort/NRR chart data with (b) filings whose charts aren't Tier 1 metrics at all (market-size, process diagrams, photos). Only (a) recovers under re-extraction; most of the 38-filing set is (b).
+
+### Remaining work
+
+- Full 5-filing Phase 4' (1442, 1543, 1549 Snowflake, 1550 Tenable, 1146-remainder) deferred: expected recall gain doesn't justify the reviewer-curation overhead until Issues #53 and #54 (chart-call-limit truncation and chart-bridge low-confidence misbinds) are investigated.
+- Class (E) diagnostic should narrow to S-1/F-1 form types (and exclude filings whose charts don't include Tier 1 metrics) to avoid overstating the gap in future audits.
+- 2 reviewed filings (1542, 1543) still in Class (E) under chart_only's guard — acceptable; they preserve reviewer work.
+
+### Cross-References
+
+- `.claude/rules/v2-pipeline.md#chart-only-re-extraction-chart_onlytrue` — mechanism documentation
+- Issue #34 — R2 backend (Phases 1 + 3 resolved 2026-04-19)
+- Issue #24 — Class (B) orphan img_id refs (still open; independent of Issue #35 scope)
+- Issue #53 — chart call limit (10) truncates OCR for high-chart filings
+- Issue #54 — chart-bridge emits low-confidence misbinds on non-Tier-1 charts
+- Issue #55 — 28 stuck 8-K filings in Class (E) (form-filter bypass during ingestion)
+- PR #50 — `feat(persistence): add chart_only mode for surgical Issue #35 backfills`
+- Session artifacts: `data/audit/issue_35_presmoke_snapshot.sql`, `data/audit/issue_35_presmoke_gs.txt`, `logs/issue_35_prod_smoke{,2,3}.log`
+
+### Resolution (2026-04-23)
+
+The chart-presence pivot (#86, PRs #147/#150/#151/#154) makes the chart-fact backfill concern moot:
+
+- The chart pipeline no longer emits per-value `v2_metric_facts` rows. Historical filings that never had chart facts now have nothing to backfill on that table.
+- The new signal is image-level `detected_metrics` on `v2_image_assets`. Historical filings do need a one-time `detected_metrics` backfill, but that is a *different* operation from the Issue #35 chart-fact backfill — cheaper, idempotent, no reviewer-CASCADE risk, and no Tier-1 recall gain depends on it. It will run via a scheduled cron or as a separate operational PR after PR 4b drains the legacy chart-fact rows.
+- The original Issue #35 scope (surgical chart-fact re-extraction via `chart_only=True`) still exists on the persistence layer and is reused by PR 4b's drain step; the mode is no longer needed for backfill but is useful for the one-shot DELETE pass.
 
 ## #49. Integration Test DB Flakiness Under Full-Suite `pytest -x`
 

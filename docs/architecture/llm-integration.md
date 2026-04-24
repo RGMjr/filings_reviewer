@@ -157,20 +157,16 @@ response = client.analyze_image(
 )
 ```
 
-### 2.1 Chart Fact Bridge (post-processing, no LLM)
+### 2.1 Chart Fact Bridge — metric-presence emission (post-processing, no LLM)
 
 **Module:** `src/extraction_v2/stages/chart_fact_bridge.py` (stage `PipelineStage.CHART_FACT_BRIDGE`)
 
-**Purpose:** Converts the structured `ChartData` produced by Stage 5's Vision call into `MetricFact` rows. **This is not an LLM call** — it is deterministic post-processing of already-extracted chart output. No second Vision request is made.
+**Purpose:** Emits image-level *metric-presence* records from the structured `ChartData` produced by Stage 5's Vision call. Writes `[{metric_id, score}, ...]` to `v2_image_assets.detected_metrics`. **This is not an LLM call** — it is deterministic post-processing of already-extracted chart output. No second Vision request is made. Under the chart-presence pivot (#86, 2026-04-23), the bridge does **not** emit per-value `MetricFact` rows; reviewers adjudicate the presence signal via `v2_image_metric_confirmations`.
 
-**Classifier + parsers** (all rule-based, no LLM):
-- `src/extraction_v2/chart/metric_classifier.py` — `ChartMetricClassifier.classify(chart, nearby_text)` scores each `ChartData` against patterns from `config/metric_keywords.yaml` and returns `(canonical_metric_id, score)`. Score threshold: `PipelineConfig.chart_metric_classification_min_score` (default 0.6).
-- `src/extraction_v2/chart/cohort_parser.py` — extracts `cohort_def` + `period_end` from `DataPoint.x` / `DataPoint.label` / `ChartSeries.name`.
-- `src/extraction_v2/chart/unit_inference.py` — maps `y_axis_label` to `Unit` + `currency`.
+**Classifier** (rule-based, no LLM):
+- `src/extraction_v2/chart/metric_classifier.py` — `ChartMetricClassifier.classify_all(chart, nearby_text)` scores each `ChartData` against patterns from `config/metric_keywords.yaml` and returns a list of `(canonical_metric_id, score)` pairs for every metric that passes the cohort + metric gates. Score threshold for emission: `PipelineConfig.chart_presence_min_score` (default 0.5).
 
-**Phase 3 hallucination guards** (`chart_fact_bridge.py`): five rule-based guards reject low-quality Vision output before it reaches the fact list. They never call the model again — they only filter the ChartData already returned. See `docs/architecture/extraction-pipeline.md` for the full list (image confidence gate, label-required gate, axis-range sanity, cohort-year sanity, fact review threshold) and `PipelineConfig` knobs.
-
-**Cost:** zero incremental LLM cost. Bridge consumes `ImageAsset.chart_data` populated by Stage 5 and emits `MetricFact` rows with `source_type=CHART`.
+**Cost:** zero incremental LLM cost. Bridge consumes `ImageAsset.chart_data` populated by Stage 5 and writes `ImageAsset.detected_metrics`. The retired per-value hallucination guards (image-confidence gate, label-required gate, axis-range sanity, cohort-year sanity, fact review threshold), `CohortParser`-based value emission, and `unit_inference` are all moot post-pivot because no per-value facts are produced.
 
 ### 3. Prompt Templates (`src/llm/prompts.py`)
 
@@ -483,7 +479,7 @@ except Exception as e:
 | `VisionClient` | `src/llm/vision_client.py` | gpt-4o | V2 Stage 5 — OCR & Chart Extraction |
 | `LLMCache` | `src/llm/cache.py` | n/a | Transparently via `OpenAIClient.complete()` |
 | `PromptTemplates` | `src/llm/prompts.py` | n/a | Prompt construction and response parsing |
-| `ChartFactBridgeStage` | `src/extraction_v2/stages/chart_fact_bridge.py` | **none (rule-based)** | Post-processes Stage 5 `ChartData` into `MetricFact` rows |
+| `ChartFactBridgeStage` | `src/extraction_v2/stages/chart_fact_bridge.py` | **none (rule-based)** | Post-processes Stage 5 `ChartData` into `v2_image_assets.detected_metrics` (metric-presence records; no `MetricFact` rows post-#86) |
 | `ChartMetricClassifier` | `src/extraction_v2/chart/metric_classifier.py` | **none (rule-based)** | Classifies `ChartData` against YAML patterns |
 
 ---
