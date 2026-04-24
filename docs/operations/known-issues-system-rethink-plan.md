@@ -289,9 +289,9 @@ All four resolved 2026-04-24 with rationale:
 ## Phase status
 
 - Phase 1 — ✅ shipped in PR #185 (2026-04-24)
-- Phase 2 — 🚧 this PR
-- Phase 3 — ⏳ queued
-- Phase 4 — ⏳ queued
+- Phase 2 — ✅ shipped in PR #187 (2026-04-24); in-flight PRs #169, #173, #175 cleaned up + merged same day
+- Phase 3 — 🚧 this PR
+- Phase 4 — ⏳ queued (3 ID collisions hit during #173/#175 cleanup underscored the need)
 - Phase 5 — ⏳ queued
 
 ---
