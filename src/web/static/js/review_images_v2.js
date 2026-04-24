@@ -196,6 +196,10 @@
 
     async function submitDecision(selectedValue) {
         if (state.submitting) return;
+        const reviewerName = (typeof window.requireReviewerName === 'function')
+            ? window.requireReviewerName()
+            : localStorage.getItem('reviewer_name');
+        if (!reviewerName) return;
         state.submitting = true;
 
         const reviewTime = Math.round((Date.now() - state.reviewStartTime) / 1000);
@@ -206,7 +210,7 @@
             chart_type: state.activeDropdown === 'chart_type' ? selectedValue : null,
             rejection_reason: state.activeDropdown === 'rejection' ? selectedValue : null,
             review_time_seconds: reviewTime,
-            reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
+            reviewer_id: reviewerName,
         };
 
         const notesTextarea = document.getElementById('reviewer-notes');
@@ -790,10 +794,15 @@
             return;
         }
 
+        const reviewerName = (typeof window.requireReviewerName === 'function')
+            ? window.requireReviewerName()
+            : localStorage.getItem('reviewer_name');
+        if (!reviewerName) return;
+
         state.submitting = true;
         const payload = {
             img_id: state.imgId,
-            reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous',
+            reviewer_id: reviewerName,
             decisions,
         };
 

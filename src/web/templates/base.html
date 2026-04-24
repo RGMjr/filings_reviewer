@@ -121,10 +121,34 @@
         }
         window.showReviewerModal = showReviewerModal;
 
+        // Reviewer-name gate: decision-writing endpoints require a real name.
+        // Mirrors the server-side blocklist in api_unified.py::_BLOCKED_REVIEWER_IDS.
+        var BLOCKED_REVIEWER_IDS = ['', 'anonymous', 'web_reviewer', 'test', 'test_user'];
+
+        function isValidReviewerName(name) {
+            var trimmed = (name || '').trim();
+            if (!trimmed) return false;
+            if (BLOCKED_REVIEWER_IDS.indexOf(trimmed) !== -1) return false;
+            if (trimmed.indexOf('bulk:') === 0) return false;
+            return true;
+        }
+        window.isValidReviewerName = isValidReviewerName;
+
+        // Call before any decision POST. Returns a valid name or null (modal opens).
+        function requireReviewerName() {
+            var name = (localStorage.getItem('reviewer_name') || '').trim();
+            if (isValidReviewerName(name)) return name;
+            // Wipe a blocklisted stored value so the modal's input starts empty.
+            if (name) localStorage.removeItem('reviewer_name');
+            showReviewerModal();
+            return null;
+        }
+        window.requireReviewerName = requireReviewerName;
+
         function saveReviewerName() {
             var input = document.getElementById('reviewer-name-input');
             var name = input.value.trim();
-            if (!name) { input.focus(); return; }
+            if (!isValidReviewerName(name)) { input.focus(); return; }
             localStorage.setItem('reviewer_name', name);
             updateNavDisplay(name);
             var modalEl = document.getElementById('reviewerModal');
@@ -142,9 +166,10 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             var name = localStorage.getItem('reviewer_name');
-            if (name) {
+            if (isValidReviewerName(name)) {
                 updateNavDisplay(name);
             } else {
+                if (name) localStorage.removeItem('reviewer_name');
                 showReviewerModal();
             }
             // Allow submitting with Enter key in the modal
