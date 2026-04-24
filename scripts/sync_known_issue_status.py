@@ -245,16 +245,18 @@ def main(argv: list[str] | None = None) -> int:
         f"{n_failures} failures."
     )
 
-    # Regenerate rollup if any updates happened and not dry-run
+    # Validate fragment frontmatter after updates as a sanity check.
+    # The rollup (docs/KNOWN_ISSUES.md) is no longer tracked in git;
+    # CI regenerates it on every build.
     if n_updates > 0 and not args.dry_run:
         regen_script = Path(__file__).resolve().parent / "regenerate_known_issues.py"
         result = subprocess.run(
-            ["python3", str(regen_script)],
+            ["python3", str(regen_script), "--validate"],
             capture_output=False,
         )
         if result.returncode != 0:
             print(
-                f"[error] regenerate_known_issues.py exited {result.returncode}",
+                f"[error] regenerate_known_issues.py --validate exited {result.returncode}",
                 file=sys.stderr,
             )
             return result.returncode

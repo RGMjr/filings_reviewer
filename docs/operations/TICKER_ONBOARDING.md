@@ -400,4 +400,4 @@ Partially-processed `v2_ingest_batch_filings` rows with `processing_status='runn
 
 Prod / Render: the `--watch` mode on the worker service automatically re-claims batches whose `run_lock_until` has expired — no manual step needed.
 
-Tracked under Issue #62 in `docs/KNOWN_ISSUES.md`. A `--cleanup-stuck` CLI flag on `onboarding_runner` and a SIGTERM-log-line hint are still open as follow-ups.
+Tracked under [known issue #62](../known-issues/legacy-062-local-dev-stuck-batch-recovery-is-manual.md). A `--cleanup-stuck` CLI flag on `onboarding_runner` and a SIGTERM-log-line hint are still open as follow-ups.
