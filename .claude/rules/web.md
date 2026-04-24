@@ -27,7 +27,9 @@ Static: `src/web/static/js/review_images_v2.js`, `static/css/review.css`.
 
 ## Reviewer identity invariant
 
-**Every decision-persisting API endpoint MUST accept and forward `reviewer_id`** to the DB write so per-filing "Reviewed by" aggregation keeps working. Mirror the text-decision pattern at `src/web/routes/api_unified.py:129` (`reviewer_id=data.get("reviewer_id", ...)`). The paired JS client must include `reviewer_id: localStorage.getItem('reviewer_name') || 'anonymous'` in the request payload. Historical bug: image decisions silently persisted `NULL` for months because the endpoint never forwarded the value — resulting in "(unattributed)" rows that can't be filtered. Don't repeat it.
+**Every decision-persisting API endpoint MUST (a) forward `reviewer_id` to the DB write and (b) reject missing / blocklisted values via `_require_reviewer_id(data)` in `src/web/routes/api_unified.py`.** The gate returns HTTP 403 with `{"error": "reviewer_name_required"}`. Blocklist: `""`, `"anonymous"`, `"web_reviewer"`, `"test"`, `"test_user"`, anything prefixed `bulk:`. Mirror the same blocklist client-side via `window.requireReviewerName()` (defined in `base.html`) — it returns the valid name or opens the reviewer modal and returns `null`, so callers bail before the fetch. Do NOT fall back to `"anonymous"` / `"web_reviewer"` in payloads; those sentinels only exist in historical data (rewritten to `RGM` on 2026-04-23 per the v2_review_decisions / v2_image_review_decisions cleanup).
+
+Historical bug: image decisions silently persisted `NULL` for months because the endpoint never forwarded the value — resulting in "(unattributed)" rows that can't be filtered. Don't repeat it.
 
 ## View persistence (localStorage)
 

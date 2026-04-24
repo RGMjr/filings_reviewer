@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 32 |
+| Open | 33 |
 | Partially Resolved | 1 |
 | Archived | 46 |
-| Resolved | 16 |
+| Resolved | 17 |
 
 
 ## Nightly Sweeper Classification
@@ -51,7 +51,9 @@
 | #88 | skip | S | `scripts/apply_all_migrations.py` `.pre-commit-config.yaml` | Add a pre-commit hook that fails if any sql/NN_*.sql on disk lacks an entry in MIGRATION_ORDER or EXCLUDED_FILES. |
 | #94 | safe | S | `sql/31_drop_v1_review_tables.sql` `sql/` `src/web/middleware.py` |  |
 | #95 | review | M | `scripts/apply_migrations.py` `render.yaml` `src/web/app.py` `sql/` |  |
-| #97 | review | S | `scripts/run_nightly_sweep.sh` `scripts/write_sweep_digest.py` |  |
+| #97 | review | M | — | Residual pre-pivot chart facts (30 rows across 10 filings) remain in v2_metric_facts post-#86 because 18 reviewer decisions on those facts would CASCADE-destroy on DELETE. Low blast radius — new UI does not read them, validator bypasses them — but analytics views filtering on source_type=chart still see them. |
+| #98 | review | S | `src/gold_standard/v2_validator.py` `src/extraction_v2/stages/chart_fact_bridge.py` | PR #150 added the presence P/R/F1 infrastructure to the validator + baseline, but presence_f1 is emitted as None because v2_context.images[*].detected_metrics is not populated during the validator's in-memory pipeline run. Baseline refresh in PR 4b (2026-04-24) has presence_f1=null as a result. |
+| #99 | review | S | `scripts/run_nightly_sweep.sh` `scripts/write_sweep_digest.py` |  |
 
 
 ## Open Issues
@@ -430,7 +432,7 @@ Not reproducing on any other provider in `PROVIDER_CONFIGS`.
   (`BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY`) — current ordering
   already excludes `two-stage` for a similar reason.
 
-## #97. Sweep digest labels safe-tier PRs "merged" before CI has actually merged them
+## #99. Sweep digest labels safe-tier PRs "merged" before CI has actually merged them
 
 **Status**: Open
 **Severity**: medium
@@ -1001,42 +1003,101 @@ quietly since `sql/31` was applied.
 - Verify after: tail `filings-reviewer` Render logs for 5 minutes and
   confirm the `check_v2_audit_http_method` violation is gone.
 
-## #96. Chart-Presence Pivot — Multi-PR Rollout Tracking
+## #97. Residual Chart Facts Remain After Chart-Presence Pivot (Drain Deferred)
 
 **Status**: Open
 **Severity**: low
-**Discovered**: 2026-04-23
-**Updated**: 2026-04-23
-**PR refs**: #147, #150, #151, #154
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
 
 ### Problem
 
-The chart-stage pivot for Issue #86 replaces per-value chart `v2_metric_facts` emission with image-level metric-presence records on `v2_image_assets.detected_metrics`, adjudicated via `v2_image_metric_confirmations` (accept / reject / correct / add). Shipped as a four-PR sequence to bound scope, unblock parallel review, and isolate the prod drain from the code + docs cleanup.
+The chart-presence pivot (Issue #86, merged across PRs #147/#150/#151/#154/#158) stops new chart-fact emission but PR 4b deliberately **did not drain** the existing rows. Pre-flight audit on 2026-04-24:
 
-### Rollout
+| Metric | Count |
+|---|---|
+| Rows: `v2_metric_facts WHERE source_type='chart'` | 30 |
+| Distinct filings | 10 |
+| Reviewer decisions (`v2_review_decisions`) on chart facts | 18 |
 
-| PR | Scope | Status |
+The 18 decisions break down as:
+
+| Decision | Count | Metrics |
 |---|---|---|
-| [#147](https://github.com/RGMjr/filings_reviewer/pull/147) | `ChartFactBridgeStage` rewrite (emit presence on `v2_image_assets.detected_metrics`, no facts). `sql/42` adds the JSONB column. `_scan_chart` gated off. | Merged 2026-04-23 |
-| [#150](https://github.com/RGMjr/filings_reviewer/pull/150) | Gold-standard validator: presence P/R/F1; baseline schema extended; chart-row `Raw value` forced advisory. | Merged 2026-04-23 |
-| [#151](https://github.com/RGMjr/filings_reviewer/pull/151) | `sql/43_create_v2_image_metric_confirmations`; `DatabaseAdapter.insert/get_image_metric_confirmations`; `GET /api/v2/metrics/list`; `POST /api/v2/image-metric-confirmations`; Chart Evidence block + `_resolve_chart_image_status` deleted. | Merged 2026-04-23 |
-| [#154](https://github.com/RGMjr/filings_reviewer/pull/154) | Detected metrics card in `unified_review.html`; `review_images_v2.js` module (A/R/C/N focus-scoped keyboard); Playwright spec. | Merged 2026-04-23 |
-| PR 4a | Code + docs cleanup: delete `CohortParser`, rewrite `.claude/rules/v2-pipeline.md`, update `docs/architecture/data-model.md`, `CLAUDE.md` §4, `docs/development/metric-lifecycle-process.md`, close legacy-086/035 known-issues. | Open (this PR) |
-| PR 4b | Prod drain (`DELETE FROM v2_metric_facts WHERE source_type='chart'` — Option B per user decision, or `scripts/batch_v2_extraction.py --chart-only` — Option A), `pg_dump` snapshot pre-drain, baseline refresh. | Pending |
+| reject | 9 | cm_new_customers_acquired, cm_customers_period_end (bulk), cm_customers_period_end_by_tenure, cm_active_customers_total, cm_ltv_to_cac_ratio, cm_purchase_transactions_overall, cm_lifetime_value_per_customer, cm_customer_acquisition_cost |
+| accept | 5 | cm_revenue_by_cohort (×3), cm_large_customers_period_end, cm_customers_period_end |
+| correct | 4 | cm_average_order_value (×2), cm_monthly_active_users, cm_new_customers_acquired |
 
-### Next Steps
+17 are by reviewer `RGM`, 1 is a bulk-system entry (`bulk:superseded_slack_s1a_2019-05-20`).
 
-1. Land PR 4a (this PR).
-2. Ask user for drain method (Option A re-extract vs Option B SQL DELETE).
-3. Cut PR 4b worktree; execute the drain with approval gates at each step; refresh baseline.
-4. Close this fragment (`status: resolved`) in PR 4b.
+`v2_review_decisions.fact_id ON DELETE CASCADE` means a plain `DELETE FROM v2_metric_facts WHERE source_type='chart'` would silently destroy reviewer work. User chose to defer the drain (option B1 in the PR 4b exchange) to preserve those 18 pieces of work.
+
+### Impact (low)
+
+- **Review UI:** Chart Evidence block deleted in PR #151; detected-metrics card reads from `v2_image_assets.detected_metrics`, not `v2_metric_facts`. **No user-visible impact.**
+- **Validator:** PR #150 routes `segment_type='chart'` gold rows through presence P/R, not value-level P/R. Chart facts in `v2_metric_facts` are not considered when evaluating chart gold expectations. **No measurement impact.**
+- **Analytics views:** `v_analytics_*` views (sql/38, …) may include `source_type='chart'` rows in fact aggregates. If downstream reporting filters on source_type, the 30 residual rows will appear. Typical fix: add `AND source_type != 'chart'` at view level if unwanted. **Low impact, shimmable.**
+- **DB footprint:** 30 rows. Negligible.
+
+### Next Steps (if drain becomes needed later)
+
+Three paths, pick at triage time:
+
+1. **Archive decisions + DELETE.** Export the 18 `v2_review_decisions` rows (plus the 30 facts) to `data/audit/chart_fact_decisions_predrain_<ts>.json` for historical reference, then `DELETE FROM v2_metric_facts WHERE source_type='chart'` in a transaction. Reviewer work preserved as JSON, not queryable live.
+2. **Migrate accepts + corrects to `v2_image_metric_confirmations`.** For each chart fact with `source_locator.img_id` not null: derive a `(img_id, detected_metric_id=canonical_metric_id, decision)` row. Rejects have no natural img-level equivalent (the "this value is wrong" signal doesn't map cleanly to "this metric is not present"), so rejects would still be lost. Complex but preserves the most work as live signal.
+3. **Keep deferred.** No action; residual 30 rows are inert. Revisit only if analytics downstream actually needs them gone.
 
 ### Cross-References
 
-- Parent plan: `~/.claude/plans/pick-up-issue-86-tranquil-piglet.md`
-- PR 4a plan: `~/.claude/plans/let-s-move-on-to-snoopy-flamingo.md`
-- Dissolved issues: legacy-086 (dedup collapse), legacy-035 (chart-fact backfill).
-- Reduced-severity reference: legacy-053 (chart call limit — now affects presence coverage only).
+- Parent rollout: legacy-096 (chart-presence pivot rollout, resolved).
+- Dissolved root cause: legacy-086 (dedup stage collapse).
+- Dissolved consequence: legacy-035 (pre-2026-04-17 chart-fact backfill).
+- Reviewed-filing guard: `src/extraction_v2/persistence.py::_persist_facts_in_tx`, `ReviewedFilingError`.
+- Cascade path: `v2_review_decisions.fact_id ON DELETE CASCADE` (sql/05 originally; `chart_only=True` guard in `persist_pipeline_result` refuses when decisions exist).
+
+## #98. Validator presence_f1 Stays Null — detected_metrics Not Populated in-Memory
+
+**Status**: Open
+**Severity**: low
+**Discovered**: 2026-04-24
+**Updated**: 2026-04-24
+
+### Problem
+
+The chart-presence pivot landed presence P/R/F1 infrastructure in PR #150:
+
+- `FilingResult.presence_tp / presence_fp / presence_fn` fields (`src/gold_standard/v2_validator.py`).
+- `BaselineMetrics.presence_f1` field (`src/gold_standard/baseline.py`).
+- `to_dict()` emits `presence_f1` only when `has_presence = (total_presence_tp + total_presence_fp + total_presence_fn) > 0` (`src/gold_standard/v2_validator.py:374`).
+
+After the PR 4b baseline refresh on 2026-04-24, `v2_baseline.json` has `presence_f1` **absent at all scopes** (overall and per-company). The pre-PR-4a baseline (2026-04-23) also lacked it. That means the validator has been silently computing zero presence TP/FP/FN for every run since PR #150 landed.
+
+Root cause (likely): the validator calls `V2Pipeline(...).process(..., document_date=...)` with `filing_id=0` (no persistence). The pipeline's chart bridge stage writes `image.detected_metrics` in-memory. But either:
+
+1. The chart bridge stage isn't firing because chart images aren't reaching it — e.g., vision calls skipped under test harness, `chart_data` never populated → classifier runs on empty input → no presence emitted.
+2. The validator accesses `v2_context.images` via a getter that doesn't surface the in-memory `detected_metrics` populated by the bridge.
+3. Something else in the `filing_id=0` mode skips the full image pipeline.
+
+Confirmed via grep: `_chart_presence_set_from_context` (`v2_validator.py` around the presence block) reads `v2_context.images[*].detected_metrics`. The validator does walk through that code path. But `presence_tp/fp/fn` stay 0.
+
+### Impact
+
+- Presence-F1 is unmeasurable via the GS pipeline right now. Chart-native metric improvements can't be quantified — the baseline has no floor to regress against.
+- The 30% cross-source confirmation gate (`_derive_chart_native_metrics`) still works (it's CSV-driven, not pipeline-driven), so metric-aware classification isn't affected.
+- Not a correctness issue; it's a measurement gap.
+
+### Next Steps
+
+1. Instrument `_chart_presence_set_from_context` to log `len(v2_context.images)` and how many have non-empty `detected_metrics`. Run against one filing with a known chart (e.g., Robinhood S-1 has chart images).
+2. If images reach the validator but `detected_metrics` is empty → inspect `ChartFactBridgeStage.process()` — did vision OCR fire? Did `classify_all` return anything? Check `chart_presence_min_score` threshold.
+3. If the images list is empty → the validator's pipeline run is skipping image-processing stages. Check `PipelineConfig` defaults used by the validator vs. the prod config.
+4. Fix whichever gap is real, re-run the baseline refresh, confirm `presence_f1` field appears.
+
+### Cross-References
+
+- Parent rollout: legacy-096.
+- Introducing PR: #150.
+- Baseline refresh PR (where this was surfaced): PR 4b.
 
 ## #5. Revenue Synonym Context Gating
 
@@ -2167,6 +2228,73 @@ attempt to re-fix issues whose fixes are already in `main`.
   must NOT appear in selector picks.
 - Optional: also emit a warning when such a fragment is encountered, so the
   author knows to set `autonomy: n/a` on resolved entries.
+
+## #96. Chart-Presence Pivot — Multi-PR Rollout Tracking
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-24
+**PR refs**: #147, #150, #151, #154, #158
+
+### Problem
+
+The chart-stage pivot for Issue #86 replaces per-value chart `v2_metric_facts` emission with image-level metric-presence records on `v2_image_assets.detected_metrics`, adjudicated via `v2_image_metric_confirmations` (accept / reject / correct / add). Shipped as a five-PR sequence (originally four; PR 4 split into 4a + 4b after scope overran) to bound scope, unblock parallel review, and isolate the planned prod drain from the code + docs cleanup.
+
+### Rollout
+
+| PR | Scope | Status |
+|---|---|---|
+| [#147](https://github.com/RGMjr/filings_reviewer/pull/147) | `ChartFactBridgeStage` rewrite (emit presence on `v2_image_assets.detected_metrics`, no facts). `sql/42` adds the JSONB column. `_scan_chart` gated off. | Merged 2026-04-23 |
+| [#150](https://github.com/RGMjr/filings_reviewer/pull/150) | Gold-standard validator: presence P/R/F1; baseline schema extended; chart-row `Raw value` forced advisory. | Merged 2026-04-23 |
+| [#151](https://github.com/RGMjr/filings_reviewer/pull/151) | `sql/43_create_v2_image_metric_confirmations`; `DatabaseAdapter.insert/get_image_metric_confirmations`; `GET /api/v2/metrics/list`; `POST /api/v2/image-metric-confirmations`; Chart Evidence block + `_resolve_chart_image_status` deleted. | Merged 2026-04-23 |
+| [#154](https://github.com/RGMjr/filings_reviewer/pull/154) | Detected metrics card in `unified_review.html`; `review_images_v2.js` module (A/R/C/N focus-scoped keyboard); Playwright spec. | Merged 2026-04-23 |
+| [#158](https://github.com/RGMjr/filings_reviewer/pull/158) | PR 4a — code + docs cleanup: delete `CohortParser`, rewrite `.claude/rules/v2-pipeline.md`, update `docs/architecture/data-model.md`, `CLAUDE.md` §4, close legacy-086/035 known-issues. | Merged 2026-04-24 |
+| PR 4b (this) | Post-pivot baseline refresh; **drain deferred** after pre-flight safety audit. Overall F1 0.544 → 0.618 (+7.4pp) via PR #150's chart-row presence bypass. | This PR |
+
+### Drain deferral — why
+
+PR 4b's plan called for `DELETE FROM v2_metric_facts WHERE source_type='chart'` against prod. Pre-flight queries on 2026-04-24 found:
+
+| Metric | Count |
+|---|---|
+| Residual chart facts | 30 |
+| Filings affected | 10 |
+| Reviewer decisions on chart facts | **18** |
+
+The 18 decisions break down as: 9 rejects, 5 accepts, 4 corrects (17 by reviewer `RGM`, 1 bulk-system entry). `v2_review_decisions.fact_id ON DELETE CASCADE` means the DELETE would silently destroy that reviewer work.
+
+Options weighed:
+
+- **B1 — defer drain** (chosen): leave 30 residual chart facts in `v2_metric_facts` as dead data. Correctness-wise fine — the new UI doesn't surface chart facts (Chart Evidence block deleted in PR #151), the validator treats chart gold rows via presence (PR #150), and analytics views that filter on `source_type='chart'` are the only surface area affected. Zero reviewer-work loss.
+- B2 — export decisions to JSON archive, then DELETE. Reviewer work archived but not queryable live. Not chosen because the residual-fact presence is low-impact; no urgent need to delete.
+- B3 — migrate the 9 accepts/corrects to `v2_image_metric_confirmations`. Requires mapping code; complex because `corrected_value` has no presence-schema equivalent and some source_locators may lack img_id.
+- B4 — proceed with DELETE anyway. Counter to reviewed-filing-guard design intent.
+
+### Post-pivot baseline
+
+Refreshed 2026-04-24 via `python3 -m src.gold_standard.v2_validator --update-baseline`:
+
+| | Before | After | Δ |
+|---|---|---|---|
+| Precision | 0.668 | 0.659 | −0.9pp |
+| Recall | 0.459 | 0.581 | +12.2pp |
+| F1 | 0.544 | 0.618 | +7.4pp |
+
+The recall jump is the measurement-methodology shift from PR #150 landing: 82 `segment_type='chart'` gold rows stop counting as value-level FNs and instead route through presence P/R. `presence_f1` is still `None` in the baseline — the validator's in-memory pipeline run does not yet populate `v2_context.images[*].detected_metrics` end-to-end (the field is defined on the dataclass but not populated by the validator's `pipeline.process()` call path). Tracked separately.
+
+### Residual work (out of scope for PR 4b)
+
+- **30 residual chart facts + 18 reviewer decisions** on prod. Filed as a new known-issue fragment (`legacy-097`) for possible future handling.
+- **Validator presence_f1 measurement gap.** `detected_metrics` is populated at persistence time but not in the validator's in-memory pipeline result. Baseline presence-F1 stays `None` until this wiring lands. Filed separately.
+
+### Cross-References
+
+- Parent plan: `~/.claude/plans/pick-up-issue-86-tranquil-piglet.md`
+- PR 4a plan: `~/.claude/plans/let-s-move-on-to-snoopy-flamingo.md`
+- Dissolved issues: legacy-086 (dedup collapse), legacy-035 (chart-fact backfill).
+- Reduced-severity reference: legacy-053 (chart call limit — now affects presence coverage only).
+- Residual work: legacy-097 (residual chart facts + reviewer decisions).
 
 
 ## Change Log

@@ -2,7 +2,7 @@
 autonomy: review
 discovered: '2026-04-23'
 estimated: S
-id: 97
+id: 99
 severity: medium
 slug: sweep-digest-merged-label-before-ci
 source: legacy
