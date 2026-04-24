@@ -1,5 +1,6 @@
 ## Change Log
 
+- **2026-04-24**: Backlog trim — archived Issues #2 (Farfetch umbrella; sub-issues closed), #4 (spelled-out numbers, known limitation), #5 (revenue synonym gating, working as designed), #39 (`is_in_scope_phase1` cosmetic rename), #43 (Spectrum Brands cached HTML, latent), #55 (28 stuck 8-K filings, no owner). All no longer actionable; fragments retained for history.
 - **2026-01-01**: Initial document created after VAL-1 validation
 - **2026-01-01**: CAC payback period issue resolved (moved to "FIXED" section)
 - **2026-03-16**: Added Issue #6 — FilingFetcher directory index bug

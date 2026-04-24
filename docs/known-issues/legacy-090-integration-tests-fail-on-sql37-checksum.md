@@ -6,13 +6,14 @@ id: 90
 severity: medium
 slug: integration-tests-fail-on-sql37-checksum
 source: legacy
-status: open
+status: resolved
 title: Integration Tests Fail at Startup on sql/37 Migration-Checksum Drift
 touches:
   - tests/integration/conftest.py
   - scripts/apply_migrations.py
   - sql/37_create_analytics_role.sql
 updated: '2026-04-23'
+pr_refs: []
 ---
 
 ### Problem
