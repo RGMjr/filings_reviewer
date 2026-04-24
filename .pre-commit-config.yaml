@@ -56,7 +56,8 @@ repos:
         files: ^sql/.*\.sql$
 
       # Pre-commit: validate and regenerate the KNOWN_ISSUES.md rollup whenever
-      # a fragment under docs/known-issues/ is staged.  Validate runs first so
+      # a fragment under docs/known-issues/ is staged OR the rollup itself is
+      # staged (e.g. during a merge conflict resolution).  Validate runs first so
       # we never regenerate from invalid input.  The regenerator's --stage flag
       # auto-adds the rollup to the commit, so developers don't need to stage it
       # manually.  The rollup is byte-deterministic, so the hook never loops.
@@ -74,7 +75,7 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-commit]
-        files: '^docs/known-issues/.*\.md$'
+        files: '^(docs/known-issues/.*|docs/KNOWN_ISSUES)\.md$'
 
       - id: migration-order-check
         name: Migration order completeness
