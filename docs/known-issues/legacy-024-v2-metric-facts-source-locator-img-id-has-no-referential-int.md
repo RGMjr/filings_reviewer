@@ -3,14 +3,17 @@ autonomy: skip
 discovered: '2026-04-18'
 estimated: M
 id: 24
-note: Data audit + FK migration; needs cleanup decision
+note: 'Scope reduced to historical advisory-fact hygiene after 2026-04-24
+  presence-first pivot: presence rows (v2_text_metric_presence,
+  v2_image_metric_presence) do not rely on source_locator.img_id; orphans live only
+  in legacy advisory v2_metric_facts. Not on the presence-pivot critical path.'
 severity: low
 slug: v2-metric-facts-source-locator-img-id-has-no-referential-int
 source: legacy
 status: open
 title: '`v2_metric_facts.source_locator.img_id` Has No Referential Integrity'
 touches: []
-updated: '2026-04-18'
+updated: '2026-04-24'
 ---
 
 ### Problem
