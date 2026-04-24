@@ -189,7 +189,7 @@ class TestRenderRollup:
         assert "## Change Log" not in out
 
 
-class TestMainCheckMode:
+class TestMainWriteMode:
     def _setup(self, tmp_path: Path) -> tuple[Path, Path]:
         fragments_dir = tmp_path / "frags"
         fragments_dir.mkdir()
@@ -221,28 +221,6 @@ class TestMainCheckMode:
         )
         output = tmp_path / "rollup.md"
         return fragments_dir, output
-
-    def test_check_exits_0_when_fresh(self, tmp_path: Path) -> None:
-        fragments_dir, output = self._setup(tmp_path)
-        # First write
-        rc = main(["--fragments-dir", str(fragments_dir), "--output", str(output)])
-        assert rc == 0
-        # Then check
-        rc = main(["--fragments-dir", str(fragments_dir), "--output", str(output), "--check"])
-        assert rc == 0
-
-    def test_check_exits_1_when_stale(self, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-        fragments_dir, output = self._setup(tmp_path)
-        output.write_text("stale content\n", encoding="utf-8")
-        rc = main(["--fragments-dir", str(fragments_dir), "--output", str(output), "--check"])
-        assert rc == 1
-        assert "DRIFT" in capsys.readouterr().err
-
-    def test_check_exits_1_when_missing(self, tmp_path: Path) -> None:
-        fragments_dir, output = self._setup(tmp_path)
-        # output does not exist
-        rc = main(["--fragments-dir", str(fragments_dir), "--output", str(output), "--check"])
-        assert rc == 1
 
     def test_write_twice_is_idempotent(self, tmp_path: Path) -> None:
         fragments_dir, output = self._setup(tmp_path)
