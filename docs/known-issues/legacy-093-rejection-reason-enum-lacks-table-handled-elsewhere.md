@@ -6,14 +6,35 @@ id: 93
 severity: low
 slug: rejection-reason-enum-lacks-table-handled-elsewhere
 source: legacy
-status: open
+status: resolved
 title: v2_image_review_decisions.rejection_reason Enum Lacks "table_handled_elsewhere"
 touches:
-  - sql/29_v2_image_review_decisions.sql
-  - src/gold_standard/image_eval.py
-  - scripts/benchmark_vision.py
+  - sql/44_extend_image_rejection_reason_enum.sql
+  - src/review/models.py
+  - src/llm/vision_client.py
 updated: '2026-04-23'
 ---
+
+**Resolved**: 2026-04-23 — see below.
+
+### Resolution (2026-04-23)
+
+Landed with Leg B of the metric-classify tripod:
+
+- `sql/44_extend_image_rejection_reason_enum.sql` — widens the CHECK
+  constraint on `v2_image_review_decisions.rejection_reason`
+- `sql/45_create_v2_image_classifications.sql` — new classifier table
+  uses the same 7-value enum
+- `src/review/models.py::IMAGE_REJECTION_REASONS` — single-source tuple
+  now includes `table_handled_elsewhere`; `IMAGE_REJECTION_REASON_LABELS`
+  gets a human label for UI dropdowns
+- `src/llm/vision_client.py::CLASSIFY_REJECTION_REASONS` — the classify
+  prompt already emits `table_handled_elsewhere` (shipped in PR #157);
+  this PR closes the loop so the emission now has a valid downstream
+  slot.
+
+`scripts/benchmark_vision.py` still has its own frozenset copy; harness-side
+alignment tracked on the harness branch.
 
 ### Problem
 

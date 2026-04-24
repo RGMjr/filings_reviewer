@@ -671,6 +671,27 @@ class DetectedMetric:
 
 
 @dataclass
+class ImageClassificationRecord:
+    """Vision API metric-classify output for one image.
+
+    Persisted to `v2_image_classifications` (sql/45). Distinct from
+    `DetectedMetric` (rule-based, in `v2_image_assets.detected_metrics`) and
+    from `v2_image_metric_confirmations` (reviewer decisions).
+    """
+
+    img_id: str
+    predicted_metrics: list[dict]  # [{"metric_id": str, "score": float}, ...]
+    confidence: float
+    rejection_reason: str | None
+    reasoning: str | None
+    provider: str
+    model: str
+    prompt_version: int
+    cost_usd: float
+    latency_ms: int
+
+
+@dataclass
 class DataPoint:
     """Single data point extracted from a chart."""
 

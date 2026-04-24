@@ -1,6 +1,6 @@
 {
-  "baseline_date": "2026-04-24T02:16:24.878552+00:00",
-  "description": "post-pivot presence-F1 baseline (#86 PR 4b); drain deferred due to 18 reviewer decisions on chart facts",
+  "baseline_date": "2026-04-24T02:46:34.842851+00:00",
+  "description": "Post-#158 cohort-pivot cleanup drift: recall +12%, F1 +7%, Slack precision -0.87%. Accepted as new truth before Leg B lands.",
   "overall": {
     "precision": 0.6593886462882096,
     "recall": 0.5807692307692308,

@@ -26,7 +26,7 @@ Local guards (`.claude/settings.json`): `git push origin main`, `git push --forc
 
 See `docs/development/CONTRIBUTING.md` for the full flow.
 
-**Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 3 eligible issues (autonomy `safe`, status `open` or `partially-resolved`) from `docs/known-issues/` fragment frontmatter (rollup `docs/KNOWN_ISSUES.md` is auto-generated — do NOT edit directly), auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Ships paused via `.claude/sweep.pause`. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs.
+**Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 5 eligible issues (autonomy `safe`, status `open` or `partially-resolved`) from `docs/known-issues/` fragment frontmatter (rollup `docs/KNOWN_ISSUES.md` is auto-generated — do NOT edit directly), auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Ships paused via `.claude/sweep.pause`. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs.
 
 ## Key Commands
 
@@ -41,7 +41,7 @@ mypy src/review/ --strict          # Type checking
 
 ## Database
 
-PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_tables`, `v2_audit_log`, `v2_ingest_batches`, `v2_ingest_batch_filings`. Shared: `companies`, `filings`. V1 review tables (`review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions`, `learned_patterns`, `review_audit_log`) are retired — drop migration at `sql/31_drop_v1_review_tables.sql`. Schema files in `sql/` (00-40). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
+PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_metric_definitions`, `v2_image_assets`, `v2_image_review_decisions`, `v2_image_metric_confirmations`, `v2_image_classifications`, `v2_tables`, `v2_audit_log`, `v2_ingest_batches`, `v2_ingest_batch_filings`. Shared: `companies`, `filings`. V1 review tables (`review_candidates`, `source_segments`, `suppressed_candidates`, `review_decisions`, `learned_patterns`, `review_audit_log`) are retired — drop migration at `sql/31_drop_v1_review_tables.sql`. Schema files in `sql/` (00-45). See `.claude/rules/infrastructure.md` when editing infra, Docker, or requirements files.
 
 Image bytes live in Cloudflare R2 (prod) / local filesystem (dev) via `src/infra/image_storage.py`, NOT in Postgres. `v2_image_assets.file_path` stores an opaque storage key (e.g. `pipeline/<cik>/<accession>/<filename>`) — see `.claude/rules/infrastructure.md#image-storage`.
 
