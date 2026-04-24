@@ -3,14 +3,17 @@ autonomy: skip
 discovered: '2026-04-21'
 estimated: M
 id: 53
-note: Chart call limit; needs data-driven tuning
+note: 'Chart call limit; needs data-driven tuning. Post-#86 chart-presence pivot
+  (2026-04-23), truncation affects presence coverage only (missed detected_metrics
+  signals) — no per-value correctness impact because the pipeline no longer emits
+  per-value chart facts.'
 severity: low
 slug: chart-call-limit-10-truncates-ocr-on-high-chart-filings
 source: legacy
 status: open
 title: Chart Call Limit (10) Truncates OCR on High-Chart Filings
 touches: []
-updated: '2026-04-21'
+updated: '2026-04-23'
 ---
 
 ### Problem

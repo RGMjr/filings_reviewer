@@ -78,7 +78,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 1. **Rule-based first, LLM second**: Keyword matching before expensive LLM calls
 2. **Provenance tracking**: Every extracted value links to source segment
 3. **Idempotent operations**: Re-running any stage is safe (upserts)
-4. **Conservative classification**: "Require BOTH" signals to minimize false positives
+4. **Conservative classification**: "Require BOTH" signals to minimize false positives. Chart signals are presence-only — the chart pipeline writes `(metric_id, score)` pairs to `v2_image_assets.detected_metrics`; reviewers confirm metric coverage per image via `v2_image_metric_confirmations` (accept / reject / correct / add). Values, when CMASB needs them, come through the existing manual entry path (`POST /api/v2/missed-metric`). The pipeline does not emit per-value chart `v2_metric_facts` rows (chart-presence pivot, #86, 2026-04-23).
 5. **Image pipeline is active**: Do not delete image-processing code (`src/llm/vision_client.py`, `src/extraction_v2/` image/OCR stages, `src/web/routes/review_unified.py` + `api_unified.py` image endpoints, image scripts). The image review system is complete and in use.
 6. **Reviewed-filing guard**: Re-extraction of a filing with human review decisions requires explicit `force=True` / `--force-reextract`. Enforced in `V2PersistenceAdapter._persist_facts_in_tx`; raises `ReviewedFilingError` otherwise. Prevents silent CASCADE-destruction of reviewer work via `v2_review_decisions.fact_id ON DELETE CASCADE`.
 

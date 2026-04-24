@@ -385,7 +385,7 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 - `dd5c90a`: Add `_WIDER_PROXIMITY_METRICS` frozenset in `value_binding.py:46-52` — 200-char window for cm_balance_by_cohort, cm_gross_margin_by_cohort, cm_ltv_to_cac_ratio, cm_ltv_to_cac_ratio_by_cohort, cm_cac_payback_period. Add `cm_large_customers_period_end` table FP exemption at `false_positive_filter.py:1211-1215`.
 - `09a8f64`: Add `specific_patterns` confidence boost for cm_ltv_to_cac_ratio in `config/metric_keywords.yaml`. F1 46%→50%.
 - `v2_baseline.json` updated: P=68.06%, R=63.36%, F1=65.63% (15 companies, V2 SEC methodology).
-- Remaining Tier 1 recall gaps (cm_revenue_by_cohort, cm_balance_by_cohort, cm_gross_margin_by_cohort) are chart-pipeline — text-pipeline Tier 1 recall work is concluded.
+- Remaining Tier 1 gains on chart-native metrics (cm_revenue_by_cohort, cm_balance_by_cohort, cm_gross_margin_by_cohort) accrue via **presence-F1** after the 2026-04-23 chart-presence pivot (#86): the chart pipeline writes `detected_metrics` on `v2_image_assets`, reviewers confirm via `v2_image_metric_confirmations`. Text-pipeline Tier 1 recall work is concluded.
 
 ### Version 2.6 (Current - 2026-04-08)
 - ✅ Gold standard expanded to 15 companies (467 GS entries); `golden_set_260408.csv` is now the authoritative CSV
