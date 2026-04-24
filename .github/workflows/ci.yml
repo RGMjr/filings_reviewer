@@ -27,8 +27,35 @@ jobs:
       - name: Type check (mypy)
         run: uv run mypy src/review/ --strict
 
-      - name: Known-issues rollup is in sync with fragments
-        run: python3 scripts/regenerate_known_issues.py --check
+      - name: Known-issues fragments validate
+        # Phase 2: the rollup is no longer tracked in git. Fragments are the
+        # source of truth; this lint just confirms they parse cleanly.
+        run: uv run python3 scripts/regenerate_known_issues.py --validate
+
+  # Known-issues rollup artifact: regenerate and publish the rollup as a
+  # build artifact on every CI run. Fragments in docs/known-issues/ are
+  # the source of truth; the rollup is derived.
+  known-issues-artifact:
+    name: Known-issues rollup artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Regenerate rollup to temp path
+        run: uv run python3 scripts/regenerate_known_issues.py --output /tmp/KNOWN_ISSUES.md
+
+      - name: Upload rollup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: known-issues-rollup
+          path: /tmp/KNOWN_ISSUES.md
+          retention-days: 30
+          if-no-files-found: error
 
   unit-tests:
     name: Unit Tests
@@ -141,7 +168,11 @@ jobs:
         run: uv sync --extra dev
 
       - name: Audit dependencies
-        run: uv run pip-audit --skip-editable
+        # Temporarily ignoring CVE-2026-3219 (pip 26.0.1). No fix version
+        # published by upstream yet; pip-audit would block every PR on a
+        # vulnerability we cannot remediate. Remove this ignore once a
+        # patched pip is released.
+        run: uv run pip-audit --ignore-vuln CVE-2026-3219
 
   integration-tests:
     name: Integration Tests

@@ -4,7 +4,7 @@
 
 Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron service:
 
-1. **Status sync** (pre-selector): runs `scripts/sync_known_issue_status.py`, which reads the `pr_refs` list from each fragment's frontmatter and calls `gh pr view` for every referenced PR. Any fragment whose listed PRs are all in `MERGED` state is rewritten in-place: `status` becomes `resolved`, `autonomy` becomes `n/a`, and `updated` is set to today's date. The rollup `docs/KNOWN_ISSUES.md` is regenerated automatically. To opt a fragment out of auto-resolution, leave its `pr_refs` field empty or absent. If `gh` is temporarily unavailable, individual fragment lookups fail silently and those fragments are skipped — the sync failure does not abort the sweep.
+1. **Status sync** (pre-selector): runs `scripts/sync_known_issue_status.py`, which reads the `pr_refs` list from each fragment's frontmatter and calls `gh pr view` for every referenced PR. Any fragment whose listed PRs are all in `MERGED` state is rewritten in-place: `status` becomes `resolved`, `autonomy` becomes `n/a`, and `updated` is set to today's date. After any updates, the script runs `regenerate_known_issues.py --validate` as a frontmatter sanity check. The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact. To opt a fragment out of auto-resolution, leave its `pr_refs` field empty or absent. If `gh` is temporarily unavailable, individual fragment lookups fail silently and those fragments are skipped — the sync failure does not abort the sweep.
 2. Reads fragment frontmatter from `docs/known-issues/` to find eligible issues (autonomy `safe` or `review`, status `open` or `partially-resolved`).
 3. Picks up to 5 non-colliding issues tagged `Autonomy: safe` (default) or `review` (opt-in).
 4. For each pick, creates an isolated git worktree and runs a Claude Code session that:
@@ -17,7 +17,7 @@ Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron se
    - **Abandoned** — issues the sweeper tried but gave up on, with the reason.
 6. Opens a PR for the digest file.
 
-The source of truth for which issues the sweeper may touch is the `autonomy:` field in each fragment's YAML frontmatter under `docs/known-issues/`. `docs/KNOWN_ISSUES.md` is auto-generated from those fragments — do NOT edit it directly.
+The source of truth for which issues the sweeper may touch is the `autonomy:` field in each fragment's YAML frontmatter under `docs/known-issues/`. The rollup `docs/KNOWN_ISSUES.md` is a CI-generated build artifact (not tracked in git); fragments are authoritative.
 
 ## Activate / pause
 
@@ -47,7 +47,7 @@ The cron still fires on schedule — it just exits `0` with a log line on the Re
 
 ## Classifying issues
 
-When you open a new issue via `/commit`'s step 9, the fragment defaults to `autonomy: skip`. To reclassify, edit the `autonomy:` field in the fragment file (`docs/known-issues/legacy-NNN-<slug>.md`) and commit (the pre-commit hook regenerates `docs/KNOWN_ISSUES.md` automatically):
+When you open a new issue via `/commit`'s step 9, the fragment defaults to `autonomy: skip`. To reclassify, edit the `autonomy:` field in the fragment file (`docs/known-issues/legacy-NNN-<slug>.md`) and commit:
 
 - `safe` — single file or disjoint files; no schema/migration; no infra/credential change; existing test coverage. Sweeper auto-merges on green CI.
 - `review` — cross-module edits, judgment calls, new feature logic. Sweeper opens draft PR for morning approval.
@@ -111,5 +111,5 @@ Configurable via Render env vars on the `filings-nightly-sweep` service (default
 - Orchestrator: `scripts/run_nightly_sweep.sh`
 - Image: `Dockerfile.nightly-sweep`
 - Cron wiring: `render.yaml` (service `filings-nightly-sweep`)
-- Fragment directory: `docs/known-issues/` (frontmatter drives selection; `docs/KNOWN_ISSUES.md` is auto-generated)
+- Fragment directory: `docs/known-issues/` (frontmatter drives selection; the rollup `docs/KNOWN_ISSUES.md` is a CI build artifact, not tracked in git)
 - Manual invocation: `/sweep` (see `.claude/skills/sweep/SKILL.md`)

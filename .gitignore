@@ -148,3 +148,8 @@ reports/
 data/gold_standard_reextracted/
 data/reextraction_results/
 data/training/
+
+# Known-issues rollup is a CI-generated artifact
+# (scripts/regenerate_known_issues.py). Fragments in docs/known-issues/
+# are the source of truth.
+docs/KNOWN_ISSUES.md

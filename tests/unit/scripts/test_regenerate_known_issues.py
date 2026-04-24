@@ -251,3 +251,84 @@ class TestMainCheckMode:
         main(["--fragments-dir", str(fragments_dir), "--output", str(output)])
         second = output.read_bytes()
         assert first == second
+
+
+class TestMainValidateMode:
+    def _write_valid_fragment(self, fragments_dir: Path) -> None:
+        (fragments_dir / "legacy-001-a.md").write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: 1
+                source: legacy
+                slug: a
+                title: Alpha
+                status: open
+                severity: medium
+                autonomy: safe
+                estimated: XS
+                touches:
+                  - src/a.py
+                discovered: 2026-04-19
+                updated: 2026-04-22
+                note: Alpha note
+                ---
+
+                ## Problem
+
+                Alpha body.
+                """
+            ),
+            encoding="utf-8",
+        )
+
+    def test_validate_exits_0_on_clean_fragments(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        fragments_dir = tmp_path / "frags"
+        fragments_dir.mkdir()
+        self._write_valid_fragment(fragments_dir)
+        rc = main(["--fragments-dir", str(fragments_dir), "--validate"])
+        assert rc == 0
+        assert "OK: 1 fragment(s) validated" in capsys.readouterr().out
+
+    def test_validate_exits_1_on_invalid_frontmatter(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        fragments_dir = tmp_path / "frags"
+        fragments_dir.mkdir()
+        (fragments_dir / "legacy-001-a.md").write_text(
+            textwrap.dedent(
+                """\
+                ---
+                id: 1
+                source: legacy
+                slug: a
+                title: Alpha
+                status: bogus-status
+                severity: medium
+                autonomy: safe
+                estimated: XS
+                touches: []
+                discovered: 2026-04-19
+                updated: 2026-04-22
+                ---
+
+                Body.
+                """
+            ),
+            encoding="utf-8",
+        )
+        rc = main(["--fragments-dir", str(fragments_dir), "--validate"])
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "failed validation" in err
+
+    def test_validate_does_not_write_rollup(self, tmp_path: Path) -> None:
+        fragments_dir = tmp_path / "frags"
+        fragments_dir.mkdir()
+        self._write_valid_fragment(fragments_dir)
+        output = tmp_path / "rollup.md"
+        rc = main(["--fragments-dir", str(fragments_dir), "--output", str(output), "--validate"])
+        assert rc == 0
+        assert not output.exists(), "--validate must not write the rollup"
