@@ -10,8 +10,12 @@ annotated-doc==0.0.4
     # via typer
 annotated-types==0.7.0
     # via pydantic
+anthropic==0.97.0
+    # via -r requirements.txt
 anyio==4.13.0
     # via
+    #   anthropic
+    #   google-genai
     #   httpx
     #   openai
 attrs==26.1.0
@@ -20,6 +24,12 @@ beautifulsoup4==4.14.3
     # via -r requirements.txt
 blinker==1.9.0
     # via flask
+boto3==1.42.95
+    # via -r requirements.txt
+botocore==1.42.95
+    # via
+    #   boto3
+    #   s3transfer
 certifi==2026.2.25
     # via
     #   httpcore
@@ -38,7 +48,9 @@ click==8.3.1
     #   flask
     #   typer
 cryptography==46.0.6
-    # via pdfminer-six
+    # via
+    #   google-auth
+    #   pdfminer-six
 datasets==4.8.4
     # via -r requirements.txt
 dill==0.4.1
@@ -46,7 +58,12 @@ dill==0.4.1
     #   datasets
     #   multiprocess
 distro==1.9.0
-    # via openai
+    # via
+    #   anthropic
+    #   google-genai
+    #   openai
+docstring-parser==0.18.0
+    # via anthropic
 filelock==3.25.2
     # via
     #   datasets
@@ -63,6 +80,10 @@ fsspec==2026.2.0
     # via
     #   datasets
     #   huggingface-hub
+google-auth==2.49.2
+    # via google-genai
+google-genai==1.73.1
+    # via -r requirements.txt
 h11==0.16.0
     # via httpcore
 hf-xet==1.4.3
@@ -71,7 +92,9 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via
+    #   anthropic
     #   datasets
+    #   google-genai
     #   huggingface-hub
     #   openai
 huggingface-hub==1.9.0
@@ -87,12 +110,18 @@ itsdangerous==2.2.0
 jinja2==3.1.6
     # via flask
 jiter==0.13.0
-    # via openai
+    # via
+    #   anthropic
+    #   openai
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 joblib==1.5.3
     # via
     #   -r requirements.txt
     #   scikit-learn
-lxml==6.0.2
+lxml==6.1.0
     # via -r requirements.txt
 markdown-it-py==4.0.0
     # via rich
@@ -113,6 +142,7 @@ nh3==0.3.4
     # via -r requirements.txt
 numpy==2.4.3
     # via
+    #   -r requirements.txt
     #   datasets
     #   pandas
     #   scikit-learn
@@ -130,7 +160,9 @@ pdfminer-six==20251230
 pdfplumber==0.11.9
     # via -r requirements.txt
 pillow==12.2.0
-    # via pdfplumber
+    # via
+    #   -r requirements.txt
+    #   pdfplumber
 propcache==0.4.1
     # via
     #   aiohttp
@@ -143,10 +175,17 @@ psycopg-pool==3.3.0
     # via psycopg
 pyarrow==23.0.1
     # via datasets
+pyasn1==0.6.3
+    # via pyasn1-modules
+pyasn1-modules==0.4.2
+    # via google-auth
 pycparser==3.0
     # via cffi
 pydantic==2.12.5
-    # via openai
+    # via
+    #   anthropic
+    #   google-genai
+    #   openai
 pydantic-core==2.41.5
     # via pydantic
 pygments==2.20.0
@@ -158,7 +197,9 @@ pypdfium2==5.6.0
     #   -r requirements.txt
     #   pdfplumber
 python-dateutil==2.9.0.post0
-    # via pandas
+    # via
+    #   botocore
+    #   pandas
 python-dotenv==1.2.2
     # via -r requirements.txt
 pyyaml==6.0.3
@@ -172,9 +213,13 @@ requests==2.33.0
     # via
     #   -r requirements.txt
     #   datasets
+    #   google-auth
+    #   google-genai
     #   tiktoken
 rich==14.3.3
     # via typer
+s3transfer==0.16.1
+    # via boto3
 scikit-learn==1.8.0
     # via -r requirements.txt
 scipy==1.17.1
@@ -186,9 +231,14 @@ shellingham==1.5.4
 six==1.17.0
     # via python-dateutil
 sniffio==1.3.1
-    # via openai
+    # via
+    #   anthropic
+    #   google-genai
+    #   openai
 soupsieve==2.8.3
     # via beautifulsoup4
+tenacity==9.1.4
+    # via google-genai
 threadpoolctl==3.6.0
     # via scikit-learn
 tiktoken==0.12.0
@@ -201,11 +251,15 @@ tqdm==4.67.3
     #   openai
 typer==0.24.1
     # via huggingface-hub
+types-pyyaml==6.0.12.20260408
+    # via -r requirements.txt
 typing-extensions==4.15.0
     # via
     #   aiosignal
+    #   anthropic
     #   anyio
     #   beautifulsoup4
+    #   google-genai
     #   huggingface-hub
     #   openai
     #   psycopg
@@ -217,10 +271,13 @@ typing-inspection==0.4.2
     # via pydantic
 urllib3==2.6.3
     # via
+    #   botocore
     #   requests
     #   sentry-sdk
 waitress==3.0.2
     # via -r requirements.txt
+websockets==16.0
+    # via google-genai
 werkzeug==3.1.7
     # via flask
 xxhash==3.6.0
