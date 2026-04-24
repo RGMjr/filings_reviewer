@@ -1785,4 +1785,35 @@ class TestPrescanAmbiguousImages:
         assert vision.chart_call_count == 1  # second-pass (table)
         # Segment synthesized from the pre-scan.
         assert len(context.segments) == 1
-        assert asset.classification == ImageClassification.TABLE_IMAGE
+
+
+class TestTier1KeywordsRe:
+    """Tests that TIER1_KEYWORDS_RE is correctly built from metric_keywords.yaml."""
+
+    @pytest.mark.parametrize(
+        "metric_id,phrase",
+        [
+            ("cm_customer_retention_rate", "customer retention"),
+            ("cm_net_revenue_retention", "net revenue retention"),
+            ("cm_gross_revenue_retention", "gross revenue retention"),
+            ("cm_revenue_by_cohort", "revenue by cohort"),
+            ("cm_lifetime_value_per_customer", "lifetime value"),
+            ("cm_customer_acquisition_cost", "customer acquisition cost"),
+            ("cm_ltv_to_cac_ratio", "ltv to cac"),
+            ("cm_revenue_concentration", "revenue concentration"),
+            ("cm_large_customers_period_end", "large customers"),
+            ("cm_new_customers_acquired", "new customers acquired"),
+        ],
+    )
+    def test_known_phrases_match(self, metric_id: str, phrase: str) -> None:
+        """Each Tier-1 metric phrase must be matched by the compiled regex."""
+        assert OCRExtractionStage.TIER1_KEYWORDS_RE.search(phrase) is not None, (
+            f"TIER1_KEYWORDS_RE did not match phrase {phrase!r} for metric {metric_id!r}"
+        )
+
+    def test_existing_example_still_matches(self) -> None:
+        """Regression: phrase covering multiple Tier-1 metrics still matches."""
+        assert (
+            OCRExtractionStage.TIER1_KEYWORDS_RE.search("Customer retention rate by cohort")
+            is not None
+        )

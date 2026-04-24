@@ -3,13 +3,14 @@ autonomy: n/a
 discovered: '2026-04-22'
 estimated: —
 id: 83
+pr_refs: []
 severity: low
 slug: tier1-keywords-re-drifts-from-config-metric-keywords-yaml
 source: legacy
-status: open
+status: resolved
 title: '`TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`'
 touches: []
-updated: '2026-04-22'
+updated: '2026-04-23'
 ---
 
 ### Problem
