@@ -283,7 +283,13 @@ if [[ -f "$DIGEST_PATH" ]]; then
     git add "$DIGEST_PATH"
     git commit -m "docs(sweep-digest): nightly digest for $DATE" --quiet || true
     if git push -u origin "$DIGEST_BRANCH" --quiet; then
-      gh pr create --fill >/dev/null || log "digest PR create failed (may already exist)"
+      # Put the full digest in the PR body so GitHub's "PR opened" notification
+      # email carries the merged / awaiting / abandoned summary directly.
+      # Requires repo notification setting "All Activity" (not @mentions only).
+      gh pr create \
+        --title "docs(sweep-digest): nightly digest for $DATE" \
+        --body-file "$DIGEST_PATH" >/dev/null \
+        || log "digest PR create failed (may already exist)"
       gh pr merge --auto --squash >/dev/null || log "digest auto-merge enable failed"
     else
       log "digest push failed — leaving branch local"
