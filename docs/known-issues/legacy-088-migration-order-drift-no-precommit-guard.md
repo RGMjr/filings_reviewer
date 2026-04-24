@@ -3,7 +3,7 @@ id: 88
 source: legacy
 slug: migration-order-drift-no-precommit-guard
 title: No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: S
@@ -12,6 +12,7 @@ touches:
   - .pre-commit-config.yaml
 discovered: '2026-04-23'
 updated: '2026-04-23'
+pr_refs: []
 note: Add a pre-commit hook that fails if any sql/NN_*.sql on disk lacks an entry in MIGRATION_ORDER or EXCLUDED_FILES.
 ---
 

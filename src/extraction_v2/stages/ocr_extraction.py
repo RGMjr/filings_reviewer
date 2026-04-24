@@ -37,11 +37,47 @@ from src.extraction_v2.models import (
     SegmentType,
     Table,
 )
+from src.shared.keyword_config import (
+    get_metric_keywords,
+    get_metric_tiers,
+    get_specific_patterns_by_metric,
+)
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
 
 logger = logging.getLogger(__name__)
+
+
+def _build_tier1_re() -> re.Pattern[str]:
+    """Build a compiled regex from all Tier-1 metric patterns in metric_keywords.yaml.
+
+    Collects ``patterns`` and ``specific_patterns`` for every metric with
+    ``tier == 1``, deduplicates them, and compiles a single alternation.
+    Called once at module load (class-body assignment), so the YAML config
+    is read and cached by ``keyword_config._load_config`` on first import.
+    """
+    tiers = get_metric_tiers()
+    keywords_by_metric = get_metric_keywords()
+    specific_by_metric = get_specific_patterns_by_metric()
+
+    all_patterns: list[str] = []
+    for metric_id, tier in tiers.items():
+        if tier != 1:
+            continue
+        all_patterns.extend(keywords_by_metric.get(metric_id, []))
+        all_patterns.extend(specific_by_metric.get(metric_id, []))
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique_patterns: list[str] = []
+    for p in all_patterns:
+        if p not in seen:
+            seen.add(p)
+            unique_patterns.append(p)
+
+    combined = r"\b(" + "|".join(unique_patterns) + r")\b"
+    return re.compile(combined, re.IGNORECASE)
 
 
 def _synthesize_ocr_segment(
@@ -120,29 +156,11 @@ class OCRExtractionStage:
 
     # Tier-1 keyword regex used by Path B to decide whether an OCR'd
     # ambiguous image should escalate to the chart/table extraction path.
-    # Curated from the Tier-1 metric list in CLAUDE.md plus phrases that
-    # appear in ``config/metric_keywords.yaml`` ``patterns``. Kept short
-    # and precision-first — false negatives are tolerable (the image just
-    # stays UNKNOWN), but false positives spend an extra vision call.
-    TIER1_KEYWORDS_RE: re.Pattern[str] = re.compile(
-        r"\b("
-        r"cohort|cohorts"
-        r"|retention\s+rate|customer\s+retention|net\s+revenue\s+retention|nrr"
-        r"|gross\s+revenue\s+retention|grr|dollar\s+retention"
-        r"|lifetime\s+value|ltv"
-        r"|customer\s+acquisition\s+cost|cac"
-        r"|ltv\s*(?:/|to|:)\s*cac"
-        r"|revenue\s+concentration|customer\s+concentration"
-        r"|top\s+\d+\s+customers?"
-        r"|revenue\s+by\s+cohort|cohort\s+revenue"
-        r"|gross\s+margin\s+by\s+cohort"
-        r"|transactions\s+by\s+cohort"
-        r"|balance\s+by\s+cohort"
-        r"|new\s+customers\s+acquired"
-        r"|customers\s+by\s+tenure"
-        r")\b",
-        re.IGNORECASE,
-    )
+    # Built automatically from ``config/metric_keywords.yaml`` (tier == 1
+    # entries' ``patterns`` + ``specific_patterns``) via ``_build_tier1_re()``.
+    # False negatives are tolerable (the image just stays UNKNOWN), but false
+    # positives spend an extra vision call.
+    TIER1_KEYWORDS_RE: re.Pattern[str] = _build_tier1_re()
 
     def __init__(
         self,

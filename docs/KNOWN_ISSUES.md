@@ -7,10 +7,10 @@
 
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 29 |
 | Partially Resolved | 1 |
 | Archived | 45 |
-| Resolved | 20 |
+| Resolved | 22 |
 
 
 ## Nightly Sweeper Classification
@@ -275,23 +275,6 @@ rollback).
    `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
 4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
    and re-extract 5 investor-deck-style filings to exercise Path B.
-
-## #88. No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
-
-**Status**: Open
-**Severity**: medium
-**Discovered**: 2026-04-23
-**Updated**: 2026-04-23
-
-### Problem
-
-`scripts/apply_all_migrations.py` has drifted twice (issues #46 and #85) because new SQL migration files land on disk without a corresponding entry in `MIGRATION_ORDER`. The `check_unregistered_migrations` guard only fires at runtime (`--dry-run`), not at commit time, so the drift isn't caught until someone runs the script.
-
-### Next Steps
-
-- Add a pre-commit hook (or `local` hook in `.pre-commit-config.yaml`) that runs `python3 scripts/apply_all_migrations.py --dry-run` (which exits 1 when unregistered files are found) before each commit.
-- Alternatively, write a small standalone check script and register it as a `local` repo hook so it doesn't require a DB connection.
-- Verify the hook runs in CI as well (the pre-commit framework is already in use for ruff and the extraction guard).
 
 ## #89. Image-OCR Segments + Re-OCR'd Images Not Surfaced in Review UI
 
@@ -799,23 +782,6 @@ Phase-3 unit tests exercise `ImageTriageStage._detect_full_page_scan_filing`, `O
 1. Create a minimal fixture: a stub HTML document with a handful of `<img>` tags pointing at portrait-page-sized dummy JPGs, seeded under `tests/integration/fixtures/full_page_ocr/`.
 2. Add `tests/integration/extraction_v2/test_full_page_ocr_pipeline.py` that constructs a `PipelineConfig(enable_full_page_ocr=True)`, runs `V2Pipeline.process` with a mocked `VisionClient`, and asserts segment + fact + image-asset state end-to-end.
 3. Alternative: once the prod rollout backfill completes on a real PayPal 8-K, capture its vision responses as VCR cassettes and build the fixture from that.
-
-## #83. `TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`
-
-**Status**: Open
-**Severity**: low
-**Discovered**: 2026-04-22
-**Updated**: 2026-04-22
-
-### Problem
-
-`OCRExtractionStage.TIER1_KEYWORDS_RE` is a hand-curated regex alternation listing Tier-1 metric phrases (cohort, retention, ltv, cac, etc.). The authoritative source of Tier-1 metrics is `config/metric_keywords.yaml` (`tier: 1` entries' `patterns` + `specific_patterns`). Adding a new Tier-1 metric today requires two edits in lockstep; miss the regex update and Path B silently under-matches.
-
-### Next Steps
-
-1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
-2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
-3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
 
 ## #84. Fragment Status Drift After PR Merge (Needs Auto-Update Mechanism)
 
@@ -1895,6 +1861,23 @@ whatever the validator produces under a fresh, CI-equivalent interpreter.
   bisect work. Consider filing a separate issue if parallel-bisect becomes
   a recurring pattern.
 
+## #88. No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
+
+**Status**: Resolved
+**Severity**: medium
+**Discovered**: 2026-04-23
+**Updated**: 2026-04-23
+
+### Problem
+
+`scripts/apply_all_migrations.py` has drifted twice (issues #46 and #85) because new SQL migration files land on disk without a corresponding entry in `MIGRATION_ORDER`. The `check_unregistered_migrations` guard only fires at runtime (`--dry-run`), not at commit time, so the drift isn't caught until someone runs the script.
+
+### Next Steps
+
+- Add a pre-commit hook (or `local` hook in `.pre-commit-config.yaml`) that runs `python3 scripts/apply_all_migrations.py --dry-run` (which exits 1 when unregistered files are found) before each commit.
+- Alternatively, write a small standalone check script and register it as a `local` repo hook so it doesn't require a DB connection.
+- Verify the hook runs in CI as well (the pre-commit framework is already in use for ruff and the extraction guard).
+
 ## #90. Integration Tests Fail at Startup on sql/37 Migration-Checksum Drift
 
 **Status**: Resolved
@@ -2178,6 +2161,23 @@ attempt to re-fix issues whose fixes are already in `main`.
   must NOT appear in selector picks.
 - Optional: also emit a warning when such a fragment is encountered, so the
   author knows to set `autonomy: n/a` on resolved entries.
+
+## #83. `TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`
+
+**Status**: Resolved
+**Severity**: low
+**Discovered**: 2026-04-22
+**Updated**: 2026-04-23
+
+### Problem
+
+`OCRExtractionStage.TIER1_KEYWORDS_RE` is a hand-curated regex alternation listing Tier-1 metric phrases (cohort, retention, ltv, cac, etc.). The authoritative source of Tier-1 metrics is `config/metric_keywords.yaml` (`tier: 1` entries' `patterns` + `specific_patterns`). Adding a new Tier-1 metric today requires two edits in lockstep; miss the regex update and Path B silently under-matches.
+
+### Next Steps
+
+1. Load Tier-1 patterns from `config/metric_keywords.yaml` at `OCRExtractionStage` init time (module-level cached) — build the regex union automatically.
+2. Add a unit test that asserts every Tier-1 metric in the YAML has at least one phrase covered by the compiled regex.
+3. Decide whether to additionally compile `exclusions` from the YAML into a negative filter on the pre-scan match (probably overkill for Path B, but note the option).
 
 ## #92. CLASSIFY_PROMPT Lives in Bake-off Harness — Move to VisionClient When Classify Lands in Prod
 
