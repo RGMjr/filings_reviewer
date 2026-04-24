@@ -1,0 +1,160 @@
+"""
+Stage 12: Metric Presence Aggregation.
+
+Final stage of the V2 pipeline. Aggregates extraction signals across all
+surfaces — deduplicated facts (text / html_table / ocr_table / chart),
+chart-image `detected_metrics`, and definitions — into one
+``MetricPresence`` record per ``(doc, canonical_metric_id)`` pair.
+
+Primary scoring surface for the Tier 1 regression gate under the
+text-presence pivot. See ``docs/operations/text-pipeline-presence-pivot-plan.md``.
+
+Design invariants (must hold; downstream PRs depend on them):
+
+- One record per ``(doc_id, canonical_metric_id)``. Duplicates are an error
+  upstream; ``_persist_presence_in_tx`` upsert would otherwise collapse
+  them silently.
+- ``score`` is the MAX confidence across all contributing signals.
+- ``evidence_segment_ids`` is the union of segment IDs from contributing
+  facts (via ``fact.source_locator.segment_id``) and from definitions
+  (``definition_segment_id`` / ``methodology_segment_id``). Chart-only
+  presences have no segment IDs — evidence lives on the image row.
+- ``advisory_fact_ids`` lists the fact IDs that contributed. Empty when
+  presence comes solely from chart ``detected_metrics`` or definitions.
+- ``advisory_value_count`` is the count of contributing facts (not unique
+  values). Rough disclosure-depth signal for downstream UI.
+
+The stage never mutates ``context.facts`` / ``context.images`` / etc. — it
+only reads them and writes ``context.presences``.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from src.extraction_v2.models import MetricPresence
+
+if TYPE_CHECKING:
+    from src.extraction_v2.pipeline import PipelineContext, StageResult
+
+logger = logging.getLogger(__name__)
+
+
+# Scores assigned to presence signals when no explicit confidence exists.
+# Facts always carry ``confidence``; charts carry ``DetectedMetric.score``.
+# Definition-only presence is weaker than a value-bearing fact, so we floor
+# it at 0.5 — same threshold the chart pipeline uses for minimum presence
+# emission (``chart_presence_min_score``).
+_DEFINITION_ONLY_PRESENCE_SCORE = 0.5
+
+
+class MetricPresenceStage:
+    """Aggregate per-(doc, metric) presence records from all surfaces."""
+
+    def process(self, context: PipelineContext) -> StageResult:
+        from src.extraction_v2.pipeline import PipelineStage, StageResult
+
+        start_time = datetime.now(UTC)
+
+        # Per-metric accumulator.
+        # Keys are canonical_metric_id; values carry aggregated score,
+        # segment-ID set, fact-ID list, fact count, and the stage that first
+        # surfaced the metric (for downstream diagnostics).
+        accumulator: dict[str, _Accumulator] = {}
+
+        # Source 1: deduplicated facts (falls back to raw facts if dedup
+        # hasn't populated yet — mirrors pipeline.process() output_facts logic).
+        facts = (
+            context.deduplicated_facts if context.deduplicated_facts is not None else context.facts
+        )
+        for fact in facts:
+            if not fact.canonical_metric_id:
+                continue
+            acc = accumulator.setdefault(
+                fact.canonical_metric_id,
+                _Accumulator(first_stage=PipelineStage.FACT_CONSTRUCTION.value),
+            )
+            acc.score = max(acc.score, float(fact.confidence))
+            acc.advisory_value_count += 1
+            acc.fact_ids.append(fact.fact_id)
+            seg_id = fact.source_locator.segment_id if fact.source_locator else None
+            if seg_id:
+                acc.segment_ids.add(seg_id)
+
+        # Source 2: chart detected_metrics from ChartFactBridgeStage.
+        for image in context.images:
+            for detected in image.detected_metrics:
+                if not detected.metric_id:
+                    continue
+                acc = accumulator.setdefault(
+                    detected.metric_id,
+                    _Accumulator(first_stage=PipelineStage.CHART_FACT_BRIDGE.value),
+                )
+                acc.score = max(acc.score, float(detected.score))
+
+        # Source 3: definitions (weaker signal; contributes only when
+        # no stronger signal exists, but always adds evidence segment IDs).
+        for definition in context.definitions:
+            if not definition.canonical_metric_id:
+                continue
+            acc = accumulator.setdefault(
+                definition.canonical_metric_id,
+                _Accumulator(first_stage=PipelineStage.DEFINITION_EXTRACTION.value),
+            )
+            acc.score = max(acc.score, _DEFINITION_ONLY_PRESENCE_SCORE)
+            if definition.definition_segment_id:
+                acc.segment_ids.add(definition.definition_segment_id)
+            if definition.methodology_segment_id:
+                acc.segment_ids.add(definition.methodology_segment_id)
+
+        context.presences = [
+            MetricPresence(
+                canonical_metric_id=metric_id,
+                score=acc.score,
+                detected_at_stage=acc.first_stage,
+                evidence_segment_ids=sorted(acc.segment_ids),
+                advisory_value_count=acc.advisory_value_count,
+                advisory_fact_ids=list(acc.fact_ids),
+            )
+            for metric_id, acc in sorted(accumulator.items())
+        ]
+
+        duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+        logger.info(
+            "MetricPresenceStage: doc_id=%s metrics_present=%s fact_contributors=%s",
+            context.filing_id,
+            len(context.presences),
+            sum(p.advisory_value_count for p in context.presences),
+        )
+
+        return StageResult(
+            stage=PipelineStage.METRIC_PRESENCE,
+            success=True,
+            duration_ms=duration_ms,
+            items_processed=len(facts) + len(context.images) + len(context.definitions),
+            items_output=len(context.presences),
+            metadata={
+                "metrics_present": len(context.presences),
+                "fact_contributors": sum(p.advisory_value_count for p in context.presences),
+                "chart_only_presences": sum(
+                    1
+                    for p in context.presences
+                    if p.advisory_value_count == 0 and not p.evidence_segment_ids
+                ),
+            },
+        )
+
+
+class _Accumulator:
+    """Mutable per-metric aggregator used only within ``MetricPresenceStage``."""
+
+    __slots__ = ("score", "first_stage", "segment_ids", "fact_ids", "advisory_value_count")
+
+    def __init__(self, first_stage: str) -> None:
+        self.score: float = 0.0
+        self.first_stage: str = first_stage
+        self.segment_ids: set[str] = set()
+        self.fact_ids: list[str] = []
+        self.advisory_value_count: int = 0

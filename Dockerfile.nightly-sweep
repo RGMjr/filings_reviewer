@@ -3,13 +3,18 @@
 # Dockerfile.nightly-sweep — image for the autonomous KNOWN_ISSUES sweeper.
 #
 # Differences vs. the main Dockerfile:
-#   - Adds the Claude Code CLI (`claude`) and GitHub CLI (`gh`)
+#   - Adds the Claude Code CLI (`claude`) and GitHub CLI (`gh`) — both PINNED
+#     to specific versions so Render rebuilds are reproducible.
 #   - Installs git (the base `python:slim` image lacks it)
 #   - Keeps the same Python + pip layer so /commit's `pytest -x -q` can run
 #     inside worktrees.
 #
 # Entrypoint is the orchestrator shell script; the Render cron service
 # overrides with its own command if needed.
+#
+# To bump CLI versions:
+#   gh:     update GH_VERSION below (check https://github.com/cli/cli/releases)
+#   claude: update CLAUDE_VERSION below (check https://github.com/anthropics/claude-code/releases)
 
 ARG PYTHON_VERSION=3.11
 FROM python:${PYTHON_VERSION}-slim AS base
@@ -31,17 +36,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# GitHub CLI (gh). Official install via keyring + apt.
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-        > /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update && apt-get install -y --no-install-recommends gh \
-    && rm -rf /var/lib/apt/lists/*
+# GitHub CLI (gh) — pinned to a specific release via the official .deb from
+# GitHub Releases. Bypasses the apt repo entirely so the version is explicit.
+# Architecture is detected at build time so amd64 (Render prod) and arm64
+# (local Mac Docker) both work without changes.
+# To bump: update GH_VERSION to the new tag (without the leading "v").
+ARG GH_VERSION=2.91.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL -o /tmp/gh.deb \
+        "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.deb" \
+    && dpkg -i /tmp/gh.deb \
+    && rm /tmp/gh.deb
 
 # Non-privileged user (matches main Dockerfile pattern). Created before the
-# Claude install so the installer drops the binary into appuser's $HOME.
+# Claude install so the binary lands in appuser's $HOME.
 ARG UID=10001
 RUN adduser --disabled-password --gecos "" \
         --home "/home/appuser" --shell "/bin/bash" --uid "${UID}" appuser
@@ -53,15 +61,30 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.lock,target=requirements.lock \
     python -m pip install -r requirements.lock
 
-# Claude Code CLI. The official installer drops a native binary into
-# $HOME/.local/bin and explicitly warns it does not touch PATH. Installing
-# as appuser lands it at /home/appuser/.local/bin/claude; we prepend that
-# dir to the image PATH so `scripts/run_nightly_sweep.sh` (runs as appuser)
-# can resolve `claude` via `command -v`.
+# Claude Code CLI — pinned to a specific release via the versioned tarball on
+# GitHub Releases (https://github.com/anthropics/claude-code/releases).
+# The official installer at https://claude.ai/install.sh always pulls the
+# latest version and does not support selecting a download version, so we
+# fetch the binary directly instead.
+# Architecture is detected at build time; dpkg's "amd64" is mapped to claude's
+# "x64" naming convention. arm64 stays "arm64" in both.
+# Binary lands at /home/appuser/.local/bin/claude; PATH is prepended below so
+# `scripts/run_nightly_sweep.sh` (runs as appuser) can resolve it.
+# To bump: update CLAUDE_VERSION to the new tag (without the leading "v").
+ARG CLAUDE_VERSION=2.1.119
 ENV PATH="/home/appuser/.local/bin:${PATH}"
-USER appuser
-RUN curl -fsSL https://claude.ai/install.sh | bash
-USER root
+RUN ARCH=$(dpkg --print-architecture) \
+    && CLAUDE_ARCH=$([ "$ARCH" = "amd64" ] && echo "x64" || echo "$ARCH") \
+    && mkdir -p /home/appuser/.local/bin \
+    && curl -fsSL \
+        "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_VERSION}/claude-linux-${CLAUDE_ARCH}.tar.gz" \
+        | tar -xz -C /home/appuser/.local/bin/ \
+    && chmod +x /home/appuser/.local/bin/claude \
+    && chown -R appuser:appuser /home/appuser/.local
+
+# Build-time smoke test: both CLIs must be resolvable and report their version.
+# If a pin points at a non-existent release this step fails the image build.
+RUN claude --version && gh --version
 
 COPY --chown=appuser:appuser . .
 

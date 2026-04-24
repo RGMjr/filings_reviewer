@@ -66,6 +66,15 @@ MOCK_FILING = {
     "ticker": None,
 }
 
+MOCK_FILING_B = {
+    "filing_id": 2,
+    "company_name": "Acme Corp B",
+    "form_type": "S-1",
+    "accession_number": "0001234567-25-000002",
+    "cik": "0001234567",
+    "ticker": None,
+}
+
 MOCK_FACT_PENDING = {
     "fact_id": "fact-001",
     "canonical_metric_id": "cm_net_revenue_retention",
@@ -491,6 +500,250 @@ def review_images_tab_detected_preseeded():
             current_image_confirmations=preseeded,
         ),
     )
+
+
+# ---- Cross-filing auto-advance routes ----
+
+MOCK_FACT_LAST_PENDING = {
+    "fact_id": "fact-last-001",
+    "canonical_metric_id": "cm_net_revenue_retention",
+    "review_status": "pending_review",
+    "confidence": 0.90,
+    "value_raw": "120%",
+    "value": 120.0,
+    "unit": "percent",
+    "period_start": "2024-01-01",
+    "period_end": "2024-12-31",
+    "period_type": "annual",
+    "scope": "company",
+    "scope_detail": None,
+    "customer_type": None,
+    "source_type": "text",
+    "extraction_method": "keyword",
+    "review_reason": "Last pending fact in filing A",
+    "evidence_pack": {
+        "context_before": "Filing A context",
+        "highlighted_html": "<mark>net revenue retention</mark> was 120%",
+        "context_after": "for fiscal year 2024.",
+        "header_path": ["Key Metrics"],
+        "stub_path": None,
+        "snippet_html": None,
+    },
+    "source_locator": {"segment_id": "99", "img_id": None},
+    "_table_context": None,
+    "_segment_context": None,
+    "decision_id": None,
+    "decision": None,
+    "decision_metric_id": None,
+    "corrected_value": None,
+    "rejection_reason": None,
+    "rejection_category": None,
+    "reviewer_notes": None,
+    "reviewer_id": None,
+    "confirming_source_types": None,
+    "_chart_image_status": None,
+}
+
+MOCK_FACT_B_PENDING = {
+    "fact_id": "fact-b-001",
+    "canonical_metric_id": "cm_total_customers",
+    "review_status": "pending_review",
+    "confidence": 0.80,
+    "value_raw": "75,000",
+    "value": 75000.0,
+    "unit": "count",
+    "period_start": None,
+    "period_end": "2024-12-31",
+    "period_type": "annual",
+    "scope": "company",
+    "scope_detail": None,
+    "customer_type": None,
+    "source_type": "text",
+    "extraction_method": "keyword",
+    "review_reason": None,
+    "evidence_pack": {},
+    "source_locator": {"segment_id": "100", "img_id": None},
+    "_table_context": None,
+    "_segment_context": None,
+    "decision_id": None,
+    "decision": None,
+    "decision_metric_id": None,
+    "corrected_value": None,
+    "rejection_reason": None,
+    "rejection_category": None,
+    "reviewer_notes": None,
+    "reviewer_id": None,
+    "confirming_source_types": None,
+    "_chart_image_status": None,
+}
+
+MOCK_IMAGE_CANDIDATE_A_LAST = {
+    "image_candidate_id": 20,
+    "img_id": "img-a-last-20",
+    "filing_id": 1,
+    "image_url": "https://via.placeholder.com/400x300?text=FilingA",
+    "image_src_url": "https://via.placeholder.com/400x300?text=FilingA",
+    "image_alt": "Filing A Last Image",
+    "image_src": "chart_a_last.png",
+    "image_width": 400,
+    "image_height": 300,
+    "review_status": "pending",
+    "decision": None,
+    "image_decision_id": None,
+    "detection_tier": "tier_1_cohort",
+    "cohort_confidence": 0.88,
+    "preceding_text": "Last pending chart in filing A.",
+    "detected_keywords": ["retention"],
+    "is_decorative": False,
+    "chart_type": None,
+    "rejection_reason": None,
+    "decision_notes": None,
+    "image_index": 1,
+    "detected_metrics": [],
+}
+
+MOCK_IMAGE_CANDIDATE_B_PENDING = {
+    "image_candidate_id": 21,
+    "img_id": "img-b-pending-21",
+    "filing_id": 2,
+    "image_url": "https://via.placeholder.com/400x300?text=FilingB",
+    "image_src_url": "https://via.placeholder.com/400x300?text=FilingB",
+    "image_alt": "Filing B Pending Image",
+    "image_src": "chart_b_pending.png",
+    "image_width": 400,
+    "image_height": 300,
+    "review_status": "pending",
+    "decision": None,
+    "image_decision_id": None,
+    "detection_tier": "tier_1_cohort",
+    "cohort_confidence": 0.75,
+    "preceding_text": "Pending chart in filing B.",
+    "detected_keywords": ["cohort"],
+    "is_decorative": False,
+    "chart_type": None,
+    "rejection_reason": None,
+    "decision_notes": None,
+    "image_index": 1,
+    "detected_metrics": [],
+}
+
+
+def _cross_filing_template_vars_a_text():
+    """Template vars for filing A with exactly one pending text fact, no pending images."""
+    base = _shared_template_vars(
+        active_tab="text",
+        current_fact=MOCK_FACT_LAST_PENDING,
+        facts=[MOCK_FACT_LAST_PENDING],
+        image_candidates=[],
+        all_image_candidates=[],
+        current_image=None,
+    )
+    base["filing"] = MOCK_FILING
+    base["pending_count"] = 1
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 1
+    base["total_facts_unfiltered"] = 1
+    base["image_pending"] = 0
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "/filing-b-pending"
+    return base
+
+
+def _cross_filing_template_vars_b_text():
+    """Template vars for filing B with one pending text fact."""
+    base = _shared_template_vars(
+        active_tab="text",
+        current_fact=MOCK_FACT_B_PENDING,
+        facts=[MOCK_FACT_B_PENDING],
+        image_candidates=[],
+        all_image_candidates=[],
+        current_image=None,
+    )
+    base["filing"] = MOCK_FILING_B
+    base["pending_count"] = 1
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 1
+    base["total_facts_unfiltered"] = 1
+    base["image_pending"] = 0
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "#"
+    return base
+
+
+def _cross_filing_template_vars_a_images():
+    """Template vars for filing A images tab: one pending image, no pending text facts."""
+    base = _shared_template_vars(
+        active_tab="images",
+        current_fact=None,
+        facts=[],
+        image_candidates=[MOCK_IMAGE_CANDIDATE_A_LAST],
+        all_image_candidates=[MOCK_IMAGE_CANDIDATE_A_LAST],
+        current_image=MOCK_IMAGE_CANDIDATE_A_LAST,
+    )
+    base["filing"] = MOCK_FILING
+    base["pending_count"] = 0
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 0
+    base["total_facts_unfiltered"] = 0
+    base["image_pending"] = 1
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "/filing-b-images-pending"
+    return base
+
+
+def _cross_filing_template_vars_b_images():
+    """Template vars for filing B images tab with one pending image."""
+    base = _shared_template_vars(
+        active_tab="images",
+        current_fact=None,
+        facts=[],
+        image_candidates=[MOCK_IMAGE_CANDIDATE_B_PENDING],
+        all_image_candidates=[MOCK_IMAGE_CANDIDATE_B_PENDING],
+        current_image=MOCK_IMAGE_CANDIDATE_B_PENDING,
+    )
+    base["filing"] = MOCK_FILING_B
+    base["pending_count"] = 0
+    base["accepted_count"] = 0
+    base["rejected_count"] = 0
+    base["total_facts"] = 0
+    base["total_facts_unfiltered"] = 0
+    base["image_pending"] = 1
+    base["image_reviewed"] = 0
+    base["image_skipped"] = 0
+    base["next_filing_url"] = "#"
+    return base
+
+
+@app.route("/filing-a-last-pending")
+def filing_a_last_pending():
+    """Filing A: single pending text fact, no pending images. Accepting this fact should
+    trigger auto-advance to /filing-b-pending via NEXT_FILING_URL."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_a_text())
+
+
+@app.route("/filing-b-pending")
+def filing_b_pending():
+    """Filing B: one pending text fact with distinct company name (Acme Corp B)."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_b_text())
+
+
+@app.route("/filing-a-images-last-pending")
+def filing_a_images_last_pending():
+    """Filing A images tab: last pending image, no pending text facts. Deciding on this
+    image should trigger navigateAfterQueueEmpty → advance to /filing-b-images-pending."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_a_images())
+
+
+@app.route("/filing-b-images-pending")
+def filing_b_images_pending():
+    """Filing B images tab: one pending image with distinct company name (Acme Corp B)."""
+    return render_template("unified_review.html", **_cross_filing_template_vars_b_images())
 
 
 # --- Mock API endpoints ---
