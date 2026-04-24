@@ -7,10 +7,10 @@ note: Column rename; needs migration ordering decision
 severity: low
 slug: is-in-scope-phase1-is-a-misnomer-post-issue-7
 source: legacy
-status: open
+status: archived
 title: '`is_in_scope_phase1` Is a Misnomer Post-Issue-#7'
 touches: []
-updated: '2026-04-19'
+updated: '2026-04-24'
 ---
 
 ### Problem

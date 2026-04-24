@@ -1,7 +1,7 @@
 """
 V2 Extraction Pipeline Orchestrator.
 
-This module orchestrates the 12-stage extraction pipeline, plus an optional
+This module orchestrates the 15-stage extraction pipeline, plus an optional
 Chart Fact Bridge that runs after validation when enable_chart_fact_bridge=True:
 
 1. Ingestion & Parsing         → Segments with XPath locators
@@ -46,6 +46,7 @@ from src.extraction_v2.models import (
     MetricCandidate,
     MetricDefinition,
     MetricFact,
+    MetricPresence,
     Segment,
     Table,
 )
@@ -58,6 +59,7 @@ from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterSt
 from src.extraction_v2.stages.image_classify import ImageClassifyStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.metric_presence import MetricPresenceStage
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
 from src.extraction_v2.stages.section_classification import SectionClassificationStage
@@ -97,6 +99,7 @@ class PipelineStage(str, Enum):
     DEFINITION_EXTRACTION = "definition_extraction"
     DEDUPLICATION = "deduplication"
     VALIDATION = "validation"
+    METRIC_PRESENCE = "metric_presence"
 
 
 @dataclass
@@ -250,6 +253,7 @@ class PipelineResult:
     success: bool
     definitions: list[MetricDefinition] = field(default_factory=list)
     image_classifications: list[ImageClassificationRecord] = field(default_factory=list)
+    presences: list[MetricPresence] = field(default_factory=list)
     error_message: str | None = None
     context: Any | None = None  # PipelineContext — only set when retain_context=True
 
@@ -339,6 +343,9 @@ class PipelineContext:
     image_classifications: list[ImageClassificationRecord] = field(
         default_factory=list
     )  # Populated by ImageClassifyStage when enabled
+    presences: list[MetricPresence] = field(
+        default_factory=list
+    )  # Populated by MetricPresenceStage (final stage)
 
     # Diagnostics (only populated when config.retain_context=True)
     _pre_filter_bound_values: list[BoundValue] = field(default_factory=list)  # Before FP filter
@@ -378,7 +385,7 @@ class V2Pipeline:
     """
     V2 Extraction Pipeline Orchestrator.
 
-    Coordinates the 12-stage extraction process for a single filing.
+    Coordinates the 15-stage extraction process for a single filing.
     """
 
     def __init__(
@@ -511,6 +518,12 @@ class V2Pipeline:
         # Stage 11: Validation & Review Routing
         self._stages.append((PipelineStage.VALIDATION, ValidationStage()))
 
+        # Stage 12: Metric Presence — final stage. Aggregates dedup'd facts,
+        # chart detected_metrics, and definitions into per-(doc, metric)
+        # presence records. Primary scoring surface under the text-presence
+        # pivot (see docs/operations/text-pipeline-presence-pivot-plan.md).
+        self._stages.append((PipelineStage.METRIC_PRESENCE, MetricPresenceStage()))
+
     def process(
         self,
         html_path: Path | str,
@@ -637,6 +650,7 @@ class V2Pipeline:
             success=True,
             definitions=context.definitions,
             image_classifications=context.image_classifications,
+            presences=context.presences,
             context=context if self.config.retain_context else None,
         )
 
@@ -660,6 +674,7 @@ class V2Pipeline:
             total_duration_ms=total_ms,
             success=False,
             definitions=[],
+            presences=[],
             error_message=error_message,
         )
 

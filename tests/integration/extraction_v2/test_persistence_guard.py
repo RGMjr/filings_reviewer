@@ -24,6 +24,7 @@ from src.extraction_v2.models import (
     ImageAsset,
     ImageClassification,
     MetricFact,
+    MetricPresence,
     PeriodType,
     ReviewStatus,
     SourceLocator,
@@ -661,3 +662,161 @@ class TestChartOnlyMode:
                 (test_filing_id,),
             )
             assert int(cur.fetchone()["n"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Presence-only mode: gold-standard backfill safety
+# ---------------------------------------------------------------------------
+
+
+def _make_pipeline_result_with_presence(
+    facts: list[MetricFact],
+    presences: list[MetricPresence],
+) -> PipelineResult:
+    """PipelineResult carrying facts AND presence records. Used by the
+    presence_only tests below to prove that presence is written even when
+    facts are short-circuited."""
+    doc = Document(
+        doc_id=str(uuid.uuid4()),
+        accession="9999999998-99-999998",
+        cik="9999999998",
+        company="Guard Test Company",
+        parse_version="2.0.0",
+    )
+    return PipelineResult(
+        document=doc,
+        segments=[],
+        tables=[],
+        images=[],
+        facts=facts,
+        definitions=[],
+        presences=presences,
+        stage_results=[
+            StageResult(
+                stage=PipelineStage.METRIC_PRESENCE,
+                success=True,
+                duration_ms=1,
+                items_processed=len(facts) + len(presences),
+                items_output=len(presences),
+            )
+        ],
+        total_duration_ms=1,
+        success=True,
+    )
+
+
+def _presence_count(db: DatabaseAdapter, filing_id: int) -> int:
+    with db.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM v2_text_metric_presence WHERE doc_id = %s",
+                (filing_id,),
+            )
+            return int(cur.fetchone()["n"])
+
+
+def _fact_count(db: DatabaseAdapter, filing_id: int) -> int:
+    with db.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE doc_id = %s",
+                (filing_id,),
+            )
+            return int(cur.fetchone()["n"])
+
+
+class TestPresenceOnlyMode:
+    """Verify presence_only=True is safe on reviewed filings: no
+    ReviewedFilingError, no fact mutation, presence populated. This is the
+    mode the PR2 gold-standard backfill will use."""
+
+    @pytest.fixture(autouse=True)
+    def _purge_presence(self, db_adapter: DatabaseAdapter, test_filing_id: int):
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM v2_text_metric_presence WHERE doc_id = %s",
+                (test_filing_id,),
+            )
+        yield
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM v2_text_metric_presence WHERE doc_id = %s",
+                (test_filing_id,),
+            )
+
+    def test_presence_only_does_not_raise_on_reviewed_filing(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Seed a reviewed filing — fact with a decision.
+        seeded = _make_fact(test_filing_id)
+        persistence_adapter.persist_facts([seeded], test_filing_id)
+        _insert_decision(db_adapter, seeded.fact_id, reviewer_id="alice@example.com")
+        assert _decision_count(db_adapter, test_filing_id) == 1
+
+        # Same filing, new pipeline run — facts would normally raise, but
+        # presence_only=True short-circuits fact persistence entirely.
+        fresh_fact = _make_fact(test_filing_id, value=999.0)
+        presence = MetricPresence(
+            canonical_metric_id="cm_net_revenue_retention",
+            score=0.9,
+            detected_at_stage="fact_construction",
+            advisory_fact_ids=[fresh_fact.fact_id],
+        )
+        result = _make_pipeline_result_with_presence([fresh_fact], [presence])
+
+        persist_result = persistence_adapter.persist_pipeline_result(
+            result, test_filing_id, presence_only=True
+        )
+
+        assert persist_result.success
+        assert persist_result.facts_upserted == 0  # fact path skipped
+        assert persist_result.presences_upserted == 1
+
+        # Existing fact + decision untouched; new fact NOT persisted.
+        assert _fact_count(db_adapter, test_filing_id) == 1  # only the seeded fact
+        assert _decision_count(db_adapter, test_filing_id) == 1
+        assert _presence_count(db_adapter, test_filing_id) == 1
+
+    def test_presence_only_upserts_presence_without_force(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # No reviewer decisions; plain presence_only write should succeed.
+        p1 = MetricPresence(
+            canonical_metric_id="cm_a", score=0.5, detected_at_stage="fact_construction"
+        )
+        result = _make_pipeline_result_with_presence([], [p1])
+        r1 = persistence_adapter.persist_pipeline_result(result, test_filing_id, presence_only=True)
+        assert r1.success and r1.presences_upserted == 1
+
+        # Re-run with updated score — upsert on (doc_id, metric_id).
+        p2 = MetricPresence(
+            canonical_metric_id="cm_a", score=0.8, detected_at_stage="fact_construction"
+        )
+        result = _make_pipeline_result_with_presence([], [p2])
+        r2 = persistence_adapter.persist_pipeline_result(result, test_filing_id, presence_only=True)
+        assert r2.success
+        assert _presence_count(db_adapter, test_filing_id) == 1  # still one row
+
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT score FROM v2_text_metric_presence WHERE doc_id = %s",
+                (test_filing_id,),
+            )
+            assert cur.fetchone()["score"] == 0.8
+
+    def test_presence_only_and_chart_only_are_mutually_exclusive(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        test_filing_id: int,
+    ):
+        result = _make_pipeline_result_with_presence([], [])
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            persistence_adapter.persist_pipeline_result(
+                result, test_filing_id, presence_only=True, chart_only=True
+            )

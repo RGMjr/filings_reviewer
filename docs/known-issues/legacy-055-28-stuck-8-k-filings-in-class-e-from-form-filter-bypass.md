@@ -7,10 +7,10 @@ note: Data cleanup; needs inspection of stuck filings
 severity: low
 slug: 28-stuck-8-k-filings-in-class-e-from-form-filter-bypass
 source: legacy
-status: open
+status: archived
 title: 28 Stuck 8-K Filings in Class (E) from Form-Filter Bypass
 touches: []
-updated: '2026-04-21'
+updated: '2026-04-24'
 ---
 
 ### Problem
