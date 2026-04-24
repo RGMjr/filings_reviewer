@@ -149,8 +149,8 @@ class TestE2ESlackFiling:
         assert slack_result.document is not None
         assert slack_result.total_duration_ms > 0
 
-    def test_e2e_slack_all_14_stages_executed(self, slack_result: PipelineResult):
-        """Test that all 14 pipeline stages were executed."""
+    def test_e2e_slack_all_15_stages_executed(self, slack_result: PipelineResult):
+        """Test that all 15 pipeline stages were executed."""
         executed_stages = {result.stage for result in slack_result.stage_results}
 
         expected_stages = {
@@ -168,6 +168,7 @@ class TestE2ESlackFiling:
             PipelineStage.DEFINITION_EXTRACTION,
             PipelineStage.DEDUPLICATION,
             PipelineStage.VALIDATION,
+            PipelineStage.METRIC_PRESENCE,
         }
 
         # Image stages are skipped when OPENAI_API_KEY is not set (e.g. in CI)

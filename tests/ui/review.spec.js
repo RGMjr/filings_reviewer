@@ -1117,3 +1117,52 @@ test.describe('No Images State', () => {
     await expect(page.locator('#review-container h5')).toContainText('No Image Candidates');
   });
 });
+
+// =========================================================================
+// 19: Cross-Filing Auto-Advance
+// =========================================================================
+test.describe('Cross-Filing Auto-Advance', () => {
+  test('text-queue completion navigates to next filing', async ({ page }) => {
+    // Intercept the decisions API to return no next_fact (queue exhausted)
+    // and no pending images — this triggers the "advance to next filing" branch
+    // in unified_review.html submitDecision().
+    await page.route('/api/v2/decisions', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            status: 'success',
+            decision_id: 'new-decision-xfiling',
+            fact_id: 'fact-last-001',
+            next_fact: null,
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Filing A: one pending text fact, image_pending=0, next_filing_url=/filing-b-pending
+    await page.goto('/filing-a-last-pending');
+
+    // Verify we're on filing A
+    await expect(page.locator('h4.mb-0')).toContainText('Acme Corp');
+    await expect(page.locator('h4.mb-0')).not.toContainText('Acme Corp B');
+
+    // Accept the last pending fact — should trigger auto-advance
+    await page.locator('#btn-accept').click();
+
+    // Wait for navigation to filing B (JS navigates to NEXT_FILING_URL = /filing-b-pending)
+    await page.waitForURL('**/filing-b-pending', { timeout: 10000 });
+
+    // Assert we landed on filing B
+    expect(page.url()).toContain('/filing-b-pending');
+    await expect(page.locator('h4.mb-0')).toContainText('Acme Corp B');
+  });
+
+  // Image-queue completion variant deferred — the images tab's init JS fires an
+  // XHR that is not routed by the stub server, causing page.goto to hang on
+  // the `load` event. Tracked as a follow-up to #75; re-enable once the
+  // stub-server XHR catch-all lands.
+});
