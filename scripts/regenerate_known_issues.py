@@ -2,20 +2,20 @@
 """Regenerate docs/KNOWN_ISSUES.md from docs/known-issues/ fragment files.
 
 The rollup is a deterministic function of the fragment set + CHANGELOG.md.
-Calling this twice with the same input must produce byte-identical output,
-so pre-commit can safely auto-stage the regenerated file without looping.
+Calling this twice with the same input produces byte-identical output.
+
+The rollup is not tracked in git — CI regenerates it as a build artifact.
+Fragments in docs/known-issues/ are the single source of truth.
 
 Usage:
     python3 scripts/regenerate_known_issues.py                    # write rollup
-    python3 scripts/regenerate_known_issues.py --check            # exit 1 on drift
-    python3 scripts/regenerate_known_issues.py --stage            # `git add` rollup
+    python3 scripts/regenerate_known_issues.py --output PATH      # write elsewhere
     python3 scripts/regenerate_known_issues.py --validate         # fragments only, no rollup
 """
 
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
 from datetime import date
 from pathlib import Path
@@ -188,21 +188,6 @@ def render_rollup(fragments: list[Fragment], changelog: str) -> str:
     return text
 
 
-def _git_add(path: Path) -> None:
-    try:
-        subprocess.run(
-            ["git", "add", str(path)],
-            check=True,
-            cwd=REPO_ROOT,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        print(
-            f"WARN: failed to `git add {path}`: {exc.stderr.decode(errors='replace').strip()}",
-            file=sys.stderr,
-        )
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -222,16 +207,6 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=DEFAULT_ROLLUP_PATH,
         help="Rollup output path (default: docs/KNOWN_ISSUES.md)",
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Exit 1 if the on-disk rollup would change (no write)",
-    )
-    parser.add_argument(
-        "--stage",
-        action="store_true",
-        help="After writing, run `git add <output>` (for pre-commit hook use)",
     )
     parser.add_argument(
         "--validate",
@@ -285,25 +260,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    if args.check:
-        if not args.output.exists():
-            print(f"DRIFT: {args.output} does not exist; regenerate it.", file=sys.stderr)
-            return 1
-        existing = args.output.read_text(encoding="utf-8")
-        if existing != rendered:
-            print(
-                f"DRIFT: {args.output} is out of sync with fragments. "
-                f"Run `python3 scripts/regenerate_known_issues.py` to update.",
-                file=sys.stderr,
-            )
-            return 1
-        print(f"{args.output} is up to date with {len(fragments)} fragment(s).")
-        return 0
-
     args.output.write_text(rendered, encoding="utf-8")
     print(f"wrote {args.output} ({len(fragments)} fragment(s))")
-    if args.stage:
-        _git_add(args.output)
     return 0
 
 

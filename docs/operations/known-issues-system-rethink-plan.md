@@ -291,8 +291,8 @@ All four resolved 2026-04-24 with rationale:
 - Phase 1 — ✅ shipped in PR #185 (2026-04-24)
 - Phase 2 — ✅ shipped in PR #187 (2026-04-24); in-flight PRs #169, #173, #175 cleaned up + merged same day
 - Phase 3 — ✅ shipped in PR #188 (2026-04-24)
-- Phase 4 — 🚧 this PR
-- Phase 5 — ⏳ queued
+- Phase 4 — ✅ shipped in PR #189 (2026-04-24)
+- Phase 5 — 🚧 this PR (rethink complete on merge)
 
 ---
 
