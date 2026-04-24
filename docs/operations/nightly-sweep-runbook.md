@@ -4,17 +4,18 @@
 
 Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron service:
 
-1. Reads fragment frontmatter from `docs/known-issues/` to find eligible issues (autonomy `safe` or `review`, status `open` or `partially-resolved`).
-2. Picks up to 5 non-colliding issues tagged `Autonomy: safe` (default) or `review` (opt-in).
-3. For each pick, creates an isolated git worktree and runs a Claude Code session that:
+1. **Status sync** (pre-selector): runs `scripts/sync_known_issue_status.py`, which reads the `pr_refs` list from each fragment's frontmatter and calls `gh pr view` for every referenced PR. Any fragment whose listed PRs are all in `MERGED` state is rewritten in-place: `status` becomes `resolved`, `autonomy` becomes `n/a`, and `updated` is set to today's date. The rollup `docs/KNOWN_ISSUES.md` is regenerated automatically. To opt a fragment out of auto-resolution, leave its `pr_refs` field empty or absent. If `gh` is temporarily unavailable, individual fragment lookups fail silently and those fragments are skipped — the sync failure does not abort the sweep.
+2. Reads fragment frontmatter from `docs/known-issues/` to find eligible issues (autonomy `safe` or `review`, status `open` or `partially-resolved`).
+3. Picks up to 5 non-colliding issues tagged `Autonomy: safe` (default) or `review` (opt-in).
+4. For each pick, creates an isolated git worktree and runs a Claude Code session that:
    - Reads the issue body.
    - Implements exactly what the "Next Steps" section asks.
    - Runs the `/commit` skill — which gates lint/tests/doc-freshness, opens a PR, enables auto-merge.
-4. Writes `.claude/sweep-digests/YYYY-MM-DD.md` summarising:
+5. Writes `.claude/sweep-digests/YYYY-MM-DD.md` summarising:
    - **Auto-merged** — safe-tier PRs already in flight to main (CI gates still enforced).
    - **Awaiting your approval** — review-tier draft PRs with one-line approve/discard commands.
    - **Abandoned** — issues the sweeper tried but gave up on, with the reason.
-5. Opens a PR for the digest file.
+6. Opens a PR for the digest file.
 
 The source of truth for which issues the sweeper may touch is the `autonomy:` field in each fragment's YAML frontmatter under `docs/known-issues/`. `docs/KNOWN_ISSUES.md` is auto-generated from those fragments — do NOT edit it directly.
 
