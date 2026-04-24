@@ -1005,10 +1005,18 @@ class TestGroupingPerformance:
 
         facts = [
             make_fact(fact_id="f1", metric_id="cm_average_order_value", value=100.0),
-            make_fact(fact_id="f2", metric_id="cm_average_order_value", value=101.0),  # Within tolerance
-            make_fact(fact_id="f3", metric_id="cm_average_order_value", value=200.0),  # Different value
-            make_fact(fact_id="f4", metric_id="cm_lifetime_value_per_customer", value=100.0),  # Different metric
-            make_fact(fact_id="f5", metric_id="cm_lifetime_value_per_customer", value=100.0),  # Duplicate of f4
+            make_fact(
+                fact_id="f2", metric_id="cm_average_order_value", value=101.0
+            ),  # Within tolerance
+            make_fact(
+                fact_id="f3", metric_id="cm_average_order_value", value=200.0
+            ),  # Different value
+            make_fact(
+                fact_id="f4", metric_id="cm_lifetime_value_per_customer", value=100.0
+            ),  # Different metric
+            make_fact(
+                fact_id="f5", metric_id="cm_lifetime_value_per_customer", value=100.0
+            ),  # Duplicate of f4
         ]
 
         groups = stage._group_duplicates(facts, tolerance=0.02)
@@ -1426,3 +1434,31 @@ class TestAnnotateCrossSourceConfirmation:
         assert sorted(table_fact.confirming_source_types) == ["chart", "text"]
         assert sorted(text_fact.confirming_source_types) == ["chart", "html_table"]
         assert sorted(chart_fact.confirming_source_types) == ["html_table", "text"]
+
+
+class TestChartCohortCollapseRegression:
+    """Guard: chart cohort bars with distinct cohort_def must all survive dedup (#86)."""
+
+    def test_chart_cohort_bars_all_survive(self) -> None:
+        stage = DeduplicationStage()
+
+        bar_values = [17.0, 62.0, 44.0, 56.0, 87.0, 45.0, 130.0, 186.0, 175.0]
+        facts = [
+            make_fact(
+                fact_id=f"bar-{i}",
+                metric_id="cm_revenue_by_cohort",
+                value=bar_values[i],
+                unit=Unit.CURRENCY,
+                source_type=SourceType.CHART,
+                period_start=date(2020, 1, 1),
+                period_end=date(2020, 12, 31),
+                scope=Scope.COMPANY,
+                cohort_def=f"bar/{i}",
+            )
+            for i in range(9)
+        ]
+
+        context = MockPipelineContext(facts=facts)
+        stage.process(context)
+
+        assert len(context.deduplicated_facts) == 9
