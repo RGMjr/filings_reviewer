@@ -37,47 +37,12 @@ from src.extraction_v2.models import (
     SegmentType,
     Table,
 )
-from src.shared.keyword_config import (
-    get_metric_keywords,
-    get_metric_tiers,
-    get_specific_patterns_by_metric,
-)
+from src.shared.keyword_config import get_tier1_keywords_re
 
 if TYPE_CHECKING:
     from src.extraction_v2 import pipeline
 
 logger = logging.getLogger(__name__)
-
-
-def _build_tier1_re() -> re.Pattern[str]:
-    """Build a compiled regex from all Tier-1 metric patterns in metric_keywords.yaml.
-
-    Collects ``patterns`` and ``specific_patterns`` for every metric with
-    ``tier == 1``, deduplicates them, and compiles a single alternation.
-    Called once at module load (class-body assignment), so the YAML config
-    is read and cached by ``keyword_config._load_config`` on first import.
-    """
-    tiers = get_metric_tiers()
-    keywords_by_metric = get_metric_keywords()
-    specific_by_metric = get_specific_patterns_by_metric()
-
-    all_patterns: list[str] = []
-    for metric_id, tier in tiers.items():
-        if tier != 1:
-            continue
-        all_patterns.extend(keywords_by_metric.get(metric_id, []))
-        all_patterns.extend(specific_by_metric.get(metric_id, []))
-
-    # Deduplicate while preserving order
-    seen: set[str] = set()
-    unique_patterns: list[str] = []
-    for p in all_patterns:
-        if p not in seen:
-            seen.add(p)
-            unique_patterns.append(p)
-
-    combined = r"\b(" + "|".join(unique_patterns) + r")\b"
-    return re.compile(combined, re.IGNORECASE)
 
 
 def _synthesize_ocr_segment(
@@ -160,7 +125,7 @@ class OCRExtractionStage:
     # entries' ``patterns`` + ``specific_patterns``) via ``_build_tier1_re()``.
     # False negatives are tolerable (the image just stays UNKNOWN), but false
     # positives spend an extra vision call.
-    TIER1_KEYWORDS_RE: re.Pattern[str] = _build_tier1_re()
+    TIER1_KEYWORDS_RE: re.Pattern[str] = get_tier1_keywords_re()
 
     def __init__(
         self,

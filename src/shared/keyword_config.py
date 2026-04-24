@@ -259,6 +259,22 @@ def get_metric_tiers(config_path: str | None = None) -> dict[str, int]:
     }
 
 
+@lru_cache(maxsize=1)
+def get_tier1_keywords_re(config_path: str | None = None) -> re.Pattern[str]:
+    """Build a compiled regex union of all Tier-1 metric patterns from YAML."""
+    config = _load_config(config_path)
+    tier1_ids = {mid for mid, tier in get_metric_tiers(config_path).items() if tier == 1}
+    patterns: list[str] = []
+    for mid in tier1_ids:
+        mc = config.get(mid, {})
+        patterns.extend(mc.get("patterns", []))
+        patterns.extend(mc.get("specific_patterns", []))
+    if not patterns:
+        raise KeywordConfigError("No Tier-1 patterns found in metric_keywords.yaml")
+    combined = "|".join(f"(?:{p})" for p in patterns)
+    return re.compile(combined, re.IGNORECASE)
+
+
 def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
     """
     Get all metric keyword patterns.
@@ -295,7 +311,9 @@ def get_exclusion_patterns(config_path: str | None = None) -> dict[str, list[str
     return {
         metric_id: metric_config["exclusions"]
         for metric_id, metric_config in config.items()
-        if _is_metric_key(metric_id) and "exclusions" in metric_config and metric_config.get("status") != "deprecated"
+        if _is_metric_key(metric_id)
+        and "exclusions" in metric_config
+        and metric_config.get("status") != "deprecated"
     }
 
 
@@ -313,7 +331,11 @@ def get_specific_patterns(config_path: str | None = None) -> list[str]:
     config = _load_config(config_path)
     patterns: list[str] = []
     for metric_id, metric_config in config.items():
-        if _is_metric_key(metric_id) and "specific_patterns" in metric_config and metric_config.get("status") != "deprecated":
+        if (
+            _is_metric_key(metric_id)
+            and "specific_patterns" in metric_config
+            and metric_config.get("status") != "deprecated"
+        ):
             patterns.extend(metric_config["specific_patterns"])
     return patterns
 
@@ -367,7 +389,9 @@ def get_required_context(config_path: str | None = None) -> dict[str, dict[str, 
     return {
         metric_id: metric_config["required_context"]
         for metric_id, metric_config in config.items()
-        if _is_metric_key(metric_id) and "required_context" in metric_config and metric_config.get("status") != "deprecated"
+        if _is_metric_key(metric_id)
+        and "required_context" in metric_config
+        and metric_config.get("status") != "deprecated"
     }
 
 
@@ -379,6 +403,7 @@ def reload_config() -> None:
     """
     _load_config.cache_clear()
     _compiled_match_patterns.cache_clear()
+    get_tier1_keywords_re.cache_clear()
     logger.info("Keyword config cache cleared")
 
 

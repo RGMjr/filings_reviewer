@@ -106,3 +106,99 @@ class TestPersistImageClassifications:
         # take one, so a caller passing it gets a TypeError early.
         sig = inspect.signature(V2PersistenceAdapter._persist_image_classifications_in_tx)
         assert "filing_id" not in sig.parameters
+
+
+class TestPersistPipelineResultImgIdRemap:
+    """Regression guard: persist_pipeline_result must remap
+    ImageClassificationRecord.img_id via the img_id_map returned by
+    _persist_images_in_tx. Without this, FK violations occur when the DB
+    preserves a different img_id on ON CONFLICT upsert."""
+
+    def _build_result(self, classifications):
+        from src.extraction_v2.pipeline import PipelineResult
+
+        return PipelineResult(
+            document=MagicMock(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=[],
+            total_duration_ms=0,
+            success=True,
+            image_classifications=classifications,
+        )
+
+    def test_classification_img_ids_rewritten_via_map(self):
+        old_a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        old_b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        stable_a = "11111111-1111-1111-1111-111111111111"
+        stable_b = "22222222-2222-2222-2222-222222222222"
+        img_id_map = {old_a: stable_a, old_b: stable_b}
+
+        recs = [_record(img_id=old_a), _record(img_id=old_b)]
+        result = self._build_result(recs)
+
+        adapter = _make_adapter()
+
+        # Stub every _persist_*_in_tx + the DB transaction plumbing so we
+        # can drive persist_pipeline_result without touching a real cursor.
+        adapter._db.transaction = MagicMock()
+        txn_cm = adapter._db.transaction.return_value
+        conn = MagicMock()
+        txn_cm.__enter__ = MagicMock(return_value=conn)
+        txn_cm.__exit__ = MagicMock(return_value=None)
+        cur = MagicMock()
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=cur)
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=None)
+        conn.pipeline.return_value.__enter__ = MagicMock(return_value=None)
+        conn.pipeline.return_value.__exit__ = MagicMock(return_value=None)
+
+        adapter._persist_document_in_tx = MagicMock(return_value=1)
+        adapter._persist_tables_in_tx = MagicMock(return_value=(0, 0))
+        adapter._persist_images_in_tx = MagicMock(return_value=(2, img_id_map))
+        adapter._persist_segments_in_tx = MagicMock(return_value=0)
+        adapter._persist_facts_in_tx = MagicMock(return_value=0)
+        adapter._persist_definitions_in_tx = MagicMock(return_value=0)
+        adapter._persist_image_classifications_in_tx = MagicMock(return_value=2)
+
+        adapter.persist_pipeline_result(result, filing_id=42)
+
+        # The classifications list must have had its img_ids remapped BEFORE
+        # being passed to _persist_image_classifications_in_tx.
+        call_args = adapter._persist_image_classifications_in_tx.call_args
+        passed_recs = call_args[0][1]
+        assert [r.img_id for r in passed_recs] == [stable_a, stable_b]
+
+    def test_unmapped_img_ids_unchanged(self):
+        mapped_old = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        mapped_new = "11111111-1111-1111-1111-111111111111"
+        untouched = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+        img_id_map = {mapped_old: mapped_new}
+
+        recs = [_record(img_id=mapped_old), _record(img_id=untouched)]
+        result = self._build_result(recs)
+
+        adapter = _make_adapter()
+        adapter._db.transaction = MagicMock()
+        txn_cm = adapter._db.transaction.return_value
+        conn = MagicMock()
+        txn_cm.__enter__ = MagicMock(return_value=conn)
+        txn_cm.__exit__ = MagicMock(return_value=None)
+        conn.cursor.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=None)
+        conn.pipeline.return_value.__enter__ = MagicMock(return_value=None)
+        conn.pipeline.return_value.__exit__ = MagicMock(return_value=None)
+
+        adapter._persist_document_in_tx = MagicMock(return_value=1)
+        adapter._persist_tables_in_tx = MagicMock(return_value=(0, 0))
+        adapter._persist_images_in_tx = MagicMock(return_value=(2, img_id_map))
+        adapter._persist_segments_in_tx = MagicMock(return_value=0)
+        adapter._persist_facts_in_tx = MagicMock(return_value=0)
+        adapter._persist_definitions_in_tx = MagicMock(return_value=0)
+        adapter._persist_image_classifications_in_tx = MagicMock(return_value=2)
+
+        adapter.persist_pipeline_result(result, filing_id=42)
+
+        passed_recs = adapter._persist_image_classifications_in_tx.call_args[0][1]
+        assert [r.img_id for r in passed_recs] == [mapped_new, untouched]

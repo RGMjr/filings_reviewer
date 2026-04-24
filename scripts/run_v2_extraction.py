@@ -55,6 +55,28 @@ def _sigalrm_handler(signum: int, frame: object) -> None:
     raise PipelineTimeoutError("pipeline timed out")
 
 
+def _apply_classify_env_overrides(config: PipelineConfig) -> None:
+    """Lift ENABLE_METRIC_CLASSIFY + VISION_CLASSIFY_* env vars onto an
+    explicit PipelineConfig. Mirrors V2Pipeline._apply_env_feature_flags,
+    which is skipped when an explicit config is passed."""
+    if os.environ.get("ENABLE_METRIC_CLASSIFY", "").strip().lower() in {"1", "true", "yes", "on"}:
+        config.enable_metric_classify = True
+    if os.environ.get("VISION_CLASSIFY_PROVIDER"):
+        config.vision_classify_provider = os.environ["VISION_CLASSIFY_PROVIDER"]
+    if os.environ.get("VISION_CLASSIFY_MODEL"):
+        config.vision_classify_model = os.environ["VISION_CLASSIFY_MODEL"]
+    threshold_raw = os.environ.get("VISION_CLASSIFY_THRESHOLD")
+    if threshold_raw:
+        try:
+            config.vision_classify_threshold = float(threshold_raw)
+        except ValueError:
+            logger.warning(
+                "Invalid VISION_CLASSIFY_THRESHOLD=%r; keeping default %s",
+                threshold_raw,
+                config.vision_classify_threshold,
+            )
+
+
 def lookup_filing(db: DatabaseAdapter, filing_id: int | None, accession: str | None) -> dict:
     """Look up filing metadata from database."""
     if filing_id:
@@ -237,6 +259,10 @@ def main():
         enable_chart_extraction=not args.no_images,
         min_confidence_auto_accept=args.min_confidence,
     )
+    # Honor metric-classify env vars (V2Pipeline._apply_env_feature_flags
+    # skips lifting when an explicit config is passed; CLI callers need the
+    # same env-driven behavior the Render nightly cron enjoys).
+    _apply_classify_env_overrides(config)
 
     # Run pipeline (with optional SIGALRM-based timeout)
     pipeline = V2Pipeline(config=config)
