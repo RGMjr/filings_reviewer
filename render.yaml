@@ -44,6 +44,8 @@ services:
         sync: false
       - key: INGEST_SPAWN_SUBPROCESS
         value: "false"  # production drains via filings-onboarding-runner worker
+      - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
+        value: "1"  # permit R2Storage.put_bytes; guard in src/infra/image_storage.py
 
   - type: cron
     name: filings-extraction
@@ -64,6 +66,8 @@ services:
         value: "0.5"
       - key: GEMINI_API_KEY
         sync: false  # Set manually in Render dashboard
+      - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
+        value: "1"  # permit R2Storage.put_bytes; guard in src/infra/image_storage.py
 
   - type: worker
     name: filings-onboarding-runner
@@ -77,6 +81,8 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
+        value: "1"  # permit R2Storage.put_bytes; guard in src/infra/image_storage.py
 
   # Autonomous nightly sweeper for known-issue fragments in docs/known-issues/.
   # Reads frontmatter, picks up to 3 non-colliding safe/review issues, and
