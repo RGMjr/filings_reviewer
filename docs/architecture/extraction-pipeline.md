@@ -1,30 +1,32 @@
 # Metric Extraction Pipeline
 
-**Version:** 3.0
-**Last Updated:** 2026-04-07
-**Status:** Production (V2 Pipeline)
+**Version:** 3.1
+**Last Updated:** 2026-04-25
+**Status:** Production (V2 Pipeline, presence-pivot mid-rollout)
 
 ---
 
+> **Pivot status (2026-04-25):** The pipeline's primary scoring surface is **presence** — per-`(doc_id, canonical_metric_id)` records emitted by the final stage `MetricPresenceStage` and persisted to `v2_text_metric_presence`. Per-value `MetricFact` rows continue as **advisory evidence** for text/table sources; chart pipelines emit presence-only signals (`v2_image_assets.detected_metrics`) and never auto-emit per-value chart facts. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2–PR5 pending. See [`docs/operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md) for the rollout plan.
+
 ## Overview
 
-This document specifies the architecture and implementation of the metric extraction pipeline. The pipeline transforms SEC filing HTML into structured, analysis-ready metrics data through a series of modular processing stages.
+This document specifies the architecture and implementation of the metric extraction pipeline. The pipeline transforms SEC filing HTML into structured, analysis-ready **presence** signals (with advisory facts as evidence) through a series of modular processing stages.
 
 **V2 is the sole production pipeline.** V1 has been retired and the `src/extraction/` package has been deleted. See the [Appendix](#appendix-v1-pipeline-retired) at the bottom of this document for V1 stage documentation.
 
 ### Pipeline Principles
 
-1. **Auditability:** Every extracted value must be traceable to its source segment
-2. **Reproducibility:** Re-running extraction on the same filing produces identical results
+1. **Auditability:** Every presence row points back to evidence — `evidence_segment_ids` and `advisory_fact_ids` (JSONB arrays on `v2_text_metric_presence`) for text; `v2_image_metric_confirmations` joined to `v2_image_assets` for charts. Every advisory `MetricFact` carries a complete `EvidencePack`.
+2. **Reproducibility:** Re-running extraction on the same filing produces identical results. Presence rows are upserted on `(doc_id, canonical_metric_id)`; facts upsert on the 8-column identity index.
 3. **Incremental Processing:** Process filings independently; support resume/retry
-4. **Quality Tracking:** Capture confidence, alignment, and quality scores throughout
+4. **Quality Tracking:** Capture confidence, alignment, and quality scores throughout. **Primary metric: presence-F1.** Value-correctness is advisory under the pivot.
 5. **Structure-first, LLM-second:** Parse DOM structure before LLM calls
 
 ---
 
 ## V2 Pipeline Overview
 
-The V2 pipeline (`src/extraction_v2/`) implements a 15-stage extraction workflow. It is the production pipeline for all SEC filing, transcript, and presentation extraction.
+The V2 pipeline (`src/extraction_v2/`) implements up to a 16-stage extraction workflow (image stages and `IMAGE_CLASSIFY` are conditional). It is the production pipeline for all SEC filing, transcript, and presentation extraction. The final stage, `MetricPresenceStage`, aggregates signals from text facts, chart `detected_metrics`, and metric definitions into per-`(doc_id, canonical_metric_id)` presence records.
 
 **Module:** `src/extraction_v2/pipeline.py`
 **Class:** `V2Pipeline`
@@ -76,6 +78,25 @@ The V2 pipeline (`src/extraction_v2/`) implements a 15-stage extraction workflow
 │  - Vision model analysis for charts (labeled values only)           │
 │  - Never interpolates from axes — explicit data labels only         │
 │  Output: ImageAsset objects with extracted values                   │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 5a: CHART FACT BRIDGE  (presence-only, no LLM, no facts)     │
+│  - ChartMetricClassifier scores chart_data + nearby_text against    │
+│    YAML keyword patterns                                            │
+│  - Emits [{metric_id, score}, ...] to v2_image_assets.detected_metrics│
+│    for scores >= chart_presence_min_score (default 0.5)             │
+│  Output: ImageAsset.detected_metrics populated; no MetricFact rows  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 5b: IMAGE CLASSIFY  (Vision API, gated by ENABLE_METRIC_CLASSIFY)│
+│  - Sends chart images to Vision API for metric classification       │
+│  - Writes audit trail to v2_image_classifications (append-only)     │
+│  - Independent signal from rule-based detected_metrics above        │
+│  Output: ImageClassificationRecord rows; no MetricFact rows         │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
@@ -146,7 +167,20 @@ The V2 pipeline (`src/extraction_v2/`) implements a 15-stage extraction workflow
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────────┐
+│  STAGE 14: METRIC PRESENCE  (final; primary scoring surface)        │
+│  - Aggregates signals from deduplicated facts, chart                │
+│    detected_metrics, and definitions                                │
+│  - One row per (doc_id, canonical_metric_id);                       │
+│    score = MAX across contributing signals                          │
+│  - evidence_segment_ids = union of contributing segment IDs;        │
+│    advisory_fact_ids = JSONB list of contributing fact IDs          │
+│  Output: MetricPresence list → upserted to v2_text_metric_presence  │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────┐
 │                    ANALYSIS-READY DATABASE                          │
+│  Presence rows (primary) + advisory facts + reviewer confirmations  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -184,11 +218,46 @@ The per-value value-emission path — `CohortParser` regime dispatch, `unit_infe
 
 ---
 
+## Metric Presence Stage — Final Aggregation
+
+`MetricPresenceStage` (`src/extraction_v2/stages/metric_presence.py`, `PipelineStage.METRIC_PRESENCE`) runs as the final stage after `ValidationStage`. It aggregates extraction signals across all surfaces — deduplicated text/table/OCR facts, chart `detected_metrics`, and metric definitions — into one `MetricPresence` record per `(doc_id, canonical_metric_id)`.
+
+The stage is the **primary scoring surface** for the Tier 1 regression gate under the presence-first pivot. See `docs/operations/text-pipeline-presence-pivot-plan.md`.
+
+### Sources and scoring
+
+| Source | Score contribution | Evidence contribution |
+|---|---|---|
+| Deduplicated `MetricFact` (text/html_table/ocr_table/chart) | `MAX(fact.confidence)` | `evidence_segment_ids` ← `fact.source_locator.segment_id`; `advisory_fact_ids` ← `fact.fact_id`; `advisory_value_count` += 1 per fact |
+| Chart `ImageAsset.detected_metrics` (rule-based; from `ChartFactBridgeStage`) | `MAX(detected.score)` | None — chart-only presences have empty `evidence_segment_ids` (evidence lives on `v2_image_assets`) |
+| `v2_metric_definitions` rows | Floor `_DEFINITION_ONLY_PRESENCE_SCORE = 0.5` (matches `chart_presence_min_score`) | `evidence_segment_ids` ← `definition_segment_id`, `methodology_segment_id` |
+
+`detected_at_stage` records which source first surfaced the metric (`fact_construction`, `chart_fact_bridge`, or `definition_extraction`).
+
+### Persistence
+
+`V2PersistenceAdapter._persist_presence_in_tx(cur, presences, filing_id) -> int` upserts presences on `(doc_id, canonical_metric_id)`. Called from `persist_pipeline_result` as step 8 (after facts, definitions, and image classifications). Idempotent; never touches `v2_metric_facts` or `v2_review_decisions`. The `presence_only=True` kwarg on `persist_pipeline_result` skips the fact-write step entirely while still upserting presences and image-related rows.
+
+### Invariants (downstream PRs depend on these)
+
+- One record per `(doc_id, canonical_metric_id)`; duplicates from multiple sources collapse into a single row by MAX score and unioned evidence.
+- `advisory_fact_ids` is a JSONB array of fact IDs, **not** a foreign key. Facts may be deleted by `force=True` re-extraction without cascading to presence — presence is a doc-level claim independent of which specific fact rows currently back it.
+- Presence rows are upserted, never deleted by the persistence layer; only `filings.filing_id` CASCADE removes them.
+- `presence_only=True` does NOT bypass the image re-classification guard inside `_persist_images_in_tx`; that guard remains orthogonal.
+
+---
+
 ## Core Data Models
 
-**MetricFact:** Primary extraction output with full provenance
-- Combines extracted value, metric ID, period, cohort, and evidence
-- Immutable audit trail from detection to acceptance
+**MetricPresence:** Primary scoring output (per filing × metric)
+- Aggregates evidence from text facts, chart detections, and definitions
+- Persisted to `v2_text_metric_presence` (sql/46), upserted on `(doc_id, canonical_metric_id)`
+- Carries `evidence_segment_ids` and `advisory_fact_ids` JSONB pointers back to source
+
+**MetricFact:** Advisory per-value evidence with full provenance
+- Combines extracted value, metric ID, period, cohort, and evidence pack
+- Audit trail from detection to acceptance (text/html_table/ocr_table sources)
+- Under the chart-presence pivot, the chart pipeline does not auto-emit per-value chart facts; values for chart metrics enter via `POST /api/v2/missed-metric` when CMASB needs them
 - Replaces V1's separate `metric_values` and `metric_definitions` tables
 
 **EvidencePack:** Audit-grade proof for every extracted value
@@ -217,23 +286,27 @@ The per-value value-emission path — `CohortParser` regime dispatch, `unit_infe
 
 ## Key Files
 
-- **`src/extraction_v2/models.py`** — Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment)
-- **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with 15-stage workflow and configuration
-- **`src/extraction_v2/persistence.py`** — Database write layer (V2PersistenceAdapter)
+- **`src/extraction_v2/models.py`** — Core data models (MetricFact, EvidencePack, Table, Cell, ImageAsset, Segment, **MetricPresence**, ImageClassificationRecord, DetectedMetric)
+- **`src/extraction_v2/pipeline.py`** — Pipeline orchestrator with up-to-16-stage workflow and configuration
+- **`src/extraction_v2/persistence.py`** — Database write layer (V2PersistenceAdapter; `presence_only` kwarg skips fact write)
 - **`src/extraction_v2/table_reconstructor.py`** — Table reconstruction with colspan/rowspan resolution
 - **`src/extraction_v2/stages/ingestion.py`** — HTML parsing with XPath locators and segment extraction
+- **`src/extraction_v2/stages/metric_presence.py`** — Final stage; aggregates facts/charts/definitions into per-(doc, metric) presence
+- **`src/extraction_v2/stages/chart_fact_bridge.py`** — Rule-based chart-presence emission to `v2_image_assets.detected_metrics`
+- **`src/extraction_v2/stages/image_classify.py`** — Vision-API metric classifier; gated by `ENABLE_METRIC_CLASSIFY`
 - **`src/extraction_v2/stages/`** — One module per pipeline stage
 
 ---
 
 ## Design Principles
 
-1. **Structure-first, LLM-second**: Parse DOM structure before LLM calls
-2. **No value without provenance**: Every MetricFact includes complete EvidencePack
-3. **Fail closed**: Ambiguous cases route to review (never guess)
-4. **Charts only when labeled**: Extract only explicit data labels (never interpolate from axis)
-5. **Complete table reconstruction**: Full colspan/rowspan resolution before extraction
-6. **DOM-native**: XPath locators maintain exact source positions
+1. **Presence-first, values advisory**: The primary scoring surface is `MetricPresence` (per-`(doc_id, metric_id)`). Per-value `MetricFact` rows are advisory evidence; chart pipelines emit presence-only signals.
+2. **Structure-first, LLM-second**: Parse DOM structure before LLM calls
+3. **No claim without provenance**: Every presence row carries `evidence_segment_ids` + `advisory_fact_ids`. Every advisory `MetricFact` includes a complete `EvidencePack`.
+4. **Fail closed**: Ambiguous cases route to review (never guess)
+5. **Charts only when labeled**: Stage 5 extracts only explicit data labels (never interpolates from axes)
+6. **Complete table reconstruction**: Full colspan/rowspan resolution before extraction
+7. **DOM-native**: XPath locators maintain exact source positions
 
 ---
 

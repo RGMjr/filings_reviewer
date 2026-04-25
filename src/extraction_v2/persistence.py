@@ -1,14 +1,27 @@
 """
 V2 Extraction Pipeline Persistence Layer.
 
-Provides database persistence for V2 extraction results:
+Provides idempotent database persistence for V2 extraction results:
 - Documents (v2_documents)
 - Segments (v2_segments)
 - Tables and Cells (v2_tables, v2_table_cells)
-- Image Assets (v2_image_assets)
-- Metric Facts (v2_metric_facts)
+- Image Assets (v2_image_assets, including detected_metrics JSONB)
+- Image Classifications (v2_image_classifications, append-only Vision audit trail)
+- Metric Facts (v2_metric_facts) -- advisory under the presence pivot
+- Metric Definitions (v2_metric_definitions)
+- Metric Presence (v2_text_metric_presence) -- primary scoring surface
 
-All operations are idempotent (safe to re-run).
+The ``presence_only=True`` kwarg on ``persist_pipeline_result`` skips the
+fact-write step entirely; presence rows still upsert. Mutually exclusive
+with ``chart_only=True``. See ``docs/operations/text-pipeline-presence-pivot-plan.md``
+for the rollout-PR interface contract.
+
+All operations are idempotent (safe to re-run). Re-extraction with
+``force=True`` may delete and re-emit facts; presence rows are never
+deleted by the persistence layer (only by ``filings.filing_id`` CASCADE).
+The reviewed-filing guard prevents silent CASCADE-destruction of reviewer
+work via ``v2_review_decisions.fact_id ON DELETE CASCADE`` and a parallel
+check on ``v2_image_metric_confirmations``.
 """
 
 from __future__ import annotations

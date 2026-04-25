@@ -1,10 +1,12 @@
 # LLM Integration - OpenAI GPT-4o / GPT-4o-mini
 
-**Date:** 2026-04-08
+**Date:** 2026-04-25
 **Status:** Production
 **Pipeline:** V2 (sole production pipeline)
 
 ---
+
+> **Pivot status (2026-04-25):** Under the chart-presence pivot (#86, 2026-04-23) the LLM/Vision surface produces **presence signals**, not per-value facts. The Vision metric-classifier (Stage 5b, gated by `ENABLE_METRIC_CLASSIFY`) writes to `v2_image_classifications` (audit trail). Stage 5a `ChartFactBridgeStage` writes rule-based presence pairs to `v2_image_assets.detected_metrics`. Vision OCR (Stage 5) still extracts labeled chart values into `chart_data`, but those values feed the rule-based bridge — they are not auto-emitted as `v2_metric_facts` rows. See [`docs/operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md).
 
 ## Overview
 
@@ -156,6 +158,18 @@ response = client.analyze_image(
     detail="high",
 )
 ```
+
+### 2.05 Vision Metric Classifier — Stage 5b (LLM)
+
+**Module:** `src/extraction_v2/stages/image_classify.py` (stage `PipelineStage.IMAGE_CLASSIFY`)
+
+**Gate:** `ENABLE_METRIC_CLASSIFY` env var. When `false` (default in many environments), the stage is not added to the pipeline; rule-based chart presence still flows through Stage 5a `ChartFactBridgeStage`.
+
+**Purpose:** Independently classify each chart image against the metric taxonomy via the Vision API and produce an audit-traced confidence score per `(metric_id)`. Results are appended to `v2_image_classifications` (sql/45) — append-only, capturing predicted metrics, confidence, reasoning, cost/latency. The classifier is **separate from rule-based** `v2_image_assets.detected_metrics`; both signals can co-exist on the same image and are read together by `MetricPresenceStage` and the reviewer UI.
+
+**Cost:** one Vision call per processed image, in addition to the OCR/chart-extraction call in Stage 5. Cached via the same PostgreSQL `LLMCache` when prompt content is unchanged.
+
+**Output:** `ImageClassificationRecord` rows persisted to `v2_image_classifications`. **No `MetricFact` rows are emitted** — the classifier feeds presence and reviewer adjudication only.
 
 ### 2.1 Chart Fact Bridge — metric-presence emission (post-processing, no LLM)
 
@@ -477,10 +491,12 @@ except Exception as e:
 |-----------|------|-------|---------|
 | `OpenAIClient` | `src/llm/openai_client.py` | gpt-4o-mini | Text extraction (when called explicitly) |
 | `VisionClient` | `src/llm/vision_client.py` | gpt-4o | V2 Stage 5 — OCR & Chart Extraction |
+| `ImageClassifyStage` | `src/extraction_v2/stages/image_classify.py` | gpt-4o (Vision) | V2 Stage 5b — gated by `ENABLE_METRIC_CLASSIFY`; writes audit trail to `v2_image_classifications` (no `MetricFact` rows) |
 | `LLMCache` | `src/llm/cache.py` | n/a | Transparently via `OpenAIClient.complete()` |
 | `PromptTemplates` | `src/llm/prompts.py` | n/a | Prompt construction and response parsing |
-| `ChartFactBridgeStage` | `src/extraction_v2/stages/chart_fact_bridge.py` | **none (rule-based)** | Post-processes Stage 5 `ChartData` into `v2_image_assets.detected_metrics` (metric-presence records; no `MetricFact` rows post-#86) |
+| `ChartFactBridgeStage` | `src/extraction_v2/stages/chart_fact_bridge.py` | **none (rule-based)** | Stage 5a — post-processes Stage 5 `ChartData` into `v2_image_assets.detected_metrics` (metric-presence records; no `MetricFact` rows post-#86) |
 | `ChartMetricClassifier` | `src/extraction_v2/chart/metric_classifier.py` | **none (rule-based)** | Classifies `ChartData` against YAML patterns |
+| `MetricPresenceStage` | `src/extraction_v2/stages/metric_presence.py` | **none** | Final stage — aggregates facts, chart `detected_metrics`, and definitions into `v2_text_metric_presence` rows (primary scoring surface) |
 
 ---
 
@@ -499,6 +515,7 @@ export OPENAI_API_KEY="sk-..."
 export DATABASE_URL="postgresql://..."    # Required for LLMCache
 export LLM_CACHE_ENABLED="true"          # Default: true
 export LLM_CACHE_VERSION="v1"            # Increment to invalidate cache
+export ENABLE_METRIC_CLASSIFY="false"    # Stage 5b Vision metric-classifier (writes v2_image_classifications)
 ```
 
 ---

@@ -1,20 +1,22 @@
 # System Architecture Overview
 
-**Version:** 3.0
-**Last Updated:** 2026-04-08
-**Status:** Production Ready
+**Version:** 3.1
+**Last Updated:** 2026-04-25
+**Status:** Production Ready (presence-pivot mid-rollout)
 
 ---
 
+> **Pivot status (2026-04-25):** The system's primary scoring surface is **presence** — per-`(doc_id, canonical_metric_id)` records aggregated from text facts, chart detections, the Vision metric-classifier, and metric definitions, persisted to `v2_text_metric_presence`. Per-value `MetricFact` rows continue as advisory evidence; CMASB-required values flow via manual entry (`POST /api/v2/missed-metric`). Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2–PR5 pending. See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md).
+
 ## Executive Summary
 
-This system extracts structured customer metrics from SEC filings (S-1/F-1, 10-K), earnings call transcripts, and investor presentations at scale to support the Customer Metrics Accounting Standards Board (CMASB) initiative. The system processes thousands of documents using a 13-stage V2 pipeline combining rule-based table reconstruction with selective LLM processing to achieve high quality at minimal cost.
+This system extracts **metric presence** (with advisory values where available) from SEC filings (S-1/F-1, 10-K), earnings call transcripts, and investor presentations at scale to support the Customer Metrics Accounting Standards Board (CMASB) initiative. The system processes thousands of documents through an up-to-16-stage V2 pipeline that combines rule-based table reconstruction, selective LLM processing, and a final `MetricPresenceStage` that aggregates signals into per-(filing, metric) presence rows with full provenance.
 
 ### Key Metrics
 - **Target Volume:** 7,304 in-scope S-1/F-1 filings (2015-2025), extensible to 10-K
 - **Target Cost:** $500-$1,000 total processing cost
-- **Target Quality:** ≥95% metric extraction accuracy
-- **Architecture:** 13-stage pipeline with immutable PipelineContext passing through typed stage processors
+- **Target Quality:** **presence-F1** is primary (Tier 1 must-not-miss); value-correctness on text/table sources remains a secondary advisory metric
+- **Architecture:** Up to 16-stage pipeline (image stages and `IMAGE_CLASSIFY` are conditional) with `PipelineContext` passing through typed stage processors; final `MetricPresenceStage` aggregates signals into `v2_text_metric_presence` rows
 
 ---
 
@@ -32,11 +34,11 @@ Phase 1 focuses on S-1/F-1 registration statements for first-time issuers of pub
 
 ## Design Principles
 
-### 1. Analysis-First
-Architecture is driven by required analytic outputs (incidence, quality, and metric values) and the data model, not by convenience of extraction.
+### 1. Analysis-First (presence as the unit of analysis)
+Architecture is driven by required analytic outputs — primarily **per-(filing, metric) presence** — and the data model, not by convenience of extraction. Per-value extraction is retained as advisory evidence and as the substrate for definition/methodology assessment, but presence is the headline output.
 
 ### 2. Provenance-First
-Every metric value, definition, and quality score must be traceable to specific segments in specific filings. No value without provenance.
+Every presence row, metric value, definition, and quality score must be traceable to specific segments or images in specific filings. Presence rows carry `evidence_segment_ids` + `advisory_fact_ids` (JSONB pointers, non-FK) back to source. Every advisory `MetricFact` carries a complete `EvidencePack`. No claim without provenance.
 
 ### 3. Investor-Grade Defensibility
 The system must support audit, replication, and quality evaluation for any published statistic.
@@ -173,7 +175,7 @@ The system is organized into six logical layers:
 
 ### 3. V2Pipeline
 **Module:** `src/extraction_v2/pipeline.py`
-**Purpose:** Orchestrate the 13-stage extraction process for a single document
+**Purpose:** Orchestrate the up-to-16-stage extraction process (image stages 4–5b and IMAGE_CLASSIFY are conditional) for a single document, ending in `MetricPresenceStage`
 **Input:** HTML path, filing ID, document type
 **Output:** `PipelineResult` containing `MetricFact` list, tables, images, segments, and per-stage diagnostics
 **Technology:** Python orchestration via `PipelineContext` passed through typed `StageProcessor` instances
@@ -192,8 +194,10 @@ The system is organized into six logical layers:
 | 1 | `IngestionStage` | lxml HTML parsing into typed `Segment` objects with DOM locators |
 | 2 | `SectionClassificationStage` | Assigns section_type (mda, risk_factors, business, financials, etc.) |
 | 3 | `TableReconstructionStage` | Resolves colspan/rowspan; computes header_path and stub_path per cell |
-| 4 | `ImageTriageStage` | Classifies images as chart, table_image, decorative, logo |
-| 5 | `OCRExtractionStage` | Vision API + OCR for labeled chart values; skips unlabeled axes |
+| 4 | `ImageTriageStage` | Classifies images as chart, table_image, decorative, logo (conditional) |
+| 5 | `OCRExtractionStage` | Vision API + OCR for labeled chart values; skips unlabeled axes (conditional) |
+| 5a | `ChartFactBridgeStage` | Rule-based `ChartMetricClassifier` writes `(metric_id, score)` pairs to `v2_image_assets.detected_metrics` — **presence-only**, no per-value chart facts (conditional) |
+| 5b | `ImageClassifyStage` | Vision API metric classifier; appends to `v2_image_classifications` audit trail (gated by `ENABLE_METRIC_CLASSIFY`) |
 | 6 | `CandidateGenerationStage` | Matches segments against `config/metric_keywords.yaml` taxonomy |
 | 7 | `ValueBindingStage` | Links numeric values to metric candidates via structural proximity |
 | 7.5 | `FalsePositiveFilterStage` | Applies 13 rule-based FP suppression rules |
@@ -202,6 +206,7 @@ The system is organized into six logical layers:
 | 9.5 | `DefinitionExtractionStage` | Extracts metric definitions from methodology/definition segments |
 | 10 | `DeduplicationStage` | Merges duplicate facts by (metric, period, unit, scope, cohort) identity tuple |
 | 11 | `ValidationStage` | Routes facts to auto_accepted or pending_review based on confidence thresholds |
+| 12 | `MetricPresenceStage` | **Final stage / primary scoring surface.** Aggregates dedup'd facts, chart `detected_metrics`, and definitions into `MetricPresence` rows (one per `(doc_id, canonical_metric_id)`); upserted to `v2_text_metric_presence` with `evidence_segment_ids` and `advisory_fact_ids` provenance |
 
 ### 5. V2PersistenceAdapter
 **Module:** `src/extraction_v2/persistence.py`
@@ -243,6 +248,72 @@ UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Da
 **Stage 4: Persistence**
 - Writes all V2 artifacts to database (idempotent upserts)
 - Tracks processing status per filing in `v2_documents`
+
+---
+
+## Provenance: Reverse-Trace from Presence to Source
+
+A researcher receives a presence claim (`doc_id=42, canonical_metric_id='cm_net_revenue_retention', score=0.92`) and needs to walk it back to source evidence. The reverse-trace is one of the system's hard requirements — every presence row must be auditable.
+
+**Step 1 — read presence + provenance pointers:**
+
+```sql
+SELECT score, detected_at_stage, evidence_segment_ids,
+       advisory_fact_ids, advisory_value_count
+FROM v2_text_metric_presence
+WHERE doc_id = 42 AND canonical_metric_id = 'cm_net_revenue_retention';
+```
+
+**Step 2a — for text/table evidence, walk segment IDs back to source text:**
+
+```sql
+SELECT s.segment_id, s.section_type, s.dom_locator, s.segment_text
+FROM v2_segments s
+WHERE s.segment_id = ANY (
+    SELECT (jsonb_array_elements_text(p.evidence_segment_ids))::uuid
+    FROM v2_text_metric_presence p
+    WHERE p.doc_id = 42 AND p.canonical_metric_id = 'cm_net_revenue_retention'
+);
+```
+
+**Step 2b — for advisory fact IDs, read the EvidencePack:**
+
+```sql
+SELECT f.fact_id, f.value, f.unit, f.period_start, f.period_end,
+       f.source_type, f.evidence_pack
+FROM v2_metric_facts f
+WHERE f.fact_id = ANY (
+    SELECT (jsonb_array_elements_text(p.advisory_fact_ids))::uuid
+    FROM v2_text_metric_presence p
+    WHERE p.doc_id = 42 AND p.canonical_metric_id = 'cm_net_revenue_retention'
+);
+```
+
+**Step 3 — for chart-only presence (empty `evidence_segment_ids`), pivot to image confirmations:**
+
+```sql
+SELECT ia.img_id, ia.dom_locator, ia.detected_metrics,
+       imc.decision, imc.reviewer_id, imc.created_at
+FROM v2_image_assets ia
+LEFT JOIN v2_image_metric_confirmations imc
+    ON imc.img_id = ia.img_id
+   AND COALESCE(imc.confirmed_metric_id, imc.detected_metric_id)
+       = 'cm_net_revenue_retention'
+WHERE ia.doc_id = 42
+  AND ia.detected_metrics @> '[{"metric_id":"cm_net_revenue_retention"}]'::jsonb;
+```
+
+**Step 4 — for the Vision-classifier audit trail (independent signal), join `v2_image_classifications`:**
+
+```sql
+SELECT ic.img_id, ic.predicted_metrics, ic.cost_usd, ic.created_at
+FROM v2_image_classifications ic
+JOIN v2_image_assets ia USING (img_id)
+WHERE ia.doc_id = 42
+  AND ic.predicted_metrics @> '[{"metric_id":"cm_net_revenue_retention"}]'::jsonb;
+```
+
+**Important:** `evidence_segment_ids` and `advisory_fact_ids` are JSONB arrays, **not** foreign keys. A presence row can outlive the fact rows it cites — e.g., when `force=True` re-extraction recreates facts with new UUIDs. That's intentional: presence is a doc-level claim independent of which specific fact rows currently back it. The `v2_audit_log` table records batch-level changes; presence-row history is captured in `updated_at` only.
 
 ---
 
@@ -290,14 +361,16 @@ Filing Metadata (CIK, accession number, form type)
 
 ### Models and Roles
 
-- **GPT-4o-mini** (primary):
-  - Image classification via vision API (Stage 4-5)
-  - OCR text extraction from chart images (Stage 5)
-  - Definition/methodology summarization (Stage 9.5)
-  - PostgreSQL-backed caching by `(filing_id, source_segment_id, task_type)`
+- **GPT-4o-mini** (text):
   - Cost: $0.15/M input tokens, $0.60/M output tokens
+  - Used for any explicit text-extraction prompts via `OpenAIClient` (definition extraction is rule-based in V2 — no LLM)
+  - PostgreSQL-backed caching via `LLMCache`
 
-- **Future:** GPT-4o for complex edge cases (currently unused)
+- **GPT-4o** (vision):
+  - Stage 5 — `OCRExtractionStage` / `VisionClient`: OCR + labeled chart-value extraction (one call per processed image)
+  - Stage 5b — `ImageClassifyStage`: Vision metric-classifier; appends to `v2_image_classifications` audit trail. Gated by `ENABLE_METRIC_CLASSIFY` env var. **No `MetricFact` rows emitted** — output is a presence signal consumed by `MetricPresenceStage` and reviewer UI.
+
+Stage 5a `ChartFactBridgeStage` and `MetricPresenceStage` are **rule-based, no LLM** — they post-process Vision/text outputs into presence signals and aggregated presence rows respectively.
 
 ### Cost Control Mechanisms
 
@@ -321,7 +394,7 @@ Filing Metadata (CIK, accession number, form type)
 ### Parallelism Model
 
 - **Filing-level parallelism:** Process different filings concurrently in separate workers
-- Each worker runs the full 13-stage pipeline for its assigned filings
+- Each worker runs the full up-to-16-stage pipeline (ending in `MetricPresenceStage`) for its assigned filings
 - Database writes use short transactions with upsert semantics
 
 ### Database Considerations
@@ -375,18 +448,22 @@ Filing Metadata (CIK, accession number, form type)
 | `filings` | One row per SEC filing; classification flags, processing status |
 | `metrics` | Canonical metric registry (metric_id, display_name, etc.) |
 
-### V2 Tables (sql/09_v2_schema.sql, sql/29, sql/31)
+### V2 Tables (sql/09_v2_schema.sql, sql/29, sql/31, sql/42–47)
 
 | Table | Purpose |
 |-------|---------|
-| `v2_metric_facts` | Primary extraction output; one row per extracted value with full provenance |
+| `v2_text_metric_presence` (sql/46) | **Primary scoring surface.** One row per `(doc_id, canonical_metric_id)`; `score`, `detected_at_stage`, `evidence_segment_ids` (JSONB), `advisory_fact_ids` (JSONB), `advisory_value_count`. Upserted by `MetricPresenceStage`. |
+| `v2_image_metric_confirmations` (sql/43, sql/47) | Reviewer adjudications of image-presence detections (accept / reject / correct / add / skip). Replaces the per-value chart-fact review path. |
+| `v2_image_classifications` (sql/45) | Append-only audit trail for the Vision-API metric-classifier (Stage 5b, gated by `ENABLE_METRIC_CLASSIFY`). |
+| `v2_metric_facts` | Advisory per-value extraction output; one row per extracted value with full provenance. Chart sources do not auto-emit new rows post-#86. |
+| `v2_metric_definitions` | Issuer-specific definition and methodology text, one per `(doc_id, canonical_metric_id)`. |
 | `v2_segments` | DOM-native content blocks with section classification and XPath locators |
 | `v2_tables` | Reconstructed tables with row/col counts and section context |
 | `v2_table_cells` | Individual cells with header_path[] and stub_path[] arrays |
-| `v2_image_assets` | Extracted images with classification, OCR text, and chart data |
+| `v2_image_assets` | Extracted images with classification, OCR text, chart data, and `detected_metrics` JSONB (sql/42, presence pairs from rule-based classifier) |
 | `v2_documents` | Filing-level processing metadata and status |
 | `v2_review_decisions` | Human review decisions linked to V2 facts |
-| `v2_image_review_decisions` | Human review decisions on image assets |
+| `v2_image_review_decisions` | Legacy per-image review decisions (read-only; superseded by `v2_image_metric_confirmations`) |
 | `v2_audit_log` | HTTP audit trail for V2 review routes (replaces V1 `review_audit_log`) |
 
 ### Key V2 Fact Columns
@@ -413,6 +490,8 @@ Filing Metadata (CIK, accession number, form type)
 | TableReconstructionStage | Complete | Full colspan/rowspan resolution; header_path/stub_path |
 | ImageTriageStage | Complete | chart, table_image, decorative, logo classification |
 | OCRExtractionStage | Complete | Vision API + OCR; labeled values only |
+| ChartFactBridgeStage (Stage 5a) | Complete | Rule-based presence pairs to `v2_image_assets.detected_metrics`; no per-value chart facts |
+| ImageClassifyStage (Stage 5b) | Live (gated by `ENABLE_METRIC_CLASSIFY`) | Vision metric-classifier; audit trail in `v2_image_classifications` |
 | CandidateGenerationStage | Complete | YAML taxonomy matching (`config/metric_keywords.yaml`) |
 | ValueBindingStage | Complete | Structural binding; 1,436 lines |
 | FalsePositiveFilterStage | Complete | 13 FP suppression rules; 1,538 lines |
@@ -421,7 +500,8 @@ Filing Metadata (CIK, accession number, form type)
 | DefinitionExtractionStage | Complete | Methodology and definition segments |
 | DeduplicationStage | Complete | Identity-tuple deduplication |
 | ValidationStage | Complete | Confidence-based review routing |
-| V2PersistenceAdapter | Complete | Idempotent upserts to all V2 tables |
+| **MetricPresenceStage (final)** | **PR1 landed (#182)** | Aggregates facts/charts/definitions into `v2_text_metric_presence`; primary scoring surface (PR2 flips Tier-1 gate to presence-F1) |
+| V2PersistenceAdapter | Complete | Idempotent upserts to all V2 tables; `presence_only=True` skips fact write |
 | OpenAI Client (llm/) | Complete | PostgreSQL-backed LLM response cache |
 | Web UI (Flask) | Complete | Human review interface |
 | **Overall** | **Production Ready** | V2 is sole production pipeline |
@@ -507,16 +587,17 @@ python3 scripts/run_v2_extraction.py
 
 ## Related Documentation
 
-- **Data Model:** `docs/architecture/data-model.md` - Database schemas, relationships
-- **Extraction Details:** `docs/architecture/extraction-pipeline.md` - V2 stage interfaces and extraction logic
-- **LLM Integration:** `docs/architecture/llm-integration.md` - OpenAI integration, prompts, costs
+- **Pivot Plan (authoritative for in-flight rollout):** `docs/operations/text-pipeline-presence-pivot-plan.md`
+- **Data Model:** `docs/architecture/data-model.md` - Database schemas, relationships, presence tables
+- **Extraction Details:** `docs/architecture/extraction-pipeline.md` - V2 stage interfaces, MetricPresenceStage
+- **LLM Integration:** `docs/architecture/llm-integration.md` - OpenAI + Vision metric-classifier
 - **Requirements:** `docs/requirements/analytic-requirements.md` - Business requirements
-- **Quality Model:** `docs/development/quality-model.md` - QA scoring framework
+- **Quality Model:** `docs/development/quality-model.md` - presence-F1 primary; value-correctness advisory
 - **Testing:** `docs/development/testing.md` - Test strategy
 - **Documentation Index:** `docs/README.md`
 
 ---
 
-**Last Updated:** 2026-04-08
-**Version:** 3.0
-**Status:** Production Ready
+**Last Updated:** 2026-04-25
+**Version:** 3.1
+**Status:** Production Ready (presence-pivot mid-rollout)
