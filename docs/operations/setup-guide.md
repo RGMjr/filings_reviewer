@@ -1,6 +1,8 @@
 # Setup Guide
 
-**Last Updated:** 2026-04-08
+**Last Updated:** 2026-04-25
+
+> **Pivot status (2026-04-25):** The V2 pipeline emits **presence** as the primary scoring surface (`v2_text_metric_presence`). The Vision metric-classifier (Stage 5b) is gated by the `ENABLE_METRIC_CLASSIFY` env var — see "V2 pipeline settings" below. See [`text-pipeline-presence-pivot-plan.md`](text-pipeline-presence-pivot-plan.md).
 
 ---
 
@@ -83,6 +85,7 @@ The table below documents every variable. Variables marked **Required** must be 
 | `LOG_LEVEL` | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `V2_WORKER_COUNT` | `4` | Default number of parallel workers for batch extraction. |
 | `V2_MIN_CONFIDENCE` | `0.5` | Minimum confidence threshold for including extracted facts. |
+| `ENABLE_METRIC_CLASSIFY` | `false` | Enables Stage 5b `ImageClassifyStage` (Vision API metric classifier). When `true`, each chart image is sent to the Vision API and the predicted-metrics list is appended to `v2_image_classifications`. Independent from the rule-based `v2_image_assets.detected_metrics` (Stage 5a) — both signals can coexist. Cost: one extra Vision call per processed chart image. |
 
 ### Optional integrations
 

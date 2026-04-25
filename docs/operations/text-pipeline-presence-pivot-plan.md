@@ -12,7 +12,7 @@ Strategic direction memo: `~/.claude/projects/.../memory/project_presence_first_
 | PR2 | Gold-standard presence scoring + validator + Tier 1 gate flip | **Landed** (this PR) | — (no schema) |
 | PR3 | Reviewer UI surfaces presence (`v2_text_presence_confirmations`) | Pending | sql/48 |
 | PR4 | Tier-1 definition/methodology LLM classifier | Pending | sql/49 |
-| PR5 | MetricPresenceStage chart-contribution removal (cleanup) | Pending | — |
+| PR5 | MetricPresenceStage chart-contribution removal (cleanup) | **Landed** | — |
 
 Full plan files live under `~/.claude/plans/text-presence-pr*.md` and `~/.claude/plans/text-presence-pivot-index.md`.
 
@@ -64,8 +64,8 @@ A parallel image-review redesign (`~/.claude/plans/our-disclosures-review-web-de
 
 ### Agreement (2026-04-24)
 
-1. **`ImageAsset.detected_metrics` in-memory contract is being dropped** by image-review Wave 2. The list is no longer populated after Wave 1 transition ends. Dual-write during the transition keeps the chart-source branch in `MetricPresenceStage` (src/extraction_v2/stages/metric_presence.py:86-95) working until PR5 removes it.
-2. **Text-presence stops aggregating chart contribution.** PR5 (this program) removes the chart-source branch in `MetricPresenceStage` after image-review Wave 1 lands. Non-blocking — image-review agreed to dual-write.
+1. **`ImageAsset.detected_metrics` cross-stage in-memory contract is dropped** (PR5 landed). `ChartFactBridgeStage` still populates `image.detected_metrics` as a private staging buffer for the persistence layer (writes `v2_image_assets.detected_metrics` JSONB) and for `V2GoldStandardValidator._chart_presence_set_from_context` (in-process chart presence-F1 with no persistence). No other stage reads it.
+2. **Text-presence aggregates only text signals.** PR5 removed the chart-source branch in `MetricPresenceStage`; the stage now reads facts + definitions only. Chart-derived presence flows through the image pipeline; unified doc-grain presence is exposed via `v_doc_metric_presence` (UNION of text + image, landing with image-review Wave 2).
 3. **PR2 queries `v_doc_metric_presence`, not `v2_text_metric_presence`,** for Tier 1 gate math. The view captures both text and image presence symmetrically.
 4. **Landing order for the gate transition:** image-review Wave 2 Agent C resets the chart-fact recall baseline FIRST; text PR2 flips the Tier 1 gate from fact-recall to presence-recall SECOND.
 5. **Per-table ownership:** `v2_text_metric_presence` owns text at doc grain; `v2_image_metric_presence` owns image at per-image grain. No unified confirmations table.
@@ -119,15 +119,14 @@ Field names match SQL column names 1:1 except for the DB-managed columns (`prese
 
 `src.extraction_v2.stages.metric_presence.MetricPresenceStage` runs as the **final stage** in `V2Pipeline._setup_stages`, after `ValidationStage`. Enum: `PipelineStage.METRIC_PRESENCE = "metric_presence"`.
 
-The stage reads:
+The stage reads (PR5, post chart-contribution removal):
 
 - `context.deduplicated_facts` (falls back to `context.facts` when dedup didn't run)
-- `context.images` (contributes `image.detected_metrics`)
 - `context.definitions` (contributes at floor score `_DEFINITION_ONLY_PRESENCE_SCORE = 0.5`)
 
-And writes `context.presences: list[MetricPresence]`.
+And writes `context.presences: list[MetricPresence]`. Chart-derived presence is NOT read here — it lives on `v2_image_assets.detected_metrics` (and `v2_image_metric_presence` under image-review Wave 2). Cross-source unification happens in the `v_doc_metric_presence` view, not in-stage.
 
-Scoring: max across contributing signals. Evidence: union of segment IDs from facts + definitions (chart-only presences have empty `evidence_segment_ids`). `advisory_fact_ids` lists contributing fact IDs (empty when presence comes solely from charts or definitions).
+Scoring: max across contributing text signals. Evidence: union of segment IDs from facts + definitions. `advisory_fact_ids` lists contributing fact IDs (empty when presence comes solely from definitions).
 
 ### PipelineResult field
 

@@ -1,5 +1,7 @@
 # Gold Standard Baseline Update Runbook
 
+> **Pivot status (2026-04-25):** Under the chart-presence pivot (#86, 2026-04-23), chart-native metrics are scored on **presence-P/R/F1**, not value-level P/R/F1. Text-pipeline scoring will flip to **presence-recall** as the Tier-1 gate when PR2 of the text-presence pivot lands (gold-standard derivation + validator wiring; pending). Until then, the V2 validator still gates on fact-recall for text/table metrics. See [`text-pipeline-presence-pivot-plan.md`](text-pipeline-presence-pivot-plan.md). Known gap: legacy-098 — `presence_f1` is not yet populated in the validator output; chart-native improvements are unmeasurable until that fixes.
+
 ## Overview
 
 Three validation pipelines maintain independent baselines:
@@ -144,7 +146,7 @@ CHART cross-source confirmation: m/n (pct%)   (informational)
 
 **The PR2 gate** keys on `Tier 1 [GATE] R=...` (presence-recall). `--fail-on-regression` exits 1 only when that number drops below `tier1_presence_recall` in `data/gold_standard/v2_baseline.json` minus tolerance. All other lines (fact-level Tier 1/2, chart cross-source confirmation, per-company drops) are informational and will be reported in the comparison summary with an `[informational]` prefix but will not block the commit. See `docs/operations/text-pipeline-presence-pivot-plan.md` for the rationale.
 
-The `m/n` chart cross-source counts chart facts independently confirmed by a second source type (TEXT or TABLE fact agreeing on the same metric+period+value slot). `pct%` is `m/n * 100`.
+The `m/n` chart cross-source counts chart facts independently confirmed by a second source type (TEXT or TABLE fact agreeing on the same metric+period+value slot). `pct%` is `m/n * 100`. Under the chart-presence pivot the chart pipeline no longer auto-emits per-value chart facts; this line currently reflects only residual pre-pivot rows.
 
 A soft `WARNING` is printed if `pct < 30%`. This warning is not a hard failure and will not block a baseline update, but it indicates that the chart bridge is producing few cross-confirmed facts — which may signal chart OCR quality issues or a gap in the text/table extraction path for those metrics. Discuss with the team before updating the baseline when this warning appears.
 

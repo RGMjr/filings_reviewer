@@ -5,6 +5,14 @@ layer. The package is named `review/` for historical reasons (the V1 candidate
 generator lived here); a full rename to `extraction_shared/` would churn ~70
 files and is not worth the diff noise.
 
+> **Pivot status (2026-04-25):** Outputs from these modules feed advisory facts
+> in `v2_metric_facts`, which in turn flow through `MetricPresenceStage` into
+> `v2_text_metric_presence` (the primary scoring surface). When changing
+> `false_positive_filter.py`, `keyword_matching.py`, or `value_binding.py`
+> related logic in `src/extraction_v2/`, run `python3 -m src.gold_standard.v2_validator`
+> to check for Tier-1 regression — gate flip to presence-recall pending PR2
+> of the text-presence pivot. See `docs/operations/text-pipeline-presence-pivot-plan.md`.
+
 | Module | Exported symbols | Importer |
 |--------|-----------------|----------|
 | `false_positive_filter.py` | `FalsePositiveFilter`, `should_treat_as_percentage` | `src/extraction_v2/stages/false_positive_filter.py` |

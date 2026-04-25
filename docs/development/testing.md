@@ -1,6 +1,8 @@
 # Testing
 
-**Last Updated:** 2026-04-08
+**Last Updated:** 2026-04-25
+
+> **Pivot status (2026-04-25):** Under the presence pivot, gold-standard regression tests target **presence-F1 / presence-recall** for chart-native metrics (chart-presence pivot live; text-presence Tier-1 gate flip pending PR2). New extraction-stage tests should populate `evidence_pack` such that any emitted fact's `fact_id` flows into `v2_text_metric_presence.advisory_fact_ids` and traces back through `MetricPresenceStage`. See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md).
 
 ---
 
@@ -10,8 +12,9 @@ The test suite enforces correctness across the extraction pipeline, review syste
 
 **Test philosophy:**
 1. Rule-based extraction logic is tested in isolation before integration — unit tests cover individual stages and parsers without database or LLM dependencies.
-2. Integration tests require a real PostgreSQL test database (`TEST_DATABASE_URL`). They validate database upsert idempotency, full pipeline runs on cached HTML fixtures, and API transaction integrity.
-3. Gold standard regression tests guard against precision/recall regressions on a curated set of known-good filings.
+2. Integration tests require a real PostgreSQL test database (`TEST_DATABASE_URL`). They validate database upsert idempotency (including `_persist_presence_in_tx` upsert on `(doc_id, canonical_metric_id)`), full pipeline runs on cached HTML fixtures, and API transaction integrity.
+3. Gold standard regression tests guard against presence-F1 and (advisory) precision/recall regressions on a curated set of known-good filings.
+4. **Presence-provenance test pattern:** any new fact-emitting stage MUST populate `evidence_pack` such that its `fact_id` can flow into `v2_text_metric_presence.advisory_fact_ids` and reverse-trace to `v2_segments` via `evidence_segment_ids`. Reverse-trace tests live in `tests/integration/extraction_v2/test_presence_provenance.py` (or equivalent — see PR1 #182).
 
 **Coverage requirement:** 80% minimum, enforced by `pytest-cov` (`fail_under = 80` in `pyproject.toml`). The `src/extraction/` (V1, retired) directory is excluded from coverage measurement.
 

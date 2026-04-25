@@ -1,8 +1,10 @@
 # 02_METRIC_TAXONOMY_AND_DEFINITIONS
 
-Version: 0.1  
-Date: 2025-11-15  
-Owner: Rob Markey  
+Version: 0.2
+Date: 2026-04-25
+Owner: Rob Markey
+
+> **Pivot status (2026-04-25):** Tier assignments (Tier 1 must-not-miss / Tier 2 nice-to-have) live in `config/metric_keywords.yaml` (`tier:` field) and are loaded at validator runtime via `src/shared/keyword_config.py::get_metric_tiers()`. Under the presence pivot, **Tier 1 metrics gate on presence-recall** (gate flip pending PR2 of the text-presence pivot — see [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md)). The current authoritative Tier 1 list is in `CLAUDE.md` § Metric Priority Tiers; the V2 schema (`v2_metric_facts`, `v2_text_metric_presence`) supersedes the V1 schema referenced in some sections below.
 
 ## 1. Purpose
 

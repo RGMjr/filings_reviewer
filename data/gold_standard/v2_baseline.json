@@ -1,6 +1,6 @@
 {
-  "baseline_date": "2026-04-25T16:30:38.275531+00:00",
-  "description": "PR2 — flip Tier-1 gate to text-presence-recall. Tier-1 presence-recall blocker; fact-level + presence_f1 + per-company demoted to informational. Captures post-#182 (text-presence pivot) and post-#192 (chart-fact promotion) state.",
+  "baseline_date": "2026-04-25T20:43:45.143630+00:00",
+  "description": "PR2 — flip Tier-1 gate to text-presence-recall. Tier-1 presence-recall blocker; fact-level + presence_f1 + per-company demoted to informational. Captures post-#182, post-#192, post-#211 (PR5 chart-source branch removal) state.",
   "overall": {
     "precision": 0.6507936507936508,
     "recall": 0.3025830258302583,

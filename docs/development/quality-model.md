@@ -2,9 +2,11 @@
 
 # 06_QA_AND_QUALITY_MODEL
 
-Version: 0.1  
-Date: 2025-11-15  
-Owner: Rob Markey  
+Version: 0.2
+Date: 2026-04-25
+Owner: Rob Markey
+
+> **Pivot status (2026-04-25):** Under the chart-presence pivot (#86) and text-presence PR1 (#182), the **primary quality dimension is presence detection (presence-F1, presence-recall)**, not numeric extraction accuracy. Per-value extraction is retained as advisory evidence and as the substrate for definition / methodology assessment, but is no longer the headline scoring surface for chart-native metrics. PR2 of the text-presence pivot will flip the Tier-1 gate from fact-recall to presence-recall (pending). Several sections below still describe V1 schema (`metric_values`, `metric_definitions`, `filing_metric_incidence`, `cohort_bucket_raw`, etc.) — those tables have been dropped (sql/26, sql/27); read them as historical context for the dimensions, with the V2 schema (`v2_metric_facts`, `v2_metric_definitions`, `v2_text_metric_presence`) as the current truth. See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md).
 
 ## 1. Purpose
 
@@ -40,25 +42,25 @@ Where automation is fragile, we prefer:
 
 ## 3. Quality dimensions
 
-We evaluate quality along six dimensions.
+We evaluate quality along six dimensions. The first dimension is the **headline scoring surface** post-pivot.
 
-1. **Coverage & completeness**  
+1. **Presence detection quality (PRIMARY post-pivot)**
+   Do we correctly detect that a metric is disclosed in a filing — across text, charts, and definitions, aggregated to per-`(doc_id, canonical_metric_id)` rows in `v2_text_metric_presence`? Measured as **presence-precision / presence-recall / presence-F1** by tier. Tier-1 presence-F1 regression is a **merge blocker** (gate flip pending PR2).
+
+2. **Coverage & completeness**
    Are all in-scope filings represented, and is the segment universe rich enough to find disclosures?
 
-2. **Incidence detection quality**  
-   Do we correctly detect whether a metric is disclosed in a filing?
+3. **Numeric extraction accuracy (advisory under the pivot)**
+   For values that are extracted (text/table sources, manual entry), are they correct and appropriately structured (periods, cohorts, segments)? Chart-native metrics no longer auto-emit values; CMASB-required values come through manual entry (`POST /api/v2/missed-metric`).
 
-3. **Numeric extraction accuracy**  
-   Are extracted metric values correct and appropriately structured (periods, cohorts, segments)?
-
-4. **Definition & methodology quality**  
+4. **Definition & methodology quality**
    Do we accurately capture and summarize how issuers define and calculate metrics?
 
-5. **Comparability / alignment**  
+5. **Comparability / alignment**
    Can we reliably judge how closely issuer metrics match canonical CMASB definitions?
 
-6. **Provenance & traceability**  
-   Can we always trace results back to precise locations in filings?
+6. **Provenance & traceability**
+   Can we always trace any presence claim or value back to precise locations in filings? Presence rows carry `evidence_segment_ids` + `advisory_fact_ids` JSONB pointers; per-value facts carry `EvidencePack` with `source_locator` and `header_path` / `stub_path`.
 
 Each dimension has:
 
