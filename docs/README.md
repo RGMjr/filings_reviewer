@@ -1,25 +1,28 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.6
-**Status:** Production Ready
-**Last Updated:** 2026-04-21
+**Version:** 2.8
+**Status:** Production Ready (presence-pivot mid-rollout)
+**Last Updated:** 2026-04-25
 
 ---
 
+> **Pivot status (2026-04-25):** The system is mid-pivot from value-extraction-as-primary to **presence-as-primary** — the canonical scoring surface is now per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2 (gold-standard derivation + Tier-1 gate flip), PR3 (reviewer UI for text presence), PR4–PR5 are pending. Known gaps: legacy-097 (residual chart facts), legacy-098 (validator `presence_f1` not yet populated). See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
+
 ## Overview
 
-This system analyzes SEC S-1/F-1 filings to assess how companies disclose customer-related metrics, supporting the Customer Metrics Accounting Standards Board (CMASB) initiative to establish standardized customer metrics disclosure practices.
+This system analyzes SEC S-1/F-1 filings to assess how companies disclose customer-related metrics, supporting the Customer Metrics Accounting Standards Board (CMASB) initiative to establish standardized customer metrics disclosure practices. The primary output of the V2 pipeline is **presence**: a per-(filing, metric) signal aggregated from text facts, chart detections, and metric definitions, with full provenance back to source segments and images.
 
 ### Quick Links
 
 | For... | Start Here |
 |--------|------------|
-| **New developers** | [System Architecture](architecture/system-overview.md) |
+| **New developers** | [System Architecture](architecture/system-overview.md) → [Presence-pivot plan](operations/text-pipeline-presence-pivot-plan.md) |
 | **Analysts/Researchers** | [Analytic Requirements](requirements/analytic-requirements.md) |
 | **Project managers** | [System Architecture](architecture/system-overview.md) → Success Criteria |
 | **Quality assurance** | [Testing Strategy](development/testing.md) → [Quality Model](development/quality-model.md) |
 | **Data users** | [Data Model](architecture/data-model.md) → Analysis Views |
+| **Anyone tracing a presence claim back to source** | [Presence-pivot plan](operations/text-pipeline-presence-pivot-plan.md) → [Data Model](architecture/data-model.md) provenance section |
 
 ---
 
@@ -158,6 +161,8 @@ Worker prompt templates are archived at `archive/historical/process/`. Use the A
 
 **Overall Status:** ✅ **Production Ready** (87% test coverage, 4,500+ tests)
 
+> **Pivot note (2026-04-25):** The component table above is structurally correct, but the `Value Extractor` entry should now be read as **advisory evidence**, not the headline output. The headline output is the **MetricPresenceStage** (final V2 stage; aggregates facts/charts/definitions into per-`(doc_id, metric_id)` presence rows in `v2_text_metric_presence`). See [`extraction-pipeline.md`](architecture/extraction-pipeline.md) and the [presence-pivot plan](operations/text-pipeline-presence-pivot-plan.md).
+
 ---
 
 ## Getting Started
@@ -227,8 +232,36 @@ python scripts/build_universe_real.py --start-date 2015-01-01 --end-date 2025-12
 
 ### Querying Results
 
+Presence-first (current; recommended):
+
 ```sql
--- Filing-level incidence by year
+-- Per-filing presence with provenance for one Tier-1 metric
+SELECT
+    p.doc_id,
+    p.canonical_metric_id,
+    p.score,
+    p.detected_at_stage,
+    p.evidence_segment_ids,
+    p.advisory_fact_ids,
+    p.advisory_value_count
+FROM v2_text_metric_presence p
+WHERE p.canonical_metric_id = 'cm_net_revenue_retention'
+ORDER BY p.score DESC;
+
+-- Reverse-trace from a presence row to source segment text
+SELECT s.segment_id, s.section_name, s.text
+FROM v2_segments s
+WHERE s.segment_id = ANY (
+    SELECT jsonb_array_elements_text(p.evidence_segment_ids)::int
+    FROM v2_text_metric_presence p
+    WHERE p.doc_id = $1 AND p.canonical_metric_id = $2
+);
+```
+
+Legacy V1 incidence (retained for backwards compatibility):
+
+```sql
+-- Filing-level incidence by year (V1 view, value-extraction era)
 SELECT
     EXTRACT(YEAR FROM filing_date) AS year,
     metric_id,
@@ -248,17 +281,25 @@ ORDER BY year, metric_id;
 
 Standardized customer-related measurements (e.g., new customers acquired, revenue by cohort). See [Metrics Taxonomy](development/metrics-taxonomy.md).
 
+### Presence
+
+Per-`(doc_id, canonical_metric_id)` detection signal — the **primary scoring surface** under the 2026-04 pivot. Aggregated from text facts (`v2_metric_facts`), chart detections (`v2_image_assets.detected_metrics`), Vision classifier output (`v2_image_classifications`), and metric definitions. Persisted to `v2_text_metric_presence` (text grain) and `v2_image_metric_presence` (image grain, lands with image-review Wave 2); union-readable via `v_doc_metric_presence`. See [Presence-pivot plan](operations/text-pipeline-presence-pivot-plan.md) and [`MetricPresenceStage`](architecture/extraction-pipeline.md).
+
+### Provenance / Audit Trail
+
+Every presence row points back to its evidence: `evidence_segment_ids` and `advisory_fact_ids` (JSONB arrays on `v2_text_metric_presence`) for text; `v2_image_metric_confirmations` joined to `v2_image_assets` for charts. Reviewer decisions are captured in `v2_image_metric_confirmations` (accept / reject / correct / add / skip) and `v2_review_decisions` (text facts; until PR3 lands `v2_text_presence_confirmations`). The `advisory_*` columns are JSONB pointers, **not** foreign keys — facts may be deleted on `force=True` re-extraction without cascading to presence rows, since presence is a doc-level claim independent of which specific fact rows currently back it.
+
 ### Segments
 
 Atomic units of filing content (paragraphs, tables, footnotes) from which metrics are extracted. See [Extraction Pipeline](architecture/extraction-pipeline.md).
 
 ### Incidence
 
-Whether a metric is disclosed in a filing (binary: yes/no). See [Analytic Requirements](requirements/analytic-requirements.md).
+Whether a metric is disclosed in a filing (binary: yes/no). Operationalized as **presence** in V2; `v_filing_metric_incidence` is a legacy V1 view kept for backwards compatibility. See [Analytic Requirements](requirements/analytic-requirements.md).
 
 ### Quality Score
 
-0-3 scale assessment of disclosure quality. See [Quality Model](development/quality-model.md).
+0-3 scale assessment of disclosure quality. See [Quality Model](development/quality-model.md). **Note:** under the presence pivot, value-correctness has been demoted to advisory; the primary quality dimension for chart-native metrics is now **presence-F1**.
 
 ### Alignment
 
@@ -380,6 +421,14 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
+
+- Top-of-funnel docs (this file, root `README.md`, `MANUAL_TESTING_GUIDE.md`) updated to lead with **presence** as the primary scoring surface.
+- New Key Concepts: **Presence**, **Provenance / Audit Trail**.
+- `Querying Results` example now leads with a presence-with-provenance query against `v2_text_metric_presence`; the legacy `v_filing_metric_incidence` query retained for backwards compatibility.
+- Implementation Status table annotated to clarify that `Value Extractor` outputs are advisory under the pivot; the headline V2 output is `MetricPresenceStage`.
+- Architecture, operations, and development docs updates land in follow-on PRs (PR 2, PR 3 of the doc-audit series).
 
 ### v2.7 — 2026-04-16 — Tier 1 Recall — Text Pipeline Concluded
 
