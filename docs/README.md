@@ -428,7 +428,12 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 - New Key Concepts: **Presence**, **Provenance / Audit Trail**.
 - `Querying Results` example now leads with a presence-with-provenance query against `v2_text_metric_presence`; the legacy `v_filing_metric_incidence` query retained for backwards compatibility.
 - Implementation Status table annotated to clarify that `Value Extractor` outputs are advisory under the pivot; the headline V2 output is `MetricPresenceStage`.
-- Architecture, operations, and development docs updates land in follow-on PRs (PR 2, PR 3 of the doc-audit series).
+- Architecture, operations, and development docs landed alongside the top-of-funnel updates in [PR #210](https://github.com/RGMjr/filings_reviewer/pull/210) (commits `461d94d` PR 1, `3caaa67` PR 2, `524cd5d` PR 3):
+  - **Architecture (PR 2):** `system-overview`, `data-model`, `extraction-pipeline`, `llm-integration` rev'd to 3.1 with the pivot status banner, presence-with-provenance reverse-trace SQL, and stages 5a / 5b / 14 (`ChartFactBridgeStage`, `ImageClassifyStage`, `MetricPresenceStage`).
+  - **Operations (PR 3):** `extraction-runbook` rewritten against V2 tables (V1 candidate/segment flow retired); `gold-standard-runbook` adds Section 7a for presence-derived metrics (gate flip pending text-presence PR2); `analytics-ui-runbook`, `setup-guide`, `full-page-ocr-runbook` get the pivot status banner and `ENABLE_METRIC_CLASSIFY`.
+  - **Development (PR 3):** `quality-model` (presence-F1 primary), `testing` (presence-provenance test pattern), `metrics-taxonomy`, `metric-lifecycle-process`, `CONTRIBUTING` get the pivot status banner.
+  - **Module docstrings (PR 2):** `src/extraction_v2/__init__.py`, `pipeline.py`, `persistence.py`, plus `src/web/routes/api_unified.py` and `src/review/README.md`.
+  - **Archive (PR 3):** Pre-pivot `docs/HUMAN_REVIEW_SYSTEM.md` moved to `docs/archive/historical/HUMAN_REVIEW_SYSTEM-pre-presence.md`; the original path now holds a thin pointer to the V2 unified review UI.
 
 ### v2.7 — 2026-04-16 — Tier 1 Recall — Text Pipeline Concluded
 
