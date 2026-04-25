@@ -5,7 +5,7 @@ slug: migration-order-drift-no-precommit-guard
 title: No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
 status: resolved
 severity: medium
-autonomy: skip
+autonomy: n/a
 estimated: S
 touches:
   - scripts/apply_all_migrations.py

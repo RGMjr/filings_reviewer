@@ -1,12 +1,12 @@
 ---
-autonomy: safe
+autonomy: n/a
 discovered: '2026-04-24'
 estimated: XS
 id: 102
 severity: low
 slug: sweep-autonomy-cleanup-resolved-archived
 source: legacy
-status: open
+status: resolved
 title: Resolved/Archived Issues Retain Non-`n/a` Autonomy — Sweep Logs Noisy
 touches:
   - docs/known-issues/

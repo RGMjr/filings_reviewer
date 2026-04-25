@@ -1,5 +1,5 @@
 ---
-autonomy: skip
+autonomy: n/a
 discovered: '2026-04-17'
 estimated: L
 id: 28

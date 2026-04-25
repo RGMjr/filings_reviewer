@@ -1,5 +1,5 @@
 ---
-autonomy: skip
+autonomy: n/a
 discovered: '2026-04-22'
 estimated: XS
 id: 60

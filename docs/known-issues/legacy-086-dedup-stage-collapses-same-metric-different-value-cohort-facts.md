@@ -1,5 +1,5 @@
 ---
-autonomy: review
+autonomy: n/a
 discovered: '2026-04-22'
 estimated: M
 id: 86
