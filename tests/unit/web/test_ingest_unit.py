@@ -561,3 +561,33 @@ def test_ingest_preview_template_has_section_ids(client):
     assert 'id="section-new"' in body
     assert 'id="section-no-review"' in body
     assert 'id="section-reviewed"' in body
+
+
+# ---------------------------------------------------------------------------
+# GET /ingest/history — persisted_count filter uses 'persisted' not 'complete'
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_history_persisted_count_uses_persisted_status(client):
+    """GET /ingest/history issues SQL with current_status = 'persisted' for persisted_count.
+
+    Regression test for the bug where the FILTER used 'complete', which is
+    never written by onboarding_runner — the canonical terminal-success state
+    is 'persisted'.
+    """
+    mock_db = MagicMock()
+    # Return an empty list so the template renders without needing real row data.
+    mock_db.query.return_value = []
+
+    with patch("src.web.routes.ingest.get_db", return_value=mock_db):
+        resp = client.get("/ingest/history")
+
+    assert resp.status_code == 200
+    mock_db.query.assert_called_once()
+    sql_issued = mock_db.query.call_args[0][0]
+    assert "'persisted'" in sql_issued, (
+        "persisted_count FILTER must use current_status = 'persisted', not 'complete'"
+    )
+    assert "'complete'" not in sql_issued, (
+        "SQL must not filter on 'complete' — that status is never written by onboarding_runner"
+    )

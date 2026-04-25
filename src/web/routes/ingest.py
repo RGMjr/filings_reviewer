@@ -388,11 +388,12 @@ def ingest_start():
         log_dir = _PROJECT_ROOT / "logs"
         log_dir.mkdir(exist_ok=True)
         log_path = log_dir / f"ingest_runner_{batch_id}.log"
+        log_fh = open(log_path, "ab")
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "src.universe.onboarding_runner", "--batch-id", batch_id],
                 start_new_session=True,
-                stdout=open(log_path, "ab"),  # noqa: SIM115
+                stdout=log_fh,
                 stderr=subprocess.STDOUT,
                 cwd=str(_PROJECT_ROOT),
             )
@@ -404,6 +405,8 @@ def ingest_start():
                 "Contact an administrator to start processing.",
                 "warning",
             )
+        finally:
+            log_fh.close()
 
     resp = redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
     resp.set_cookie("ingest_reviewer", reviewer_name, max_age=30 * 24 * 3600)
@@ -499,11 +502,12 @@ def populate():
         log_dir = _PROJECT_ROOT / "logs"
         log_dir.mkdir(exist_ok=True)
         log_path = log_dir / f"ingest_runner_{batch_id}.log"
+        log_fh = open(log_path, "ab")
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "src.universe.onboarding_runner", "--batch-id", batch_id],
                 start_new_session=True,
-                stdout=open(log_path, "ab"),  # noqa: SIM115
+                stdout=log_fh,
                 stderr=subprocess.STDOUT,
                 cwd=str(_PROJECT_ROOT),
             )
@@ -516,6 +520,8 @@ def populate():
                     "Contact an administrator to start processing.",
                     "warning",
                 )
+        finally:
+            log_fh.close()
 
     if is_xhr:
         return jsonify({"batch_id": batch_id}), 202
@@ -570,7 +576,7 @@ def ingest_history():
             b.created_at,
             b.criteria,
             COUNT(ibf.filing_id)                                                  AS total_filings,
-            COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'complete')  AS persisted_count,
+            COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'persisted') AS persisted_count,
             COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'failed')    AS failed_count
         FROM v2_ingest_batches b
         LEFT JOIN v2_ingest_batch_filings ibf ON ibf.batch_id = b.batch_id
@@ -761,11 +767,12 @@ def ingest_retry_failed(batch_id: str):
         log_dir = _PROJECT_ROOT / "logs"
         log_dir.mkdir(exist_ok=True)
         log_path = log_dir / f"ingest_runner_{batch_id}.log"
+        log_fh = open(log_path, "ab")
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "src.universe.onboarding_runner", "--batch-id", batch_id],
                 start_new_session=True,
-                stdout=open(log_path, "ab"),  # noqa: SIM115
+                stdout=log_fh,
                 stderr=subprocess.STDOUT,
                 cwd=str(_PROJECT_ROOT),
             )
@@ -778,6 +785,8 @@ def ingest_retry_failed(batch_id: str):
                 "warning",
             )
             return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+        finally:
+            log_fh.close()
 
     flash(f"Re-queued {retry_count} failed filing(s). Runner restarted.", "success")
     return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
