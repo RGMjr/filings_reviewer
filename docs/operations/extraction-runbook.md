@@ -33,7 +33,6 @@ HTML File → Segmenter → source_segments (DB) → Classifier → Candidate Ge
 |------------------|-------------------|
 | `src/extraction_v2/stages/ingestion.py` (V2 segmentation) | Full re-extraction (`scripts/batch_v2_extraction.py`) |
 | `config/metric_keywords.yaml` (keyword patterns) | Delete old candidates, run `generate_review_candidates.py` |
-| `keyword_matching.py` | Delete old candidates, run `generate_review_candidates.py` |
 | LLM prompts | Full re-extraction (`scripts/batch_v2_extraction.py`) |
 
 ---
