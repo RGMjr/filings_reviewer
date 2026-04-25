@@ -30,6 +30,10 @@ services:
     region: ohio
     runtime: docker
     dockerfilePath: ./Dockerfile
+    # Run schema migrations before every deploy. The script is idempotent
+    # (schema_migrations ledger) so this is safe on every push to main.
+    # DATABASE_URL is available here via the filings-shared-secrets group below.
+    preDeployCommand: python3 scripts/apply_migrations.py
     envVars:
       - fromGroup: filings-shared-secrets
       - key: SECRET_KEY

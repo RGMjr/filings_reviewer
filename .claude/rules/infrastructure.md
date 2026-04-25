@@ -38,6 +38,24 @@ Region is pinned so blueprint re-deploys do not scatter services across regions.
 - Install with `brew install postgresql@16` and invoke via the explicit Cellar path or a pinned symlink (do not rely on the default `/opt/homebrew/bin/pg_dump` which resolves to whatever was installed first).
 - Run `python3 scripts/check_pg_client_version.py` before taking snapshots. Silent failure (0-byte file with exit 0) is the symptom when this guard is skipped.
 
+### Deploy-Time Migration Contract
+
+`render.yaml` wires `preDeployCommand: python3 scripts/apply_migrations.py` on the `filings-reviewer` web service. Render runs that command before the container starts serving traffic, on every deploy. The script is idempotent via the `schema_migrations` ledger, so re-runs are no-ops once a migration has been applied.
+
+**For schema-change PRs**, the contract is:
+1. Add `sql/<timestamp>_<description>.sql` (timestamp filename per `.claude/rules/sql.md`).
+2. Register it in `MIGRATIONS` in `scripts/apply_migrations.py`.
+3. Merge the PR. The next Render deploy applies the migration automatically.
+
+**Failure mode.** A non-zero exit from the predeploy step aborts the deploy and leaves the previous container serving traffic. Common causes:
+- Migration not registered in `apply_migrations.py` (script exits non-zero on unregistered files).
+- Checksum mismatch — the migration file was edited after being applied to prod (script refuses to re-apply).
+- `DATABASE_URL` not in scope at deploy phase (it should be — the env group `filings-shared-secrets` covers `filings-reviewer`).
+
+**Verification.** Render dashboard → `filings-reviewer` → **Events → Deploy** → predeploy log shows `APPLIED: <filename>` lines for any migrations the deploy applied.
+
+**Limitations.** Only `filings-reviewer` has the predeploy hook. Other services (`filings-extraction`, `filings-onboarding-runner`, `filings-nightly-sweep`, `filings-metabase`) rely on `filings-reviewer` running its predeploy first when a schema change ships — they redeploy in parallel but share the database, so the order doesn't matter for safety, only for log visibility.
+
 ## DATABASE_URL vs TEST_DATABASE_URL — IMPORTANT
 
 **In this project's `.env`, `DATABASE_URL` points at the Neon prod database, NOT local Postgres.** The local Docker Postgres is addressed by `TEST_DATABASE_URL`.
