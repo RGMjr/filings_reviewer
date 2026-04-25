@@ -82,6 +82,12 @@ class R2Storage:
         )
 
     def put_bytes(self, key: str, data: bytes, content_type: str = "image/jpeg") -> None:
+        if os.environ.get("FILINGS_REVIEWER_ALLOW_PROD_WRITES") != "1":
+            raise RuntimeError(
+                "Refusing R2 write — set FILINGS_REVIEWER_ALLOW_PROD_WRITES=1 to allow. "
+                "This guard prevents accidental prod R2 mutations when running CLI tools "
+                "with prod credentials in the environment."
+            )
         validate_key(key)
         self._client.put_object(
             Bucket=self._bucket,
