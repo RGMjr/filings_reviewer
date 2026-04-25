@@ -81,7 +81,7 @@ See Also:
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from src.review.number_parsing import NumberMatch
 
@@ -96,6 +96,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Keyword Loading Functions
 # =============================================================================
+
 
 def _load_metric_keywords() -> dict[str, list[str]]:
     """Load metric keywords from YAML config, excluding deprecated metrics.
@@ -149,31 +150,8 @@ def _load_specific_patterns() -> list[str]:
         KeywordConfigError: If YAML config cannot be loaded.
     """
     from src.shared.keyword_config import get_specific_patterns
+
     return get_specific_patterns()
-
-
-def _load_required_context() -> dict[str, dict[str, Any]]:
-    """Load required context patterns from YAML config, excluding deprecated metrics.
-
-    Required context patterns gate which metrics generate review candidates.
-    Metrics with required_context only generate candidates when at least one
-    of the context patterns appears within proximity of the keyword match.
-
-    Raises:
-        KeywordConfigError: If YAML config cannot be loaded.
-    """
-    from src.shared.keyword_config import get_required_context, is_metric_deprecated
-
-    all_context = get_required_context()
-
-    # Filter out deprecated metrics
-    active_context = {
-        metric_id: context
-        for metric_id, context in all_context.items()
-        if not is_metric_deprecated(metric_id)
-    }
-
-    return active_context
 
 
 # =============================================================================
@@ -184,7 +162,6 @@ def _load_required_context() -> dict[str, dict[str, Any]]:
 METRIC_KEYWORDS: dict[str, list[str]] = _load_metric_keywords()
 METRIC_EXCLUSION_PATTERNS: dict[str, list[str]] = _load_exclusion_patterns()
 SPECIFIC_KEYWORD_PATTERNS: list[str] = _load_specific_patterns()
-METRIC_REQUIRED_CONTEXT: dict[str, dict[str, Any]] = _load_required_context()
 
 
 # =============================================================================
@@ -299,30 +276,9 @@ class KeywordMatcher:
                     compiled_list.append(re.compile(pattern, re.IGNORECASE))
                 except re.error as e:
                     # Log and skip invalid patterns - don't crash
-                    logger.warning(
-                        f"Invalid exclusion pattern for {metric_id}: {pattern!r} - {e}"
-                    )
+                    logger.warning(f"Invalid exclusion pattern for {metric_id}: {pattern!r} - {e}")
             if compiled_list:
                 self._compiled_exclusions[metric_id] = compiled_list
-
-        # Pre-compile required context patterns for revenue synonym filtering
-        # tuple of (compiled_patterns, proximity_chars)
-        self._compiled_required_context: dict[str, tuple[list[re.Pattern[str]], int]] = {}
-        for metric_id, ctx_config in METRIC_REQUIRED_CONTEXT.items():
-            compiled_ctx_patterns: list[re.Pattern[str]] = []
-            for pattern in ctx_config.get("patterns", []):
-                try:
-                    compiled_ctx_patterns.append(re.compile(pattern, re.IGNORECASE))
-                except re.error as e:
-                    logger.warning(
-                        f"Invalid required_context pattern for {metric_id}: {pattern!r} - {e}"
-                    )
-            if compiled_ctx_patterns:
-                proximity = ctx_config.get("proximity_chars", 1500)
-                self._compiled_required_context[metric_id] = (
-                    compiled_ctx_patterns,
-                    proximity,
-                )
 
     def _is_excluded(self, metric_id: str, context: str) -> bool:
         """
@@ -416,56 +372,6 @@ class KeywordMatcher:
 
         return False, None
 
-    def _has_required_context(
-        self, metric_id: str, match_position: int, full_text: str
-    ) -> bool:
-        """
-        Check if required context is present for a context-gated metric.
-
-        For metrics with required_context configuration (e.g., cm_gmv, cm_tcv),
-        this checks if at least one of the required context patterns (cohort,
-        per customer, etc.) appears within the specified proximity of the
-        keyword match.
-
-        Revenue synonym metrics (GMV, TCV, ACV, Bookings, Billings) require
-        cohort or per-customer context to be meaningful as customer metrics.
-        Without this context, they are just aggregate revenue measures.
-
-        Args:
-            metric_id: The metric ID to check required context for
-            match_position: The character position of the keyword match
-            full_text: The full text to search for context
-
-        Returns:
-            True if no required context is configured for this metric, OR
-            True if required context IS configured AND at least one pattern is found.
-            False if required context IS configured but NO patterns are found.
-        """
-        if metric_id not in self._compiled_required_context:
-            return True  # No required context for this metric - always matches
-
-        patterns, proximity_chars = self._compiled_required_context[metric_id]
-
-        # Define the search window around the match position
-        context_start = max(0, match_position - proximity_chars)
-        context_end = min(len(full_text), match_position + proximity_chars)
-        context = full_text[context_start:context_end]
-
-        # Check if ANY required context pattern matches
-        for pattern in patterns:
-            if pattern.search(context):
-                logger.debug(
-                    f"Required context found for {metric_id} at position {match_position}: "
-                    f"pattern '{pattern.pattern}' matched within {proximity_chars} chars"
-                )
-                return True
-
-        logger.debug(
-            f"Required context NOT found for {metric_id} at position {match_position}: "
-            f"no cohort/per-customer patterns within {proximity_chars} chars"
-        )
-        return False
-
     def find_all_keywords(self, text: str) -> list[KeywordMatch]:
         """
         Find all metric keywords in text.
@@ -529,7 +435,6 @@ class KeywordMatcher:
         text: str = "",
         segment_type: str | None = None,
         table_row_parser: Optional["TableRowParser"] = None,
-        check_required_context: bool = True,
     ) -> list[KeywordMatch]:
         """
         Find metric keywords within max_keyword_distance of a number.
@@ -564,9 +469,6 @@ class KeywordMatcher:
             text: Optional full text for context detection (L4 Option C)
             segment_type: Optional segment type for context detection (L4 Option C)
             table_row_parser: Optional TableRowParser for table row filtering
-            check_required_context: If True (default), filter out revenue synonym
-                metrics (GMV, TCV, etc.) that lack cohort or per-customer context.
-                Set to False to include all matches regardless of context.
 
         Returns:
             List of KeywordMatch objects within range (one per metric,
@@ -574,7 +476,6 @@ class KeywordMatcher:
         """
         # Phase 1: Collect all keywords within distance with their distances and directions
         # Store as (keyword, raw_distance, direction) for L4 multiplier application
-        # Also filter by required context for revenue synonym metrics
         #
         # FIX-5: For tables with row/cell structure, skip distance filter in Phase 1
         # and rely on Phase 2.75 (table row filtering) instead. This prevents
@@ -595,15 +496,6 @@ class KeywordMatcher:
             if not has_table_structure and dist > self.max_keyword_distance:
                 continue
 
-            # Check required context for context-gated metrics (GMV, TCV, etc.)
-            if check_required_context and not self._has_required_context(
-                kw.metric_id, kw.start, text
-            ):
-                logger.debug(
-                    f"Filtered keyword '{kw.keyword}' ({kw.metric_id}): "
-                    f"required cohort/per-customer context not present"
-                )
-                continue
             candidates_with_distance.append((kw, dist))
 
         if not candidates_with_distance:
@@ -633,18 +525,14 @@ class KeywordMatcher:
         # Phase 2.5: Apply sentence boundary constraints (P1.5 enhancement)
         if sentence_boundaries and self.respect_sentence_boundaries:
             # Find the sentence containing the number
-            number_sentence = self._get_boundary_at_position(
-                number.start, sentence_boundaries
-            )
+            number_sentence = self._get_boundary_at_position(number.start, sentence_boundaries)
 
             if number_sentence is not None:
                 # Filter to keywords in the same sentence as the number
                 same_sentence = [
                     (kw, dist)
                     for kw, dist in candidates_with_distance
-                    if self._is_in_same_boundary(
-                        kw.start, number_sentence, sentence_boundaries
-                    )
+                    if self._is_in_same_boundary(kw.start, number_sentence, sentence_boundaries)
                 ]
 
                 # Only filter if we have same-sentence candidates
@@ -721,14 +609,10 @@ class KeywordMatcher:
                             f"reduced {raw_distance:.1f} → {effective_distance:.1f}"
                         )
 
-                candidates_with_effective_distance.append(
-                    (kw, raw_distance, effective_distance)
-                )
+                candidates_with_effective_distance.append((kw, raw_distance, effective_distance))
 
             # Sort by (effective_distance, -length): closest first, then longest
-            candidates_with_effective_distance.sort(
-                key=lambda x: (x[2], -len(x[0].keyword))
-            )
+            candidates_with_effective_distance.sort(key=lambda x: (x[2], -len(x[0].keyword)))
         else:
             # Original behavior: sort by length only (longest first)
             # Still need to create tuples with effective distance for consistency
@@ -772,9 +656,7 @@ class KeywordMatcher:
             replace_index: int | None = None
 
             for i, accepted in enumerate(matches):
-                if self._keywords_overlap(kw, accepted) and self._is_substring_match(
-                    kw, accepted
-                ):
+                if self._keywords_overlap(kw, accepted) and self._is_substring_match(kw, accepted):
                     # Overlapping substring match found - compare lengths
                     if len(kw.keyword) > len(accepted.keyword):
                         # New keyword is longer (more specific) - replace accepted
@@ -892,9 +774,7 @@ class KeywordMatcher:
             # Overlapping
             return 0
 
-    def calculate_keyword_direction(
-        self, keyword_start: int, number_start: int
-    ) -> str:
+    def calculate_keyword_direction(self, keyword_start: int, number_start: int) -> str:
         """
         Calculate whether keyword appears before or after the number.
 
@@ -945,28 +825,30 @@ class KeywordMatcher:
 
         # Priority 1: Table context (strongest signal)
         if segment_type == "table" or self._is_in_table(number_position, boundaries):
-            return 'table'
+            return "table"
 
         # Priority 2: Parenthetical text (strong signal for clarifications)
         if self._is_in_parentheses(number_position, text):
-            return 'parenthetical'
+            return "parenthetical"
 
         # Priority 3: Bullet points (strong signal for structured lists)
         if self._is_in_bullet_point(number_position, boundaries):
-            return 'bullet'
+            return "bullet"
 
         # Priority 4: Copula verb pattern (moderate signal)
         if self._has_copula_verb_between(
             text, min(keyword_position, number_position), max(keyword_position, number_position)
         ):
-            return 'copula'
+            return "copula"
 
         # Priority 5: Prepositional phrase (moderate signal)
-        if keyword_direction == "after" and self._has_preposition_after(text, number_position, keyword_position):
-            return 'preposition'
+        if keyword_direction == "after" and self._has_preposition_after(
+            text, number_position, keyword_position
+        ):
+            return "preposition"
 
         # Default: no special context
-        return 'default'
+        return "default"
 
     def get_context_multiplier(
         self,
@@ -1012,12 +894,12 @@ class KeywordMatcher:
 
         # Map context type to multiplier
         context_multipliers = {
-            'table': self.multiplier_tables,
-            'parenthetical': self.multiplier_parenthetical,
-            'bullet': self.multiplier_bullet_points,
-            'copula': self.multiplier_copula_verb,
-            'preposition': self.multiplier_preposition,
-            'default': self.multiplier_default,
+            "table": self.multiplier_tables,
+            "parenthetical": self.multiplier_parenthetical,
+            "bullet": self.multiplier_bullet_points,
+            "copula": self.multiplier_copula_verb,
+            "preposition": self.multiplier_preposition,
+            "default": self.multiplier_default,
         }
 
         return context_multipliers.get(context_type, self.multiplier_default)
@@ -1040,9 +922,7 @@ class KeywordMatcher:
         # If more open than close, we're inside parentheses
         return open_count > 0
 
-    def _is_in_table(
-        self, position: int, boundaries: list["TextBoundary"] | None
-    ) -> bool:
+    def _is_in_table(self, position: int, boundaries: list["TextBoundary"] | None) -> bool:
         """
         Check if a position is in a table boundary.
 
@@ -1064,9 +944,7 @@ class KeywordMatcher:
         # Note: boundary_type might be "table" or have other indicators
         return getattr(boundary, "boundary_type", None) == "table"
 
-    def _is_in_bullet_point(
-        self, position: int, boundaries: list["TextBoundary"] | None
-    ) -> bool:
+    def _is_in_bullet_point(self, position: int, boundaries: list["TextBoundary"] | None) -> bool:
         """
         Check if a position is in a bullet point boundary.
 

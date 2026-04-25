@@ -36,7 +36,7 @@ Comprehensive false positive filters eliminate years (1990-2100) and date compon
 
 Metric keywords moved to `config/metric_keywords.yaml`:
 - Add/modify keyword patterns without code changes
-- YAML structure: patterns, exclusions, specific_patterns, required_context per metric
+- YAML structure: patterns, exclusions, specific_patterns per metric
 - YAML is the authoritative source of truth (no hardcoded fallback)
 - Environment override: `METRIC_KEYWORDS_CONFIG=/path/to/custom.yaml`
 - Fails fast with clear error if YAML cannot be loaded
@@ -59,17 +59,9 @@ Automated detection of cohort analysis charts in filings:
 
 ---
 
-### 10. Context-Gated Revenue Synonym Metrics (2025-12-30)
+### 10. Context-Gated Revenue Synonym Metrics (2025-12-30; retired 2026-04-24)
 
-Revenue synonyms require cohort/per-customer context:
-- GMV, TCV, ACV, Bookings, Billings only generate review candidates when context is present
-- Context keywords: cohort, vintage, per customer, per user, by account, customer-level, etc.
-- Proximity: context must appear within 1500 chars of keyword match
-- ARR/MRR NOT context-gated (inherently customer-related: "recurring" implies subscriptions)
-- Classification preserved: revenue synonyms still contribute to segment enrichment/richness scoring
-- Configuration: `required_context` in `config/metric_keywords.yaml` with YAML anchor sharing
-
-**Implementation**: `src/review/candidate_generator.py`, `config/metric_keywords.yaml`
+Revenue synonyms (GMV, TCV, ACV, Bookings, Billings) used to require cohort/per-customer context within 1500 chars of the keyword match (`required_context` in `config/metric_keywords.yaml`). The mechanism was retired when all five metrics were deprecated outright (2026-01-07) — the gate had no remaining active subscribers. ARR/MRR were also deprecated in the same wave. See known-issue #5 (archived) and the retirement PR for history.
 
 ---
 
