@@ -70,15 +70,30 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # "x64" naming convention. arm64 stays "arm64" in both.
 # Binary lands at /home/appuser/.local/bin/claude; PATH is prepended below so
 # `scripts/run_nightly_sweep.sh` (runs as appuser) can resolve it.
-# To bump: update CLAUDE_VERSION to the new tag (without the leading "v").
+#
+# SHA-256 verification: hashes are taken from the published SHASUMS256.txt at
+# https://github.com/anthropics/claude-code/releases/download/v<VERSION>/SHASUMS256.txt
+# To bump: update CLAUDE_VERSION and both CLAUDE_SHA256_* ARGs below.
+# Fetch updated hashes with:
+#   curl -fsSL https://github.com/anthropics/claude-code/releases/download/v<VERSION>/SHASUMS256.txt
 ARG CLAUDE_VERSION=2.1.119
+# SHA-256 of claude-linux-x64.tar.gz for v2.1.119 (from SHASUMS256.txt)
+ARG CLAUDE_SHA256_X64=0fb5e308c067783997937cef72d020948a863c3838b22251947a110f696d47e8
+# SHA-256 of claude-linux-arm64.tar.gz for v2.1.119 (from SHASUMS256.txt)
+ARG CLAUDE_SHA256_ARM64=866de49f3a308d3f199772f22df3c2b262ee0350353127e0b0d82e86dfd28503
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 RUN ARCH=$(dpkg --print-architecture) \
     && CLAUDE_ARCH=$([ "$ARCH" = "amd64" ] && echo "x64" || echo "$ARCH") \
+    && CLAUDE_SHA256=$([ "$ARCH" = "amd64" ] && echo "${CLAUDE_SHA256_X64}" || echo "${CLAUDE_SHA256_ARM64}") \
     && mkdir -p /home/appuser/.local/bin \
     && curl -fsSL \
         "https://github.com/anthropics/claude-code/releases/download/v${CLAUDE_VERSION}/claude-linux-${CLAUDE_ARCH}.tar.gz" \
-        | tar -xz -C /home/appuser/.local/bin/ \
+        -o /tmp/claude.tar.gz \
+    && actual=$(sha256sum /tmp/claude.tar.gz | cut -d' ' -f1) \
+    && [ "$actual" = "$CLAUDE_SHA256" ] \
+        || (echo "claude tarball SHA-256 mismatch: expected $CLAUDE_SHA256 got $actual" && exit 1) \
+    && tar -xz -C /home/appuser/.local/bin/ -f /tmp/claude.tar.gz \
+    && rm /tmp/claude.tar.gz \
     && chmod +x /home/appuser/.local/bin/claude \
     && chown -R appuser:appuser /home/appuser/.local
 
