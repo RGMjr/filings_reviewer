@@ -2,8 +2,12 @@
 Unit tests for MetricPresenceStage.
 
 Contract under the text-presence pivot: produce one MetricPresence record
-per (doc, metric_id) with max score across contributing signals, union of
-evidence segment IDs, and fact_id list for facts that contributed.
+per (doc, metric_id) with max score across contributing TEXT signals
+(facts + definitions), union of evidence segment IDs, and fact_id list
+for facts that contributed. Chart-derived presence is owned by the image
+pipeline (`v2_image_assets.detected_metrics` / `v2_image_metric_presence`)
+and is NOT folded into v2_text_metric_presence — see
+docs/operations/text-pipeline-presence-pivot-plan.md (PR5).
 """
 
 from __future__ import annotations
@@ -139,23 +143,23 @@ class TestMetricPresenceStage:
         assert len(ctx.presences) == 1
         assert ctx.presences[0].score == 0.5
 
-    def test_chart_detected_metrics_contribute(self) -> None:
+    def test_chart_detected_metrics_do_not_contribute(self) -> None:
+        # Per PR5 (text-presence pivot): chart-derived presence is owned by
+        # the image pipeline and lives in v2_image_assets.detected_metrics
+        # (today) / v2_image_metric_presence (Wave 2). MetricPresenceStage
+        # only reads text-side signals; a chart-only image must not produce
+        # a v2_text_metric_presence row.
         img = _chart_image([("cm_revenue_by_cohort", 0.85)])
         ctx = _make_context(images=[img])
 
         MetricPresenceStage().process(ctx)
 
-        assert len(ctx.presences) == 1
-        p = ctx.presences[0]
-        assert p.canonical_metric_id == "cm_revenue_by_cohort"
-        assert p.score == 0.85
-        assert p.advisory_value_count == 0  # chart-only, no text facts
-        assert p.advisory_fact_ids == []
-        assert p.evidence_segment_ids == []  # chart evidence lives on image
-        assert p.detected_at_stage == PipelineStage.CHART_FACT_BRIDGE.value
+        assert ctx.presences == []
 
-    def test_fact_and_chart_merge_into_single_presence(self) -> None:
-        # Chart detects metric at 0.7; text fact independently binds at 0.9.
+    def test_chart_does_not_affect_fact_presence(self) -> None:
+        # A text fact for the same metric a chart also detects — the chart
+        # contribution is ignored; the resulting presence record reflects
+        # only the fact's score, fact_ids, and evidence segments.
         fact = _fact("cm_revenue_by_cohort", confidence=0.9, segment_id="seg-1")
         img = _chart_image([("cm_revenue_by_cohort", 0.7)])
         ctx = _make_context(dedup=[fact], images=[img])
@@ -164,11 +168,10 @@ class TestMetricPresenceStage:
 
         assert len(ctx.presences) == 1
         p = ctx.presences[0]
-        assert p.score == 0.9  # max of fact + chart
+        assert p.score == 0.9  # fact only; chart 0.7 ignored
         assert p.advisory_value_count == 1
         assert p.advisory_fact_ids == [fact.fact_id]
         assert p.evidence_segment_ids == ["seg-1"]
-        # detected_at_stage comes from whoever seeded the accumulator first
         assert p.detected_at_stage == PipelineStage.FACT_CONSTRUCTION.value
 
     def test_definition_alone_emits_presence_at_floor_score(self) -> None:
@@ -233,15 +236,24 @@ class TestMetricPresenceStage:
         assert [p.canonical_metric_id for p in ctx.presences] == ["cm_real"]
 
     def test_stage_result_metadata_has_counters(self) -> None:
+        # One fact-backed metric, one definition-only metric. Chart image
+        # carries detected_metrics that should NOT be counted by this stage
+        # (chart presence lives on the image pipeline).
         fact = _fact("cm_a", confidence=0.8, segment_id="seg")
-        img = _chart_image([("cm_b", 0.6)])
-        ctx = _make_context(dedup=[fact], images=[img])
+        defn = MetricDefinition(
+            canonical_metric_id="cm_b",
+            doc_id="42",
+            definition_text="cm_b is...",
+            definition_segment_id="seg-def",
+        )
+        img = _chart_image([("cm_c", 0.6)])  # ignored by MetricPresenceStage
+        ctx = _make_context(dedup=[fact], definitions=[defn], images=[img])
 
         result = MetricPresenceStage().process(ctx)
 
         assert result.success
         assert result.stage == PipelineStage.METRIC_PRESENCE
-        assert result.items_output == 2
+        assert result.items_output == 2  # cm_a + cm_b only; cm_c ignored
         assert result.metadata["metrics_present"] == 2
         assert result.metadata["fact_contributors"] == 1
-        assert result.metadata["chart_only_presences"] == 1
+        assert result.metadata["definition_only_presences"] == 1

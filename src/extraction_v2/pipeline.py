@@ -529,10 +529,11 @@ class V2Pipeline:
         # Stage 11: Validation & Review Routing
         self._stages.append((PipelineStage.VALIDATION, ValidationStage()))
 
-        # Stage 12: Metric Presence — final stage. Aggregates dedup'd facts,
-        # chart detected_metrics, and definitions into per-(doc, metric)
-        # presence records. Primary scoring surface under the text-presence
-        # pivot (see docs/operations/text-pipeline-presence-pivot-plan.md).
+        # Stage 12: Metric Presence — final stage. Aggregates dedup'd facts
+        # and definitions into per-(doc, metric) text-presence records
+        # (v2_text_metric_presence). Chart-derived presence is owned by the
+        # image pipeline; unified doc-grain presence is exposed via
+        # v_doc_metric_presence. See docs/operations/text-pipeline-presence-pivot-plan.md.
         self._stages.append((PipelineStage.METRIC_PRESENCE, MetricPresenceStage()))
 
     def process(
