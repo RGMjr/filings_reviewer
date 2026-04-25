@@ -292,6 +292,30 @@ def _process_filing_worker(
                 "retried": False,
             }
 
+        # Pipeline-level failure (legacy-101): a critical stage hit V2FatalError
+        # or returned success=False. Without this guard, an empty PipelineResult
+        # would persist trivially (0 rows succeed), the filing would be marked
+        # 'extracted' with zero facts, and the worker would report success.
+        if not result.success:
+            try:
+                _db = DatabaseAdapter(db_url)
+                _db.execute(
+                    "UPDATE filings SET processing_status = 'extraction_failed', updated_at = now()"
+                    " WHERE filing_id = %(filing_id)s",
+                    {"filing_id": filing_id},
+                )
+            except Exception:
+                pass
+            return {
+                "filing_id": filing_id,
+                "success": False,
+                "fact_count": 0,
+                "definition_count": 0,
+                "error": result.error_message or "pipeline reported failure",
+                "duration_ms": duration_ms,
+                "retried": False,
+            }
+
         # Persist results
         db = DatabaseAdapter(db_url)
         adapter = V2PersistenceAdapter(db)
