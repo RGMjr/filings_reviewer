@@ -47,9 +47,17 @@ test.describe('Detected Metrics card — rendering', () => {
     await expect(page.locator('#detected-metrics-card')).toBeVisible();
   });
 
-  test('card is NOT rendered when detected_metrics is empty', async ({ page }) => {
-    await page.goto('/images-tab'); // default pending image carries detected_metrics=[]
-    await expect(page.locator('#detected-metrics-card')).toHaveCount(0);
+  test('card IS rendered when detected_metrics is empty (sql/47 redesign)', async ({ page }) => {
+    // Per the sql/47 redesign, the detected-metrics card is the sole reviewer
+    // surface for image review and renders for every pending/reviewed image,
+    // even when the pipeline detected no metrics — the reviewer can still
+    // image-skip or Add a missed metric.
+    await page.goto('/images-tab');
+    await expect(page.locator('#detected-metrics-card')).toBeVisible();
+    // No detected rows when detected_metrics is empty.
+    await expect(page.locator('#detected-metrics-list .detected-metric-row')).toHaveCount(0);
+    // "Add metric the classifier missed" stays available.
+    await expect(page.locator('#btn-add-missed-detected-metric')).toBeVisible();
   });
 
   test('card header shows detected count badge', async ({ page }) => {
