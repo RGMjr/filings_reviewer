@@ -128,16 +128,23 @@ Then commit `data/gold_standard/v2_baseline.json` separately with message `chore
 
 ## 7. Reading V2 Validator Output
 
-After each validator run (`v2_validator.py`), output includes a Tier breakdown followed by a chart confirmation line:
+After each validator run (`v2_validator.py`), output includes two tier breakdowns plus a chart confirmation line:
 
 ```
-Tier 1 recall: ...
-Tier 2 recall: ...
+==== METRIC TIER BREAKDOWN ====
+  Tier 1 (must-not-miss):  P=...  R=...  F1=...   (informational under PR2)
+  Tier 2 (nice-to-have):   P=...  R=...  F1=...   (informational)
 
-CHART cross-source confirmation: m/n (pct%)
+==== TEXT-PRESENCE TIER BREAKDOWN (PR2 Tier-1 gate surface) ====
+  Tier 1 (must-not-miss) [GATE]:           P=...  R=...  F1=...
+  Tier 2 (nice-to-have) [informational]:   P=...  R=...  F1=...
+
+CHART cross-source confirmation: m/n (pct%)   (informational)
 ```
 
-The `m/n` counts chart facts that were independently confirmed by a second source type (e.g., a TEXT or TABLE fact agreeing on the same metric+period+value slot). `pct%` is `m/n * 100`.
+**The PR2 gate** keys on `Tier 1 [GATE] R=...` (presence-recall). `--fail-on-regression` exits 1 only when that number drops below `tier1_presence_recall` in `data/gold_standard/v2_baseline.json` minus tolerance. All other lines (fact-level Tier 1/2, chart cross-source confirmation, per-company drops) are informational and will be reported in the comparison summary with an `[informational]` prefix but will not block the commit. See `docs/operations/text-pipeline-presence-pivot-plan.md` for the rationale.
+
+The `m/n` chart cross-source counts chart facts independently confirmed by a second source type (TEXT or TABLE fact agreeing on the same metric+period+value slot). `pct%` is `m/n * 100`.
 
 A soft `WARNING` is printed if `pct < 30%`. This warning is not a hard failure and will not block a baseline update, but it indicates that the chart bridge is producing few cross-confirmed facts — which may signal chart OCR quality issues or a gap in the text/table extraction path for those metrics. Discuss with the team before updating the baseline when this warning appears.
 

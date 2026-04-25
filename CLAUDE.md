@@ -67,7 +67,8 @@ Metrics are classified into importance tiers based on analytical value. These ti
 - All other `cm_*` metrics (customer counts, MAU/DAU, ARPU, AOV, etc.)
 
 **Rules:**
-- Tier 1 regression in gold standard validation = blocker, must fix before the PR can merge (enforced locally by the pre-commit hook, again in CI on the PR)
+- **Tier 1 presence-recall regression = blocker** under the text-presence pivot (PR #182, PR2 — `docs/operations/text-pipeline-presence-pivot-plan.md`). Enforced by `compare_to_baseline` in `src/gold_standard/baseline.py`, fired by `python3 -m src.gold_standard.v2_validator --fail-on-regression` (local pre-commit hook + CI). The gate uses `tier1_presence_recall` on `data/gold_standard/v2_baseline.json`.
+- Tier-1 fact-recall + per-company fact-recall + chart presence_f1 are still computed and printed but are **informational only** — they no longer set `has_regression`. The pivot's primary scoring surface is per-(document, metric) presence detection; fact emission is advisory evidence.
 - Tier 2 regression = acceptable trade-off if Tier 1 improves; note in PR description
 - Extraction improvements (keywords, FP rules, value binding) should prioritize Tier 1 recall gaps first
 - Gold standard coverage expansion should target Tier 1 metrics with low coverage

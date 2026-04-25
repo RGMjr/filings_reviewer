@@ -153,7 +153,10 @@ alongside `chart_only=True` to explicitly accept that loss.
 When improving keywords, FP rules, or value binding, prioritize **Tier 1** metrics. Tier definitions live in `config/metric_keywords.yaml` (`tier:` field). See CLAUDE.md for the full tier listing.
 
 **Tier 1 measurement under the chart-presence pivot (#86, shipped 2026-04-23):**
-Chart-native metrics are measured via **presence-F1** on `v2_image_assets.detected_metrics` (see `docs/GOLD_STANDARD_SPECIFICATION.md` and PR #150). Per-value value-F1 on chart rows is no longer meaningful — the pipeline does not emit per-value chart facts. Text/table-sourced facts continue to be measured via value-F1. Text-pipeline Tier 1 recall work concluded 2026-04-16 (commits dd5c90a, 09a8f64); chart-pipeline gains now accrue via presence-F1 and reviewer confirmation throughput.
+Chart-native metrics are measured via **presence-F1** on `v2_image_assets.detected_metrics` (see `docs/GOLD_STANDARD_SPECIFICATION.md` and PR #150). Per-value value-F1 on chart rows is no longer meaningful — the pipeline does not emit per-value chart facts. Text/table-sourced facts continue to be measured via value-F1.
+
+**Tier 1 measurement under the text-presence pivot (PR2, this PR):**
+The Tier-1 regression gate now keys on **`tier1_presence_recall`** in `data/gold_standard/v2_baseline.json`, derived from `MetricPresenceStage` output (`PipelineResult.presences` — text + chart + definitions, aggregated). Fact-level Tier-1 R/P/F1, per-company drops, and chart `presence_f1` are computed and printed as `[informational]` but no longer set `has_regression`. See `docs/operations/text-pipeline-presence-pivot-plan.md` for the full pivot plan.
 
 **Known chart-pipeline considerations (post-pivot):**
 - **Chart OCR JSON quality** — `VisionClient.analyze_image()` passes `response_format={"type": "json_object"}` so gpt-4o returns valid JSON; `_parse_chart_json` has a truncation-repair fallback. Malformed `chart_data` now degrades the *presence signal* (classifier may miss a metric), not downstream per-value correctness.

@@ -34,21 +34,24 @@ Non-zero exit indicates a regression.
 
 ### 3. If Regression Detected
 
-Check the **tier breakdown** in validation output to determine severity:
+The validator now prints two tier breakdowns (under the text-presence pivot, PR2):
 
-**Tier 1 regression (must-not-miss metrics):** Blocker. Fix before committing.
-- Investigate root cause (missed keywords, FP rule too aggressive, value binding gap)
-- Do not trade Tier 1 recall for Tier 2 improvements
+- `==== METRIC TIER BREAKDOWN ====` — fact-level P/R/F1 per tier (informational).
+- `==== TEXT-PRESENCE TIER BREAKDOWN (PR2 Tier-1 gate surface) ====` — presence-recall per tier; Tier 1 labelled `[GATE]`, Tier 2 `[informational]`.
 
-**Tier 2 regression (nice-to-have metrics):** Acceptable if Tier 1 improves or holds.
-- Document the trade-off rationale in commit message
-- No need to fix unless Tier 2 drop is severe (>5pp F1)
+**Tier 1 presence-recall regression:** Blocker. The gate fires only on this metric. Fix before committing.
+- Investigate root cause: a Tier-1 metric that was previously surfaced via `MetricPresenceStage` is no longer being surfaced. Check (a) keyword coverage in `config/metric_keywords.yaml`, (b) whether candidate-generation produces any signal for that metric, (c) whether `ChartFactBridgeStage` is contributing presence for chart-only metrics, (d) whether definitions for that metric got dropped.
+- Do not trade Tier 1 presence for Tier 2 improvements.
 
-**Mixed regression:** If Tier 1 improves but Tier 2 regresses, this is generally acceptable. Note the trade-off in the commit message.
+**Tier 1 fact-recall regression (informational):** No longer gates. Reported with `[informational]` label. Worth investigating if downstream fidelity matters, but acceptable for fact numbers to drift while presence holds.
 
-For any regression:
-- Check if trade-off is intentional (precision vs recall)
-- If unintentional on Tier 1, fix before committing
+**Tier 2 regression (presence or fact):** Acceptable if Tier 1 holds. Document the trade-off in the commit message; no fix required unless Tier-2 presence-recall drop exceeds ~5pp.
+
+**Mixed regression:** Tier 1 presence holding + everything else dropping is acceptable under PR2. The pivot intentionally accepts fact-level drift in favor of presence stability.
+
+For any Tier-1 presence regression:
+- Check if trade-off is intentional (precision vs recall on the presence side)
+- If unintentional, fix before committing
 
 ### 4. Update V2 Baseline (after intentional changes)
 ```bash
@@ -76,10 +79,10 @@ python3 -m src.gold_standard.v2_validator --limit 3 --workers 1
 
 ## Thresholds
 
-- Regression tolerance: 1% (configurable via `--tolerance`)
-- Validator fails if any metric drops below baseline - tolerance
-- **Tier-aware policy:** Tier 1 regressions are blockers; Tier 2 regressions are acceptable trade-offs (see "If Regression Detected" above)
-- Tier definitions: `config/metric_keywords.yaml` (`tier:` field per metric)
+- Regression tolerance: 0% by default (zero-tolerance on Tier-1 presence-recall under PR2 — `compare_to_baseline` accepts a `tolerance` arg, but `--fail-on-regression` does not currently expose it).
+- **Gate metric (PR2):** `tier1_presence_recall` from the regenerated `data/gold_standard/v2_baseline.json`. Validator fails if `current.tier1_presence_recall - baseline.tier1_presence_recall < -tolerance`.
+- **Tier-aware policy:** Tier 1 presence-recall regression is the sole blocker; everything else (fact-level deltas, per-company drops, chart presence_f1, Tier-2 presence-recall) is informational.
+- Tier definitions: `config/metric_keywords.yaml` (`tier:` field per metric).
 
 ## Transcript Gold Standard
 

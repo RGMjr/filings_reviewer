@@ -126,12 +126,8 @@ class TestSerializationRoundTrip:
             description=None,
             overall=MetricScores(precision=0.5, recall=0.5, f1=0.5),
             by_company={
-                "O'Brien & Associates, Inc.": MetricScores(
-                    precision=0.75, recall=0.80, f1=0.77
-                ),
-                'Company with "Quotes"': MetricScores(
-                    precision=0.65, recall=0.70, f1=0.67
-                ),
+                "O'Brien & Associates, Inc.": MetricScores(precision=0.75, recall=0.80, f1=0.77),
+                'Company with "Quotes"': MetricScores(precision=0.65, recall=0.70, f1=0.67),
                 "Société Générale": MetricScores(precision=0.85, recall=0.90, f1=0.87),
             },
         )
@@ -204,7 +200,7 @@ class TestComparisonLogic:
         assert result.regressed_metrics == []
 
     def test_regression_detected(self) -> None:
-        """Negative deltas and regression flag when metrics drop."""
+        """Fact-level deltas are reported but informational under PR2 (no longer gate)."""
         baseline = BaselineMetrics(
             baseline_date="2024-12-01",
             description=None,
@@ -223,10 +219,13 @@ class TestComparisonLogic:
         assert result.precision_delta == pytest.approx(-0.10)
         assert result.recall_delta == pytest.approx(-0.10)
         assert result.f1_delta == pytest.approx(-0.10)
-        assert result.has_regression
-        assert "precision" in result.regressed_metrics
-        assert "recall" in result.regressed_metrics
-        assert "f1" in result.regressed_metrics
+        # PR2: fact-level drops are reported as informational, do NOT gate.
+        assert not result.has_regression
+        assert any("precision" in m for m in result.regressed_metrics)
+        assert any("recall" in m for m in result.regressed_metrics)
+        assert any("f1" in m for m in result.regressed_metrics)
+        # All entries should carry the [informational] label since no Tier-1 fields set.
+        assert all("[informational]" in m for m in result.regressed_metrics)
 
     def test_no_change_zero_delta(self) -> None:
         """Zero deltas when metrics are unchanged."""
@@ -273,7 +272,7 @@ class TestComparisonLogic:
         assert result.regressed_metrics == []
 
     def test_very_small_deltas(self) -> None:
-        """Very small deltas (0.001) are detected correctly."""
+        """Very small deltas (0.001) are detected correctly (informational under PR2)."""
         baseline = BaselineMetrics(
             baseline_date="2024-12-01",
             description=None,
@@ -292,12 +291,12 @@ class TestComparisonLogic:
         assert result.precision_delta == pytest.approx(0.001)
         assert result.recall_delta == pytest.approx(0.001)
         assert result.f1_delta == pytest.approx(-0.001)
-        # F1 dropped, so it's a regression
-        assert result.has_regression
-        assert "f1" in result.regressed_metrics
+        # F1 dropped — reported as informational, does NOT gate under PR2.
+        assert not result.has_regression
+        assert any("f1" in m and "[informational]" in m for m in result.regressed_metrics)
 
     def test_company_regression_detected(self) -> None:
-        """Per-company regression is detected."""
+        """Per-company regression is reported but informational under PR2."""
         baseline = BaselineMetrics(
             baseline_date="2024-12-01",
             description=None,
@@ -319,12 +318,13 @@ class TestComparisonLogic:
 
         result = compare_to_baseline(current, baseline)
 
-        assert result.has_regression
+        # Per-company drops are tracked but no longer gate under PR2.
+        assert not result.has_regression
         assert "Bad Corp" in result.regressed_companies
         assert "Good Corp" not in result.regressed_companies
 
     def test_partial_metric_regression(self) -> None:
-        """Only some metrics regressing is detected correctly."""
+        """Only some metrics regressing — reported informational under PR2."""
         baseline = BaselineMetrics(
             baseline_date="2024-12-01",
             description=None,
@@ -334,9 +334,7 @@ class TestComparisonLogic:
         current = BaselineMetrics(
             baseline_date="2024-12-31",
             description=None,
-            overall=MetricScores(
-                precision=0.85, recall=0.60, f1=0.70
-            ),  # precision up, recall down
+            overall=MetricScores(precision=0.85, recall=0.60, f1=0.70),  # precision up, recall down
             by_company={},
         )
 
@@ -344,9 +342,9 @@ class TestComparisonLogic:
 
         assert result.precision_delta == pytest.approx(0.05)
         assert result.recall_delta == pytest.approx(-0.10)
-        assert result.has_regression
-        assert "recall" in result.regressed_metrics
-        assert "precision" not in result.regressed_metrics
+        assert not result.has_regression
+        assert any("recall" in m for m in result.regressed_metrics)
+        assert not any("precision" in m for m in result.regressed_metrics)
 
 
 class TestErrorHandling:
@@ -484,3 +482,173 @@ class TestComparisonResultSummary:
         assert "REGRESSION DETECTED" in summary
         assert "precision" in summary
         assert "Bad Corp" in summary
+
+
+class TestTier1PresenceGate:
+    """PR2 — Tier-1 presence-recall regression gate.
+
+    Replaces the pre-PR2 fact-level gate. Only Tier-1 presence-recall drops
+    set ``has_regression=True``; everything else (overall fact P/R/F1, per-
+    company fact deltas, presence_f1, Tier-2 presence-recall) is informational.
+    """
+
+    @staticmethod
+    def _baseline(
+        tier1: float | None = None,
+        tier2: float | None = None,
+        presence_f1: float | None = None,
+        precision: float = 0.6,
+        recall: float = 0.6,
+        f1: float = 0.6,
+    ) -> BaselineMetrics:
+        return BaselineMetrics(
+            baseline_date="2026-04-25T00:00:00+00:00",
+            description=None,
+            overall=MetricScores(precision=precision, recall=recall, f1=f1),
+            by_company={},
+            tier1_presence_recall=tier1,
+            tier2_presence_recall=tier2,
+            presence_f1=presence_f1,
+        )
+
+    def test_tier1_drop_blocks(self) -> None:
+        """Tier-1 presence-recall drop is the only thing that gates."""
+        result = compare_to_baseline(
+            self._baseline(tier1=0.70, tier2=0.50),
+            self._baseline(tier1=0.75, tier2=0.50),
+        )
+        assert result.has_regression
+        assert result.tier1_presence_recall_delta == pytest.approx(-0.05)
+        assert any("[GATE]" in m and "tier1_presence_recall" in m for m in result.regressed_metrics)
+
+    def test_tier2_drop_does_not_block(self) -> None:
+        """Tier-2 drops are reported as informational, never gate."""
+        result = compare_to_baseline(
+            self._baseline(tier1=0.70, tier2=0.40),
+            self._baseline(tier1=0.70, tier2=0.50),
+        )
+        assert not result.has_regression
+        assert result.tier2_presence_recall_delta == pytest.approx(-0.10)
+        assert any(
+            "[informational]" in m and "tier2_presence_recall" in m
+            for m in result.regressed_metrics
+        )
+
+    def test_fact_level_drop_does_not_block(self) -> None:
+        """Pre-PR2 gate metrics (overall P/R/F1) are now informational."""
+        result = compare_to_baseline(
+            self._baseline(tier1=0.70, precision=0.4, recall=0.4, f1=0.4),
+            self._baseline(tier1=0.70, precision=0.6, recall=0.6, f1=0.6),
+        )
+        assert not result.has_regression
+        # Fact-level deltas still reported.
+        assert all("[informational]" in m for m in result.regressed_metrics)
+
+    def test_presence_f1_drop_does_not_block(self) -> None:
+        """Chart-presence F1 drop is informational under PR2."""
+        result = compare_to_baseline(
+            self._baseline(tier1=0.70, presence_f1=0.40),
+            self._baseline(tier1=0.70, presence_f1=0.60),
+        )
+        assert not result.has_regression
+        assert result.presence_f1_delta == pytest.approx(-0.20)
+
+    def test_pre_pr2_baseline_skips_gate(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Loading a baseline without tier1 field skips the gate + warns."""
+        result = compare_to_baseline(
+            self._baseline(tier1=0.70),
+            self._baseline(tier1=None),  # pre-PR2 baseline
+        )
+        assert not result.has_regression
+        assert result.tier1_presence_recall_delta is None
+        assert any(
+            "Tier-1 presence-recall not present" in record.message for record in caplog.records
+        )
+
+    def test_tier1_unchanged_with_other_drops_no_block(self) -> None:
+        """When Tier-1 holds, drops elsewhere are informational only."""
+        result = compare_to_baseline(
+            self._baseline(tier1=0.70, tier2=0.40, presence_f1=0.30, precision=0.4),
+            self._baseline(tier1=0.70, tier2=0.50, presence_f1=0.50, precision=0.6),
+        )
+        assert not result.has_regression
+        assert any("tier2_presence_recall" in m for m in result.regressed_metrics)
+        assert any("presence_f1" in m for m in result.regressed_metrics)
+        assert any("precision" in m for m in result.regressed_metrics)
+
+    def test_tier1_drop_with_other_metrics_still_blocks(self) -> None:
+        """Tier-1 drop blocks even if everything else also dropped (mixed regression)."""
+        result = compare_to_baseline(
+            self._baseline(tier1=0.50, tier2=0.30, precision=0.4),
+            self._baseline(tier1=0.70, tier2=0.50, precision=0.6),
+        )
+        assert result.has_regression
+        # Tier-1 entry should appear first in regressed_metrics (gate marker).
+        assert result.regressed_metrics[0].startswith("[GATE]")
+        assert "tier1_presence_recall" in result.regressed_metrics[0]
+
+
+class TestBaselineMetricsTier1Fields:
+    """PR2 — Tier-1/2 presence-recall round-trip + backwards compat."""
+
+    def test_round_trip_with_tier_fields(self) -> None:
+        b = BaselineMetrics(
+            baseline_date="2026-04-25T00:00:00+00:00",
+            description="PR2 test",
+            overall=MetricScores(precision=0.5, recall=0.5, f1=0.5),
+            by_company={},
+            tier1_presence_recall=0.72,
+            tier2_presence_recall=0.41,
+        )
+        d = b.to_dict()
+        assert d["tier1_presence_recall"] == 0.72
+        assert d["tier2_presence_recall"] == 0.41
+        b2 = BaselineMetrics.from_dict(d)
+        assert b2.tier1_presence_recall == 0.72
+        assert b2.tier2_presence_recall == 0.41
+
+    def test_none_tier_fields_omitted_from_dict(self) -> None:
+        """Pre-PR2 baselines should not gain a serialized null field."""
+        b = BaselineMetrics(
+            baseline_date="2026-04-25T00:00:00+00:00",
+            description=None,
+            overall=MetricScores(precision=0.5, recall=0.5, f1=0.5),
+            by_company={},
+        )
+        d = b.to_dict()
+        assert "tier1_presence_recall" not in d
+        assert "tier2_presence_recall" not in d
+
+    def test_load_pre_pr2_baseline_json(self) -> None:
+        """A baseline JSON predating PR2 must load cleanly with None tier fields."""
+        legacy_json = {
+            "baseline_date": "2026-04-20T00:00:00+00:00",
+            "description": "pre-PR2",
+            "overall": {"precision": 0.65, "recall": 0.55, "f1": 0.60},
+            "by_company": {
+                "Acme, Inc.": {"precision": 0.7, "recall": 0.5, "f1": 0.58},
+            },
+        }
+        b = BaselineMetrics.from_dict(legacy_json)
+        assert b.tier1_presence_recall is None
+        assert b.tier2_presence_recall is None
+
+    def test_save_load_round_trip_via_disk(self) -> None:
+        """to_dict / from_dict via JSON file."""
+        b = BaselineMetrics(
+            baseline_date="2026-04-25T00:00:00+00:00",
+            description="disk round-trip",
+            overall=MetricScores(precision=0.6, recall=0.7, f1=0.65),
+            by_company={"Foo Co.": MetricScores(precision=0.5, recall=0.5, f1=0.5)},
+            tier1_presence_recall=0.81,
+            tier2_presence_recall=0.62,
+        )
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "baseline.json"
+            save_baseline(b, p)
+            loaded = load_baseline(p)
+            assert loaded.tier1_presence_recall == 0.81
+            assert loaded.tier2_presence_recall == 0.62
+            # Verify JSON shape too
+            d = json.loads(p.read_text())
+            assert d["tier1_presence_recall"] == 0.81

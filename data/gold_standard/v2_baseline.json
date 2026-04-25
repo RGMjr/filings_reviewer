@@ -1,10 +1,10 @@
 {
-  "baseline_date": "2026-04-24T02:46:34.842851+00:00",
-  "description": "Post-#158 cohort-pivot cleanup drift: recall +12%, F1 +7%, Slack precision -0.87%. Accepted as new truth before Leg B lands.",
+  "baseline_date": "2026-04-25T16:30:38.275531+00:00",
+  "description": "PR2 — flip Tier-1 gate to text-presence-recall. Tier-1 presence-recall blocker; fact-level + presence_f1 + per-company demoted to informational. Captures post-#182 (text-presence pivot) and post-#192 (chart-fact promotion) state.",
   "overall": {
-    "precision": 0.6593886462882096,
-    "recall": 0.5807692307692308,
-    "f1": 0.6175869120654397
+    "precision": 0.6507936507936508,
+    "recall": 0.3025830258302583,
+    "f1": 0.41309823677581864
   },
   "by_company": {
     "Chewy, Inc.": {
@@ -18,9 +18,9 @@
       "f1": 0.45454545454545453
     },
     "Farfetch Limited": {
-      "precision": 0.5925925925925926,
-      "recall": 1.0,
-      "f1": 0.7441860465116279
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
     },
     "Flywire Corp": {
       "precision": 1.0,
@@ -58,14 +58,14 @@
       "f1": 0.4444444444444445
     },
     "Slack Technologies": {
-      "precision": 0.868421052631579,
-      "recall": 0.9705882352941176,
-      "f1": 0.9166666666666667
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
     },
     "Slack Technologies, Inc.": {
-      "precision": 0.5263157894736842,
-      "recall": 0.9090909090909091,
-      "f1": 0.6666666666666666
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
     },
     "Snowflake Inc": {
       "precision": 0.7586206896551724,
@@ -82,5 +82,7 @@
       "recall": 0.3333333333333333,
       "f1": 0.4736842105263157
     }
-  }
+  },
+  "tier1_presence_recall": 0.8529411764705882,
+  "tier2_presence_recall": 0.9130434782608695
 }

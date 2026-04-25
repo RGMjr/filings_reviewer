@@ -1108,6 +1108,103 @@ class TestComputeMetrics:
         assert metrics.f1 == pytest.approx(expected_f1)
 
 
+class TestComputeMetricsPresence:
+    """PR2 — text-presence aggregation in compute_metrics().
+
+    Source signal is `metric_presence_*_by_metric` populated by
+    validate_filing(). Tests use fabricated ValidationResult instances
+    to avoid running the full pipeline.
+    """
+
+    @pytest.fixture()
+    def validator(self) -> V2GoldStandardValidator:
+        with patch.object(V2GoldStandardValidator, "__init__", lambda self: None):
+            v = V2GoldStandardValidator.__new__(V2GoldStandardValidator)
+            return v
+
+    def _vr(
+        self,
+        company: str,
+        tp: dict[str, int] | None = None,
+        fp: dict[str, int] | None = None,
+        fn: dict[str, int] | None = None,
+    ) -> ValidationResult:
+        tp = tp or {}
+        fp = fp or {}
+        fn = fn or {}
+        return ValidationResult(
+            company_name=company,
+            filing_path=f"{company}.html",
+            total_expected=0,
+            matched=0,
+            missed=0,
+            extra=0,
+            metric_presence_tp=sum(tp.values()),
+            metric_presence_fp=sum(fp.values()),
+            metric_presence_fn=sum(fn.values()),
+            metric_presence_tp_by_metric=dict(tp),
+            metric_presence_fp_by_metric=dict(fp),
+            metric_presence_fn_by_metric=dict(fn),
+        )
+
+    def test_aggregates_metric_presence_totals(self, validator: V2GoldStandardValidator) -> None:
+        results = [
+            self._vr(
+                "A", tp={"cm_revenue_concentration": 1}, fn={"cm_lifetime_value_per_customer": 1}
+            ),
+            self._vr("B", tp={"cm_revenue_concentration": 1}, fp={"cm_arpu": 1}),
+        ]
+        m = validator.compute_metrics(results)
+        assert m.total_metric_presence_tp == 2
+        assert m.total_metric_presence_fp == 1
+        assert m.total_metric_presence_fn == 1
+
+    def test_presence_by_metric_breakdown(self, validator: V2GoldStandardValidator) -> None:
+        results = [
+            self._vr("A", tp={"cm_revenue_concentration": 1}, fn={"cm_revenue_concentration": 0}),
+            self._vr("B", tp={"cm_revenue_concentration": 1}),
+            self._vr("C", fn={"cm_revenue_concentration": 1}),  # 1 miss
+        ]
+        m = validator.compute_metrics(results)
+        scores = m.presence_by_metric["cm_revenue_concentration"]
+        # 2 TP, 0 FP, 1 FN → P=1.0, R=2/3
+        assert scores.precision == 1.0
+        assert scores.recall == pytest.approx(2 / 3)
+
+    def test_presence_by_tier_rollup(self, validator: V2GoldStandardValidator) -> None:
+        # cm_revenue_concentration is Tier 1 (per CLAUDE.md tier list);
+        # cm_arpu is Tier 2.
+        results = [
+            self._vr(
+                "A",
+                tp={"cm_revenue_concentration": 1, "cm_arpu": 1},
+                fn={"cm_revenue_concentration": 0, "cm_arpu": 0},
+            ),
+            self._vr(
+                "B",
+                fn={"cm_revenue_concentration": 1, "cm_arpu": 1},
+            ),
+        ]
+        m = validator.compute_metrics(results)
+        # Tier 1 (must-not-miss)
+        t1 = m.presence_by_tier[1]
+        assert t1.recall == pytest.approx(0.5)  # 1 TP, 1 FN
+        # Tier 2 (nice-to-have)
+        t2 = m.presence_by_tier[2]
+        assert t2.recall == pytest.approx(0.5)
+        # Aggregate accessors expose them
+        assert m.tier1_presence_recall == pytest.approx(0.5)
+        assert m.tier2_presence_recall == pytest.approx(0.5)
+
+    def test_no_presence_data_returns_none_tier_recalls(
+        self, validator: V2GoldStandardValidator
+    ) -> None:
+        m = validator.compute_metrics([])
+        assert m.tier1_presence_recall is None
+        assert m.tier2_presence_recall is None
+        assert m.total_metric_presence_tp == 0
+
+
 class TestAggregateMetricsToBaseline:
     """Tests for AggregateMetrics.to_baseline_metrics()."""
 
@@ -2798,6 +2895,11 @@ class TestCompareBaselinePresenceRegression:
         )
 
     def test_presence_f1_regression_flagged(self) -> None:
+        """Under PR2, presence_f1 drops are reported but informational (no longer gate).
+
+        See ``TestTier1PresenceGate`` in test_baseline.py for the new gate semantics:
+        only Tier-1 presence-recall regression sets ``has_regression=True``.
+        """
         from src.gold_standard.baseline import compare_to_baseline
 
         baseline = self._make_baseline(0.85, presence_f1=0.80)
@@ -2805,8 +2907,9 @@ class TestCompareBaselinePresenceRegression:
 
         result = compare_to_baseline(current, baseline)
 
-        assert "presence_f1" in result.regressed_metrics
-        assert result.has_regression is True
+        assert any("presence_f1" in m for m in result.regressed_metrics)
+        assert all("[informational]" in m for m in result.regressed_metrics)
+        assert result.has_regression is False
         assert result.presence_f1_delta == pytest.approx(-0.20)
 
     def test_presence_f1_improvement_not_flagged(self) -> None:
@@ -2817,7 +2920,7 @@ class TestCompareBaselinePresenceRegression:
 
         result = compare_to_baseline(current, baseline)
 
-        assert "presence_f1" not in result.regressed_metrics
+        assert not any("presence_f1" in m for m in result.regressed_metrics)
         assert result.presence_f1_delta == pytest.approx(0.20)
 
     def test_legacy_baseline_without_presence_f1_skipped(self) -> None:
@@ -2828,5 +2931,5 @@ class TestCompareBaselinePresenceRegression:
 
         result = compare_to_baseline(current, baseline)
 
-        assert "presence_f1" not in result.regressed_metrics
+        assert not any("presence_f1" in m for m in result.regressed_metrics)
         assert result.presence_f1_delta is None

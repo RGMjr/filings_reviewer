@@ -55,6 +55,12 @@ class BaselineMetrics:
     # expected chart-native metrics on any image in the filing. None on
     # pre-pivot baselines — loader tolerates missing field.
     presence_f1: float | None = None
+    # Text-presence per-tier recall (PR2 pivot). tier1_presence_recall is the
+    # primary Tier-1 regression gate; tier2 is informational. Both default to
+    # None on pre-PR2 baselines; the comparator skips the check + warns rather
+    # than treating absence as zero.
+    tier1_presence_recall: float | None = None
+    tier2_presence_recall: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
@@ -68,6 +74,10 @@ class BaselineMetrics:
             d["unique_recall"] = self.unique_recall
         if self.presence_f1 is not None:
             d["presence_f1"] = self.presence_f1
+        if self.tier1_presence_recall is not None:
+            d["tier1_presence_recall"] = self.tier1_presence_recall
+        if self.tier2_presence_recall is not None:
+            d["tier2_presence_recall"] = self.tier2_presence_recall
         return d
 
     @classmethod
@@ -118,37 +128,63 @@ class BaselineMetrics:
             by_company=by_company,
             unique_recall=data.get("unique_recall"),
             presence_f1=data.get("presence_f1"),
+            tier1_presence_recall=data.get("tier1_presence_recall"),
+            tier2_presence_recall=data.get("tier2_presence_recall"),
         )
 
 
 @dataclass
 class ComparisonResult:
-    """Result of comparing current metrics against a baseline."""
+    """Result of comparing current metrics against a baseline.
+
+    PR2 gate semantics: ``has_regression`` is set ONLY by Tier-1 presence-recall
+    drops (text-presence pivot blocker). Overall fact-level deltas, per-company
+    drops, and chart-presence F1 are still computed and reported, but tagged
+    informational and do NOT contribute to ``has_regression``.
+    """
 
     precision_delta: float  # Positive = improvement
     recall_delta: float
     f1_delta: float
-    has_regression: bool  # True if any metric dropped beyond tolerance
-    regressed_companies: list[str]  # Companies with regressions
-    regressed_metrics: list[str]  # Which overall metrics regressed
+    has_regression: bool  # PR2: True only when Tier-1 presence-recall regresses
+    regressed_companies: list[str]  # Companies with informational regressions
+    regressed_metrics: list[str]  # Metrics that regressed; entries are GATE or [informational]
     # Chart-presence F1 delta (post-PR-1 pivot). None when either baseline or
     # current lacks a presence_f1 value (pre-pivot baseline, or no chart gold
-    # rows evaluated in this run).
+    # rows evaluated in this run). Informational under PR2.
     presence_f1_delta: float | None = None
+    # Tier-1 text-presence recall delta (PR2 pivot). The primary Tier-1
+    # regression gate. None when either side lacks the field (pre-PR2 baseline
+    # or no presence gold rows evaluated) — the comparator skips the gate check
+    # and emits a warning rather than treating absence as zero.
+    tier1_presence_recall_delta: float | None = None
+    tier2_presence_recall_delta: float | None = None
 
     def summary(self) -> str:
-        """Generate a human-readable summary."""
+        """Generate a human-readable summary.
+
+        Tier-1 presence-recall delta is labelled ``[GATE]``; everything else
+        ``[informational]`` to make the gate semantics obvious in CLI output.
+        """
         parts = []
-        parts.append(f"Precision: {self.precision_delta:+.1%}")
-        parts.append(f"Recall: {self.recall_delta:+.1%}")
-        parts.append(f"F1: {self.f1_delta:+.1%}")
+        if self.tier1_presence_recall_delta is not None:
+            parts.append(f"[GATE] Tier1-presence-R: {self.tier1_presence_recall_delta:+.1%}")
+        if self.tier2_presence_recall_delta is not None:
+            parts.append(
+                f"[informational] Tier2-presence-R: {self.tier2_presence_recall_delta:+.1%}"
+            )
+        parts.append(f"[informational] Precision: {self.precision_delta:+.1%}")
+        parts.append(f"[informational] Recall: {self.recall_delta:+.1%}")
+        parts.append(f"[informational] F1: {self.f1_delta:+.1%}")
         if self.presence_f1_delta is not None:
-            parts.append(f"Presence-F1: {self.presence_f1_delta:+.1%}")
+            parts.append(f"[informational] Presence-F1: {self.presence_f1_delta:+.1%}")
 
         if self.has_regression:
             parts.append(f"REGRESSION DETECTED in: {', '.join(self.regressed_metrics)}")
             if self.regressed_companies:
-                parts.append(f"Regressed companies: {', '.join(self.regressed_companies)}")
+                parts.append(
+                    f"Regressed companies (informational): {', '.join(self.regressed_companies)}"
+                )
 
         return " | ".join(parts)
 
@@ -215,6 +251,12 @@ def compare_to_baseline(
     """
     Compare current metrics against a baseline.
 
+    PR2 gate semantics: only Tier-1 presence-recall regression sets
+    ``has_regression=True``. All other deltas (overall fact P/R/F1, per-company
+    fact P/R/F1, chart-presence F1, Tier-2 presence-recall) are computed and
+    reported as informational entries in ``regressed_metrics`` /
+    ``regressed_companies`` but do not gate.
+
     Args:
         current: Current validation metrics
         baseline: Previous baseline metrics
@@ -223,20 +265,24 @@ def compare_to_baseline(
     Returns:
         ComparisonResult with deltas and regression flags
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     precision_delta = current.overall.precision - baseline.overall.precision
     recall_delta = current.overall.recall - baseline.overall.recall
     f1_delta = current.overall.f1 - baseline.overall.f1
 
-    # Check for overall metric regressions
+    # Track informational fact-level regressions (no longer gating).
     regressed_metrics: list[str] = []
     if precision_delta < -tolerance:
-        regressed_metrics.append("precision")
+        regressed_metrics.append("[informational] precision")
     if recall_delta < -tolerance:
-        regressed_metrics.append("recall")
+        regressed_metrics.append("[informational] recall")
     if f1_delta < -tolerance:
-        regressed_metrics.append("f1")
+        regressed_metrics.append("[informational] f1")
 
-    # Check for per-company regressions
+    # Per-company fact regressions — informational only.
     regressed_companies: list[str] = []
     for company, baseline_scores in baseline.by_company.items():
         if company not in current.by_company:
@@ -257,16 +303,34 @@ def compare_to_baseline(
         if company_regressed:
             regressed_companies.append(company)
 
-    # Chart-presence F1 regression (Q1-5 pivot). Only compared when both the
-    # baseline and current run have a presence_f1 value; tolerates pre-pivot
-    # baselines (None → skip check).
+    # Chart-presence F1 regression (chart-stage pivot). Informational under PR2.
     presence_f1_delta: float | None = None
     if current.presence_f1 is not None and baseline.presence_f1 is not None:
         presence_f1_delta = current.presence_f1 - baseline.presence_f1
         if presence_f1_delta < -tolerance:
-            regressed_metrics.append("presence_f1")
+            regressed_metrics.append("[informational] presence_f1")
 
-    has_regression = bool(regressed_metrics) or bool(regressed_companies)
+    # Tier-2 text-presence recall — informational.
+    tier2_delta: float | None = None
+    if current.tier2_presence_recall is not None and baseline.tier2_presence_recall is not None:
+        tier2_delta = current.tier2_presence_recall - baseline.tier2_presence_recall
+        if tier2_delta < -tolerance:
+            regressed_metrics.append("[informational] tier2_presence_recall")
+
+    # Tier-1 text-presence recall — THE GATE.
+    tier1_delta: float | None = None
+    has_regression = False
+    if current.tier1_presence_recall is not None and baseline.tier1_presence_recall is not None:
+        tier1_delta = current.tier1_presence_recall - baseline.tier1_presence_recall
+        if tier1_delta < -tolerance:
+            regressed_metrics.insert(0, "[GATE] tier1_presence_recall")
+            has_regression = True
+    else:
+        logger.warning(
+            "Tier-1 presence-recall not present in %s — skipping the PR2 gate check. "
+            "Run --update-baseline to capture the new field.",
+            "current run" if current.tier1_presence_recall is None else "baseline",
+        )
 
     return ComparisonResult(
         precision_delta=precision_delta,
@@ -276,6 +340,8 @@ def compare_to_baseline(
         regressed_companies=sorted(regressed_companies),
         regressed_metrics=regressed_metrics,
         presence_f1_delta=presence_f1_delta,
+        tier1_presence_recall_delta=tier1_delta,
+        tier2_presence_recall_delta=tier2_delta,
     )
 
 
