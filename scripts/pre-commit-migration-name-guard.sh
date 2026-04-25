@@ -7,13 +7,14 @@
 # 11, 12, 46 are the historical casualties). Timestamps eliminate this.
 # Legacy files stay; new migrations must use YYYYMMDDHHMM_description.sql.
 #
-# Scope: only NEW (added) sql/*.sql files. Edits/renames/deletes of legacy
-# NN_*.sql files are not blocked, so authors can freely tweak existing
-# migrations (comment fixes, etc.) without bypassing the hook.
+# Scope: NEW (added) and RENAMED sql/*.sql files. A git mv sql/old.sql
+# sql/new.sql changes the migration ID under databases that already ran
+# old.sql — the guard must catch renames as well as pure adds. Edits and
+# deletes of legacy NN_*.sql files are still not blocked.
 
 set -euo pipefail
 
-added_sql=$(git diff --cached --name-only --diff-filter=A \
+added_sql=$(git diff --cached --name-only --diff-filter=AR \
     | grep -E '^sql/.*\.sql$' || true)
 
 if [ -z "$added_sql" ]; then
