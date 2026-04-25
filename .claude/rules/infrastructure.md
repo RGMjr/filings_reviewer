@@ -96,6 +96,7 @@ Rules for any DB-touching command in this repo:
 | `VISION_CLASSIFY_MODEL` | With `ENABLE_METRIC_CLASSIFY` | Model id (default `gemini-2.5-flash-lite`, per 2026-04-23 bake-off). |
 | `VISION_CLASSIFY_THRESHOLD` | With `ENABLE_METRIC_CLASSIFY` | Confidence floor (default `0.5`) for the downstream `predicted_relevant` signal. Records below the floor are still persisted. |
 | `GEMINI_API_KEY` | With `VISION_CLASSIFY_PROVIDER=gemini` | Google AI Studio key for Gemini vision calls. Set manually in Render. |
+| `FILINGS_REVIEWER_ALLOW_PROD_WRITES` | Required for `R2Storage.put_bytes` | Must be set to `"1"` for any process that writes image bytes to R2. Refused otherwise. Reads (`get_bytes`, `exists`) are unaffected. Set on Render services that run extraction/ingestion (`filings-reviewer`, `filings-extraction`, `filings-onboarding-runner`); leave unset on local dev to prevent accidental prod writes when prod creds are sourced for one-off CLI work. |
 
 ## Image Storage
 
@@ -111,6 +112,12 @@ Image bytes (chart/table OCR cache + ingestion-local copies) persist via
 (e.g. `pipeline/<cik>/<accession>/<filename>`), not a filesystem path. Key shape
 is validated by `validate_key()` — path-traversal sequences and absolute paths
 are rejected at every call site.
+
+### Prod-write guard
+
+`R2Storage.put_bytes` refuses to write unless `FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` is in the process environment. The guard prevents accidental prod R2 mutations from local CLI tools (e.g. `python3 -m src.gold_standard.v2_validator`) when a contributor sources prod `.env` for one-off work. Reads (`get_bytes`, `exists`) remain open so diagnostics still work. `LocalFilesystemStorage` is unguarded — dev writes to `data/image_cache/` are always allowed.
+
+Render services that legitimately write images (`filings-reviewer`, `filings-extraction`, `filings-onboarding-runner`) need `FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` set in their env. Services that don't write images (`filings-nightly-sweep`, `filings-metabase`) should leave it unset.
 
 ## SEC EDGAR Integration
 

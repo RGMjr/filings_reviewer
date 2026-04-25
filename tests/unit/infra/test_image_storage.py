@@ -104,6 +104,8 @@ class TestR2Storage:
             return original_client(service, **kwargs)
 
         monkeypatch.setattr(boto3, "client", patched_client)
+        # Allow prod writes in tests that exercise the happy path.
+        monkeypatch.setenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", "1")
 
         with moto.mock_aws():
             original_client(
@@ -138,6 +140,71 @@ class TestR2Storage:
     def test_invalid_key_rejected(self, r2: R2Storage) -> None:
         with pytest.raises(InvalidStorageKeyError):
             r2.put_bytes("/leading.jpg", b"x")
+
+
+class TestR2StorageProdWriteGuard:
+    """Guard: put_bytes refused without FILINGS_REVIEWER_ALLOW_PROD_WRITES=1."""
+
+    @pytest.fixture
+    def r2_no_writes_allowed(self, monkeypatch: pytest.MonkeyPatch):
+        """R2Storage instance with prod-write guard active (env var absent)."""
+        moto = pytest.importorskip("moto")
+        import boto3
+
+        original_client = boto3.client
+
+        def patched_client(service, **kwargs):
+            kwargs.pop("endpoint_url", None)
+            kwargs["region_name"] = "us-east-1"
+            return original_client(service, **kwargs)
+
+        monkeypatch.setattr(boto3, "client", patched_client)
+        monkeypatch.delenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", raising=False)
+
+        with moto.mock_aws():
+            original_client(
+                "s3",
+                region_name="us-east-1",
+                aws_access_key_id="test",
+                aws_secret_access_key="test",
+            ).create_bucket(Bucket="test-bucket")
+
+            yield R2Storage(
+                bucket="test-bucket",
+                endpoint="https://example.com",
+                access_key="test",
+                secret_key="test",
+            )
+
+    def test_put_bytes_raises_when_env_var_unset(self, r2_no_writes_allowed: R2Storage) -> None:
+        with pytest.raises(RuntimeError, match="FILINGS_REVIEWER_ALLOW_PROD_WRITES"):
+            r2_no_writes_allowed.put_bytes("pipeline/cik/acc/g001.jpg", b"data")
+
+    def test_put_bytes_raises_when_env_var_not_1(
+        self, r2_no_writes_allowed: R2Storage, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", "true")
+        with pytest.raises(RuntimeError, match="FILINGS_REVIEWER_ALLOW_PROD_WRITES"):
+            r2_no_writes_allowed.put_bytes("pipeline/cik/acc/g001.jpg", b"data")
+
+    def test_get_bytes_allowed_without_env_var(
+        self, r2_no_writes_allowed: R2Storage, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Reads must remain open regardless of the guard."""
+        # put first via allowed env var, then read without it
+        monkeypatch.setenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", "1")
+        r2_no_writes_allowed.put_bytes("pipeline/cik/acc/read_test.jpg", b"readable")
+        monkeypatch.delenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", raising=False)
+        assert r2_no_writes_allowed.get_bytes("pipeline/cik/acc/read_test.jpg") == b"readable"
+
+    def test_exists_allowed_without_env_var(
+        self, r2_no_writes_allowed: R2Storage, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """exists() must remain open regardless of the guard."""
+        monkeypatch.setenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", "1")
+        r2_no_writes_allowed.put_bytes("pipeline/cik/acc/exists_test.jpg", b"x")
+        monkeypatch.delenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", raising=False)
+        assert r2_no_writes_allowed.exists("pipeline/cik/acc/exists_test.jpg") is True
 
 
 class TestGetImageStorageFactory:
