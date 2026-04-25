@@ -12,7 +12,7 @@ title: Migrations Not Auto-Applied on Render Deploy
 touches:
 - render.yaml
 - .claude/rules/infrastructure.md
-updated: '2026-04-21'
+updated: '2026-04-24'
 ---
 
 ### Problem

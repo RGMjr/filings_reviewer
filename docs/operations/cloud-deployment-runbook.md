@@ -188,13 +188,28 @@ For errors, filter by `ERROR` or `Exception`.
 
 ## Deploying a Schema Migration
 
+**As of the fix for Known Issue #66, schema migrations run automatically on every
+Render deploy.** The `filings-reviewer` web service has a `preDeployCommand` in
+`render.yaml` that runs `python3 scripts/apply_migrations.py` before the
+container starts serving traffic. No manual migration step is required for
+normal schema-change PRs.
+
 When a new SQL migration file is added (e.g., `10_new_table.sql`):
 
-1. Apply to Neon using the direct endpoint (see above)
-2. Verify the migration ran without errors
-3. Deploy the new code to Render (push to main)
+1. Create `sql/NN_descriptive_name.sql` with the schema change.
+2. Register it in the `MIGRATIONS` list in `scripts/apply_migrations.py`.
+3. Merge the PR. The pre-deploy step runs automatically on the next Render deploy.
+4. Verify in Render dashboard: **filings-reviewer → Events → Deploy** → confirm
+   the predeploy log shows `APPLIED: NN_descriptive_name.sql`.
 
-Do NOT deploy code that depends on a new schema before the migration runs.
+**If the pre-deploy fails** (non-zero exit): the deploy aborts and the previous
+version keeps serving. Check the Render predeploy logs for the error. Common
+causes: migration not registered in `apply_migrations.py`, checksum mismatch
+(migration file edited after being applied), or `DATABASE_URL` missing from the
+`filings-shared-secrets` env group.
+
+See `.claude/rules/infrastructure.md` — "Deploy-Time Migration Contract" — for
+full details on the mechanism, limitations, and troubleshooting.
 
 ---
 
