@@ -13,7 +13,7 @@ paths:
 | Validation | `validate_transcript_extraction.py`, `validate_presentation_extraction.py`, `src.gold_standard.v2_validator` (python module) | R/P/F1 benchmarking |
 | Batch | `batch_v2_extraction.py`, `batch_download_filings.py` | Bulk filing operations |
 | Export | `export_image_decisions.py` | Export to CSV/JSON |
-| Migration | `apply_migrations.py`, `apply_all_migrations.py` | DB schema migration |
+| Migration | `new_migration.py`, `apply_migrations.py`, `apply_all_migrations.py` | DB schema migration (`new_migration.py` generates timestamp-named stubs — see `.claude/rules/sql.md`) |
 | Preannotate | `preannotate_presentations.py`, `preannotate_transcript.py` | Generate gold standard candidates |
 
 ## Common Patterns

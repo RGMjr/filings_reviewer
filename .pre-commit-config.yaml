@@ -55,6 +55,19 @@ repos:
         stages: [pre-commit]
         files: ^sql/.*\.sql$
 
+      # Pre-commit: enforce the timestamp filename scheme for newly added
+      # sql/ migrations (YYYYMMDDHHMM_description.sql). The legacy NN_
+      # scheme caused parallel-branch prefix collisions (04, 08, 09, 10,
+      # 11, 12, 46). Only checks added files — edits to legacy NN_*.sql
+      # are unaffected. See .claude/rules/sql.md and scripts/new_migration.py.
+      - id: migration-name-guard
+        name: Migration filename scheme (timestamp for new files)
+        entry: bash scripts/pre-commit-migration-name-guard.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^sql/.*\.sql$
+
       # Pre-commit: validate known-issue fragment frontmatter whenever a
       # fragment under docs/known-issues/ is staged. The rollup
       # (docs/KNOWN_ISSUES.md) is no longer tracked in git — CI regenerates
