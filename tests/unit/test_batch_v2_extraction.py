@@ -697,3 +697,63 @@ class TestChartOnlyConfig:
             "chart_only": config.chart_only,
         }
         assert worker_dict["chart_only"] is True
+
+
+class TestPipelineFailurePropagates:
+    """Regression guard for legacy-101: pipeline failure must not be reported as success."""
+
+    def _failed_pipeline_result(self):
+        result = MagicMock()
+        result.success = False
+        result.error_message = "Critical stage fatal error: ingestion: No module named 'boto3'"
+        result.fact_count = 0
+        result.facts = []
+        result.definitions = []
+        result.segments = []
+        return result
+
+    def test_worker_reports_failure_when_pipeline_fails(self, tmp_path):
+        """A PipelineResult with success=False must mark filing extraction_failed
+        and return success=False — not get persisted as an empty 'extracted' result."""
+        html_file = tmp_path / "filing.htm"
+        html_file.write_text("<html><body>x</body></html>")
+
+        db_executes = []
+        with patch("src.infra.db.DatabaseAdapter") as mock_db_cls:
+            mock_db = MagicMock()
+            mock_db.execute.side_effect = lambda sql, params: db_executes.append((sql, params))
+            mock_db_cls.return_value = mock_db
+
+            with patch("src.extraction_v2.pipeline.V2Pipeline") as mock_pipeline_cls:
+                mock_pipeline = MagicMock()
+                mock_pipeline.process.return_value = self._failed_pipeline_result()
+                mock_pipeline_cls.return_value = mock_pipeline
+
+                with patch(
+                    "src.extraction_v2.persistence.V2PersistenceAdapter"
+                ) as mock_adapter_cls:
+                    mock_adapter = MagicMock()
+                    mock_adapter_cls.return_value = mock_adapter
+
+                    result = _process_filing_worker(
+                        filing_id=1545,
+                        html_path=str(html_file),
+                        company_name="TestCo",
+                        company_id=1,
+                        cik="0001234",
+                        accession_number="0001234-24-000001",
+                        filing_date=None,
+                        db_url="postgresql://test/db",
+                        config_dict={},
+                    )
+
+                    assert mock_adapter.persist_pipeline_result.call_count == 0, (
+                        "persist must be skipped when pipeline reports failure"
+                    )
+
+        assert result["success"] is False
+        assert result["fact_count"] == 0
+        assert "boto3" in result["error"]
+        assert any("extraction_failed" in sql for sql, _ in db_executes), (
+            "filing must be marked extraction_failed"
+        )
