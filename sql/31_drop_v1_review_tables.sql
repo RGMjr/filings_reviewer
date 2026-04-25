@@ -40,7 +40,7 @@ DROP TABLE IF EXISTS source_segments CASCADE;
 
 -- 4. Create v2_audit_log — replaces review_audit_log without the candidate_id
 --    FK (V1 candidates are gone). Schema mirrors the V1 columns we still use.
-CREATE TABLE v2_audit_log (
+CREATE TABLE IF NOT EXISTS v2_audit_log (
     log_id          BIGSERIAL PRIMARY KEY,
     timestamp       TIMESTAMPTZ NOT NULL DEFAULT now(),
     session_id      VARCHAR(255),
@@ -59,10 +59,10 @@ CREATE TABLE v2_audit_log (
         CHECK (response_status >= 100 AND response_status < 600)
 );
 
-CREATE INDEX idx_v2_audit_log_timestamp ON v2_audit_log(timestamp DESC);
-CREATE INDEX idx_v2_audit_log_session   ON v2_audit_log(session_id) WHERE session_id IS NOT NULL;
-CREATE INDEX idx_v2_audit_log_route     ON v2_audit_log(route_name);
-CREATE INDEX idx_v2_audit_log_filing    ON v2_audit_log(filing_id) WHERE filing_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_v2_audit_log_timestamp ON v2_audit_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_v2_audit_log_session   ON v2_audit_log(session_id) WHERE session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_v2_audit_log_route     ON v2_audit_log(route_name);
+CREATE INDEX IF NOT EXISTS idx_v2_audit_log_filing    ON v2_audit_log(filing_id) WHERE filing_id IS NOT NULL;
 
 COMMENT ON TABLE  v2_audit_log IS 'Audit trail for V2 review/api_unified routes (replaces V1 review_audit_log).';
 COMMENT ON COLUMN v2_audit_log.route_name IS 'Flask endpoint name (e.g., review_unified.review_filing).';
