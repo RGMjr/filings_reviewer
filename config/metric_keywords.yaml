@@ -23,37 +23,6 @@
 
 ---
 # =============================================================================
-# Shared Context Requirements (YAML Anchors)
-# =============================================================================
-# Revenue synonym metrics require cohort or per-customer context to generate
-# review candidates. Without this context, they are just revenue measures,
-# not customer metrics. This anchor defines the shared context patterns.
-
-_revenue_synonym_context: &revenue_synonym_context
-  required_context:
-    patterns:
-      # Cohort keywords (from cohort_chart_detector.py)
-      - '\bcohort\b'
-      - '\bby\s+vintage\b'
-      - '\bacquisition\s+year\b'
-      - '\brevenue\s+(?:by|per)\s+cohort\b'
-      - '\bretention\s+(?:by|per)\s+cohort\b'
-      - '\bARR\s+(?:by|of\s+each)\s+cohort\b'
-      - '\bLTV[/ ]CAC\b'
-      # Per-customer keywords
-      - '\bper\s+customer\b'
-      - '\bper\s+user\b'
-      - '\bper\s+account\b'
-      - '\bper\s+subscriber\b'
-      - '\bper\s+client\b'
-      - '\baverage\s+per\b'
-      - '\bby\s+customer\b'
-      - '\bby\s+account\b'
-      - '\bcustomer[- ]level\b'
-      - '\baccount[- ]level\b'
-    proximity_chars: 1500
-
-# =============================================================================
 # Core Metrics
 # =============================================================================
 # SEMANTIC DISTINCTIONS - Customer Count Metrics:
@@ -677,7 +646,6 @@ cm_gmv:
   # DEPRECATED 2026-01-07: Financial metric, not customer metric unless cohort-specific
   status: deprecated
   deprecation_reason: "Financial platform metric, not customer-specific. Generated FPs for Farfetch (inventory value, subsidiary revenue, share-based expense)."
-  <<: *revenue_synonym_context
   patterns:
     - '\bgmv\b'
     - '\bgross\s+merchandise\s+value\b'

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from src.extraction_v2.exceptions import V2FatalError
 from src.extraction_v2.models import (
@@ -31,7 +31,6 @@ from src.shared.keyword_config import (
     KeywordConfigError,
     get_exclusion_patterns,
     get_metric_keywords,
-    get_required_context,
     get_specific_patterns,
     is_metric_deprecated,
 )
@@ -76,18 +75,12 @@ class CandidateGenerationStage:
         """Initialize stage with compiled regex patterns from V1 config."""
         self._keywords: dict[str, list[str]] = {}
         self._exclusions: dict[str, list[str]] = {}
-        self._required_context: dict[str, dict[str, Any]] = {}
         self._specific_patterns: list[str] = []
 
         # Compiled patterns for performance
         self._compiled_patterns: dict[str, list[re.Pattern[str]]] = {}
         self._compiled_exclusions: dict[str, list[re.Pattern[str]]] = {}
-        # Tuple of (compiled_patterns, proximity_chars)
-        self._compiled_context: dict[str, tuple[list[re.Pattern[str]], int]] = {}
         self._compiled_specific: list[re.Pattern[str]] = []
-
-        # Default proximity for required context (chars)
-        self._default_proximity_chars: int = 1500
 
         self._initialized = False
 
@@ -109,10 +102,6 @@ class CandidateGenerationStage:
             all_exclusions = get_exclusion_patterns()
             self._exclusions = {
                 mid: p for mid, p in all_exclusions.items() if not is_metric_deprecated(mid)
-            }
-            all_context = get_required_context()
-            self._required_context = {
-                mid: c for mid, c in all_context.items() if not is_metric_deprecated(mid)
             }
             self._specific_patterns = get_specific_patterns()
             self._compile_patterns()
@@ -148,17 +137,6 @@ class CandidateGenerationStage:
                 except re.error as e:
                     logger.warning(f"Invalid exclusion pattern for {metric_id}: {pattern!r} - {e}")
             self._compiled_exclusions[metric_id] = compiled
-
-        # Compile required context patterns with proximity
-        for metric_id, config in self._required_context.items():
-            compiled = []
-            for pattern in config.get("patterns", []):
-                try:
-                    compiled.append(re.compile(pattern, re.IGNORECASE))
-                except re.error as e:
-                    logger.warning(f"Invalid context pattern for {metric_id}: {pattern!r} - {e}")
-            proximity = config.get("proximity_chars", self._default_proximity_chars)
-            self._compiled_context[metric_id] = (compiled, proximity)
 
         # Compile specific patterns
         for pattern in self._specific_patterns:
@@ -272,10 +250,6 @@ class CandidateGenerationStage:
                     if self._is_excluded(metric_id, text, match):
                         continue
 
-                    # Check required context (proximity-based)
-                    if not self._has_required_context(metric_id, text, match.start()):
-                        continue
-
                     # Extract context
                     context_text = self._extract_context(text, match.start(), match.end())
 
@@ -342,10 +316,6 @@ class CandidateGenerationStage:
                     for match in pattern.finditer(combined_text):
                         # Check exclusions
                         if self._is_excluded(metric_id, combined_text, match):
-                            continue
-
-                        # Check required context (proximity-based)
-                        if not self._has_required_context(metric_id, combined_text, match.start()):
                             continue
 
                         # Determine if match is in cell text or only in header/stub
@@ -435,8 +405,6 @@ class CandidateGenerationStage:
                     for match in pattern.finditer(combined_text):
                         if self._is_excluded(metric_id, combined_text, match):
                             continue
-                        if not self._has_required_context(metric_id, combined_text, match.start()):
-                            continue
 
                         confidence = self._compute_confidence(
                             metric_id=metric_id,
@@ -468,8 +436,6 @@ class CandidateGenerationStage:
                 for pattern in patterns:
                     for match in pattern.finditer(nearby_text):
                         if self._is_excluded(metric_id, nearby_text, match):
-                            continue
-                        if not self._has_required_context(metric_id, nearby_text, match.start()):
                             continue
 
                         confidence = self._compute_confidence(
@@ -705,41 +671,6 @@ class CandidateGenerationStage:
 
         for exclusion in exclusions:
             if exclusion.search(window_text):
-                return True
-
-        return False
-
-    def _has_required_context(self, metric_id: str, text: str, match_position: int) -> bool:
-        """
-        Check if required context patterns are present within proximity.
-
-        Some metrics (e.g., revenue synonyms) require specific context
-        like cohort or per-customer keywords to be considered candidates.
-        Uses proximity-based checking to ensure context is near the match.
-
-        Args:
-            metric_id: The metric being checked
-            text: Full text to check for context
-            match_position: Position of the keyword match in text
-
-        Returns:
-            True if no required context OR required context is present within proximity
-        """
-        context_data = self._compiled_context.get(metric_id)
-        if not context_data:
-            # No required context for this metric
-            return True
-
-        patterns, proximity_chars = context_data
-
-        # Extract text within proximity window of the match
-        context_start = max(0, match_position - proximity_chars)
-        context_end = min(len(text), match_position + proximity_chars)
-        proximity_text = text[context_start:context_end]
-
-        # At least one context pattern must match within the proximity window
-        for pattern in patterns:
-            if pattern.search(proximity_text):
                 return True
 
         return False

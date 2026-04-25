@@ -324,36 +324,6 @@ class TestFiltering:
                     or "cost" not in segment.text.lower()
                 )
 
-    def test_excludes_without_required_context(
-        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
-    ) -> None:
-        """Revenue synonym metrics require cohort/per-customer context."""
-        # GMV without cohort context should not generate candidate
-        segment = make_segment("Our GMV was $500 million this year.")
-        mock_context.segments.append(segment)
-
-        stage.process(mock_context)
-
-        # cm_gmv (if it exists and has required_context) should not match
-        # without cohort keywords
-        # Note: This depends on actual YAML config having required_context
-        # The test validates the mechanism works
-        assert result_does_not_contain_revenue_synonym_without_context(mock_context.candidates)
-
-    def test_includes_with_required_context(
-        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
-    ) -> None:
-        """Metrics with required context pass when context is present."""
-        # Include cohort keyword to satisfy required_context
-        segment = make_segment("The GMV per customer cohort showed strong retention patterns.")
-        mock_context.segments.append(segment)
-
-        stage.process(mock_context)
-
-        # With cohort context, revenue synonyms should be allowed
-        # (if they match patterns in the config)
-        assert True  # Validates no exception and stage completes
-
     def test_passes_valid_matches(
         self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
     ) -> None:
@@ -378,24 +348,6 @@ class TestFiltering:
 
         assert result.success
         assert len(mock_context.candidates) == 0
-
-
-def result_does_not_contain_revenue_synonym_without_context(
-    candidates: list[MetricCandidate],
-) -> bool:
-    """Helper to check revenue synonyms have context."""
-    # Revenue synonym metrics from the YAML that have required_context
-    revenue_synonyms = {"cm_gmv", "cm_tcv", "cm_acv", "cm_bookings"}
-    for c in candidates:
-        if c.metric_id in revenue_synonyms:
-            # If found, there should be cohort/per-customer context
-            context_lower = c.context_text.lower()
-            has_context = any(
-                kw in context_lower for kw in ["cohort", "per customer", "per user", "by customer"]
-            )
-            if not has_context:
-                return False
-    return True
 
 
 # =============================================================================
@@ -652,7 +604,6 @@ class TestEdgeCases:
         stage._initialized = False
         stage._keywords = {"test_metric": ["[invalid regex"]}  # Unclosed bracket
         stage._exclusions = {}
-        stage._required_context = {}
         stage._specific_patterns = []
 
         # Compile should log warning but not raise
@@ -669,7 +620,6 @@ class TestEdgeCases:
         stage._initialized = False
         stage._keywords = {"test_metric": [r"\btest\b"]}
         stage._exclusions = {"test_metric": ["[unclosed"]}  # Invalid
-        stage._required_context = {}
         stage._specific_patterns = []
 
         stage._compile_patterns()
@@ -679,25 +629,6 @@ class TestEdgeCases:
         # Invalid exclusion should be skipped
         assert len(stage._compiled_exclusions.get("test_metric", [])) == 0
 
-    def test_invalid_context_pattern_handled(self, mock_context: MockPipelineContext) -> None:
-        """Invalid required_context patterns are skipped gracefully."""
-        stage = CandidateGenerationStage()
-
-        stage._initialized = False
-        stage._keywords = {"test_metric": [r"\btest\b"]}
-        stage._exclusions = {}
-        stage._required_context = {"test_metric": {"patterns": ["[unclosed", r"\bvalid\b"]}}
-        stage._specific_patterns = []
-
-        stage._compile_patterns()
-
-        # One pattern is valid, one is invalid
-        # _compiled_context stores (patterns, proximity_chars) tuple
-        context_data = stage._compiled_context.get("test_metric")
-        assert context_data is not None
-        patterns, proximity = context_data
-        assert len(patterns) == 1  # Only valid pattern compiled
-
     def test_invalid_specific_pattern_handled(self, mock_context: MockPipelineContext) -> None:
         """Invalid specific patterns are skipped gracefully."""
         stage = CandidateGenerationStage()
@@ -705,7 +636,6 @@ class TestEdgeCases:
         stage._initialized = False
         stage._keywords = {}
         stage._exclusions = {}
-        stage._required_context = {}
         stage._specific_patterns = ["[invalid", r"\bvalid pattern\b"]
 
         stage._compile_patterns()
@@ -771,81 +701,6 @@ class TestEdgeCases:
             assert result2  # Still True
 
 
-class TestProximityBasedContext:
-    """Tests for proximity-based required context checking."""
-
-    def test_context_within_proximity_passes(self, mock_context: MockPipelineContext) -> None:
-        """Required context within proximity window is accepted."""
-        stage = CandidateGenerationStage()
-        stage._initialized = True
-        stage._compiled_patterns = {"test_metric": [re.compile(r"\bGMV\b", re.IGNORECASE)]}
-        stage._compiled_exclusions = {}
-        # Context must be within 100 chars
-        stage._compiled_context = {
-            "test_metric": ([re.compile(r"\bper\s+customer\b", re.IGNORECASE)], 100)
-        }
-        stage._compiled_specific = []
-
-        # "GMV" at position ~50, "per customer" within 100 chars
-        # Use spaces to ensure word boundaries
-        text = "some text " * 5 + "GMV metric " + "per customer revenue " * 2
-        segment = make_segment(text)
-        candidates = stage._scan_segment(segment)
-
-        assert len(candidates) == 1, "Should match when context is within proximity"
-
-    def test_context_beyond_proximity_fails(self, mock_context: MockPipelineContext) -> None:
-        """Required context beyond proximity window is rejected."""
-        stage = CandidateGenerationStage()
-        stage._initialized = True
-        stage._compiled_patterns = {"test_metric": [re.compile(r"\bGMV\b", re.IGNORECASE)]}
-        stage._compiled_exclusions = {}
-        # Context must be within 50 chars (small window)
-        stage._compiled_context = {
-            "test_metric": ([re.compile(r"\bper\s+customer\b", re.IGNORECASE)], 50)
-        }
-        stage._compiled_specific = []
-
-        # "GMV" near start, "per customer" very far away (>50 chars from GMV)
-        text = "Our GMV was strong. " + "x" * 200 + " per customer revenue"
-        segment = make_segment(text)
-        candidates = stage._scan_segment(segment)
-
-        assert len(candidates) == 0, "Should NOT match when context is beyond proximity"
-
-    def test_proximity_uses_config_value(self) -> None:
-        """Proximity value from config is stored correctly."""
-        stage = CandidateGenerationStage()
-        stage._initialized = False
-        stage._keywords = {"test_metric": [r"\btest\b"]}
-        stage._exclusions = {}
-        stage._required_context = {
-            "test_metric": {"patterns": [r"\bcontext\b"], "proximity_chars": 500}
-        }
-        stage._specific_patterns = []
-
-        stage._compile_patterns()
-
-        patterns, proximity = stage._compiled_context["test_metric"]
-        assert proximity == 500
-
-    def test_proximity_uses_default_when_not_specified(self) -> None:
-        """Default proximity is used when not specified in config."""
-        stage = CandidateGenerationStage()
-        stage._initialized = False
-        stage._keywords = {"test_metric": [r"\btest\b"]}
-        stage._exclusions = {}
-        stage._required_context = {
-            "test_metric": {"patterns": [r"\bcontext\b"]}  # No proximity_chars
-        }
-        stage._specific_patterns = []
-
-        stage._compile_patterns()
-
-        patterns, proximity = stage._compiled_context["test_metric"]
-        assert proximity == stage._default_proximity_chars  # Default 1500
-
-
 class TestCandidateDeduplication:
     """Tests for candidate deduplication."""
 
@@ -863,7 +718,6 @@ class TestCandidateDeduplication:
             ]
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         # "new customers" matches both patterns at overlapping positions
@@ -883,7 +737,6 @@ class TestCandidateDeduplication:
             "cm_other": [re.compile(r"\bnew customers\b", re.IGNORECASE)],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         text = "We had 1000 new customers"
@@ -903,7 +756,6 @@ class TestCandidateDeduplication:
             "cm_customers": [re.compile(r"\bcustomers\b", re.IGNORECASE)],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         # Two mentions of "customers" at different positions
@@ -925,7 +777,6 @@ class TestCandidateDeduplication:
             ]
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         # Cell with text that matches both patterns
@@ -948,7 +799,6 @@ class TestCandidateDeduplication:
             ]
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         # "paid customers" is a specific pattern that gets bonus
         stage._compiled_specific = [re.compile(r"\bpaid customers\b", re.IGNORECASE)]
 
@@ -975,7 +825,6 @@ class TestCandidateDeduplication:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         text = "We had 1 million daily active users"
@@ -1001,7 +850,6 @@ class TestCandidateDeduplication:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         text = "We had 1 million daily active users"
@@ -1028,7 +876,6 @@ class TestCandidateDeduplication:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         text = "Our customer retention rate was 95% in Q4"
@@ -1055,7 +902,6 @@ class TestCandidateDeduplication:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         text = "We had 5000 paid customers and 3000 active users"
@@ -1080,7 +926,6 @@ class TestCandidateDeduplication:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         text = "We had 3000 active users"
@@ -1107,7 +952,6 @@ class TestCandidateDeduplication:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         cell = make_cell(0, 0, "Daily Active Users")
@@ -1133,7 +977,6 @@ class TestCandidateDeduplication:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         cell = make_cell(0, 0, "Daily Active Users")
@@ -1253,7 +1096,6 @@ class TestExactSpanDedup:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         # Both have same match text length, so both should be kept
@@ -1351,7 +1193,6 @@ class TestHeaderColumnBroadcastDedup:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         # 5 cells in column 1, all with "Customers" in header_path but not in cell text
@@ -1375,7 +1216,6 @@ class TestHeaderColumnBroadcastDedup:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         # Cells where "customers" appears in cell text too
@@ -1405,7 +1245,6 @@ class TestHeaderColumnBroadcastDedup:
             ],
         }
         stage._compiled_exclusions = {}
-        stage._compiled_context = {}
         stage._compiled_specific = []
 
         # Two columns, each with "Customers" in header but not cell text

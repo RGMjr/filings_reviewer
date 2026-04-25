@@ -137,35 +137,6 @@ def _validate_config(config: dict[str, Any]) -> None:
                     f"Invalid 'specific_patterns' for {metric_id}: expected list"
                 )
 
-        # Validate required_context if present
-        if "required_context" in metric_config:
-            req_ctx = metric_config["required_context"]
-            if not isinstance(req_ctx, dict):
-                raise KeywordConfigError(
-                    f"Invalid 'required_context' for {metric_id}: expected dict"
-                )
-            if "patterns" not in req_ctx:
-                raise KeywordConfigError(f"Missing 'patterns' in required_context for {metric_id}")
-            ctx_patterns = req_ctx["patterns"]
-            if not isinstance(ctx_patterns, list) or not ctx_patterns:
-                raise KeywordConfigError(
-                    f"Invalid 'patterns' in required_context for {metric_id}: "
-                    "expected non-empty list"
-                )
-            for j, ctx_pattern in enumerate(ctx_patterns):
-                if not isinstance(ctx_pattern, str):
-                    raise KeywordConfigError(
-                        f"Invalid required_context pattern {j} for {metric_id}: expected string"
-                    )
-            # Validate proximity_chars if present
-            if "proximity_chars" in req_ctx:
-                prox = req_ctx["proximity_chars"]
-                if not isinstance(prox, int) or prox <= 0:
-                    raise KeywordConfigError(
-                        f"Invalid 'proximity_chars' in required_context for {metric_id}: "
-                        "expected positive int"
-                    )
-
         # Validate aliases if present
         if "aliases" in metric_config:
             aliases_list = metric_config["aliases"]
@@ -361,36 +332,6 @@ def get_specific_patterns_by_metric(config_path: str | None = None) -> dict[str,
         for metric_id, metric_config in config.items()
         if _is_metric_key(metric_id)
         and "specific_patterns" in metric_config
-        and metric_config.get("status") != "deprecated"
-    }
-
-
-def get_required_context(config_path: str | None = None) -> dict[str, dict[str, Any]]:
-    """
-    Get required context patterns for metrics.
-
-    Metrics with required_context only generate review candidates when
-    at least one of the context patterns appears within proximity of the
-    keyword match. This filters out revenue synonyms (GMV, TCV, etc.)
-    that appear without cohort or per-customer context.
-
-    Args:
-        config_path: Optional path to config file.
-
-    Returns:
-        Dictionary mapping metric_id to required context configuration.
-        Only includes metrics that have required_context defined.
-        Each config contains:
-        - 'patterns': list of regex patterns (at least one must match)
-        - 'proximity_chars': max distance for context check (default: 1500)
-        Excludes YAML anchor keys (starting with underscore).
-    """
-    config = _load_config(config_path)
-    return {
-        metric_id: metric_config["required_context"]
-        for metric_id, metric_config in config.items()
-        if _is_metric_key(metric_id)
-        and "required_context" in metric_config
         and metric_config.get("status") != "deprecated"
     }
 

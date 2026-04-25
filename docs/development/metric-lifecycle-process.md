@@ -40,7 +40,7 @@ Follow these steps in order. Each step includes the file path and example code.
 
 **File:** `config/metric_keywords.yaml`
 
-Add a new metric block with patterns, exclusions (optional), specific_patterns (optional), required_context (optional), and aliases (optional).
+Add a new metric block with patterns, exclusions (optional), specific_patterns (optional), and aliases (optional).
 
 ```yaml
 cm_new_metric_name:
@@ -59,14 +59,6 @@ cm_new_metric_name:
   # Optional: multi-word patterns that get confidence bonus
   specific_patterns:
     - 'new\s+metric\s+pattern'
-
-  # Optional: require context keywords nearby (for revenue synonyms)
-  # Use YAML anchor <<: *revenue_synonym_context for standard context
-  required_context:
-    patterns:
-      - '\bper\s+customer\b'
-      - '\bcohort\b'
-    proximity_chars: 1500
 ```
 
 **Key considerations:**
@@ -419,8 +411,9 @@ When adding a new metric, choose a sort order value within the appropriate categ
 
 2. **YAML** - Add deprecation comments but keep patterns:
    ```yaml
-   # DEPRECATED 2026-01-07: Revenue synonym - use required_context for customer metrics
+   # DEPRECATED 2026-01-07: Revenue synonym, not a customer metric
    cm_gmv:
+     status: deprecated
      patterns:
        - '\bgross\s+merchandise\s+value\b'
    ```
@@ -434,8 +427,7 @@ When adding a new metric, choose a sort order value within the appropriate categ
    ### 4.X GMV (DEPRECATED)
 
    > **Deprecated:** 2026-01-07
-   > **Reason:** Revenue synonym without inherent customer context. Use `required_context`
-   > in YAML for metrics that need cohort/per-customer context.
+   > **Reason:** Revenue synonym without inherent customer context.
 
    **ID:** `cm_gmv`
    ...
