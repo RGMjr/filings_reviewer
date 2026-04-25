@@ -202,3 +202,57 @@ def test_pres_export_uses_same_cohort_keywords_constant() -> None:
     assert "cohort_keywords = {" not in src, (
         "export_pres_rows must not re-define cohort_keywords locally; use COHORT_KEYWORDS"
     )
+
+
+# ---------------------------------------------------------------------------
+# export_sec_rows: legacy + confirmations UNION + dedup (gh-196)
+# ---------------------------------------------------------------------------
+
+
+def _make_two_query_mock_db(legacy: list[dict], confirmations: list[dict]) -> MagicMock:
+    """Mock that returns `legacy` on the first .query() call and `confirmations` on the second."""
+    mock_db = MagicMock()
+    mock_db.query.side_effect = [legacy, confirmations]
+    return mock_db
+
+
+def test_sec_rows_emits_legacy_and_confirmation_rows() -> None:
+    mod = _load_module()
+    legacy_row = _base_sec_row(img_id="11111111-1111-1111-1111-111111111111")
+    confirmation_row = _base_sec_row(
+        img_id="22222222-2222-2222-2222-222222222222",
+        chart_type=None,
+        decision="not_relevant",
+        rejection_reason="not_present",
+    )
+    result = mod.export_sec_rows(_make_two_query_mock_db([legacy_row], [confirmation_row]))
+    assert len(result) == 2
+    by_img = {r["image_id"]: r for r in result}
+    assert "sec:11111111-1111-1111-1111-111111111111" in by_img
+    assert "sec:22222222-2222-2222-2222-222222222222" in by_img
+
+
+def test_sec_rows_legacy_takes_precedence_on_duplicate_img_id() -> None:
+    """If an img_id appears in both surfaces, the legacy row wins."""
+    mod = _load_module()
+    legacy_row = _base_sec_row(decision="relevant", chart_type="cohort_table")
+    # Same img_id, different decision shape
+    confirmation_row = _base_sec_row(decision="not_relevant", chart_type=None)
+    result = mod.export_sec_rows(_make_two_query_mock_db([legacy_row], [confirmation_row]))
+    assert len(result) == 1
+    assert result[0]["decision"] == "relevant"
+    assert result[0]["chart_type"] == "cohort_table"
+
+
+def test_sec_rows_handles_null_chart_type_from_confirmations() -> None:
+    """Confirmation-derived rows have chart_type=None; downstream emits ''."""
+    mod = _load_module()
+    confirmation_row = _base_sec_row(
+        img_id="33333333-3333-3333-3333-333333333333",
+        chart_type=None,
+        decision="relevant",
+    )
+    result = mod.export_sec_rows(_make_two_query_mock_db([], [confirmation_row]))
+    assert len(result) == 1
+    # The transform path coerces None to '' for CSV emission
+    assert result[0]["chart_type"] == ""

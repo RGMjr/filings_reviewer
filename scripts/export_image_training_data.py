@@ -77,9 +77,19 @@ OUTPUT_COLUMNS = [
 # SEC export (database-backed)
 # ---------------------------------------------------------------------------
 
-SEC_QUERY = """
+_IMAGE_URL_FRAGMENT = (
+    "'https://www.sec.gov/Archives/edgar/data/'\n"
+    "        || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')\n"
+    "        || '/' || REPLACE(f.accession_number, '-', '')\n"
+    "        || '/' || v.filename AS image_url"
+)
+
+# Legacy reviewer decisions (image-level relevant / not_relevant).
+# Stops accumulating new rows after PR #192 (per-metric confirmations
+# took over the reviewer surface), but historical rows remain valid
+# training data.
+LEGACY_SEC_QUERY = f"""
     SELECT
-        d.image_decision_id,
         v.img_id,
         d.decision,
         d.chart_type,
@@ -93,10 +103,7 @@ SEC_QUERY = """
         v.relevance_score,
         f.accession_number,
         c.company_name,
-        'https://www.sec.gov/Archives/edgar/data/'
-            || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
-            || '/' || REPLACE(f.accession_number, '-', '')
-            || '/' || v.filename AS image_url
+        {_IMAGE_URL_FRAGMENT}
     FROM v2_image_review_decisions d
     JOIN v2_image_assets v ON v.img_id = d.img_id
     JOIN filings f ON v.doc_id = f.filing_id
@@ -104,10 +111,67 @@ SEC_QUERY = """
     ORDER BY c.company_name, v.img_id
 """
 
+# Per-metric confirmations aggregated to image-level relevant / not_relevant.
+# Mapping (sql/47):
+#   relevant     — any confirmation in {accept, correct, add}
+#   not_relevant — at least one confirmation, all rejects (no accept/correct/add)
+#   excluded     — only skips, or zero confirmations (filtered by HAVING)
+# `chart_type` is not captured in v2_image_metric_confirmations and is
+# emitted as NULL — downstream training treats it as a missing feature.
+# `rejection_reason` is taken from any reject confirmation deterministically
+# (earliest by created_at).
+CONFIRMATIONS_SEC_QUERY = f"""
+    SELECT
+        v.img_id,
+        CASE
+            WHEN bool_or(imc.decision IN ('accept','correct','add'))
+                 THEN 'relevant'
+            ELSE 'not_relevant'
+        END                                          AS decision,
+        NULL::text                                   AS chart_type,
+        (
+            SELECT imc2.rejection_reason
+              FROM v2_image_metric_confirmations imc2
+             WHERE imc2.img_id = v.img_id
+               AND imc2.decision = 'reject'
+               AND imc2.rejection_reason IS NOT NULL
+             ORDER BY imc2.created_at
+             LIMIT 1
+        )                                            AS rejection_reason,
+        v.filename,
+        v.width,
+        v.height,
+        v.nearby_text,
+        v.classification,
+        v.section_type,
+        v.relevance_score,
+        f.accession_number,
+        c.company_name,
+        {_IMAGE_URL_FRAGMENT}
+    FROM v2_image_metric_confirmations imc
+    JOIN v2_image_assets v ON v.img_id = imc.img_id
+    JOIN filings f ON v.doc_id = f.filing_id
+    JOIN companies c ON f.company_id = c.company_id
+    GROUP BY v.img_id, v.filename, v.width, v.height, v.nearby_text,
+             v.classification, v.section_type, v.relevance_score,
+             f.accession_number, c.company_name, c.cik
+    HAVING bool_or(imc.decision IN ('accept','correct','add','reject'))
+    ORDER BY c.company_name, v.img_id
+"""
+
 
 def export_sec_rows(db) -> list[dict]:
     """
     Export V2 SEC image decisions for training.
+
+    Pulls from both reviewer surfaces:
+      - v2_image_review_decisions (legacy, image-level relevant/not_relevant)
+      - v2_image_metric_confirmations (per-metric A/R/C/Add/Skip, sql/47),
+        aggregated to image-level using the mapping in
+        ``CONFIRMATIONS_SEC_QUERY``
+
+    Legacy rows take precedence when the same `img_id` appears in both
+    surfaces — historical reviewer intent on existing rows is authoritative.
 
     V2 does not persist V1's `detected_keywords[]` or `cohort_keyword_nearby`.
     Synthesize both from nearby_text using the same COHORT_KEYWORDS set used by
@@ -118,7 +182,12 @@ def export_sec_rows(db) -> list[dict]:
     """
     from src.shared.image_features import derive_detection_tier
 
-    rows = db.query(SEC_QUERY)
+    legacy_rows = db.query(LEGACY_SEC_QUERY)
+    confirmation_rows = db.query(CONFIRMATIONS_SEC_QUERY)
+    legacy_img_ids = {str(r["img_id"]) for r in legacy_rows}
+    rows = list(legacy_rows) + [
+        r for r in confirmation_rows if str(r["img_id"]) not in legacy_img_ids
+    ]
     out = []
     for r in rows:
         w = r.get("width")
