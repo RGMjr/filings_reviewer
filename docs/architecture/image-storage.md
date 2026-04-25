@@ -49,6 +49,23 @@ Writers (2):
 - `src/extraction_v2/stages/ocr_extraction.py::_download_missing_images` — SEC fetches.
 - `src/extraction_v2/stages/ingestion.py::IngestionStage.process` — HTML-co-located images.
 
+## Prod-write guard
+
+`R2Storage.put_bytes` refuses to execute unless `FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` is present in the process environment. The check fires before any boto3 call; reads (`get_bytes`, `exists`) are unaffected. `LocalFilesystemStorage` is unguarded — dev writes to `data/image_cache/` are always allowed.
+
+**Rationale:** A contributor who sources prod `.env` for one-off CLI work (e.g. `psql`, `boto3` HeadObject) and then runs `python3 -m src.gold_standard.v2_validator` or any extraction script would silently write image bytes to the live R2 bucket. The guard converts that silent mutation into an explicit, visible error.
+
+**Services that must set this var** (they call `put_bytes` in prod):
+- `filings-reviewer` — web service (belt-and-suspenders; web routes currently only read)
+- `filings-extraction` — cron; `OCRExtractionStage._download_missing_images` writes chart images
+- `filings-onboarding-runner` — worker; `IngestionStage.process` writes HTML-co-located images
+
+**Services that must NOT set this var:**
+- `filings-nightly-sweep` — git/GH only, never touches R2
+- `filings-metabase` — BI frontend, no R2 access
+
+**Failure mode without the env var:** `RuntimeError: R2 prod writes disabled. Set FILINGS_REVIEWER_ALLOW_PROD_WRITES=1 to opt in.` is raised at runtime when any write is attempted. The error message includes the env var name and purpose so it is self-diagnosing.
+
 ## Security
 
 - `image_crop` is guarded by `require_api_key` (`src/web/middleware.py`). External
