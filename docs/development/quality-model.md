@@ -122,10 +122,10 @@ Formally, for each `filing_id` × `metric_id`, we set `metric_disclosed_flag` in
 
 We measure **precision**, **recall**, and **F1** against a labeled gold-standard sample.
 
-- **Precision (P):**  
+- **Precision (P):**
   Among filing–metric pairs the system marks as `metric_disclosed_flag = true`, what fraction are truly disclosed?
 
-- **Recall (R):**  
+- **Recall (R):**
   Among filing–metric pairs that truly disclose a metric, what fraction does the system mark as `true`?
 
 We will compute these per metric class:
