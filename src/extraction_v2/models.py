@@ -672,15 +672,20 @@ class DetectedMetric:
 
 @dataclass
 class MetricPresence:
-    """Per-(doc, metric) presence signal emitted by MetricPresenceStage.
+    """Per-(doc, metric) text-presence signal emitted by MetricPresenceStage.
 
     Persisted to `v2_text_metric_presence` (sql/46). Aggregates signals
-    across the text pipeline (facts from html_table / text / ocr_table
-    sources) and the chart pipeline (`ImageAsset.detected_metrics`) into
-    one record per `(doc_id, canonical_metric_id)` pair.
+    from the text pipeline only — facts from html_table / text / ocr_table
+    sources, plus definitions — into one record per
+    `(doc_id, canonical_metric_id)` pair.
 
-    Primary scoring surface for the Tier 1 regression gate under the
-    presence-first pivot — see `docs/operations/text-pipeline-presence-pivot-plan.md`.
+    Chart-derived presence lives on the image pipeline at per-image grain
+    (`v2_image_assets.detected_metrics` JSONB; `v2_image_metric_presence`
+    under image-review Wave 2). Unified doc-grain presence is exposed
+    via the `v_doc_metric_presence` view (UNION of text + image).
+
+    Primary scoring surface for the text-side Tier 1 regression gate under
+    the presence-first pivot — see `docs/operations/text-pipeline-presence-pivot-plan.md`.
     """
 
     canonical_metric_id: str
