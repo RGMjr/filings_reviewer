@@ -14,7 +14,9 @@ Usage:
 
 Operator notes:
     - Run monthly after a batch of new human image review decisions have been
-      collected in v2_image_review_decisions.
+      collected. Both reviewer surfaces feed the export: v2_image_review_decisions
+      (legacy, image-level relevant/not_relevant) and v2_image_metric_confirmations
+      (per-metric A/R/C/Add/Skip, sql/47) aggregated to image-level.
     - Defaults to $TEST_DATABASE_URL (local Docker) so you must pass
       --database-url explicitly for production Neon (or set DATABASE_URL to the
       prod URL and pass --use-env-database-url).
