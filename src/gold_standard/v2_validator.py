@@ -277,6 +277,19 @@ class ValidationResult:
     # Presence diagnostics for FN chart rows.
     presence_fn_diagnostics: list[FNDiagnostic] = field(default_factory=list)
 
+    # Per-(filing, metric) text-presence scoring (PR2: text-presence pivot Tier 1 gate).
+    # Source: PipelineResult.presences (live from MetricPresenceStage, which already
+    # aggregates text + chart + definitions). Distinct from the chart-only
+    # `presence_*` fields above which feed the legacy `presence_f1` baseline metric.
+    # Expected set is "all non-trap, non-definition-only metric_ids in this filing's
+    # gold rows"; actual set is "metric_ids in MetricPresenceStage output."
+    metric_presence_tp: int = 0
+    metric_presence_fp: int = 0
+    metric_presence_fn: int = 0
+    metric_presence_tp_by_metric: dict[str, int] = field(default_factory=dict)
+    metric_presence_fp_by_metric: dict[str, int] = field(default_factory=dict)
+    metric_presence_fn_by_metric: dict[str, int] = field(default_factory=dict)
+
     # Per-stage pipeline timings for this filing (stage name → duration_ms).
     # Populated from v2_result.stage_results; empty if the pipeline failed.
     stage_timings: dict[str, int] = field(default_factory=dict)
@@ -342,10 +355,19 @@ class AggregateMetrics:
     chart_facts_text_derivable_total: int = 0
     chart_facts_text_derivable_cross_confirmed: int = 0
     chart_facts_by_chart_native_metric: dict[str, int] = field(default_factory=dict)
-    # Chart-presence aggregates (post-PR-1 pivot).
+    # Chart-presence aggregates (post-PR-1 chart-stage pivot, sourced from
+    # v2_image_assets.detected_metrics over chart-segment gold rows).
     total_presence_tp: int = 0
     total_presence_fp: int = 0
     total_presence_fn: int = 0
+
+    # Text-presence aggregates (PR2 text-presence pivot, sourced from
+    # PipelineResult.presences over all non-trap gold rows).
+    total_metric_presence_tp: int = 0
+    total_metric_presence_fp: int = 0
+    total_metric_presence_fn: int = 0
+    presence_by_metric: dict[str, MetricScores] = field(default_factory=dict)
+    presence_by_tier: dict[int, MetricScores] = field(default_factory=dict)
 
     @property
     def presence_precision(self) -> float:
@@ -362,6 +384,18 @@ class AggregateMetrics:
         p, r = self.presence_precision, self.presence_recall
         return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
+    @property
+    def tier1_presence_recall(self) -> float | None:
+        """Tier-1 presence recall — primary Tier-1 regression gate (PR2)."""
+        scores = self.presence_by_tier.get(1)
+        return scores.recall if scores is not None else None
+
+    @property
+    def tier2_presence_recall(self) -> float | None:
+        """Tier-2 presence recall — informational under the presence pivot."""
+        scores = self.presence_by_tier.get(2)
+        return scores.recall if scores is not None else None
+
     def to_baseline_metrics(
         self,
         description: str | None = None,
@@ -374,6 +408,13 @@ class AggregateMetrics:
         has_presence = (
             self.total_presence_tp + self.total_presence_fp + self.total_presence_fn
         ) > 0
+        # Same gate for the new tier1/2 text-presence numbers — None when no metric
+        # presence rows were evaluated, so the loader keeps tolerating older baselines.
+        has_metric_presence = (
+            self.total_metric_presence_tp
+            + self.total_metric_presence_fp
+            + self.total_metric_presence_fn
+        ) > 0
         return BaselineMetrics(
             baseline_date=datetime.now(UTC).isoformat(),
             description=description or "V2 pipeline validation",
@@ -384,7 +425,8 @@ class AggregateMetrics:
             ),
             by_company=self.by_company,
             presence_f1=self.presence_f1 if has_presence else None,
-            # V2 baseline marker (via description)
+            tier1_presence_recall=self.tier1_presence_recall if has_metric_presence else None,
+            tier2_presence_recall=self.tier2_presence_recall if has_metric_presence else None,
         )
 
 
@@ -830,6 +872,39 @@ class V2GoldStandardValidator:
             # FPs: metrics detected but not expected in this filing's chart-gold set
             for _ in chart_detected_set - chart_gold_set:
                 result.presence_fp += 1
+
+        # --- Text-presence pivot: per-(filing, metric) presence scoring (PR2) ---
+        # Source: v2_result.presences (output of MetricPresenceStage, which
+        # already aggregates text + chart + definitions into one record per
+        # canonical metric). Expected set: every non-trap, non-definition-only
+        # gold row's metric_id. This is the surface that gates Tier 1 regressions.
+        expected_presence_set: set[str] = {
+            normalize_metric_id(e.metric_id)
+            for e in expected_entries
+            if not e.is_definition_only
+            and normalize_metric_id(e.metric_id)
+            and normalize_metric_id(e.metric_id) != "cm_not_a_customer_metric"
+        }
+        actual_presence_set: set[str] = {
+            normalize_metric_id(p.canonical_metric_id)
+            for p in v2_result.presences
+            if p.canonical_metric_id
+        }
+        for metric_id in expected_presence_set & actual_presence_set:
+            result.metric_presence_tp += 1
+            result.metric_presence_tp_by_metric[metric_id] = (
+                result.metric_presence_tp_by_metric.get(metric_id, 0) + 1
+            )
+        for metric_id in expected_presence_set - actual_presence_set:
+            result.metric_presence_fn += 1
+            result.metric_presence_fn_by_metric[metric_id] = (
+                result.metric_presence_fn_by_metric.get(metric_id, 0) + 1
+            )
+        for metric_id in actual_presence_set - expected_presence_set:
+            result.metric_presence_fp += 1
+            result.metric_presence_fp_by_metric[metric_id] = (
+                result.metric_presence_fp_by_metric.get(metric_id, 0) + 1
+            )
 
         # Store all pre-threshold facts and gold entries so metrics can be
         # recomputed at a different confidence threshold without re-running
@@ -1713,6 +1788,46 @@ class V2GoldStandardValidator:
         return None
 
     @staticmethod
+    def print_presence_tier_report(metrics: AggregateMetrics) -> None:
+        """Print Tier-1/2 presence-recall — primary scoring surface (PR2 pivot).
+
+        Tier 1 presence-recall is the regression gate; Tier 2 is informational.
+        Skips the section entirely when no presence rows were evaluated (keeps
+        output uncluttered for runs predating the pivot).
+        """
+        total = (
+            metrics.total_metric_presence_tp
+            + metrics.total_metric_presence_fp
+            + metrics.total_metric_presence_fn
+        )
+        if total == 0:
+            return
+
+        print("\n==== TEXT-PRESENCE TIER BREAKDOWN (PR2 Tier-1 gate surface) ====")
+        for tier in sorted(metrics.presence_by_tier):
+            scores = metrics.presence_by_tier[tier]
+            label = TIER_LABELS.get(tier, f"tier-{tier}")
+            gate_marker = "[GATE]" if tier == 1 else "[informational]"
+            print(
+                f"  Tier {tier} ({label}) {gate_marker}:  "
+                f"P={scores.precision:.1%}  R={scores.recall:.1%}  F1={scores.f1:.1%}"
+            )
+
+        if not metrics.presence_by_metric:
+            return
+
+        print("\n  Per-metric presence detail:")
+        col_w = max(len(mid) for mid in metrics.presence_by_metric)
+        print(f"  {'Metric':<{col_w}}  Tier  {'P':>6}  {'R':>6}  {'F1':>6}")
+        print("  " + "-" * (col_w + 32))
+        for mid in sorted(metrics.presence_by_metric, key=lambda m: (get_tier(m), m)):
+            s = metrics.presence_by_metric[mid]
+            tier = get_tier(mid)
+            print(
+                f"  {mid:<{col_w}}   T{tier}  {s.precision:>6.1%}  {s.recall:>6.1%}  {s.f1:>6.1%}"
+            )
+
+    @staticmethod
     def print_tier_report(metrics: AggregateMetrics) -> None:
         """Print precision/recall/F1 breakdown by metric importance tier and per metric."""
         print("\n==== METRIC TIER BREAKDOWN ====")
@@ -1871,6 +1986,54 @@ class V2GoldStandardValidator:
         total_presence_fp = sum(r.presence_fp for r in results)
         total_presence_fn = sum(r.presence_fn for r in results)
 
+        # Text-presence aggregation (PR2 pivot, Tier 1 gate).
+        total_metric_presence_tp = sum(r.metric_presence_tp for r in results)
+        total_metric_presence_fp = sum(r.metric_presence_fp for r in results)
+        total_metric_presence_fn = sum(r.metric_presence_fn for r in results)
+
+        presence_tp_per_metric: dict[str, int] = {}
+        presence_fp_per_metric: dict[str, int] = {}
+        presence_fn_per_metric: dict[str, int] = {}
+        for r in results:
+            for mid, c in r.metric_presence_tp_by_metric.items():
+                presence_tp_per_metric[mid] = presence_tp_per_metric.get(mid, 0) + c
+            for mid, c in r.metric_presence_fp_by_metric.items():
+                presence_fp_per_metric[mid] = presence_fp_per_metric.get(mid, 0) + c
+            for mid, c in r.metric_presence_fn_by_metric.items():
+                presence_fn_per_metric[mid] = presence_fn_per_metric.get(mid, 0) + c
+
+        all_presence_metric_ids = (
+            set(presence_tp_per_metric) | set(presence_fp_per_metric) | set(presence_fn_per_metric)
+        )
+        presence_by_metric: dict[str, MetricScores] = {}
+        for mid in sorted(all_presence_metric_ids):
+            tp = presence_tp_per_metric.get(mid, 0)
+            fp = presence_fp_per_metric.get(mid, 0)
+            fn = presence_fn_per_metric.get(mid, 0)
+            p = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            r_score = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f = 2 * p * r_score / (p + r_score) if (p + r_score) > 0 else 0.0
+            presence_by_metric[mid] = MetricScores(precision=p, recall=r_score, f1=f)
+
+        # Roll up presence by tier (Tier 1 = blocker; Tier 2 = informational).
+        tier_pp_tp: dict[int, int] = {}
+        tier_pp_fp: dict[int, int] = {}
+        tier_pp_fn: dict[int, int] = {}
+        for mid in all_presence_metric_ids:
+            t = get_tier(mid)
+            tier_pp_tp[t] = tier_pp_tp.get(t, 0) + presence_tp_per_metric.get(mid, 0)
+            tier_pp_fp[t] = tier_pp_fp.get(t, 0) + presence_fp_per_metric.get(mid, 0)
+            tier_pp_fn[t] = tier_pp_fn.get(t, 0) + presence_fn_per_metric.get(mid, 0)
+        presence_by_tier: dict[int, MetricScores] = {}
+        for t in sorted(set(tier_pp_tp) | set(tier_pp_fp) | set(tier_pp_fn)):
+            tp = tier_pp_tp.get(t, 0)
+            fp = tier_pp_fp.get(t, 0)
+            fn = tier_pp_fn.get(t, 0)
+            p = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            r_score = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f = 2 * p * r_score / (p + r_score) if (p + r_score) > 0 else 0.0
+            presence_by_tier[t] = MetricScores(precision=p, recall=r_score, f1=f)
+
         return AggregateMetrics(
             precision=precision,
             recall=recall,
@@ -1889,6 +2052,11 @@ class V2GoldStandardValidator:
             total_presence_tp=total_presence_tp,
             total_presence_fp=total_presence_fp,
             total_presence_fn=total_presence_fn,
+            total_metric_presence_tp=total_metric_presence_tp,
+            total_metric_presence_fp=total_metric_presence_fp,
+            total_metric_presence_fn=total_metric_presence_fn,
+            presence_by_metric=presence_by_metric,
+            presence_by_tier=presence_by_tier,
         )
 
     def compute_metrics_at_threshold(
@@ -2194,6 +2362,9 @@ def run_validation(
 
     # Print tier breakdown
     V2GoldStandardValidator.print_tier_report(metrics)
+
+    # Print PR2 text-presence tier breakdown (Tier-1 = regression gate; Tier-2 informational).
+    V2GoldStandardValidator.print_presence_tier_report(metrics)
 
     # Print CHART cross-source confirmation gate (Phase 3 go/no-go).
     V2GoldStandardValidator.print_cross_source_gate(metrics)

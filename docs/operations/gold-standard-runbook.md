@@ -130,36 +130,25 @@ Then commit `data/gold_standard/v2_baseline.json` separately with message `chore
 
 ## 7. Reading V2 Validator Output
 
-After each validator run (`v2_validator.py`), output includes a Tier breakdown followed by a chart confirmation line:
+After each validator run (`v2_validator.py`), output includes two tier breakdowns plus a chart confirmation line:
 
 ```
-Tier 1 recall: ...
-Tier 2 recall: ...
+==== METRIC TIER BREAKDOWN ====
+  Tier 1 (must-not-miss):  P=...  R=...  F1=...   (informational under PR2)
+  Tier 2 (nice-to-have):   P=...  R=...  F1=...   (informational)
 
-CHART cross-source confirmation: m/n (pct%)
+==== TEXT-PRESENCE TIER BREAKDOWN (PR2 Tier-1 gate surface) ====
+  Tier 1 (must-not-miss) [GATE]:           P=...  R=...  F1=...
+  Tier 2 (nice-to-have) [informational]:   P=...  R=...  F1=...
+
+CHART cross-source confirmation: m/n (pct%)   (informational)
 ```
 
-The `m/n` counts chart facts that were independently confirmed by a second source type (e.g., a TEXT or TABLE fact agreeing on the same metric+period+value slot). `pct%` is `m/n * 100`. (Under the chart-presence pivot the chart pipeline no longer auto-emits per-value chart facts; this line currently reflects only residual pre-pivot rows. The metric will be deprecated in PR2 of the text-presence pivot in favor of a presence-derived check.)
+**The PR2 gate** keys on `Tier 1 [GATE] R=...` (presence-recall). `--fail-on-regression` exits 1 only when that number drops below `tier1_presence_recall` in `data/gold_standard/v2_baseline.json` minus tolerance. All other lines (fact-level Tier 1/2, chart cross-source confirmation, per-company drops) are informational and will be reported in the comparison summary with an `[informational]` prefix but will not block the commit. See `docs/operations/text-pipeline-presence-pivot-plan.md` for the rationale.
+
+The `m/n` chart cross-source counts chart facts independently confirmed by a second source type (TEXT or TABLE fact agreeing on the same metric+period+value slot). `pct%` is `m/n * 100`. Under the chart-presence pivot the chart pipeline no longer auto-emits per-value chart facts; this line currently reflects only residual pre-pivot rows.
 
 A soft `WARNING` is printed if `pct < 30%`. This warning is not a hard failure and will not block a baseline update, but it indicates that the chart bridge is producing few cross-confirmed facts — which may signal chart OCR quality issues or a gap in the text/table extraction path for those metrics. Discuss with the team before updating the baseline when this warning appears.
-
-### 7a. Presence-derived metrics (PR2-pending)
-
-PR2 of the text-presence pivot will add the following to the validator output:
-
-```
-Tier 1 presence-recall: ...
-Tier 1 presence-F1: ...     ← NEW Tier-1 gate (replaces fact-recall)
-Tier 2 presence-recall: ...
-```
-
-Mechanics under PR2 (interface contract, not yet shipped — see `text-pipeline-presence-pivot-plan.md` §3):
-
-- The validator queries `v_doc_metric_presence` (UNION view of `v2_text_metric_presence` + `v2_image_metric_presence`, the per-image grain table that lands with image-review Wave 2).
-- Tier-1 gate flips from "fact-recall on text/table" to "presence-recall on the doc grain". A regression on a Tier-1 metric blocks PR merge regardless of whether per-value facts exist.
-- Chart-native metrics (`cm_revenue_by_cohort`, `cm_balance_by_cohort`, `cm_gross_margin_by_cohort`, etc.) become measurable for the first time post-pivot — pre-PR2 their recall has been silently zero in the gate because the chart pipeline emits no facts.
-
-Until PR2 lands, do not expect chart-native presence improvements to show up in the V2 baseline; they are still tracked manually via gold-standard inspection and the `vision-bakeoff-metric-classify-2026-04-23.md` report. Known gap: legacy-098 (`presence_f1` not yet populated in the validator output).
 
 ---
 

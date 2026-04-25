@@ -9,12 +9,41 @@ Strategic direction memo: `~/.claude/projects/.../memory/project_presence_first_
 | PR | Scope | Status | Migration |
 |---|---|---|---|
 | PR1 | Schema + presence emission + `presence_only` persistence mode | **Landed** (PR #182) | sql/46 |
-| PR2 | Gold-standard presence derivation + validator + Tier 1 gate flip | Pending | — |
+| PR2 | Gold-standard presence scoring + validator + Tier 1 gate flip | **Landed** (this PR) | — (no schema) |
 | PR3 | Reviewer UI surfaces presence (`v2_text_presence_confirmations`) | Pending | sql/48 |
 | PR4 | Tier-1 definition/methodology LLM classifier | Pending | sql/49 |
 | PR5 | MetricPresenceStage chart-contribution removal (cleanup) | **Landed** | — |
 
 Full plan files live under `~/.claude/plans/text-presence-pr*.md` and `~/.claude/plans/text-presence-pivot-index.md`.
+
+## PR2 status (2026-04-25)
+
+PR2 ships the validator + gate flip without the originally-planned new module or new SQL migration.
+
+**Structural deviation from the original plan:**
+- The plan assumed a `v_doc_metric_presence` SQL view + `v2_image_metric_presence` table shipped by image-review Wave 1. **Image-review explicitly out-of-scoped both** (`~/.claude/plans/our-disclosures-review-web-deep-blossom.md` line 30); chart-derived presence is now captured by promoting reviewer accept/correct/add decisions into `v2_metric_facts` (`source_type='chart'`, `review_status='accepted'`, PR #192/sql/47).
+- Validator gate reads presence **live from `PipelineResult.presences`** (output of `MetricPresenceStage`, which already aggregates text + chart `image.detected_metrics` + definitions). No DB roundtrip. No view shipped in PR2.
+- The plan's "three corpora" assumption (filing/presentation/transcript) was stale: the live `v2_validator.py` reads only `data/gold_standard/golden_set_260408.csv` (filing corpus). Transcript and presentation pipelines have separate validators (`scripts/validate_transcript_extraction.py` etc.). **PR2 scope is filing-corpus only**; transcript and presentation Tier-1 presence gates are tracked as follow-up work.
+- No new `presence_derivation.py` module — presence projection happens inline in `validate_filing()` from the already-loaded `entries_by_company` dict.
+
+**Code changes:**
+- `src/gold_standard/v2_validator.py`: `ValidationResult` gains `metric_presence_tp/fp/fn` + per-metric breakdowns. `validate_filing()` projects expected presence from gold rows, intersects with `v2_result.presences`. `compute_metrics()` aggregates per-tier; `AggregateMetrics` exposes `tier1_presence_recall` / `tier2_presence_recall`. `print_presence_tier_report()` renders the new section with `[GATE]` / `[informational]` markers.
+- `src/gold_standard/baseline.py`: `BaselineMetrics` gains `tier1_presence_recall` / `tier2_presence_recall` (None on pre-PR2 baselines; loader tolerates absence). `compare_to_baseline()` flips: only Tier-1 presence-recall regression sets `has_regression=True`. Overall fact P/R/F1, per-company drops, chart `presence_f1`, Tier-2 presence-recall are still surfaced but tagged `[informational]`. `ComparisonResult` gains `tier1_presence_recall_delta` / `tier2_presence_recall_delta`.
+- `scripts/backfill_text_presence.py`: new operational script. Defaults to `$TEST_DATABASE_URL`; refuses prod unless `--allow-prod` + `ALLOW_PROD_BACKFILL=yes`. Uses `persist_pipeline_result(presence_only=True)` to populate `v2_text_metric_presence` for reviewed filings without touching `v2_metric_facts` (no `ReviewedFilingError` risk).
+- Tests: extended `tests/unit/gold_standard/test_baseline.py` (gate-flip semantics, tier-field round-trip, pre-PR2 backwards compat) and `tests/unit/gold_standard/test_v2_validator.py` (presence aggregation, tier rollup).
+
+**Baseline numbers (regenerated 2026-04-25, post-#182 + post-#192):**
+- Tier 1 presence-recall: **85.3%** — the new `tier1_presence_recall` gate metric.
+- Tier 2 presence-recall: **91.3%** (informational).
+- Tier 1 fact-recall: 50.5% (informational under PR2).
+- Tier 2 fact-recall: 36.0% (informational).
+- 12 filings ran; ~16s per filing, 193s total wall clock at 4 workers.
+
+**Follow-up workstreams (deferred):**
+- Tier-1 presence-recall gate for `scripts/validate_transcript_extraction.py` (transcript corpus).
+- Tier-1 presence-recall gate for the presentation pipeline.
+- Production run of `scripts/backfill_text_presence.py` against Neon prod (operational; gated behind `--allow-prod` + `ALLOW_PROD_BACKFILL=yes`).
+- Investigate the gold-standard companies whose `filing.html` is missing — separate diligence ticket.
 
 ## Cross-pivot coordination with image-review redesign
 
