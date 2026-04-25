@@ -4,6 +4,14 @@ How to operate the two optional image-OCR entry points introduced in the
 full-page-OCR feature branch: `FULL_PAGE_OCR_ENABLED` (Path A) and
 `IMAGE_KEYWORD_PRESCAN_ENABLED` (Path B). Both ship default-off.
 
+> **Pivot status (2026-04-25):** Both paths feed advisory `v2_metric_facts`
+> rows (text/OCR sources). Chart-shaped output flows through
+> `ChartFactBridgeStage` and writes presence pairs to
+> `v2_image_assets.detected_metrics` rather than per-value chart facts
+> (chart-presence pivot #86). `MetricPresenceStage` aggregates whatever
+> these paths emit into `v2_text_metric_presence`. See
+> [`text-pipeline-presence-pivot-plan.md`](text-pipeline-presence-pivot-plan.md).
+
 ## What each path does
 
 ### Path A — full-page-scan filing

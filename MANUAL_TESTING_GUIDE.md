@@ -1,8 +1,21 @@
-# Manual Testing Guide
+# Manual Testing Guide — DEPRECATED
 
-Quick guide for manually testing the human review system.
+> **DEPRECATED 2026-04-25.** The flow described below (`scripts/setup_manual_test.py`,
+> `review.candidates` / `review.decisions` tables, `/review/filings` and
+> `/api/decisions` endpoints, `sql/07_create_review_schema.sql`) belongs to the
+> retired V1 review system. The script no longer exists; the schema has been
+> dropped (see `sql/31_drop_v1_review_tables.sql`). The active system is the V2
+> unified review UI at `/v2/review/<filing_id>`, which surfaces text facts
+> (advisory under the presence pivot), image presence detections from
+> `v2_image_assets.detected_metrics`, and reviewer confirmations via
+> `v2_image_metric_confirmations`. Manual value entry uses
+> `POST /api/v2/missed-metric`.
+>
+> For current QA flows, see `docs/operations/text-pipeline-presence-pivot-plan.md`
+> and `docs/architecture/system-overview.md`. This file is preserved for
+> historical context and will be archived in a follow-up PR.
 
-## Quick Start
+## Quick Start (HISTORICAL — does not work)
 
 **Single command to set up everything:**
 

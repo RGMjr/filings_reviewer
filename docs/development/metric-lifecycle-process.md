@@ -1,7 +1,9 @@
 # Metric Lifecycle Process
 
-Version: 1.0
-Date: 2026-01-07
+Version: 1.1
+Date: 2026-04-25
+
+> **Pivot status (2026-04-25):** Under the presence pivot, a metric is "present" in a filing the moment any of three signals fires: a text/table fact, a chart-presence detection (`v2_image_assets.detected_metrics`), or a definition match. **A metric exists in the analytic surface even before any value is bound** — value extraction is now advisory. When you add a new metric, ensure (1) keyword patterns in `config/metric_keywords.yaml` cover the text path, (2) chart-presence patterns cover the chart path if the metric is chart-native, and (3) gold-standard entries exercise both presence detection and (where applicable) value binding. See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md) and [`./metrics-taxonomy.md`](./metrics-taxonomy.md).
 
 ## 1. Overview
 
@@ -282,14 +284,16 @@ pytest tests/unit/web/ -v
 -- Connect to database
 psql $DATABASE_URL
 
--- Check for existing data
-SELECT COUNT(*) FROM metric_values WHERE metric_id = 'cm_xxx';
-SELECT COUNT(*) FROM review_candidates WHERE suggested_metric_id = 'cm_xxx';
-SELECT COUNT(*) FROM review_decisions WHERE assigned_metric_id = 'cm_xxx';
-SELECT COUNT(*) FROM filing_metric_incidence WHERE metric_id = 'cm_xxx';
+-- Check V2 tables for existing data
+SELECT COUNT(*) FROM v2_metric_facts          WHERE canonical_metric_id = 'cm_xxx';
+SELECT COUNT(*) FROM v2_metric_definitions    WHERE canonical_metric_id = 'cm_xxx';
+SELECT COUNT(*) FROM v2_text_metric_presence  WHERE canonical_metric_id = 'cm_xxx';
+SELECT COUNT(*) FROM v2_image_assets WHERE detected_metrics @> jsonb_build_array(jsonb_build_object('metric_id','cm_xxx'));
+SELECT COUNT(*) FROM v2_image_metric_confirmations
+  WHERE detected_metric_id = 'cm_xxx' OR confirmed_metric_id = 'cm_xxx';
 ```
 
-**If any count > 0:** STOP and deprecate instead of removing.
+**If any count > 0:** STOP and deprecate instead of removing — reviewer work and presence claims would be silently destroyed by `ON DELETE CASCADE`. The V1 tables (`metric_values`, `review_candidates`, `review_decisions`, `filing_metric_incidence`) referenced in earlier versions of this doc have been dropped (sql/26, sql/27, sql/31).
 
 ### Step 2: Remove from All Locations (Reverse Order)
 

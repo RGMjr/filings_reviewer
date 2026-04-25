@@ -1,14 +1,16 @@
 # Data Model Specification
 
-**Version:** 3.0
-**Last Updated:** 2026-04-18
-**Status:** Production Schema (V2)
+**Version:** 3.1
+**Last Updated:** 2026-04-25
+**Status:** Production Schema (V2, presence-pivot mid-rollout)
 
 ---
 
+> **Pivot status (2026-04-25):** The primary scoring surface is **presence**, persisted to `v2_text_metric_presence` (sql/46) and surfaced jointly with image-presence via the `v_doc_metric_presence` UNION view (image-grain table lands with image-review Wave 2). Per-value `v2_metric_facts` rows continue as advisory evidence; the chart pipeline writes presence-only signals to `v2_image_assets.detected_metrics` (sql/42) and the Vision classifier appends to `v2_image_classifications` (sql/45). Reviewer adjudications for image-presence live in `v2_image_metric_confirmations` (sql/43, sql/47). See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
+
 ## Overview
 
-This document defines the live PostgreSQL schema for the CMASB filings review system as of 2026-04-18, following the V1→V2 cutover (migrations `26_drop_filing_metric_incidence.sql`, `27_drop_v1_metric_tables.sql`, `30_drop_v1_image_review.sql`).
+This document defines the live PostgreSQL schema for the CMASB filings review system as of 2026-04-25, following the V1→V2 cutover (migrations `26_drop_filing_metric_incidence.sql`, `27_drop_v1_metric_tables.sql`, `30_drop_v1_image_review.sql`) and the chart-presence + text-presence-pivot PR1 (sql/42–47).
 
 V2 tables (`v2_*`) are the authoritative extraction output for all document types: SEC filings, transcripts, and investor presentations. A small set of V1 tables remains live only to support the legacy review-candidate workflow; their retirement is tracked in `docs/architecture/v1-table-deprecation-plan.md`.
 
@@ -18,10 +20,10 @@ Table structures, keys, enums, and relationships below match the live DB. Where 
 
 ## Design Principles
 
-1. **Provenance-first.** Every `v2_metric_facts` row carries a `source_locator` JSONB pointing to an exact DOM location and an `evidence_pack` JSONB with a renderable snippet. No value without provenance.
-2. **Idempotent writes.** The persistence layer upserts against a unique identity index on `v2_metric_facts`, so re-running extraction on the same filing produces stable row counts.
-3. **Analysis-first grain.** Tables are keyed to the units of analysis: document, fact (doc × metric × period × scope × cohort × source_type), table × cell, image asset, segment.
-4. **Canonical taxonomy.** All facts reference `metrics.metric_id`; issuer-specific definitions live in `v2_metric_definitions` per (doc, metric).
+1. **Provenance-first.** Every presence row in `v2_text_metric_presence` carries `evidence_segment_ids` and `advisory_fact_ids` (JSONB pointers, **not** foreign keys) back to source segments and contributing facts. Every `v2_metric_facts` row carries a `source_locator` JSONB and an `evidence_pack` JSONB with a renderable snippet. No claim without provenance.
+2. **Idempotent writes.** The persistence layer upserts against unique identity indexes on `v2_metric_facts` (8-column tuple) and `v2_text_metric_presence` (`(doc_id, canonical_metric_id)`). Re-running extraction on the same filing produces stable row counts.
+3. **Analysis-first grain.** Tables are keyed to the units of analysis: **presence (doc × metric)** is the primary grain for scoring; advisory fact (doc × metric × period × scope × cohort × source_type) is the per-value evidence grain; document, table × cell, image asset, segment, and image-presence-confirmation are subordinate grains.
+4. **Canonical taxonomy.** All facts and presences reference `metrics.metric_id`; issuer-specific definitions live in `v2_metric_definitions` per (doc, metric).
 5. **Extensible.** Check-constraint enums on `form_type`, `section_type`, `segment_type`, etc. absorb new document types (SEC 8-K, earnings calls, investor presentations) without table changes.
 6. **PostgreSQL-oriented.** Types align to Postgres (`text`, `numeric`, `timestamptz`, `jsonb`, `uuid`, `text[]`).
 
@@ -44,14 +46,17 @@ Tables are grouped into three tiers.
 
 | Table | Purpose |
 |-------|---------|
+| `v2_text_metric_presence` (sql/46) | **Primary scoring surface.** One row per `(doc_id, canonical_metric_id)`; aggregates contributions from text facts, chart `detected_metrics`, and definitions. Upserted by `MetricPresenceStage`. |
+| `v2_image_metric_confirmations` (sql/43, sql/47) | Reviewer adjudications of image-presence detections (accept / reject / correct / add / skip). |
+| `v2_image_classifications` (sql/45) | Append-only audit trail for the Vision-API metric-classifier (Stage 5b, gated by `ENABLE_METRIC_CLASSIFY`). |
 | `v2_documents` | Filing-level V2 processing state and transcript/presentation metadata |
 | `v2_segments` | DOM-native content blocks with hierarchical `section_path` |
 | `v2_tables`, `v2_table_cells` | Reconstructed tables with resolved spans and `header_path`/`stub_path` arrays |
-| `v2_image_assets` | Extracted images with classification, OCR/chart results, and review status |
-| `v2_metric_facts` | Primary extraction output — every extracted metric with provenance and review status |
+| `v2_image_assets` | Extracted images with classification, OCR/chart results, `detected_metrics` JSONB (sql/42), and review status |
+| `v2_metric_facts` | Advisory per-value extraction output with provenance and review status. Chart sources do not auto-emit new rows post-#86. |
 | `v2_metric_definitions` | Issuer-specific definition and methodology text, one per (doc, metric) |
 | `v2_review_decisions` | Human review decisions on V2 facts (accept/reject/correct) |
-| `v2_image_review_decisions` | Human review decisions on V2 images |
+| `v2_image_review_decisions` | Legacy per-image review decisions (read-only; superseded by `v2_image_metric_confirmations`) |
 
 ### V1 residual (retirement tracked in `v1-table-deprecation-plan.md`)
 
@@ -67,9 +72,12 @@ Tables are grouped into three tiers.
 
 - `companies` 1–N `filings`
 - `filings` 1–1 `v2_documents` (via `v2_documents.filing_id`, `UNIQUE`)
-- `filings` 1–N `v2_metric_facts`, `v2_segments`, `v2_tables`, `v2_image_assets`
+- `filings` 1–N `v2_metric_facts`, `v2_segments`, `v2_tables`, `v2_image_assets`, `v2_text_metric_presence`
+- `v2_text_metric_presence` `UNIQUE (doc_id, canonical_metric_id)`; references `filings(filing_id)` ON DELETE CASCADE. `evidence_segment_ids` and `advisory_fact_ids` are **JSONB arrays, not foreign keys** — see Provenance section below.
 - `v2_metric_facts` 1–1 `v2_review_decisions` (via `v2_review_decisions.fact_id`, `UNIQUE`)
-- `v2_image_assets` 1–1 `v2_image_review_decisions` (via `UNIQUE img_id`)
+- `v2_image_assets` 1–1 `v2_image_review_decisions` (legacy; via `UNIQUE img_id`)
+- `v2_image_assets` 1–N `v2_image_metric_confirmations` (per-reviewer-per-metric adjudications; ON DELETE CASCADE from `img_id`)
+- `v2_image_assets` 1–N `v2_image_classifications` (append-only Vision-API audit trail; ON DELETE CASCADE from `img_id`)
 - `v2_segments` 0–N `v2_metric_definitions` (definition/methodology segment FKs)
 - `filings` 1–N `source_segments` (V1 residual)
 - `filings` 1–N `review_candidates` 1–1 `review_decisions` (V1 residual)
@@ -589,6 +597,74 @@ This table is the reviewer-adjudication surface for `v2_image_assets.detected_me
 
 ---
 
+#### `v2_image_classifications`
+
+**Grain:** Append-only audit row per Vision-API metric-classify call. Added in `sql/45_create_v2_image_classifications.sql` (chart-presence pivot, #86).
+
+```sql
+CREATE TABLE v2_image_classifications (
+    classification_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    img_id              UUID NOT NULL
+                            REFERENCES v2_image_assets(img_id) ON DELETE CASCADE,
+    predicted_metrics   JSONB NOT NULL DEFAULT '[]',  -- [{metric_id, confidence, reasoning}]
+    model_version       TEXT NOT NULL,
+    prompt_version      TEXT NOT NULL,
+    cost_usd            NUMERIC(10,6),
+    latency_ms          INTEGER,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_v2_image_classifications_img_id
+    ON v2_image_classifications(img_id);
+```
+
+The Vision metric-classifier (`src/extraction_v2/stages/image_classify.py`, gated by `ENABLE_METRIC_CLASSIFY`) is **independent** from the rule-based `v2_image_assets.detected_metrics` (sql/42). Both signals can co-exist on the same image; `MetricPresenceStage` reads `detected_metrics` (the rule-based list); the Vision audit trail is consumed by reviewer UI and analytics. **No `MetricFact` rows are emitted** from this stage.
+
+---
+
+#### `v2_text_metric_presence`
+
+**Grain:** One row per `(doc_id, canonical_metric_id)`. Enforced by `UNIQUE (doc_id, canonical_metric_id)`. Added in `sql/46_v2_text_metric_presence.sql` (text-presence pivot PR1, #182).
+
+```sql
+CREATE TABLE v2_text_metric_presence (
+    presence_id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id                 BIGINT NOT NULL
+                               REFERENCES filings(filing_id) ON DELETE CASCADE,
+    canonical_metric_id    TEXT NOT NULL,
+    score                  DOUBLE PRECISION NOT NULL CHECK (score >= 0 AND score <= 1),
+    detected_at_stage      TEXT NOT NULL,
+    evidence_segment_ids   JSONB NOT NULL DEFAULT '[]',  -- sorted list of segment IDs
+    advisory_value_count   INTEGER NOT NULL DEFAULT 0,
+    advisory_fact_ids      JSONB NOT NULL DEFAULT '[]',  -- contributing fact_ids (no FK)
+    pipeline_version       TEXT NOT NULL,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (doc_id, canonical_metric_id)
+);
+
+CREATE INDEX idx_v2_text_metric_presence_doc_id
+    ON v2_text_metric_presence(doc_id);
+CREATE INDEX idx_v2_text_metric_presence_metric_id
+    ON v2_text_metric_presence(canonical_metric_id);
+```
+
+**Semantics:**
+
+- **Primary scoring surface for the Tier 1 regression gate** under the presence-first pivot. PR2 (pending) flips the gate from fact-recall to presence-recall.
+- `score` = MAX confidence across all contributing signals (text facts, chart `detected_metrics`, definitions). Definition-only presence floors at `_DEFINITION_ONLY_PRESENCE_SCORE = 0.5`.
+- `detected_at_stage` ∈ `fact_construction`, `chart_fact_bridge`, `definition_extraction` — records the source that first surfaced the metric, for diagnostics.
+- `evidence_segment_ids` is a **sorted JSONB array of segment IDs** drawn from contributing facts (`fact.source_locator.segment_id`) and definitions (`definition_segment_id`, `methodology_segment_id`). **Chart-only presences have an empty array** — evidence lives on `v2_image_assets` and `v2_image_metric_confirmations`.
+- `advisory_fact_ids` is a JSONB array of contributing fact UUIDs. **Not a foreign key.** Facts may be deleted on `force=True` re-extraction without cascading to presence rows — presence is a doc-level claim independent of which specific fact rows currently back it.
+- `advisory_value_count` = count of contributing facts (not unique values). Rough disclosure-depth signal for downstream UI.
+- `pipeline_version` is currently `"2.0.0"`.
+
+**Persistence:** `V2PersistenceAdapter._persist_presence_in_tx(cur, presences, filing_id) -> int` upserts on `(doc_id, canonical_metric_id)`. Called from `persist_pipeline_result` as step 8 (after facts, definitions, and image classifications). The `presence_only=True` kwarg on `persist_pipeline_result` skips the fact-write step entirely; presence rows still upsert. Mutually exclusive with `chart_only=True`.
+
+**Cross-pivot view (image-review Wave 2 dependency):** PR2 reads `v_doc_metric_presence` (UNION view of `v2_text_metric_presence` + `v2_image_metric_presence`, the per-image grain table that lands with image-review Wave 2). See `docs/operations/text-pipeline-presence-pivot-plan.md`.
+
+---
+
 ### V1 residual
 
 These tables are live but on a retirement path. See `docs/architecture/v1-table-deprecation-plan.md` for migration roadmaps and difficulty assessments. The V2 pipeline does not read them; they support the legacy candidate-review UI and gold-standard tooling.
@@ -783,8 +859,29 @@ Authoritative DDL ordering. Applied to live DB in the order shown (see `schema_m
 | 28 | `28_extend_v2_image_assets_review.sql` | Review columns on `v2_image_assets` |
 | 29 | `29_create_v2_image_review_decisions.sql` | `v2_image_review_decisions` |
 | 30 | `30_drop_v1_image_review.sql` | **Drops V1 image-review tables** |
+| 31 | `31_drop_v1_review_tables.sql` | **Drops V1 `review_candidates`, `review_decisions`, `learned_patterns`, etc.** |
+| 32 | `32_add_detected_keywords_to_v2_image_assets.sql` | `v2_image_assets.detected_keywords` (precursor to `detected_metrics`) |
+| 33 | `33_fix_identity_index.sql` | Idempotently rebuild 9-column identity index (resolves drift; see Known Discrepancies) |
+| 34 | `34_dedup_v2_image_assets.sql` | One-time dedup of `v2_image_assets` |
+| 35 | `35_drop_v2_image_assets_segment_id.sql` | Drops legacy `segment_id` column on `v2_image_assets` |
+| 36 | `36_backfill_presentation_urls.sql` | Backfills SEC presentation URLs |
+| 37 | `37_create_analytics_role.sql` | Read-only `analytics` role |
+| 38 | `38_create_analytics_views.sql` | `v_analytics_*` BI views (canonical reporting shape) |
+| 39 | `39_v2_ingest_batches.sql` | `v2_ingest_batches`, `v2_ingest_batch_filings` |
+| 40 | `40_full_page_scan_and_ocr_provenance.sql` | Full-page OCR provenance fields |
+| 41 | `41_normalize_accession_numbers.sql` | Normalize `filings.accession_number` formatting |
+| 42 | `42_add_detected_metrics_to_v2_image_assets.sql` | `v2_image_assets.detected_metrics` JSONB (chart-presence pivot #86) |
+| 43 | `43_create_v2_image_metric_confirmations.sql` | Per-reviewer image-metric adjudications (accept/reject/correct/add) |
+| 44 | `44_extend_image_rejection_reason_enum.sql` | Extends `rejection_reason` enum on confirmations |
+| 45 | `45_create_v2_image_classifications.sql` | Vision-API metric-classifier audit trail (Stage 5b) |
+| 46 | `46_extend_audit_http_method_constraint.sql` | Loosens `v2_audit_log.http_method` CHECK |
+| 46 | `46_v2_text_metric_presence.sql` | **`v2_text_metric_presence` — primary scoring surface** (text-presence PR1 #182) |
+| 47 | `47_add_skip_to_image_metric_confirmations.sql` | Adds `skip` decision to confirmations |
 
-Note: historical duplicate migration numbers (04/08/09/10/11/12) reflect prior splits. Do not add further duplicates.
+**Notes:**
+- The legacy integer-prefix range `00-47` is **frozen**. New migrations use timestamp filenames (`YYYYMMDDHHMM_description.sql`) generated by `scripts/new_migration.py`. See `.claude/rules/sql.md`.
+- Two migrations share prefix `46` (audit constraint + text-presence) — a duplicate-prefix collision tracked alongside the migration-registration gap closed in PR1. Both are applied; see "Known pre-PR1 gap closed alongside" in `docs/operations/text-pipeline-presence-pivot-plan.md`.
+- Historical duplicate numbers (04/08/09/10/11/12) also reflect prior splits.
 
 ---
 
@@ -796,11 +893,12 @@ Note: historical duplicate migration numbers (04/08/09/10/11/12) reflect prior s
 
 ## Related Documentation
 
+- **Pivot plan (authoritative for in-flight rollout):** `docs/operations/text-pipeline-presence-pivot-plan.md`
 - **V1 retirement roadmap:** `docs/architecture/v1-table-deprecation-plan.md`
 - **Extraction decisions:** `docs/architecture/extraction-decisions.md`
 - **Metric taxonomy:** `docs/development/metrics-taxonomy.md`
-- **Human review system:** `docs/HUMAN_REVIEW_SYSTEM.md`
+- **Human review system:** `docs/HUMAN_REVIEW_SYSTEM.md` (DEPRECATED — V1 system; see pivot plan for current unified review UI)
 - **Gold standard spec:** `docs/GOLD_STANDARD_SPECIFICATION.md`
-- **V2 schema DDL (authoritative):** `sql/09_v2_schema.sql` plus migrations 10–30 listed above
-- **V2 dataclasses (code-level truth for field meanings):** `src/extraction_v2/models.py`
-- **V2 persistence (upsert SQL):** `src/extraction_v2/persistence.py`
+- **V2 schema DDL (authoritative):** `sql/09_v2_schema.sql` plus migrations 10–47 listed above
+- **V2 dataclasses (code-level truth for field meanings):** `src/extraction_v2/models.py` (incl. `MetricPresence`, `DetectedMetric`, `ImageClassificationRecord`)
+- **V2 persistence (upsert SQL):** `src/extraction_v2/persistence.py` (incl. `_persist_presence_in_tx`, `presence_only` kwarg)

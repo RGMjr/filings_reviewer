@@ -1,10 +1,10 @@
 # Extraction Operations Runbook
 
-**Last Updated:** 2024-12-24
+**Last Updated:** 2026-04-25
 
-> **Note:** This runbook was originally written for the V1 extraction pipeline and has been partially updated for V2. The V2 extraction pipeline (`src/extraction_v2/`) is now the sole production pipeline. V1 (`src/extraction/`) has been **deleted** from the repository. Where this document references V1 modules directly, treat those references as historical context only — the files no longer exist.
+> **Pivot status (2026-04-25):** Under the chart-presence pivot (#86, 2026-04-23) and text-presence PR1 (#182, 2026-04-16), the V2 extraction pipeline emits **presence** as the primary scoring surface (`v2_text_metric_presence`) plus advisory facts (`v2_metric_facts`). This runbook covers V2 only; V1 has been deleted from the repo (`src/extraction/`). The legacy V1 candidate / `source_segments` / `review_candidates` flow no longer exists. See [`text-pipeline-presence-pivot-plan.md`](text-pipeline-presence-pivot-plan.md).
 
-This runbook documents the correct procedures for re-extracting and re-segmenting filings. **Following these procedures is critical** to avoid stale data issues.
+This runbook documents the correct procedures for re-extracting filings under the V2 pipeline. **Following these procedures is critical** to avoid stale data issues and to respect the reviewed-filing guard (`ReviewedFilingError`).
 
 ---
 
@@ -13,83 +13,81 @@ This runbook documents the correct procedures for re-extracting and re-segmentin
 | Task | Command |
 |------|---------|
 | Re-extract single filing (V2 pipeline) | `DATABASE_URL="..." python3 scripts/run_v2_extraction.py --filing-id <ID>` |
-| Batch re-extract all filings (V2 pipeline) | `DATABASE_URL="..." python3 scripts/batch_v2_extraction.py` |
-| Regenerate candidates only (keeps segments) | `DATABASE_URL="..." python3 scripts/generate_review_candidates.py --filing-ids <ID>` |
-| Diagnose extraction issues | Run `scripts/run_v2_extraction.py --filing-id <ID>` with logging enabled (see Procedure 4) |
+| Re-extract a reviewed filing (forces, requires explicit flag) | `DATABASE_URL="..." python3 scripts/run_v2_extraction.py --filing-id <ID> --force-reextract` |
+| Re-extract presence-only (skip fact write; useful for keyword/aggregator changes) | `DATABASE_URL="..." python3 scripts/run_v2_extraction.py --filing-id <ID> --presence-only` |
+| Batch re-extract | `DATABASE_URL="..." python3 scripts/batch_v2_extraction.py` |
+| Diagnose extraction issues | Run `scripts/run_v2_extraction.py --filing-id <ID>` with `LOG_LEVEL=DEBUG` (see Procedure 4) |
 
 ---
 
 ## Understanding the Data Flow
 
 ```
-HTML File → Segmenter → source_segments (DB) → Classifier → Candidate Generator → review_candidates (DB)
-                ↓
-          LLM Extraction → metric_values (DB)
+HTML File
+    ↓
+V2Pipeline (up to 16 stages; image stages 4–5b conditional)
+    ├─ v2_segments              (DOM-native content blocks)
+    ├─ v2_tables / v2_table_cells  (header_path / stub_path)
+    ├─ v2_image_assets          (incl. detected_metrics JSONB — chart-presence pairs)
+    ├─ v2_image_classifications (Vision API metric-classifier audit; Stage 5b)
+    ├─ v2_metric_facts          (advisory per-value evidence, with EvidencePack)
+    ├─ v2_metric_definitions    (issuer-specific definition / methodology text)
+    └─ v2_text_metric_presence  ★ primary scoring surface
+                                  one row per (doc_id, canonical_metric_id);
+                                  upserted by MetricPresenceStage
 ```
 
-**Key Insight**: If you modify segmentation logic or keywords, you must re-run the appropriate stage AND all downstream stages.
+**Key Insight**: If you modify segmentation logic, keywords, FP rules, or the `MetricPresenceStage` aggregator, you must re-run the V2 pipeline. Presence rows are upserted on `(doc_id, canonical_metric_id)`, so re-extraction is idempotent. The `presence_only=True` mode skips the fact-write step entirely — useful when iterating on aggregation logic or keyword rules without disturbing reviewed facts.
 
 | If you modify... | You must re-run... |
 |------------------|-------------------|
 | `src/extraction_v2/stages/ingestion.py` (V2 segmentation) | Full re-extraction (`scripts/batch_v2_extraction.py`) |
-| `config/metric_keywords.yaml` (keyword patterns) | Delete old candidates, run `generate_review_candidates.py` |
+| `config/metric_keywords.yaml` (keyword patterns) | Full re-extraction; presence rows refresh on the next run |
+| `src/extraction_v2/stages/metric_presence.py` (aggregator) | Re-extraction with `--presence-only` is sufficient — does not touch facts |
+| `src/extraction_v2/chart/metric_classifier.py` (chart presence rules) | Full re-extraction; updates `v2_image_assets.detected_metrics` |
 | LLM prompts | Full re-extraction (`scripts/batch_v2_extraction.py`) |
 
 ---
 
 ## Procedure 1: Full Re-extraction (Recommended)
 
-Use when: Segmenter logic changed, or you want to ensure fresh data.
+Use when: Segmentation, keyword, FP-filter, or LLM-prompt logic changed.
 
 ```bash
-# 1. Run V2 extraction for a single filing
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
     python3 scripts/run_v2_extraction.py --filing-id <FILING_ID>
-
-# 2. Regenerate review candidates
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/generate_review_candidates.py --filing-ids <FILING_ID>
 ```
 
 **What this does:**
 - Runs the V2 unified extraction pipeline (`src/extraction_v2/`) on the specified filing
-- Re-runs HTML segmentation with current segmenter
-- Re-runs LLM extraction
-- You must then regenerate candidates separately
+- Upserts `v2_segments`, `v2_tables`, `v2_image_assets` (with `detected_metrics` JSONB), `v2_metric_facts` (advisory), `v2_metric_definitions`, and `v2_text_metric_presence` (primary scoring surface)
+- Idempotent — safe to re-run; presence rows are upserted on `(doc_id, canonical_metric_id)` and `updated_at` advances
+
+If the filing has reviewer decisions on facts or image confirmations, this command will raise `ReviewedFilingError`. Use `--force-reextract` only when you intentionally want to overwrite reviewed work; the reviewer-protection guards exist to prevent silent CASCADE-destruction.
 
 ---
 
-## Procedure 2: Regenerate Candidates Only
+## Procedure 2: Presence-Only Re-extraction
 
-Use when: Only keyword patterns changed, segmenter unchanged.
+Use when: You changed `MetricPresenceStage` aggregation logic, the chart-presence classifier, or want to refresh presence scores without touching reviewed facts.
 
 ```bash
-# 1. Delete existing candidates for the filing
-PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
-    -c "DELETE FROM review_candidates WHERE filing_id = <FILING_ID>;"
-
-# 2. Regenerate candidates
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python scripts/generate_review_candidates.py --filing-ids <FILING_ID>
+    python3 scripts/run_v2_extraction.py --filing-id <FILING_ID> --presence-only
 ```
 
 **What this does:**
-- Uses existing `source_segments` (does NOT re-segment)
-- Applies current keyword patterns from `config/metric_keywords.yaml`
-- Generates new `review_candidates`
+- Runs the full pipeline through the final `MetricPresenceStage`
+- Calls `V2PersistenceAdapter.persist_pipeline_result(..., presence_only=True)`, which skips the `_persist_facts_in_tx` step entirely
+- Upserts presence rows, image classifications, and image-asset `detected_metrics`
+- **Does NOT touch `v2_metric_facts`** — no `ReviewedFilingError` on text-fact decisions can fire
+- Image confirmation guard still applies to hidden-class transitions
 
 ---
 
 ## Procedure 3: Manual Re-segmentation Only — RETIRED
 
-The V1 segmenter (`src/shared/html_segmenter.py`) and the V1 `source_segments` table were retired. For the equivalent V2 workflow, use:
-
-```bash
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/batch_v2_extraction.py --filing-ids <FILING_ID>
-```
-
-The V2 pipeline writes to `v2_segments` (not `source_segments`) and does not require a separate candidate-generation pass.
+The V1 segmenter and `source_segments` table are retired. The V2 pipeline writes to `v2_segments` and runs all downstream stages in one pass — there is no separate "segmentation only" mode. Use Procedure 1.
 
 ---
 
@@ -114,50 +112,44 @@ LOG_LEVEL=DEBUG DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analys
 
 ## Procedure 5: Batch Re-extraction
 
-Use when: Re-extracting multiple filings (e.g., after major segmenter changes).
+Use when: Re-extracting multiple filings (e.g., after major pipeline changes).
 
 ```bash
 # 1. Run a limited batch first to verify behavior
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
     python3 scripts/batch_v2_extraction.py --limit 5
 
-# 2. Verify results before full run
+# 2. Verify results before full run (V2 tables)
 PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
-    -c "SELECT COUNT(*) FROM source_segments;"
+    -c "SELECT COUNT(*) AS docs FROM v2_documents;
+        SELECT COUNT(*) AS facts, COUNT(DISTINCT canonical_metric_id) AS metrics FROM v2_metric_facts;
+        SELECT COUNT(*) AS presences, COUNT(DISTINCT canonical_metric_id) AS metrics FROM v2_text_metric_presence;"
 
 # 3. Full re-extraction (can take hours)
 DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
     python3 scripts/batch_v2_extraction.py
-
-# 4. Regenerate all candidates
-DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
-    python3 scripts/generate_review_candidates.py
 ```
 
 ---
 
 ## Common Pitfalls
 
-### Pitfall 1: Stale Segments
-**Symptom:** Gold standard values exist in HTML but not in candidates.
-**Cause:** Database has old segments from previous segmenter version.
-**Fix:** Run Procedure 1 or 3 to re-segment.
+### Pitfall 1: Stale Presence
+**Symptom:** A keyword change should have promoted a metric to "present" but didn't.
+**Cause:** `v2_text_metric_presence` was not refreshed after the keyword/aggregator change.
+**Fix:** Run Procedure 1 (full) or Procedure 2 (`--presence-only`) for affected filings.
 
 ### Pitfall 2: Missing Keywords
-**Symptom:** Values are in segments but not matched to correct metric.
+**Symptom:** Values are in segments but not matched to the correct metric.
 **Cause:** Keyword patterns in `config/metric_keywords.yaml` don't include company-specific terminology.
 **Fix:**
-1. Add keywords to `config/metric_keywords.yaml` (the authoritative keyword source)
-2. Run Procedure 2 to regenerate candidates
+1. Add keywords to `config/metric_keywords.yaml` (the authoritative keyword source).
+2. Run Procedure 1 to re-extract; presence rows refresh on next run.
 
-### Pitfall 3: Regenerating Candidates Without Deleting Old Ones
-**Symptom:** Duplicate candidates or old incorrect candidates remain.
-**Cause:** `generate_review_candidates.py` doesn't delete existing candidates by default.
-**Fix:** Always delete candidates first:
-```bash
-PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
-    -c "DELETE FROM review_candidates WHERE filing_id = <ID>;"
-```
+### Pitfall 3: ReviewedFilingError on Re-extraction
+**Symptom:** `scripts/run_v2_extraction.py` raises `ReviewedFilingError` and refuses to write.
+**Cause:** The filing has reviewer decisions on facts (`v2_review_decisions`) or image-presence confirmations (`v2_image_metric_confirmations`); the guard prevents silent overwrite.
+**Fix:** Use `--presence-only` (does not touch facts) when only aggregation changed. Use `--force-reextract` only when you intentionally want to invalidate reviewer work.
 
 ### Pitfall 4: Forgetting to Set DATABASE_URL
 **Symptom:** Script runs but doesn't affect expected database.
@@ -170,46 +162,70 @@ PGPASSWORD=dev psql -h localhost -p 5433 -U dev -d filings_analysis \
 
 ### Check segment count for a filing
 ```sql
-SELECT COUNT(*) as segment_count,
-       SUM(LENGTH(raw_text)) as total_chars
-FROM source_segments
-WHERE filing_id = <FILING_ID>;
+SELECT COUNT(*) AS segment_count,
+       SUM(LENGTH(segment_text)) AS total_chars
+FROM v2_segments
+WHERE doc_id = <FILING_ID>;
 ```
 
 ### Check if specific value is in segments
 ```sql
-SELECT COUNT(*) as matches
-FROM source_segments
-WHERE filing_id = <FILING_ID>
-  AND raw_text ILIKE '%<VALUE>%';
+SELECT COUNT(*) AS matches
+FROM v2_segments
+WHERE doc_id = <FILING_ID>
+  AND segment_text ILIKE '%<VALUE>%';
 ```
 
-### Check candidate count for a filing
+### Check fact count (advisory) for a filing
 ```sql
-SELECT COUNT(*) as candidate_count
-FROM review_candidates
-WHERE filing_id = <FILING_ID>;
+SELECT canonical_metric_id, COUNT(*) AS fact_count, COUNT(*) FILTER (WHERE review_status='accepted') AS accepted
+FROM v2_metric_facts
+WHERE doc_id = <FILING_ID>
+GROUP BY canonical_metric_id
+ORDER BY fact_count DESC;
 ```
 
-### Check candidates for specific metric
+### Check presence (primary) for a filing
 ```sql
-SELECT parsed_value, triggering_keyword, suggested_metric_id
-FROM review_candidates
-WHERE filing_id = <FILING_ID>
-  AND suggested_metric_id = '<METRIC_ID>';
+SELECT canonical_metric_id, score, detected_at_stage,
+       jsonb_array_length(evidence_segment_ids) AS n_segments,
+       jsonb_array_length(advisory_fact_ids)    AS n_facts,
+       advisory_value_count
+FROM v2_text_metric_presence
+WHERE doc_id = <FILING_ID>
+ORDER BY score DESC;
+```
+
+### Check chart-presence detections + reviewer confirmations for a filing
+```sql
+SELECT ia.img_id, ia.classification, ia.detected_metrics,
+       jsonb_agg(jsonb_build_object(
+           'reviewer', imc.reviewer_id,
+           'decision', imc.decision,
+           'detected', imc.detected_metric_id,
+           'confirmed', imc.confirmed_metric_id
+       )) FILTER (WHERE imc.id IS NOT NULL) AS confirmations
+FROM v2_image_assets ia
+LEFT JOIN v2_image_metric_confirmations imc USING (img_id)
+WHERE ia.doc_id = <FILING_ID>
+  AND ia.classification = 'chart'
+GROUP BY ia.img_id, ia.classification, ia.detected_metrics;
 ```
 
 ### Compare filing stats before/after
 ```sql
 SELECT f.filing_id, c.company_name,
-       COUNT(DISTINCT ss.source_segment_id) as segments,
-       COUNT(DISTINCT rc.candidate_id) as candidates,
-       COUNT(DISTINCT mv.metric_value_id) as extracted_values
+       COUNT(DISTINCT s.segment_id)                AS segments,
+       COUNT(DISTINCT mf.fact_id)                  AS facts,
+       COUNT(DISTINCT mf.fact_id) FILTER (WHERE mf.review_status='accepted') AS accepted_facts,
+       COUNT(DISTINCT p.presence_id)               AS presences,
+       COUNT(DISTINCT ia.img_id) FILTER (WHERE ia.classification='chart') AS charts
 FROM filings f
 JOIN companies c ON f.company_id = c.company_id
-LEFT JOIN source_segments ss ON f.filing_id = ss.filing_id
-LEFT JOIN review_candidates rc ON f.filing_id = rc.filing_id
-LEFT JOIN metric_values mv ON f.filing_id = mv.filing_id
+LEFT JOIN v2_segments s            ON f.filing_id = s.doc_id
+LEFT JOIN v2_metric_facts mf       ON f.filing_id = mf.doc_id
+LEFT JOIN v2_text_metric_presence p ON f.filing_id = p.doc_id
+LEFT JOIN v2_image_assets ia       ON f.filing_id = ia.doc_id
 WHERE f.filing_id = <FILING_ID>
 GROUP BY f.filing_id, c.company_name;
 ```

@@ -352,7 +352,16 @@ def unskip_image_candidate(img_id):
 @api_unified_bp.route("/missed-metric", methods=["POST"])
 def add_missed_metric():
     """
-    Manually add a metric fact that the pipeline missed.
+    Manually add a metric fact (the manual value-entry path).
+
+    Under the chart-presence pivot (#86, 2026-04-23) the pipeline does not
+    auto-emit per-value chart facts; this endpoint is the primary path by
+    which CMASB-required values enter ``v2_metric_facts`` for chart-native
+    metrics. It is also used to capture text-fact values that the pipeline
+    missed entirely. The resulting fact carries ``extraction_method='manual'``
+    and propagates through ``MetricPresenceStage`` on the next re-extraction
+    via ``advisory_fact_ids``. See
+    ``docs/operations/text-pipeline-presence-pivot-plan.md``.
 
     Request Body:
         {

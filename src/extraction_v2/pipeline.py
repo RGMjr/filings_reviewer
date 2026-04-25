@@ -1,26 +1,37 @@
 """
 V2 Extraction Pipeline Orchestrator.
 
-This module orchestrates the 15-stage extraction pipeline, plus an optional
-Chart Fact Bridge that runs after validation when enable_chart_fact_bridge=True:
+Orchestrates the V2 extraction stages and emits **presence** as the primary
+output (advisory facts as evidence). See
+``docs/operations/text-pipeline-presence-pivot-plan.md``.
 
-1. Ingestion & Parsing         → Segments with XPath locators
-2. Section Classification      → MD&A, Risk Factors, etc.
-3. Table Reconstruction        → header_path, stub_path per cell
-4. Image Triage                → chart, table_image, decorative
-5. OCR & Chart Extraction      → labeled values only
-6. Metric Candidate Generation → YAML taxonomy matching
-7. Value Binding               → structural link required
-7.5. False Positive Filter     → V1 FP filter on bound values
-8. Period Inference            → from header_path or context
-9. MetricFact Construction     → with evidence_pack
-10. Deduplication              → by identity tuple
-11. Validation & Review Routing → confidence-based
-12. Chart Fact Bridge (optional) → cohort facts from chart images
+Stage order (image stages 4-5b and ``IMAGE_CLASSIFY`` are conditional;
+see ``_setup_stages``):
+
+1.    Ingestion & Parsing            → Segments with XPath locators
+2.    Section Classification         → MD&A, Risk Factors, etc.
+3.    Table Reconstruction           → header_path, stub_path per cell
+4.    Image Triage                   → chart, table_image, decorative
+5.    OCR & Chart Extraction         → labeled values only (Vision)
+5a.   Chart Fact Bridge              → presence pairs to v2_image_assets.detected_metrics
+                                       (rule-based; no per-value chart facts post-#86)
+5b.   Image Classify                 → Vision metric-classifier audit trail
+                                       (gated by ENABLE_METRIC_CLASSIFY)
+6.    Metric Candidate Generation    → YAML taxonomy matching
+7.    Value Binding                  → structural link required
+7.5.  False Positive Filter          → 13 rule-based suppression rules
+8.    Period Inference               → from header_path or context
+9.    MetricFact Construction        → with evidence_pack
+9.5.  Definition Extraction          → methodology / definition segments
+10.   Deduplication                  → by identity tuple
+11.   Validation & Review Routing    → confidence-based
+12.   MetricPresenceStage (final)    → aggregate facts/charts/definitions
+                                       → v2_text_metric_presence (primary scoring surface)
 
 Design principles:
+- Presence-first, values advisory (chart pipeline emits no per-value facts post-#86)
 - Structure-first, LLM-second
-- No value without provenance
+- No claim without provenance (presence rows carry evidence_segment_ids + advisory_fact_ids)
 - Fail closed (ambiguous → review, don't guess)
 - Charts only when labeled (never interpolate from axis)
 """
