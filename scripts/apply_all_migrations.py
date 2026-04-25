@@ -23,8 +23,10 @@ Usage:
     python3 scripts/apply_all_migrations.py --mark-all-applied
 
 Notes:
-    - Several migration prefixes appear twice (04, 08, 09). The canonical order
-      below was determined from file creation history and dependency analysis.
+    - Several legacy migration prefixes appear twice (04, 08, 09, 10, 11, 12,
+      46). The canonical order below was determined from file creation history
+      and dependency analysis. New migrations use timestamp filenames
+      (YYYYMMDDHHMM_description.sql) — see scripts/new_migration.py.
     - For Neon (cloud PostgreSQL), set DATABASE_URL with sslmode=require:
       postgresql://user:password@host.neon.tech/dbname?sslmode=require
 """
@@ -45,8 +47,10 @@ configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
 # Canonical migration order.
-# Files with duplicate numeric prefixes (04, 08, 09) are listed explicitly
-# in the order they should be applied.
+# Files with duplicate numeric prefixes (04, 08, 09, 10, 11, 12, 46) are listed
+# explicitly in the order they should be applied. New migrations use timestamp
+# filenames (YYYYMMDDHHMM_description.sql) — sorted lexicographically they
+# always come after the legacy NN_ entries below.
 MIGRATION_ORDER = [
     "00_init_databases.sql",
     "01_create_schema.sql",
@@ -99,7 +103,12 @@ MIGRATION_ORDER = [
     "43_create_v2_image_metric_confirmations.sql",
     "44_extend_image_rejection_reason_enum.sql",
     "45_create_v2_image_classifications.sql",
+    # 46 has two files (last integer-era prefix). Order matches merge-to-main
+    # order on prod: PR #182 (v2_text_metric_presence) before PR #169
+    # (extend_audit). New migrations use timestamp filenames — see
+    # scripts/new_migration.py and .claude/rules/sql.md.
     "46_v2_text_metric_presence.sql",
+    "46_extend_audit_http_method_constraint.sql",
 ]
 
 # Non-migration SQL files that live in sql/ but are not schema migrations.
