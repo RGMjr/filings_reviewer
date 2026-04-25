@@ -6,7 +6,7 @@ id: 100
 severity: low
 slug: classify-cost-usd-not-plumbed-from-vision-client
 source: legacy
-status: open
+status: resolved
 title: v2_image_classifications.cost_usd Persists as 0 — VisionClient Helper Doesn't Surface Cost
 touches:
   - src/llm/vision_client.py

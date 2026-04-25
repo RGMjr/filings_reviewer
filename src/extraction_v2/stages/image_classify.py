@@ -124,8 +124,6 @@ class ImageClassifyStage:
         if parsed is None:
             return None
 
-        # `analyze_image_for_metric_classification` currently returns parse output
-        # only. Cost isn't plumbed back; record as 0 until VisionClient surfaces it.
         cost_usd = float(parsed.pop("_cost_usd", 0.0))
 
         predicted_metrics = [
