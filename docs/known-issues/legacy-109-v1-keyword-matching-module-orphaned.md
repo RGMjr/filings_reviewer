@@ -3,15 +3,16 @@ autonomy: review
 discovered: '2026-04-24'
 estimated: S
 id: 109
+pr_refs: []
 severity: low
 slug: v1-keyword-matching-module-orphaned
 source: legacy
-status: open
+status: resolved
 title: V1 src/review/keyword_matching.py Has No Live Callers — Module Deletable
 touches:
   - src/review/keyword_matching.py
   - tests/unit/review/test_keyword_matching.py
-updated: '2026-04-24'
+updated: '2026-04-25'
 ---
 
 ### Problem

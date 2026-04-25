@@ -58,9 +58,7 @@ review_audit_log      -- Audit trail for compliance
 ```
 src/review/
 ├── models.py                # ReviewCandidate, ReviewDecision, CandidateFeatures
-├── candidate_generator.py   # High-recall candidate detection
 ├── number_parsing.py        # Number extraction and normalization
-├── keyword_matching.py      # Metric keyword matching with exclusions
 ├── false_positive_filter.py # Date/year filtering
 ├── context_extraction.py    # Context window extraction
 ├── boundary_detection.py    # Paragraph/section boundary detection

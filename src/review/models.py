@@ -13,12 +13,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
-
-if TYPE_CHECKING:
-    from src.review.boundary_detection import TextBoundary
-    from src.review.keyword_matching import KeywordMatch
-    from src.review.number_parsing import NumberMatch
+from typing import Any, NotRequired, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -747,49 +742,6 @@ class ProcessingStats:
             logger.debug(
                 f"Filing {filing_id}: {self.duplicates_removed} duplicate candidates removed"
             )
-
-
-# =============================================================================
-# SegmentProcessingContext (REV-07 refactoring support)
-# =============================================================================
-
-
-@dataclass(frozen=True)
-class SegmentProcessingContext:
-    """
-    Immutable context passed through all processing phases of _process_segment.
-
-    This dataclass captures all pre-computed data structures needed during
-    segment processing, enabling the decomposition of _process_segment into
-    smaller, focused helper methods.
-
-    All fields are computed once during the preparation phase and remain
-    constant throughout processing. The frozen=True ensures immutability.
-    """
-
-    # Core segment data
-    text: str
-    source_segment_id: int | None
-    filing_id: int
-    company_id: int
-    segment: SegmentDict
-
-    # Pre-computed structures (computed once, used many times)
-    numbers: tuple[NumberMatch, ...]  # Immutable tuple for frozen dataclass
-    all_keywords: tuple[KeywordMatch, ...]  # Pre-computed keyword matches
-    word_positions: tuple[tuple[int, int, str], ...] | None  # For context extraction
-
-    # Boundary detection results
-    boundaries: tuple[TextBoundary, ...] | None  # Semantic boundaries
-    sentence_boundaries: tuple[TextBoundary, ...] | None  # Sentence boundaries
-
-    # Table parsing (optional, only for table segments)
-    # Note: Can't be frozen since parsers are mutable, stored as Any
-    table_row_parser: Any | None
-
-    # Metadata
-    context_prefix: str  # From previous segment (Phase 7)
-    segment_type: str | None  # 'paragraph', 'table', etc.
 
 
 # =============================================================================

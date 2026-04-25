@@ -118,7 +118,6 @@ tests/
 │   │   ├── test_image_triage.py        # Image triage and classification
 │   │   └── ...                         # Additional stage and utility tests
 │   ├── review/                         # Review module unit tests (mypy --strict applies)
-│   │   ├── test_keyword_matching.py    # METRIC_KEYWORDS, SPECIFIC_KEYWORD_PATTERNS
 │   │   ├── test_false_positive_filter.py # FP filter rules
 │   │   ├── test_number_parsing.py      # NumberMatch parsing
 │   │   └── ...                         # Additional review subsystem tests

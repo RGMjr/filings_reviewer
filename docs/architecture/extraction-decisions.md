@@ -75,7 +75,7 @@ When keywords from different metrics overlap:
 
 **FOLLOW-UP NEEDED**: Greedy patterns in `metric_keywords.yaml` (line 254: `\bretention\s+rate[^.;]{0,50}\d+%`) can cause unexpected suppression. Consider constraining these patterns to reduce false matches.
 
-**Implementation**: `src/review/keyword_matching.py`
+**Implementation**: `src/extraction_v2/stages/candidate_generation.py`
 
 ---
 
@@ -169,7 +169,7 @@ YAML exclusion patterns filter numbers followed by non-metric units:
 | YAML keywords | metric_keywords.yaml, keyword_config.py | Any keyword changes |
 | Cohort charts | cohort_chart_detector.py | Image-related extraction |
 | Revenue context | candidate_generator.py | Revenue metric patterns |
-| Substring suppression | keyword_matching.py | Overlapping keyword issues |
+| Substring suppression | extraction_v2/stages/candidate_generation.py | Overlapping keyword issues |
 | Metric aliases | keyword_config.py | Gold standard validation |
 | Table markers | extraction_v2/stages/ingestion.py | Table parsing issues |
 | Unit filtering | false_positive_filter.py | Unit-type mismatches |
