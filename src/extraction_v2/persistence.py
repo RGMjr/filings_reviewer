@@ -829,13 +829,18 @@ class V2PersistenceAdapter:
             if image.classification.value in self._HIDDEN_IMAGE_CLASSIFICATIONS and image.filename
         ]
         if incoming_hidden_filenames:
+            # Protect both legacy v2_image_review_decisions rows AND per-metric
+            # v2_image_metric_confirmations rows — either surface represents
+            # human review work whose image must stay visible in the queue.
             cur.execute(
                 """
-                SELECT v.filename, v.classification
+                SELECT DISTINCT v.filename, v.classification
                   FROM v2_image_assets v
-                  JOIN v2_image_review_decisions rd ON rd.img_id = v.img_id
+                  LEFT JOIN v2_image_review_decisions rd ON rd.img_id = v.img_id
+                  LEFT JOIN v2_image_metric_confirmations imc ON imc.img_id = v.img_id
                  WHERE v.doc_id = %(filing_id)s
                    AND v.filename = ANY(%(filenames)s)
+                   AND (rd.img_id IS NOT NULL OR imc.img_id IS NOT NULL)
                 """,
                 {"filing_id": filing_id, "filenames": incoming_hidden_filenames},
             )
@@ -1060,6 +1065,39 @@ class V2PersistenceAdapter:
                 decision_count,
                 reviewer_count,
                 chart_only,
+            )
+
+        # Secondary guard: protect reviewer work landing in
+        # v2_image_metric_confirmations (per-metric A/R/C/Add/Skip decisions on
+        # chart images). These rows are not CASCADE-linked to v2_metric_facts,
+        # so the text-decision guard above misses them.
+        cur.execute(
+            """
+            SELECT COUNT(*) AS confirmation_count,
+                   COUNT(DISTINCT imc.reviewer_id) AS reviewer_count
+              FROM v2_image_metric_confirmations imc
+              JOIN v2_image_assets ia ON ia.img_id = imc.img_id
+             WHERE ia.doc_id = %(filing_id)s
+            """,
+            {"filing_id": filing_id},
+        )
+        conf_row = cur.fetchone()
+        confirmation_count = int(conf_row["confirmation_count"]) if conf_row else 0
+        conf_reviewer_count = int(conf_row["reviewer_count"]) if conf_row else 0
+        if confirmation_count > 0:
+            if not force:
+                raise ReviewedFilingError(
+                    filing_id=filing_id,
+                    decision_count=confirmation_count,
+                    reviewer_count=conf_reviewer_count,
+                    context="image metric confirmations",
+                )
+            logger.warning(
+                "force-reextract purging image-metric confirmations: "
+                "filing_id=%s confirmation_count=%s distinct_reviewer_count=%s",
+                filing_id,
+                confirmation_count,
+                conf_reviewer_count,
             )
 
         # Delete-then-insert is idempotent and avoids a unique index across

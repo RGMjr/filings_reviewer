@@ -1002,29 +1002,16 @@ test.describe('Images Tab', () => {
     await expect(page.locator('.image-tier-badge')).toContainText('Tier 1: Cohort');
   });
 
-  test('decision buttons visible for pending image', async ({ page }) => {
+  test('image-grain Skip button visible for pending image (sql/47 redesign)', async ({ page }) => {
+    // Per the sql/47 redesign, the legacy Relevant / Not-Relevant decision
+    // buttons were removed. Per-metric Accept/Reject/Correct/Skip live
+    // inside the detected-metrics card; the standalone "Skip whole image"
+    // button stays for parking the entire image without a per-metric decision.
     await page.goto('/images-tab');
-    await expect(page.locator('#btn-relevant')).toBeVisible();
-    await expect(page.locator('#btn-not-relevant')).toBeVisible();
     await expect(page.locator('#btn-skip')).toBeVisible();
-  });
-
-  test('Relevant button shows Y shortcut', async ({ page }) => {
-    await page.goto('/images-tab');
-    await expect(page.locator('#btn-relevant')).toContainText('Y');
-    await expect(page.locator('#btn-relevant')).toContainText('Relevant');
-  });
-
-  test('Not Relevant button shows N shortcut', async ({ page }) => {
-    await page.goto('/images-tab');
-    await expect(page.locator('#btn-not-relevant')).toContainText('N');
-    await expect(page.locator('#btn-not-relevant')).toContainText('Not Relevant');
-  });
-
-  test('Skip button shows S shortcut', async ({ page }) => {
-    await page.goto('/images-tab');
-    await expect(page.locator('#btn-skip')).toContainText('S');
-    await expect(page.locator('#btn-skip')).toContainText('Skip');
+    await expect(page.locator('#btn-skip')).toContainText('Skip whole image');
+    await expect(page.locator('#btn-relevant')).toHaveCount(0);
+    await expect(page.locator('#btn-not-relevant')).toHaveCount(0);
   });
 
   test('context panel is visible', async ({ page }) => {
@@ -1052,26 +1039,11 @@ test.describe('Images Tab', () => {
     await expect(page.locator('#toggle-hints')).toBeVisible();
   });
 
-  test('reviewed image shows decision alert', async ({ page }) => {
-    await page.goto('/images-tab-reviewed');
-    await expect(page.locator('.image-main-display .alert-success')).toBeVisible();
-    await expect(page.locator('.image-main-display .alert-success')).toContainText('Relevant');
-  });
-
-  test('reviewed image shows chart type in decision', async ({ page }) => {
-    await page.goto('/images-tab-reviewed');
-    await expect(page.locator('.image-main-display .alert-success')).toContainText('Bar Chart');
-  });
-
-  test('reviewed image shows undo button', async ({ page }) => {
-    await page.goto('/images-tab-reviewed');
-    await expect(page.locator('#btn-undo')).toBeVisible();
-  });
-
-  test('reviewed image shows Reviewed badge', async ({ page }) => {
-    await page.goto('/images-tab-reviewed');
-    await expect(page.locator('.image-main-display .badge.bg-success')).toContainText('Reviewed');
-  });
+  // Legacy "reviewed image shows decision alert / chart type / undo button /
+  // Reviewed badge" tests were removed with the sql/47 redesign. Per-metric
+  // decision state lives inside the detected-metrics card and is covered by
+  // tests/ui/review_image_metric_confirmations.spec.js. Image-level skip
+  // state is covered by the dedicated skip/unskip API tests.
 });
 
 // =========================================================================

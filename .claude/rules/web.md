@@ -8,7 +8,7 @@ paths:
 ## Route Modules
 
 - `src/web/routes/review.py`: Legacy V1 URL redirect shim — 301-redirects `/`, `/filings`, `/review/<id>`, `/stats` to the V2 unified interface.
-- `src/web/routes/review_unified.py` / `api_unified.py`: Unified V2 extraction review interface (text + image tabs). Image endpoints read/write V2-native tables (`v2_image_assets`, `v2_image_review_decisions`) keyed on `img_id` UUIDs; paired JS is `static/js/review_images_v2.js`.
+- `src/web/routes/review_unified.py` / `api_unified.py`: Unified V2 extraction review interface (text + image tabs). Image reviewer actions are per-(image, metric): Accept/Reject/Correct/Add/Skip via `POST /api/v2/image-metric-confirmations` with `DELETE /api/v2/image-metric-confirmations/<confirmation_id>` for undo. Accept/Correct/Add also promote a chart-sourced `v2_metric_facts` row (one per `(doc_id, metric_id)`, value-less presence); undo/reject/skip roll it back when no other accepting confirmation remains. Image-grain skip/unskip stays on `/api/v2/image-candidates/<img_id>/{skip,unskip}` for "park the whole image". The legacy `/api/v2/image-decisions` POST+DELETE endpoints were removed with the per-metric migration (sql/47); `v2_image_review_decisions` rows remain as historical audit data. Paired JS is `static/js/review_images_v2.js`.
 - `src/web/routes/review_pres_images.py`: Presentation image review (file-based, `/review/pres-images/`).
 - `src/web/routes/ingest.py`: Batch filing ingestion UI (`/ingest/`, `/ingest/preview`, `/ingest/start`, `/ingest/populate`, `/ingest/batch/<id>`). Spawns `src/universe/onboarding_runner.py` as a detached subprocess locally; on Render, queued batches are picked up by the watcher service (Phase 7).
 - `src/web/routes/api_ingest.py`: JSON status + cancel API for batch ingestion (`/api/v2/ingest/batches/<id>/status`, `/api/v2/ingest/batches/<id>/cancel`). Auth-protected via `register_api_auth`; status response shape is consumed by `static/js/ingest_batch.js` (3s polling).
@@ -29,7 +29,7 @@ Static: `src/web/static/js/review_images_v2.js`, `static/css/review.css`.
 
 **Every decision-persisting API endpoint MUST (a) forward `reviewer_id` to the DB write and (b) reject missing / blocklisted values via `_require_reviewer_id(data)` in `src/web/routes/api_unified.py`.** The gate returns HTTP 403 with `{"error": "reviewer_name_required"}`. Blocklist: `""`, `"anonymous"`, `"web_reviewer"`, `"test"`, `"test_user"`, anything prefixed `bulk:`. Mirror the same blocklist client-side via `window.requireReviewerName()` (defined in `base.html`) — it returns the valid name or opens the reviewer modal and returns `null`, so callers bail before the fetch. Do NOT fall back to `"anonymous"` / `"web_reviewer"` in payloads; those sentinels only exist in historical data (rewritten to `RGM` on 2026-04-23 per the v2_review_decisions / v2_image_review_decisions cleanup).
 
-Historical bug: image decisions silently persisted `NULL` for months because the endpoint never forwarded the value — resulting in "(unattributed)" rows that can't be filtered. Don't repeat it.
+Historical bug: image decisions silently persisted `NULL` for months because the endpoint never forwarded the value — resulting in "(unattributed)" rows that can't be filtered. Don't repeat it. The new per-metric endpoints (`POST` and `DELETE /api/v2/image-metric-confirmations`) both route reviewer_id through the same `_require_reviewer_id` gate; the DELETE path reads `X-Reviewer-Id` header first, then query arg, then JSON body.
 
 ## View persistence (localStorage)
 

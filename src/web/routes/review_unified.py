@@ -404,9 +404,8 @@ def review_filing(filing_id: int):
         current_image_confirmations: list[dict[str, Any]] = []
         if current_image and current_image.get("img_id"):
             try:
-                current_image_confirmations = db.get_image_metric_confirmations(
-                    current_image["img_id"]
-                )
+                raw = db.get_image_metric_confirmations(current_image["img_id"])
+                current_image_confirmations = list(raw) if isinstance(raw, list) else []
                 for c in current_image_confirmations:
                     for ts_key in ("created_at", "updated_at"):
                         ts = c.get(ts_key)

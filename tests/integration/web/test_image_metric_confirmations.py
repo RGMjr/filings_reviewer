@@ -96,6 +96,10 @@ def seeded_image(db_adapter: DatabaseAdapter) -> str:
                 (img_id,),
             )
             cur.execute("DELETE FROM v2_image_assets WHERE img_id = %s", (img_id,))
+            cur.execute(
+                "DELETE FROM v2_metric_facts WHERE doc_id = %s AND source_type = 'chart'",
+                (filing_id,),
+            )
 
 
 class TestMetricsList:
@@ -198,3 +202,164 @@ class TestImageMetricConfirmationsPost:
             },
         )
         assert resp.status_code == 400
+
+    def test_skip_round_trip(self, client, seeded_image):
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "reviewer-skip",
+                "decisions": [
+                    {"detected_metric_id": "cm_revenue_by_cohort", "decision": "skip"},
+                ],
+            },
+        )
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        payload = resp.get_json()
+        assert payload["upserted"] == 1
+        assert any(c["decision"] == "skip" for c in payload["confirmations"])
+
+    def test_skip_requires_detected_metric(self, client, seeded_image):
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "reviewer-skip",
+                "decisions": [
+                    {"decision": "skip"},
+                ],
+            },
+        )
+        assert resp.status_code == 400
+
+
+def _count_chart_facts(db_adapter, filing_id, metric_id, img_id):
+    rows = db_adapter.query(
+        """
+        SELECT 1 FROM v2_metric_facts
+         WHERE doc_id = %(doc_id)s
+           AND canonical_metric_id = %(metric_id)s
+           AND source_type = 'chart'
+           AND source_locator ->> 'img_id' = %(img_id)s
+        """,
+        {"doc_id": filing_id, "metric_id": metric_id, "img_id": img_id},
+    )
+    return len(rows)
+
+
+class TestFactPromotion:
+    def _post(self, client, body):
+        return client.post("/api/v2/image-metric-confirmations", json=body)
+
+    def test_accept_promotes_fact(self, client, db_adapter, seeded_image):
+        filing_id = db_adapter.query(
+            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": seeded_image},
+        )[0]["doc_id"]
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "promo-reviewer",
+                "decisions": [
+                    {"detected_metric_id": "cm_revenue_by_cohort", "decision": "accept"},
+                ],
+            },
+        )
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        assert _count_chart_facts(db_adapter, filing_id, "cm_revenue_by_cohort", seeded_image) == 1
+
+    def test_reject_does_not_promote_fact(self, client, db_adapter, seeded_image):
+        filing_id = db_adapter.query(
+            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": seeded_image},
+        )[0]["doc_id"]
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "reject-reviewer",
+                "decisions": [
+                    {
+                        "detected_metric_id": "cm_revenue_by_cohort",
+                        "decision": "reject",
+                        "rejection_reason": "not_present",
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert _count_chart_facts(db_adapter, filing_id, "cm_revenue_by_cohort", seeded_image) == 0
+
+    def test_correct_rolls_back_and_promotes_new(self, client, db_adapter, seeded_image):
+        filing_id = db_adapter.query(
+            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": seeded_image},
+        )[0]["doc_id"]
+        # First accept the detected metric
+        self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "correct-reviewer",
+                "decisions": [
+                    {"detected_metric_id": "cm_revenue_by_cohort", "decision": "accept"},
+                ],
+            },
+        )
+        assert _count_chart_facts(db_adapter, filing_id, "cm_revenue_by_cohort", seeded_image) == 1
+
+        # Correct to a different metric
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "correct-reviewer",
+                "decisions": [
+                    {
+                        "detected_metric_id": "cm_revenue_by_cohort",
+                        "confirmed_metric_id": "cm_customer_retention_rate",
+                        "decision": "correct",
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        assert _count_chart_facts(db_adapter, filing_id, "cm_revenue_by_cohort", seeded_image) == 0
+        assert (
+            _count_chart_facts(db_adapter, filing_id, "cm_customer_retention_rate", seeded_image)
+            == 1
+        )
+
+    def test_delete_confirmation_rolls_back_fact(self, client, db_adapter, seeded_image):
+        filing_id = db_adapter.query(
+            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": seeded_image},
+        )[0]["doc_id"]
+        # Accept
+        post_resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "undo-reviewer",
+                "decisions": [
+                    {"detected_metric_id": "cm_revenue_by_cohort", "decision": "accept"},
+                ],
+            },
+        )
+        assert post_resp.status_code == 200
+        confirmations = post_resp.get_json()["confirmations"]
+        confirmation_id = next(
+            c["confirmation_id"]
+            for c in confirmations
+            if c["detected_metric_id"] == "cm_revenue_by_cohort"
+        )
+        assert _count_chart_facts(db_adapter, filing_id, "cm_revenue_by_cohort", seeded_image) == 1
+
+        # Undo
+        del_resp = client.delete(
+            f"/api/v2/image-metric-confirmations/{confirmation_id}",
+            headers={"X-Reviewer-Id": "undo-reviewer"},
+        )
+        assert del_resp.status_code == 200, del_resp.get_data(as_text=True)
+        assert _count_chart_facts(db_adapter, filing_id, "cm_revenue_by_cohort", seeded_image) == 0

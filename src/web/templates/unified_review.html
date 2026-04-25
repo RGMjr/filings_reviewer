@@ -784,81 +784,23 @@
             </div>
           </div>
 
-          {% if current_image.review_status == 'pending' %}
-          <div class="decision-buttons mb-3">
-            <button type="button" id="btn-relevant" class="btn btn-success btn-lg">
-              <span class="badge bg-light text-dark me-1">Y</span> Relevant
-            </button>
-            <button type="button" id="btn-not-relevant" class="btn btn-danger btn-lg">
-              <span class="badge bg-light text-dark me-1">N</span> Not Relevant
-            </button>
-            <button type="button" id="btn-skip" class="btn btn-secondary btn-lg">
-              <span class="badge bg-light text-dark me-1">S</span> Skip
-            </button>
-          </div>
-
-          <div id="chart-type-panel" class="dropdown-panel" style="display: none;">
-            <h6>Select Chart Type:</h6>
-            <div class="dropdown-options">
-              {% for value, label in chart_types %}
-              <button type="button" class="btn btn-outline-primary chart-type-option" data-value="{{ value }}">
-                <span class="badge bg-secondary me-1">{{ loop.index }}</span> {{ label }}
-              </button>
-              {% endfor %}
-            </div>
-          </div>
-
-          <div id="rejection-panel" class="dropdown-panel" style="display: none;">
-            <h6>Select Rejection Reason:</h6>
-            <div class="dropdown-options">
-              {% for value, label in rejection_reasons %}
-              <button type="button" class="btn btn-outline-danger rejection-reason-option" data-value="{{ value }}">
-                <span class="badge bg-secondary me-1">{{ loop.index }}</span> {{ label }}
-              </button>
-              {% endfor %}
-            </div>
-          </div>
-
-          {% else %}
+          {# Image-level skip / unskip: parks the whole image without
+             recording any per-metric decision. Per-metric Accept/Reject/
+             Correct/Skip/Add live inside the Detected Metrics card below. #}
           {% if current_image.review_status == 'skipped' %}
           <div class="alert alert-secondary mb-3">
             <div class="d-flex justify-content-between align-items-center">
-              <div><strong>Status:</strong> Skipped</div>
+              <div><strong>Status:</strong> Image skipped</div>
               <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
                 <span class="badge bg-secondary me-1">U</span> Undo
               </button>
             </div>
           </div>
           {% else %}
-          <div class="alert {{ 'alert-success' if current_image.decision == 'relevant' else 'alert-secondary' }} mb-3">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <strong>Decision:</strong>
-                {% if current_image.decision == 'relevant' %}
-                Relevant
-                {% if current_image.chart_type %}
-                - {{ current_image.chart_type|replace('_', ' ')|title }}
-                {% endif %}
-                {% else %}
-                Not Relevant
-                {% if current_image.rejection_reason %}
-                - {{ current_image.rejection_reason|replace('_', ' ')|title }}
-                {% endif %}
-                {% endif %}
-              </div>
-              <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
-                <span class="badge bg-secondary me-1">U</span> Undo
-              </button>
-            </div>
-            {% if current_image.decision_notes %}
-            <div class="mt-2 small">
-              <strong>Notes:</strong> {{ current_image.decision_notes }}
-            </div>
-            {% endif %}
-          </div>
-          {% endif %}
-
-          <div class="d-flex justify-content-end">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <button type="button" id="btn-skip" class="btn btn-outline-secondary">
+              <span class="badge bg-secondary me-1">S</span> Skip whole image
+            </button>
             <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images', image_status=image_filters.status) }}"
                class="btn btn-primary">
               Next Pending &rarr;
@@ -866,16 +808,18 @@
           </div>
           {% endif %}
 
-          {# Detected Metrics card — chart-presence pivot (#86 PR 3b).
-             Rendered when the image carries classifier-detected metrics and the
-             reviewer has not marked the image as Not-Relevant. Reviewer
-             confirms each entry via accept / reject (reason) / correct
-             (replace) and may add metrics the classifier missed. #}
+          {# Detected Metrics card — chart-presence pivot (#86 PR 3b, sql/47).
+             Sole decision surface for image review. Reviewer confirms each
+             metric via Accept / Reject / Correct / Skip, may Add metrics the
+             classifier missed, and may Undo any decision. Image-level Skip
+             lives outside this card (see above).
+
+             Source priority: Vision classifier predictions (Leg C, #175)
+             when a classification row exists for the image; otherwise the
+             keyword-rule-based detected_metrics (#147). #}
           {% if current_image
-                and (current_image.detected_metrics or current_image.predicted_metrics)
-                and current_image.review_status in ('pending', 'reviewed')
-                and current_image.decision != 'not_relevant' %}
-          {% set active_metrics = current_image.predicted_metrics if current_image.predicted_metrics else current_image.detected_metrics %}
+                and current_image.review_status in ('pending', 'reviewed') %}
+          {% set active_metrics = current_image.predicted_metrics if current_image.predicted_metrics else (current_image.detected_metrics or []) %}
           {% set metrics_source = 'vision' if current_image.predicted_metrics else 'keywords' %}
           <div class="card detected-metrics-card mt-3"
                id="detected-metrics-card"
@@ -919,7 +863,15 @@
                               data-action="correct">
                         Correct <span class="kbd ms-1">C</span>
                       </button>
+                      <button type="button" class="btn btn-outline-secondary btn-skip-metric"
+                              data-action="skip">
+                        Skip <span class="kbd ms-1">S</span>
+                      </button>
                     </div>
+                    <button type="button" class="btn btn-link btn-sm btn-undo-metric ms-2"
+                            data-action="undo" style="display: none;">
+                      Undo
+                    </button>
                   </div>
                   <div class="reject-expansion mt-2" style="display: none;">
                     <label class="form-label small mb-1">Reason</label>
@@ -973,16 +925,6 @@
           </div>
           <datalist id="detected-metrics-datalist"></datalist>
           {% endif %}
-
-          <form id="decision-form" style="display: none;"
-                data-img-id="{{ current_image.img_id }}"
-                data-filing-id="{{ filing.filing_id }}">
-            <input type="hidden" name="img_id" value="{{ current_image.img_id }}">
-            <input type="hidden" name="decision" id="decision-input">
-            <input type="hidden" name="chart_type" id="chart-type-input">
-            <input type="hidden" name="rejection_reason" id="rejection-reason-input">
-            <input type="hidden" name="reviewer_notes" id="reviewer-notes-input">
-          </form>
         </div>
       </div>
       {% else %}
