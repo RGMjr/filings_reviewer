@@ -1,5 +1,7 @@
 # Contributing
 
+> **Pivot status (2026-04-25):** Tier-1 regression on **presence-F1 / presence-recall** for chart-native metrics is a merge blocker (chart-presence pivot live #86; text-presence Tier-1 gate flip pending PR2). For text/table metrics, the gate currently still uses fact-recall but flips to presence-recall when PR2 lands. Run the validator (`python3 -m src.gold_standard.v2_validator --fail-on-regression`) before pushing extraction-related changes. See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md) and [`../operations/gold-standard-runbook.md`](../operations/gold-standard-runbook.md).
+
 ## One-time setup
 
 ```bash

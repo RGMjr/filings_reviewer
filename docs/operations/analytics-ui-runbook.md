@@ -4,11 +4,20 @@
 pointed at the filings database. Covers the read-only DB role, the
 `v_analytics_*` views, and the (future) self-hosted Metabase deployment.
 
+> **Pivot status (2026-04-25):** The presence-pivot adds a new doc-grain
+> view `v_doc_metric_presence` (UNION of `v2_text_metric_presence` and the
+> per-image `v2_image_metric_presence`, the latter landing with image-review
+> Wave 2). Existing `v_analytics_fact_wide` and `v_analytics_coverage_matrix`
+> views remain valid for advisory-fact analyses; presence-aware analytics
+> views are pending PR2 of the text-presence pivot. See
+> [`text-pipeline-presence-pivot-plan.md`](text-pipeline-presence-pivot-plan.md).
+
 ## What this layer is for
 
 The extraction pipeline produces structured data in Neon Postgres
-(`v2_metric_facts`, `filings`, `companies`, `metrics`, etc.). Two audiences need
-to query it:
+(presence in `v2_text_metric_presence` — primary; advisory facts in
+`v2_metric_facts`; image classifications, segments, tables, etc.). Two
+audiences need to query it:
 
 - **Researchers (you)** — want ad-hoc slice/dice exploration: "which companies
   disclosed NRR?", "what does our extraction look like per source_type?"
@@ -43,8 +52,9 @@ is deployed later via `render.yaml`.
 
 | View | Grain | Use |
 |------|-------|-----|
-| `v_analytics_fact_wide` | 1 row / primary `v2_metric_fact` | Default surface for ad-hoc exploration. Most questions (trends, QA, per-company) derive from this. |
-| `v_analytics_coverage_matrix` | 1 row / (company × active metric) | Powers "who discloses what" heatmap dashboards. Includes `has_fact` / `has_accepted_fact` flags. |
+| `v_analytics_fact_wide` | 1 row / primary `v2_metric_fact` (advisory under the pivot) | Surface for advisory-fact analysis (trends, QA, per-company values). Note: chart-native metrics no longer auto-populate facts post-#86. |
+| `v_analytics_coverage_matrix` | 1 row / (company × active metric) | Powers "who discloses what" heatmap dashboards. Includes `has_fact` / `has_accepted_fact` flags. PR2 of the text-presence pivot will switch the headline coverage flag from fact-presence to **doc-grain presence** via `v_doc_metric_presence`. |
+| `v_doc_metric_presence` (UNION view, planned) | 1 row / (filing × metric × source) | Primary presence surface — UNION of `v2_text_metric_presence` and per-image `v2_image_metric_presence`. Lands with image-review Wave 2; consumed by PR2 of the text-presence pivot for the Tier-1 gate. Pre-launch, query `v2_text_metric_presence` directly. |
 
 Both views use `CREATE OR REPLACE`, so the migration is safe to re-apply after
 editing. If a column or join changes, bump the migration number and add a new
