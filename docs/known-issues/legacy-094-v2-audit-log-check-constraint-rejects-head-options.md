@@ -1,5 +1,5 @@
 ---
-autonomy: safe
+autonomy: n/a
 discovered: '2026-04-23'
 estimated: S
 id: 94
