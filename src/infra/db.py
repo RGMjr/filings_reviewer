@@ -1822,11 +1822,21 @@ class DatabaseAdapter:
         """V2-native single-image fetch with decision (if any)."""
         sql = f"""
             SELECT {self._V2_IMAGE_CANDIDATE_SELECT},
-                f.accession_number, c.company_name, c.cik, c.ticker
+                f.accession_number, c.company_name, c.cik, c.ticker,
+                ic.classification_id,
+                ic.predicted_metrics,
+                ic.confidence        AS classification_confidence
             FROM v2_image_assets v
             JOIN filings f ON v.doc_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            LEFT JOIN LATERAL (
+                SELECT classification_id, predicted_metrics, confidence
+                FROM v2_image_classifications
+                WHERE img_id = v.img_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) ic ON true
             WHERE v.img_id = %(img_id)s
         """
         results = self.query(sql, {"img_id": img_id})
