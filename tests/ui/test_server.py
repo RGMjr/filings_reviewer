@@ -237,6 +237,37 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "classification_confidence": None,
 }
 
+MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION = {
+    "image_candidate_id": 13,
+    "img_id": "img-vision-13",
+    "filing_id": 1,
+    "image_url": "https://via.placeholder.com/400x300?text=Chart4",
+    "image_src_url": "https://via.placeholder.com/400x300?text=Chart4",
+    "image_alt": "Revenue by Cohort Chart (Vision)",
+    "image_src": "chart4.png",
+    "image_width": 600,
+    "image_height": 400,
+    "review_status": "pending",
+    "decision": None,
+    "image_decision_id": None,
+    "detection_tier": "tier_1_cohort",
+    "cohort_confidence": 0.92,
+    "preceding_text": "Revenue by cohort as classified by vision model.",
+    "detected_keywords": ["cohort", "revenue"],
+    "is_decorative": False,
+    "chart_type": None,
+    "rejection_reason": None,
+    "decision_notes": None,
+    "image_index": 4,
+    "detected_metrics": [],
+    "classification_id": "cls-vision-001",
+    "predicted_metrics": [
+        {"metric_id": "cm_revenue_by_cohort", "score": 0.93},
+        {"metric_id": "cm_gross_margin_by_cohort", "score": 0.78},
+    ],
+    "classification_confidence": 0.93,
+}
+
 MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
     **{
         "image_candidate_id": 12,
@@ -507,6 +538,20 @@ def review_images_tab_detected_preseeded():
             image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
             all_image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
             current_image_confirmations=preseeded,
+        ),
+    )
+
+
+@app.route("/images-tab-vision")
+def review_images_tab_vision():
+    """Images tab with a current image carrying predicted_metrics (Vision classifier branch)."""
+    return render_template(
+        "unified_review.html",
+        **_shared_template_vars(
+            active_tab="images",
+            current_image=MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION,
+            image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION],
+            all_image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION],
         ),
     )
 
