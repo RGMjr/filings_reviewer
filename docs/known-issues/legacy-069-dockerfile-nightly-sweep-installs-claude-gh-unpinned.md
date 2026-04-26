@@ -7,11 +7,11 @@ note: Pin claude + gh versions; needs validation step
 severity: low
 slug: dockerfile-nightly-sweep-installs-claude-gh-unpinned
 source: legacy
-status: open
+status: resolved
 title: '`Dockerfile.nightly-sweep` Installs `claude` + `gh` Unpinned'
 touches:
 - Dockerfile.nightly-sweep
-updated: '2026-04-21'
+updated: '2026-04-25'
 ---
 
 ### Problem

@@ -5,7 +5,8 @@ estimated: S
 id: 80
 note: Add env-scoped guard against unintended prod R2 writes from CLI tools; design
   call (storage-layer vs validator-layer) needed
-pr_refs: []
+pr_refs:
+- 200
 severity: medium
 slug: gs-validator-has-no-safeguard-against-unintended-prod-r2-wri
 source: legacy
@@ -15,7 +16,8 @@ touches:
 - src/infra/image_storage.py
 - src/gold_standard/v2_validator.py
 - .claude/rules/infrastructure.md
-updated: '2026-04-24'
+- render.yaml
+updated: '2026-04-25'
 ---
 
 ### Problem
