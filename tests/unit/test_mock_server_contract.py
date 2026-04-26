@@ -35,6 +35,7 @@ SMOKE_ROUTES = [
     "/images-tab-empty",
     "/images-tab",
     "/images-tab-reviewed",
+    "/images-tab-vision",
 ]
 
 
