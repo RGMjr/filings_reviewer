@@ -45,7 +45,7 @@ services:
       - key: INGEST_SPAWN_SUBPROCESS
         value: "false"  # production drains via filings-onboarding-runner worker
       - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
-        value: "1"  # permit R2Storage.put_bytes; guard in src/infra/image_storage.py
+        value: "1"  # R2Storage.put_bytes guard — required for any service that writes image bytes
 
   - type: cron
     name: filings-extraction
@@ -67,7 +67,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false  # Set manually in Render dashboard
       - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
-        value: "1"  # permit R2Storage.put_bytes; guard in src/infra/image_storage.py
+        value: "1"  # R2Storage.put_bytes guard — required; cron writes chart images via ocr_extraction.py
 
   - type: worker
     name: filings-onboarding-runner
@@ -82,7 +82,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
-        value: "1"  # permit R2Storage.put_bytes; guard in src/infra/image_storage.py
+        value: "1"  # R2Storage.put_bytes guard — required; worker writes images via ingestion.py
 
   # Autonomous nightly sweeper for known-issue fragments in docs/known-issues/.
   # Reads frontmatter, picks up to 3 non-colliding safe/review issues, and
