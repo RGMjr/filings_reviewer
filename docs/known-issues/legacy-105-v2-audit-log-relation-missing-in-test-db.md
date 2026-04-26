@@ -6,12 +6,12 @@ id: 105
 severity: low
 slug: v2-audit-log-relation-missing-in-test-db
 source: legacy
-status: open
+status: resolved
 title: v2_audit_log Relation Missing in Test DB Causes Log Noise
 touches:
   - sql/
   - tests/integration/conftest.py
-updated: '2026-04-24'
+updated: '2026-04-26'
 ---
 
 ### Problem
