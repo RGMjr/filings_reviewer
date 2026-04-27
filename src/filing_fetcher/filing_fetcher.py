@@ -20,6 +20,8 @@ from src.infra.sec_client import FilingMetadata, SECClient
 
 logger = logging.getLogger(__name__)
 
+_EXHIBIT_SEPARATOR = "<!-- EXHIBIT-99.1 -->"
+
 
 @dataclass
 class FilingContent:
@@ -129,7 +131,11 @@ class FilingFetcher:
         return self.storage_root / cik / accession_clean
 
     def _validate_filing_content(
-        self, html: str, cik: str, accession_number: str
+        self,
+        html: str,
+        cik: str,
+        accession_number: str,
+        skip_size_check: bool = False,
     ) -> tuple[bool, str | None]:
         """
         Validate that HTML content is a real SEC filing, not an error page.
@@ -143,13 +149,16 @@ class FilingFetcher:
             html: HTML content to validate
             cik: Expected CIK for additional validation
             accession_number: Expected accession number
+            skip_size_check: When True, skip the minimum-size guard. Used for
+                8-K cover pages that are legitimately small; the combined
+                primary+exhibit content is validated separately.
 
         Returns:
             Tuple of (is_valid, error_message)
         """
         # Check 1: Minimum size - SEC filings are typically > 15KB
         # Lowered from 20KB to capture small legitimate filings (amendments, etc.)
-        if len(html) < 15_000:
+        if not skip_size_check and len(html) < 15_000:
             return (
                 False,
                 f"Content too small ({len(html):,} bytes, expected > 15KB) - likely an error page",
@@ -289,6 +298,7 @@ class FilingFetcher:
         resolved_url_for_db = None
 
         html_text: str | None = None
+        is_8k = filing_metadata.form_type.upper().startswith("8-K")
 
         try:
             # Fetch HTML filing
@@ -313,9 +323,11 @@ class FilingFetcher:
                 response = self.session.get(primary_doc_url)
                 response.raise_for_status()
 
-                # Validate content before saving
+                # Validate content before saving.
+                # For 8-K forms the primary doc is often a small cover page (<15 KB);
+                # skip the size check here and validate the combined content instead.
                 is_valid, error_msg = self._validate_filing_content(
-                    response.text, cik, accession_number
+                    response.text, cik, accession_number, skip_size_check=is_8k
                 )
                 if not is_valid:
                     raise ValueError(f"Invalid filing content: {error_msg}")
@@ -323,8 +335,59 @@ class FilingFetcher:
                 html_path.write_text(response.text, encoding="utf-8")
                 html_text = response.text
                 logger.info(f"Saved HTML to {html_path}")
+
+                if is_8k:
+                    exhibit_url = self.sec_client.get_exhibit_99_1_url(
+                        cik, accession_number
+                    )
+                    if exhibit_url:
+                        self._rate_limit()
+                        logger.debug(f"Fetching exhibit 99.1: {exhibit_url}")
+                        exhibit_resp = self.session.get(exhibit_url)
+                        exhibit_resp.raise_for_status()
+                        combined = (
+                            response.text
+                            + f"\n{_EXHIBIT_SEPARATOR}\n"
+                            + exhibit_resp.text
+                        )
+                        is_valid, error_msg = self._validate_filing_content(
+                            combined, cik, accession_number
+                        )
+                        if not is_valid:
+                            logger.warning(
+                                f"Combined 8-K content invalid for "
+                                f"{cik}/{accession_number}: {error_msg}; "
+                                f"proceeding with primary only"
+                            )
+                        else:
+                            html_path.write_text(combined, encoding="utf-8")
+                            html_text = combined
+                            logger.info(
+                                f"Appended exhibit 99.1 to {html_path} "
+                                f"({len(combined):,} combined bytes)"
+                            )
             else:
                 logger.debug(f"HTML already cached: {html_path}")
+                if is_8k:
+                    existing = html_path.read_text(encoding="utf-8")
+                    if _EXHIBIT_SEPARATOR not in existing:
+                        exhibit_url = self.sec_client.get_exhibit_99_1_url(
+                            cik, accession_number
+                        )
+                        if exhibit_url:
+                            self._rate_limit()
+                            exhibit_resp = self.session.get(exhibit_url)
+                            exhibit_resp.raise_for_status()
+                            combined = (
+                                existing
+                                + f"\n{_EXHIBIT_SEPARATOR}\n"
+                                + exhibit_resp.text
+                            )
+                            html_path.write_text(combined, encoding="utf-8")
+                            html_text = combined
+                            logger.info(
+                                f"Backfilled exhibit 99.1 into cached {html_path}"
+                            )
 
             # Fetch TXT filing (if requested and URL available)
             # TXT files are optional - don't fail entire fetch if unavailable
