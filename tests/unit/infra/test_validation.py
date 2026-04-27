@@ -6,6 +6,7 @@ import pytest
 
 from src.infra.validation import (
     ValidationError,
+    extract_sec_accession_token,
     normalize_sec_accession,
     validate_accession_number,
     validate_cik,
@@ -62,6 +63,45 @@ class TestNormalizeSecAccession:
         out = normalize_sec_accession("edgar/data/1/0001234567-23-123456.txt")
         assert out is not None
         assert validate_accession_number(out) == "0001234567-23-123456"
+
+
+class TestExtractSecAccessionToken:
+    """Tests for the URL/path-construction extraction helper.
+
+    Distinct from ``normalize_sec_accession``: this helper *strips*
+    synthetic prefixes to recover the embedded SEC token, whereas
+    ``normalize_sec_accession`` preserves them for row-identity callers.
+    """
+
+    def test_bare_token_pass_through(self):
+        assert extract_sec_accession_token("0001633917-23-000220") == "0001633917-23-000220"
+
+    def test_presentation_prefix_extracts_embedded_token(self):
+        """Root-cause input for legacy-104. Synthetic prefix must be stripped."""
+        raw = "presentation:0001108524/0001108524-25-000168/investorday2025.htm"
+        assert extract_sec_accession_token(raw) == "0001108524-25-000168"
+
+    def test_transcript_prefix_extracts_embedded_token(self):
+        raw = "transcript:0001633917/0001633917-23-000070/transcript.txt"
+        assert extract_sec_accession_token(raw) == "0001633917-23-000070"
+
+    def test_index_path_strips_to_token(self):
+        raw = "edgar/data/1633917/0001633917-23-000220.txt"
+        assert extract_sec_accession_token(raw) == "0001633917-23-000220"
+
+    def test_dashless_url_returns_none(self):
+        """A SEC URL that already has the no-dashes form has no SEC-shaped substring."""
+        raw = "https://www.sec.gov/Archives/edgar/data/1633917/000163391723000070/q1.htm"
+        assert extract_sec_accession_token(raw) is None
+
+    def test_no_token_returns_none(self):
+        assert extract_sec_accession_token("not-an-accession") is None
+
+    def test_empty_returns_none(self):
+        assert extract_sec_accession_token("") is None
+
+    def test_none_returns_none(self):
+        assert extract_sec_accession_token(None) is None
 
 
 class TestValidateCik:

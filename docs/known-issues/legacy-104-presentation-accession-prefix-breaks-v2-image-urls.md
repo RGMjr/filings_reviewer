@@ -6,14 +6,25 @@ id: 104
 severity: medium
 slug: presentation-accession-prefix-breaks-v2-image-urls
 source: legacy
-status: open
+status: resolved
 title: '"presentation:" / "transcript:" Accession Prefix Blocks V2 Image Fetcher'
 touches:
   - src/infra/sec_client.py
   - src/extraction_v2/stages/ocr_extraction.py
   - src/web/url_builders.py
-updated: '2026-04-24'
+updated: '2026-04-27'
 ---
+
+### Resolution (2026-04-27)
+
+Centralized helper ``src/infra/validation.py::extract_sec_accession_token``
+strips synthetic ``presentation:`` / ``transcript:`` prefixes to recover the
+embedded SEC token. Applied at five EDGAR-URL construction sites in
+``src/infra/sec_client.py`` (``fetch_image``, ``_get_image_cache_path``,
+``resolve_primary_document_url``, ``get_filing_by_accession``,
+``_search_filings_array``) and one site in ``src/web/url_builders.py``
+(``build_image_cache_url``). The latter now also handles ``transcript:``
+forms, which the prior ``_parse_presentation_accession``-only branch missed.
 
 ### Problem
 

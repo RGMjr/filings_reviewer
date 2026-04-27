@@ -89,6 +89,27 @@ def normalize_sec_accession(raw: str | None) -> str | None:
     return match.group(0) if match else None
 
 
+def extract_sec_accession_token(value: str | None) -> str | None:
+    """Extract the bare 18-char SEC accession token for URL/path construction.
+
+    Returns the first ``\\d{10}-\\d{2}-\\d{6}`` substring found anywhere in
+    ``value`` — including inside synthetic ``presentation:<cik>/<acc>/<file>``
+    or ``transcript:<...>`` accession strings written by the ingest scripts.
+
+    Use ``normalize_sec_accession`` for row-identity (DB key) callers, which
+    must preserve the synthetic prefix verbatim. Use this helper for any
+    code that builds an EDGAR URL (``/Archives/edgar/data/<cik>/<acc_no_dashes>/...``)
+    or a storage key, where embedding the synthetic prefix produces a 404.
+
+    Returns ``None`` when ``value`` is empty or contains no SEC-shaped
+    substring; callers decide whether to log/skip or fall through.
+    """
+    if not value:
+        return None
+    match = SEC_ACCESSION_PATTERN.search(value)
+    return match.group(0) if match else None
+
+
 def validate_accession_number(accession: str) -> str:
     """
     Validate accession number format.

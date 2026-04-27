@@ -6,14 +6,32 @@ id: 103
 severity: high
 slug: image-file-path-nulled-on-failed-sec-download
 source: legacy
-status: open
+status: resolved
 title: v2_image_assets.file_path Overwritten to NULL When SEC Download Fails During Force-Reextract
 touches:
   - src/extraction_v2/persistence.py
   - src/extraction_v2/stages/ocr_extraction.py
   - src/infra/image_storage.py
-updated: '2026-04-24'
+updated: '2026-04-27'
 ---
+
+### Resolution (2026-04-27)
+
+``_persist_images_in_tx`` in ``src/extraction_v2/persistence.py`` now
+COALESCEs the ``file_path`` column on conflict::
+
+    ON CONFLICT (doc_id, filename) DO UPDATE SET
+        file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path),
+        ...
+
+A NULL inbound (e.g., a force-reextract whose SEC fetch failed) preserves the
+existing R2 storage key while still refreshing every other column from the
+re-parsed HTML. Recovery for the rows already corrupted on 2026-04-24
+(PayPal 8-K filing_ids 1599–1603, 1745–1759) ships in this PR as
+``scripts/audit_paypal_r2_orphans.py`` (read-only) and
+``scripts/relink_paypal_r2_keys.py`` (``--apply``-gated). Run post-merge
+against prod with ``FILINGS_REVIEWER_ALLOW_PROD_WRITES=1`` per
+``.claude/rules/infrastructure.md``.
 
 ### Problem
 

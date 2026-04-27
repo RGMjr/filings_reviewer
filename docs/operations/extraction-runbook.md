@@ -65,6 +65,8 @@ DATABASE_URL="postgresql://dev:dev@localhost:5433/filings_analysis" \
 
 If the filing has reviewer decisions on facts or image confirmations, this command will raise `ReviewedFilingError`. Use `--force-reextract` only when you intentionally want to overwrite reviewed work; the reviewer-protection guards exist to prevent silent CASCADE-destruction.
 
+**Image `file_path` is sticky against NULL inbounds (legacy-103, 2026-04-27).** When `--force-reextract` runs and the SEC image fetch fails (transient outage, malformed URL, etc.), the in-memory `ImageAsset` ships with `file_path=None`. The upsert clause `file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path)` preserves the existing R2 storage key in that case while still refreshing every other column from the re-parsed HTML — `classification`, `nearby_text`, `chart_data`, `detected_metrics`, etc. all update normally. Only `file_path` survives a NULL inbound.
+
 ---
 
 ## Procedure 2: Presence-Only Re-extraction
