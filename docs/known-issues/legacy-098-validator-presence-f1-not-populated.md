@@ -10,12 +10,12 @@ note: 'PR #150 added the presence P/R/F1 infrastructure to the validator + basel
 severity: low
 slug: validator-presence-f1-not-populated
 source: legacy
-status: open
+status: resolved
 title: Validator presence_f1 Stays Null — detected_metrics Not Populated in-Memory
 touches:
   - src/gold_standard/v2_validator.py
   - src/extraction_v2/stages/chart_fact_bridge.py
-updated: '2026-04-24'
+updated: '2026-04-27'
 ---
 
 ### Problem
@@ -54,3 +54,7 @@ Confirmed via grep: `_chart_presence_set_from_context` (`v2_validator.py` around
 - Parent rollout: legacy-096.
 - Introducing PR: #150.
 - Baseline refresh PR (where this was surfaced): PR 4b.
+
+### Resolution
+
+Closed in PR #<n> — `V2GoldStandardValidator.__init__` now unconditionally sets `retain_context=True` on the pipeline config (previously gated on `fn_diagnostics=True`). Without `retain_context`, `pipeline.process()` returned no `v2_context`, so `_chart_presence_set_from_context` could not read `v2_context.images[*].detected_metrics` and `presence_tp/fp/fn` stayed zero. With the fix, the next vision-enabled baseline refresh will populate `presence_f1` (an empirical run was not possible in the development environment due to vision API gating; the unit test in `TestValidatorFNDiagnosticsFlag` confirms `retain_context=True` is now always set).
