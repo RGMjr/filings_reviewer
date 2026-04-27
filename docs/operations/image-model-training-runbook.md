@@ -6,7 +6,7 @@ The image relevance model is a scikit-learn classifier that scores SEC filing an
 
 | Source | Location |
 |--------|----------|
-| SEC filing image review decisions | PostgreSQL `image_review_decisions` table |
+| SEC filing image review decisions | PostgreSQL `v2_image_review_decisions` table (legacy, read-only) |
 | 8-K presentation image review decisions | `data/presentation_gold_standard/_image_decisions.json` |
 | S-1/F-1/10-K filing image review decisions | `data/filing_gold_standard/_image_decisions.json` |
 

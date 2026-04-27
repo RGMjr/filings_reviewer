@@ -1,160 +1,78 @@
 # Analysis & Evaluation Reports
 
-This directory contains validation reports, evaluation results, and analysis documentation for the filings analysis system.
+This directory contains active validation reports, evaluation results, and analysis documentation. Completed and superseded documents are in `docs/archive/analysis/`.
 
 ---
 
-## Current Reports
+## Current Documents
 
-### 📊 COMPREHENSIVE_EVALUATION_AND_IMPROVEMENT_PLAN.md
+### V1_RETIREMENT_CODE_SCAN_2026-04-18.md
 
-**Status**: ✅ **ACTIVE** - Primary reference for all evaluation findings and improvement plans
+**Status**: Active reference
+**Date**: 2026-04-18
 
-**Scope**: Complete system evaluation covering all 40 tasks across Waves 1, 2, and 3
-**Date**: 2025-12-26
-**Grade**: A- (91/100)
-
-**Contents**:
-- Executive summary with completion status (36/40 tasks, 90%)
-- Wave-by-wave assessment (Waves 1, 2, 3)
-- Validation metrics (80% recall, 95% precision, 87% F1)
-- Performance analysis (6,000+ seg/s throughput)
-- Critical integration gaps (EA-2, EA-3)
-- Prioritized improvement plan (13 tasks across 4 priority levels)
-- Production deployment checklist
-- Risk assessment
-- Success metrics & KPIs
-
-**Use this report for**:
-- Understanding overall system status
-- Planning next development sprint
-- Production deployment decisions
-- Tracking technical debt
+Catalog of dead V1 references and active V1 code still requiring migration during V1 retirement. Covers `src/`, `scripts/`, `tests/`, and non-archive `docs/`.
 
 ---
 
-### 📈 GR-FINAL_VALIDATION.md
+### gs-baseline-drift-investigation-2026-04-25.md
 
-**Status**: ✅ COMPLETE - Final validation results
+**Status**: Active — tied to known-issue `legacy-108`
+**Date**: 2026-04-25
 
-**Scope**: Goldmine detection validation on 7 filings
-**Key Metrics**:
-- Recall: 80% (target: 70-75%) ✅
-- Precision: ~95% (target: ≥85%) ✅
-- F1 Score: 87% (target: ≥77%) ✅
-
-**Contents**:
-- Ground truth comparison (Slack: 20/25 goldmines detected)
-- Per-filing breakdown
-- False negative analysis
-- Phase-by-phase impact attribution
-- Production deployment recommendation
+Root-cause analysis of the `has_regression=True` false positive when running `--companies "Farfetch Limited" --fail-on-regression`. Identifies a comparator design flaw in `compare_to_baseline` (subset vs. full-corpus comparison). No baseline update needed; fix tracked in known-issue #108.
 
 ---
 
-### HRV-6_VALIDATION_ANALYSIS.md
+### chart-type-decision.md
 
-**Status**: COMPLETE
+**Status**: Pending approval
+**Date**: 2026-04-25
 
-**Scope**: Post-review analysis of Slack and Farfetch human review sessions (HRV-3 and HRV-4), identifying false positive and false negative patterns, metric ID taxonomy mismatches, and prioritized improvement recommendations.
-
----
-
-### HRV-16_VALIDATION_RESULTS.md
-
-**Status**: COMPLETE
-
-**Scope**: Post-Phase 4 validation results across Farfetch, Slack, and Samsara filings; documents the precision/recall trade-off achieved by Phase 4 filtering improvements (66.7% precision, 47.4% recall, 55.4% F1).
+Product decision memo on how to handle the missing `chart_type` signal in `v2_image_metric_confirmations` (surfaced by PR #198 / gh-196). Recommends Option A (extend the confirmations table) over reworking `benchmark_vision.py`.
 
 ---
 
-### SAMSARA_VISION_EXTRACTION_ANALYSIS.md
+### metric-value-evaluation.md
 
-**Status**: COMPLETE
+**Status**: Reference
+**Date**: 2026-04-15
 
-**Scope**: Root-cause analysis of extraction failures on the Samsara Vision filing, covering table parsing gaps, regulatory reference false positives, and industry-specific keyword limitations.
+Evaluation of all 28 active metrics in `config/metric_keywords.yaml` against the criterion of genuine customer value disclosure vs. noise. Includes historical note on V1/V2 coexistence context at the time of writing.
 
 ---
 
-### 🏭 GR-17_INDUSTRY_LABELING.md
+### vision-bakeoff-2026-04-23.md
 
-**Status**: In Progress - Labels created, filings not yet loaded
+**Status**: Complete — results reference
+**Date**: 2026-04-23
 
-**Scope**: Industry-specific goldmine labeling for 6 additional filings
+Five vision provider configurations benchmarked for chart detection (F1) and cost/latency via `scripts/benchmark_vision.py --bakeoff` against a 7-image corpus. All providers hit F1=1.0 on detection; `gemini-2.5-flash-lite` was cheapest/fastest.
 
-**Filings**:
-1. Coinbase Global (Crypto/Fintech)
-2. Shopify Inc. (E-commerce Platform)
-3. Teladoc Health (Telehealth)
-4. Vivint Solar (Residential Solar)
-5. PropertyGuru Group (Real Estate Marketplace)
-6. iSpecimen Inc (B2B Healthcare)
+---
 
-**Use**: Expand validation coverage from 2 filings to 8 filings for cross-industry generalization
+### vision-bakeoff-chart-read-2026-04-23.md
+
+**Status**: Complete — results reference
+**Date**: 2026-04-23
+
+Companion to the detection bakeoff; benchmarks chart-READ mode (`analyze_image_targeted`) across 6 provider configurations, scoring extracted values against `extracted_values.csv`. Includes `two-stage` (B4 routing) evaluation.
+
+---
+
+### vision-bakeoff-metric-classify-2026-04-23.md
+
+**Status**: Complete — results reference
+**Date**: 2026-04-23
+
+Third leg of the 2026-04-23 vision sweep; benchmarks metric-CLASSIFY mode across 5 provider configurations — given a chart image, which Tier-1/Tier-2 metric does it disclose?
 
 ---
 
 ## Archive
 
-**Location**: `docs/archive/analysis/evaluation-reports/`
-
-Contains historical evaluation reports that have been superseded:
-- `WAVE_1_2_EVALUATION_REPORT_2025-12-26.md` - Waves 1 & 2 evaluation (103 test failures identified)
-- `WAVE_3_EVALUATION_REPORT_2025-12-26.md` - Wave 3 evaluation (targets exceeded)
-- `GR-10_VALIDATION_RESULTS.md` - Initial baseline validation
-- `CORRECTED_ASSESSMENT.md` - Evaluation process artifact
-- `EVALUATION_RECONCILIATION.md` - Reconciliation of findings
-
-See `docs/archive/analysis/evaluation-reports/README.md` for details.
+Completed tasks, superseded reports, and research spikes are in `docs/archive/analysis/`. This includes all HRV-3 through HRV-6 validation docs, IMG-1-x completion summaries, GR-series validation reports, VIS-series chart extraction research, the beyond-SEC spike, and the 2025-12-26 comprehensive evaluation plan.
 
 ---
 
-## Quick Reference
-
-### System Status
-
-| Aspect | Status | Details |
-|--------|--------|---------|
-| **Production Readiness** | ✅ APPROVED | 95% confidence, targets exceeded |
-| **Validation** | ✅ COMPLETE | 80% recall, 95% precision, 87% F1 |
-| **Performance** | ✅ EXCELLENT | 6,000+ seg/s (+33% from baseline) |
-| **Test Quality** | ⚠️ GOOD | 97% coverage (EA), 13 failures remaining |
-| **Technical Debt** | ⚠️ MODERATE | 10-14 hours to resolve critical items |
-
-### Next Steps
-
-**Before Production Deployment** (8-10 hours):
-1. Fix 13 test failures (1-2h)
-2. Fix 2 type safety issues (30min)
-3. Document EA-2b/EA-3b integration plans (2h)
-4. Set up production monitoring (4h)
-
-**Post-Deployment Priority** (14-19 hours):
-1. Integrate EA-2 CandidateDetector (6-8h)
-2. Integrate EA-3 ContextExtractor (4-6h)
-3. Load GR-17 validation filings (2-3h)
-4. Add definition segment bonus (2h)
-
-**See comprehensive report for detailed improvement plan.**
-
----
-
-## Document History
-
-| Date | Document | Event |
-|------|----------|-------|
-| 2025-12-26 | GR-10_VALIDATION_RESULTS.md | Initial validation (archived) |
-| 2025-12-26 | GR-17_INDUSTRY_LABELING.md | Industry-specific labeling |
-| 2025-12-26 | WAVE_1_2_EVALUATION_REPORT.md | Waves 1 & 2 evaluation (archived) |
-| 2025-12-26 | GR-FINAL_VALIDATION.md | Final comprehensive validation |
-| 2025-12-26 | WAVE_3_EVALUATION_REPORT.md | Wave 3 evaluation (archived) |
-| 2025-12-26 | COMPREHENSIVE_EVALUATION_AND_IMPROVEMENT_PLAN.md | **Current primary report** |
-| 2025-12-27 | HRV-3 through HRV-5 | Validation documentation added |
-| 2025-12-30 | HRV-6_VALIDATION_ANALYSIS.md | Human review session analysis (Slack + Farfetch) |
-| 2024-12-24 | SAMSARA_VISION_EXTRACTION_ANALYSIS.md | Samsara extraction failure root-cause |
-| 2026-01-04 | HRV-16_VALIDATION_RESULTS.md | Post-Phase 4 validation results |
-
----
-
-**Maintained By**: Claude Code
-**Last Updated**: 2025-12-27
+**Last Updated**: 2026-04-27
