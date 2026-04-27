@@ -2373,12 +2373,13 @@ class TestRunValidationGuardsAndWorkers:
         call_kwargs = mock_instance.validate_all.call_args
         assert call_kwargs.kwargs.get("max_workers") == 4
 
-    @patch("src.gold_standard.v2_validator.logger")
     @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
-    def test_run_validation_subset_warning_logged(
-        self, mock_validator_cls: MagicMock, mock_logger: MagicMock
+    def test_run_validation_rejects_companies_with_fail_on_regression(
+        self, mock_validator_cls: MagicMock
     ) -> None:
-        """fail_on_regression with a subset logs a 'comparison is partial' warning."""
+        """fail_on_regression combined with --companies must exit(2): subset
+        aggregates are structurally incomparable to the full-corpus baseline
+        (legacy-108)."""
         mock_instance = mock_validator_cls.return_value
         mock_instance.validate_all.return_value = []
         mock_instance.compute_metrics.return_value = AggregateMetrics(
@@ -2389,15 +2390,35 @@ class TestRunValidationGuardsAndWorkers:
             total_false_positives=1,
             total_false_negatives=1,
         )
-        # compare_to_baseline raises FileNotFoundError so fail_on_regression exits cleanly
-        mock_instance.compare_to_baseline.side_effect = FileNotFoundError
 
         from src.gold_standard.v2_validator import run_validation
 
-        run_validation(companies=["SomeCo"], fail_on_regression=True)
+        with pytest.raises(SystemExit) as exc:
+            run_validation(companies=["SomeCo"], fail_on_regression=True)
+        assert exc.value.code == 2
 
-        warning_calls = [str(call) for call in mock_logger.warning.call_args_list]
-        assert any("comparison is partial" in msg for msg in warning_calls)
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_run_validation_rejects_limit_with_fail_on_regression(
+        self, mock_validator_cls: MagicMock
+    ) -> None:
+        """fail_on_regression combined with --limit must exit(2) for the same
+        structural reason as --companies (legacy-108)."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = AggregateMetrics(
+            precision=0.5,
+            recall=0.5,
+            f1=0.5,
+            total_true_positives=1,
+            total_false_positives=1,
+            total_false_negatives=1,
+        )
+
+        from src.gold_standard.v2_validator import run_validation
+
+        with pytest.raises(SystemExit) as exc:
+            run_validation(limit=3, fail_on_regression=True)
+        assert exc.value.code == 2
 
 
 class TestStageTimingSummary:
