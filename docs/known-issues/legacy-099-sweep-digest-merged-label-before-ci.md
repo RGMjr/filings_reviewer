@@ -6,12 +6,12 @@ id: 99
 severity: medium
 slug: sweep-digest-merged-label-before-ci
 source: legacy
-status: open
+status: resolved
 title: Sweep digest labels safe-tier PRs "merged" before CI has actually merged them
 touches:
   - scripts/run_nightly_sweep.sh
   - scripts/write_sweep_digest.py
-updated: '2026-04-23'
+updated: '2026-04-27'
 ---
 
 ### Problem
@@ -38,3 +38,11 @@ CI. The user has to cross-check with `gh pr list` to discover the gap.
    rename the existing category to `opened` and derive "merged" at digest time.
 3. Update the digest writer's section headers to match whichever taxonomy is
    chosen so the morning email is accurate.
+
+### Resolution
+
+Closed in PR #TBD — sweep now writes `outcome="opened"` at capture time and
+`write_sweep_digest.py` polls `gh pr view --json state,mergedAt` to promote to
+`"merged"` only when actually merged, to `"abandoned"` if the PR was closed
+without merging, or leaves as `"opened"` (rendered as "Opened — awaiting CI")
+when CI is still pending or the poll fails.

@@ -12,7 +12,9 @@ Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron se
    - Implements exactly what the "Next Steps" section asks.
    - Runs the `/commit` skill — which gates lint/tests/doc-freshness, opens a PR, enables auto-merge.
 5. Writes `.claude/sweep-digests/YYYY-MM-DD.md` summarising:
-   - **Auto-merged** — safe-tier PRs already in flight to main (CI gates still enforced).
+   - **Auto-merged** — safe-tier PRs confirmed merged by GitHub at digest-write time.
+   - **Opened — awaiting CI** — safe-tier PRs whose `gh pr merge --auto --squash` is queued
+     but CI has not yet completed (or CI status could not be determined at digest-write time).
    - **Awaiting your approval** — review-tier draft PRs with one-line approve/discard commands.
    - **Abandoned** — issues the sweeper tried but gave up on, with the reason.
 6. Opens a PR for the digest file.
@@ -41,7 +43,8 @@ The cron still fires on schedule — it just exits `0` with a log line on the Re
 ## Morning review workflow
 
 1. Open `.claude/sweep-digests/<today>.md` (it's in the repo; check the latest PR from `claude/sweep-digest/<date>`).
-2. **Auto-merged** section: for awareness. The PRs have already been squash-merged if CI went green; any red-CI PRs stay open and show up in `gh pr list`.
+2. **Auto-merged** section: for awareness. These PRs were confirmed squash-merged by GitHub at digest-write time.
+   **Opened — awaiting CI** section: PRs that opened successfully but whose CI checks were still running (or whose state could not be polled) when the digest was written. Run `gh pr checks <num>` to check current status; green CI will trigger auto-merge automatically.
 3. **Awaiting your approval** section: for each entry, either run the "To merge" command or the "To discard" command.
 4. **Abandoned** section: decide whether to retry (the sweeper will re-select the same issue tomorrow unless tagged `skip`) or reclassify the issue.
 
