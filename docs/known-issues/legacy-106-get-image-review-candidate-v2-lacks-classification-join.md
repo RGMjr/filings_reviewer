@@ -6,12 +6,12 @@ id: 106
 severity: low
 slug: get-image-review-candidate-v2-lacks-classification-join
 source: legacy
-status: open
+status: resolved
 title: get_image_review_candidate_v2 Missing Classification LATERAL Join
 touches:
   - src/infra/db.py
   - src/web/routes/api_unified.py
-updated: '2026-04-24'
+updated: '2026-04-27'
 ---
 
 ### Problem
