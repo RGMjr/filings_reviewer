@@ -38,6 +38,18 @@ render_issue_body = _regen.render_issue_body
 main = _regen.main
 
 
+class _AlwaysContains:
+    def __contains__(self, item: object) -> bool:
+        return True
+
+
+@pytest.fixture(autouse=True)
+def _permissive_legacy_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Synthesized legacy-* fixture filenames in this file are not in the real
+    allow-list at docs/known-issues/.legacy-allowlist.txt; permit them in tests."""
+    monkeypatch.setattr(_validator, "_load_legacy_allowlist", lambda *a, **kw: _AlwaysContains())
+
+
 def _fragment(
     tmp_path: Path,
     *,

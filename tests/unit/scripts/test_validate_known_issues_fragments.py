@@ -29,6 +29,22 @@ parse_fragment = _mod.parse_fragment
 validate_fragment = _mod.validate_fragment
 load_all_fragments = _mod.load_all_fragments
 Fragment = _mod.Fragment
+# Captured before any monkeypatching can happen, so the missing-allow-list test
+# can call the real loader (bypassing both lru_cache and the autouse fixture).
+_REAL_LOAD_ALLOWLIST = _mod._load_legacy_allowlist.__wrapped__
+
+
+class _AlwaysContains:
+    def __contains__(self, item: object) -> bool:
+        return True
+
+
+@pytest.fixture(autouse=True)
+def _permissive_legacy_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default to permissive allow-list so existing tests using synthesized
+    legacy- filenames don't trip the new namespace-freeze check. Tests that
+    exercise the allow-list explicitly override this by patching again."""
+    monkeypatch.setattr(_mod, "_load_legacy_allowlist", lambda *a, **kw: _AlwaysContains())
 
 
 VALID_FRAGMENT = """\
@@ -236,3 +252,62 @@ class TestLoadAllFragments:
             (tmp_path / name).write_text(content, encoding="utf-8")
         with pytest.raises(ValueError, match="duplicate fragment for legacy#73"):
             load_all_fragments(tmp_path)
+
+
+class TestLegacyAllowlist:
+    """Enforce that new `legacy-*` filenames are rejected; only frozen names pass."""
+
+    def _base_fm(self, *, source: str = "legacy", issue_id: int = 68, slug: str = "frozen-fragment") -> dict:
+        fm = {
+            "id": issue_id,
+            "source": source,
+            "slug": slug,
+            "title": "T",
+            "status": "open",
+            "severity": "medium",
+            "autonomy": "skip",
+            "estimated": "XS",
+            "touches": ["x"],
+            "discovered": "2026-04-19",
+            "updated": "2026-04-22",
+        }
+        if source == "gh":
+            fm["gh_issue"] = issue_id
+        return fm
+
+    def test_listed_legacy_filename_passes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            _mod, "_load_legacy_allowlist",
+            lambda *a, **kw: frozenset({"legacy-068-frozen-fragment.md"}),
+        )
+        p = tmp_path / "legacy-068-frozen-fragment.md"
+        f = Fragment(frontmatter=self._base_fm(), body="b", path=p)
+        assert validate_fragment(f) == []
+
+    def test_unlisted_legacy_filename_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            _mod, "_load_legacy_allowlist",
+            lambda *a, **kw: frozenset({"legacy-068-frozen-fragment.md"}),
+        )
+        p = tmp_path / "legacy-999-not-in-list.md"
+        fm = self._base_fm(issue_id=999, slug="not-in-list")
+        errors = validate_fragment(Fragment(frontmatter=fm, body="b", path=p))
+        assert any("new 'legacy-*' filenames are not allowed" in e for e in errors)
+
+    def test_gh_filename_passes_regardless_of_allowlist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            _mod, "_load_legacy_allowlist", lambda *a, **kw: frozenset(),
+        )
+        fm = self._base_fm(source="gh", issue_id=300, slug="my-issue")
+        p = tmp_path / "gh-300-my-issue.md"
+        assert validate_fragment(Fragment(frontmatter=fm, body="b", path=p)) == []
+
+    def test_missing_allowlist_raises_file_not_found(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError, match="legacy allow-list missing"):
+            _REAL_LOAD_ALLOWLIST(tmp_path / "does-not-exist.txt")

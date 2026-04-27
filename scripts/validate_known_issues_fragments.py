@@ -15,6 +15,7 @@ Exits 0 on success, 1 if any fragment fails validation.
 from __future__ import annotations
 
 import argparse
+import functools
 import re
 import sys
 from dataclasses import dataclass
@@ -26,6 +27,19 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_FRAGMENTS_DIR = REPO_ROOT / "docs" / "known-issues"
+LEGACY_ALLOWLIST_PATH = DEFAULT_FRAGMENTS_DIR / ".legacy-allowlist.txt"
+
+
+@functools.cache
+def _load_legacy_allowlist(path: Path = LEGACY_ALLOWLIST_PATH) -> frozenset[str]:
+    if not path.exists():
+        raise FileNotFoundError(
+            f"legacy allow-list missing at {path} — this file is checked in to "
+            "enforce the gh-N namespace; if you're seeing this, restore it from git."
+        )
+    return frozenset(
+        line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
 
 REQUIRED_FIELDS: frozenset[str] = frozenset(
     {
@@ -184,7 +198,14 @@ def validate_fragment(fragment: Fragment) -> list[str]:
     filename_match = FILENAME_RE.match(path.name)
     if filename_match is None:
         errors.append(f"filename must match pattern (legacy|gh)-<id>-<slug>.md, got {path.name!r}")
-    elif not errors:
+    else:
+        fname_source = filename_match.group("source")
+        if fname_source == "legacy" and path.name not in _load_legacy_allowlist():
+            errors.append(
+                "new 'legacy-*' filenames are not allowed; use 'gh-<issue>-<slug>.md' "
+                "for new fragments. See CLAUDE.md / docs/development/CONTRIBUTING.md."
+            )
+    if filename_match is not None and not errors:
         fname_source = filename_match.group("source")
         fname_id = int(filename_match.group("id"))
         fname_slug = filename_match.group("slug")
