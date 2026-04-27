@@ -46,7 +46,6 @@ Business requirements and metric definitions.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[analytic-requirements.md](requirements/analytic-requirements.md)** | Core business requirements, research questions, hypotheses | All stakeholders |
-| **[CMASB_PRIORITY_METRICS_PHASE1.md](requirements/CMASB_PRIORITY_METRICS_PHASE1.md)** | Priority metrics for initial analysis | Analysts, PMs |
 
 ### Development (Implementation Guidance)
 
@@ -90,7 +89,6 @@ Active and historical plans for reference.
 
 | Document | Description | Audience |
 |----------|-------------|----------|
-| **[analysis/GR-FINAL_VALIDATION.md](analysis/GR-FINAL_VALIDATION.md)** | **Final validation report: 80% recall, 95% precision** (V1 GR methodology — V2 current baseline: see v2.7 changelog entry above) | Everyone |
 | **[known-issues/](known-issues/)** | Known issues (source-of-truth fragments). Rendered rollup is published as a CI build artifact on every main build — see `known-issues-rollup` on the Actions tab. | Developers |
 
 ### Archive (Historical Reference)

@@ -2,12 +2,11 @@
 
 **Purpose**: Keep project documentation lean and useful by regular cleanup.
 
-**Last Audit Run**: 2026-03-16
+**Last Audit Run**: 2026-04-27
 
 **Critical-path docs that must stay current**:
 - `CLAUDE.md` — architecture, commands list, test coverage percentage
 - `docs/README.md` — version history, implementation status table
-- `docs/PROJECT_TASK_INVENTORY.md` — task counts and plan statuses
 - `docs/known-issues/` — fragment files (one per issue). Fragments are the single source of truth. The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run. To archive a resolved issue, update its fragment's `status:` field to `archived`.
 
 **Primary execution mechanism**: Run `/doc-audit` for all quarterly freshness checks. The command audits all critical-path docs and reports findings without auto-fixing.
@@ -29,9 +28,9 @@ find docs/archive -name "*.md" -mtime +90 | head -20
 ```
 
 **Actions**:
-- [ ] Delete worker prompts older than 6 months (keep completion summaries)
-- [ ] Consolidate completion summaries into CHANGELOG.md entries
-- [ ] Remove superseded/dropped prompts older than 3 months
+- [ ] Review `docs/analysis/` for completed task artifacts and stale investigations
+- [ ] Review `docs/operations/` for completed one-time plans and runbooks for retired features
+- [ ] Review `docs/architecture/` for documents superseded by current specs
 
 ### 2. CLAUDE.md Review
 
@@ -42,61 +41,21 @@ find docs/archive -name "*.md" -mtime +90 | head -20
 
 ---
 
-## Consolidation Rules
-
-### Worker Prompts → Completion Summaries
-
-After a workstream completes:
-
-1. Keep only the completion summary (e.g., `EI-1_COMPLETION_SUMMARY.md`)
-2. Delete individual task prompts after 90 days
-3. Add one-line entry to project CHANGELOG
-
-### Completion Summaries → CHANGELOG
-
-Format for CHANGELOG.md:
-
-```markdown
-## [Date] - [Workstream Name]
-
-- **Tasks**: [X] completed
-- **Key Changes**: [1-2 sentences]
-- **Files Modified**: [list key files]
-- **Metrics Impact**: [if applicable]
-```
-
----
-
-## Recommended Archive Structure
+## Archive Structure
 
 ```
 docs/archive/
-├── workstreams/           # Completed workstream summaries
-│   ├── 2025-12-GR.md      # Goldmine Remediation summary
-│   ├── 2025-12-EI.md      # Extraction Improvement summary
-│   └── ...
-├── investigations/        # Ad-hoc investigation reports
-├── analysis/              # Analysis reports (keep longer)
-└── historical/            # Process improvements, old templates
+├── analysis/                      # Superseded evaluation reports, completed task summaries
+├── extraction-validation/         # Extraction accuracy reports, validation baselines
+├── historical/                    # Historical process docs, one-time task artifacts
+│   └── process/                   # Superseded worker prompt templates, skills meta-docs
+├── improvement-plans-completed/   # Completed improvement/remediation plans
+├── ops/                           # Superseded operational guides (e.g. pre-V2 deployment)
+├── worker-prompts/                # Completed worker prompts
+└── workstreams/                   # Completed workstream docs
 ```
 
----
-
-## Automation
-
-### Weekly (via cron or manual)
-
-```bash
-# Check for stale documentation
-find docs/ -name "*.md" -mtime +180 -not -path "*/archive/*"
-```
-
-### Monthly
-
-```bash
-# Archive old worker prompts
-./scripts/archive_old_prompts.sh  # Create this if needed
-```
+See `.claude/rules/docs.md` for canonical placement rules.
 
 ---
 
@@ -104,12 +63,20 @@ find docs/ -name "*.md" -mtime +180 -not -path "*/archive/*"
 
 | Document Type | Active | Archive | Delete |
 |--------------|--------|---------|--------|
-| Worker Prompts | During task | 90 days | After 90 days |
-| Completion Summaries | 6 months | Indefinite | Never |
-| Analysis Reports | 1 year | Indefinite | Never |
-| Investigation Reports | 6 months | 1 year | After 1 year |
-| Templates | Current version | Previous version | Older versions |
+| Completion summaries | 6 months | Indefinite | Never |
+| Analysis reports | 1 year | Indefinite | Never |
+| Investigation reports | 6 months | 1 year | After 1 year |
+| One-time runbooks / migration plans | Until executed | Indefinite | Never |
 
 ---
 
-**Last Updated**: 2026-01-13
+## Automation
+
+```bash
+# Check for stale documentation (not in archive, not modified in 180 days)
+find docs/ -name "*.md" -mtime +180 -not -path "*/archive/*" -not -path "*/known-issues/*"
+```
+
+---
+
+**Last Updated**: 2026-04-27
