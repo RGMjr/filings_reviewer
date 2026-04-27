@@ -2176,7 +2176,11 @@ class TestPrintFNDiagnostics:
 
 
 class TestValidatorFNDiagnosticsFlag:
-    """Tests that fn_diagnostics flag correctly sets retain_context."""
+    """Tests that retain_context is always enabled on the validator's pipeline config.
+
+    retain_context=True is unconditionally set so that _chart_presence_set_from_context
+    can inspect v2_context.images after pipeline.process(), regardless of fn_diagnostics.
+    """
 
     def test_fn_diagnostics_true_sets_retain_context(self) -> None:
         validator = V2GoldStandardValidator(
@@ -2186,16 +2190,17 @@ class TestValidatorFNDiagnosticsFlag:
         assert validator.fn_diagnostics is True
         assert validator.v2_config.retain_context is True
 
-    def test_fn_diagnostics_false_does_not_set_retain_context(self) -> None:
+    def test_fn_diagnostics_false_still_sets_retain_context(self) -> None:
+        """retain_context is always True regardless of fn_diagnostics (fixes #98)."""
         validator = V2GoldStandardValidator(
             gold_standard_path="/dev/null",
             fn_diagnostics=False,
         )
         assert validator.fn_diagnostics is False
-        assert validator.v2_config.retain_context is False
+        assert validator.v2_config.retain_context is True
 
-    def test_custom_config_retain_context_preserved(self) -> None:
-        """When fn_diagnostics=True, retain_context is set regardless of base config."""
+    def test_custom_config_retain_context_always_forced_true(self) -> None:
+        """retain_context is forced True even when base config sets it False."""
         base_config = PipelineConfig(retain_context=False, enable_image_extraction=False)
         validator = V2GoldStandardValidator(
             gold_standard_path="/dev/null",

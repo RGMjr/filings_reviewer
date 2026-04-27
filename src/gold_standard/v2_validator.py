@@ -459,12 +459,13 @@ class V2GoldStandardValidator:
         self.gold_standard_path = Path(gold_standard_path)
         self.fn_diagnostics = fn_diagnostics
 
-        # When FN diagnostics are enabled, set retain_context on the pipeline config
-        if fn_diagnostics:
-            base = v2_config or PipelineConfig()
-            self.v2_config = dc_replace(base, retain_context=True)
-        else:
-            self.v2_config = v2_config or PipelineConfig()
+        # retain_context=True is always required so that validate_filing() can
+        # access v2_context.images[*].detected_metrics for chart-presence P/R scoring
+        # (the block at line ~827 guards on `v2_context is not None`).  Previously this
+        # was only set when fn_diagnostics=True, which caused presence_tp/fp/fn to stay
+        # zero on normal runs and presence_f1 to never appear in the baseline.
+        base = v2_config or PipelineConfig()
+        self.v2_config = dc_replace(base, retain_context=True)
 
         self.value_tolerance = value_tolerance
         self.min_confidence = min_confidence
