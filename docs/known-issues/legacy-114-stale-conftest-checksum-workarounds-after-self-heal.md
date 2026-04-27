@@ -4,7 +4,7 @@ discovered: '2026-04-27'
 estimated: XS
 id: 114
 pr_refs:
-  - '#255'
+  - 255
 severity: low
 slug: stale-conftest-checksum-workarounds-after-self-heal
 source: legacy
