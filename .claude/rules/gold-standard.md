@@ -70,6 +70,7 @@ python3 -m src.gold_standard.v2_validator --limit 3 --workers 1
 - `--limit N`: cap at the first N companies (applied after `--companies` filter).
 - `--workers N`: parallel worker count (default 4; use `--workers 1` for sequential debugging).
 - `--update-baseline` is **incompatible** with `--companies` or `--limit` — the CLI errors out to prevent writing a partial baseline. Always run the full set before updating the baseline.
+s- `--fail-on-regression` is also **incompatible** with `--companies` or `--limit` (CLI exits 2). Subset-run aggregate metrics (including `tier1_presence_recall`) are structurally incomparable to the full-corpus baseline — `compare_to_baseline` would produce spurious regressions for any company whose own metrics fall below the corpus average. Use subset runs without the gate flag for development inspection; gate only on full-corpus runs (legacy-108).
 
 ## Key Metrics
 

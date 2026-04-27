@@ -217,3 +217,39 @@ This is more complex but allows meaningful regression detection within a subset.
 ## 8. Prior Art
 
 The Farfetch FP pattern (period + value mismatches on `cm_active_customers_total` and `cm_purchase_transactions_overall`) was previously analyzed in `docs/analysis/INV-1_FARFETCH_EXTRACTION_REPORT.md` and `docs/analysis/HRV-4_FARFETCH_VALIDATION.md`. Those reports document the same html_table false positives. The current 11 FPs are consistent with those prior findings.
+
+---
+
+## 9. 2026-04-27 Update — Reproduction under PR2 baseline + Option A landed
+
+After this investigation closed, the PR2 baseline pivot replaced `data/gold_standard/v2_baseline.json` (new `baseline_date` `2026-04-25T20:43:45+00:00`, gate metric `tier1_presence_recall`). The structural comparator flaw persisted; only the surface symptom shifted.
+
+**Re-reproduction on Farfetch (clean main, today):**
+
+```
+python3 -m src.gold_standard.v2_validator --companies "Farfetch Limited" --workers 1 --fail-on-regression
+```
+
+| Field | Value |
+|---|---|
+| Subset `tier1_presence_recall` | 0.500 (2/4: `cm_ltv_to_cac_ratio`, `cm_ltv_to_cac_ratio_by_cohort` detected; `cm_gross_margin_by_cohort`, `cm_revenue_by_cohort` not) |
+| Baseline `tier1_presence_recall` (corpus) | 0.853 |
+| `tier1_presence_recall_delta` | −0.353 |
+| `has_regression` | **True** (`[GATE] tier1_presence_recall`, `[informational] precision`) |
+
+The gate metric moved from `precision` (pre-PR2) to `tier1_presence_recall` (post-PR2). Same root cause: subset `current.tier1_presence_recall` compared against `baseline.tier1_presence_recall` (corpus aggregate). Any company whose subset tier-1 presence-recall lies below 0.853 trips the false positive.
+
+**Cross-corpus check — Datadog, Inc. (clean main, today):**
+
+| Field | Value |
+|---|---|
+| Subset `tier1_presence_recall` | 1.000 |
+| Baseline `tier1_presence_recall` (corpus) | 0.853 |
+| `tier1_presence_recall_delta` | +0.147 |
+| `has_regression` | False (passes) |
+
+Datadog passes because its subset value sits above the corpus baseline. Combined with the precision-era Chewy reproduction (§4), this confirms the false positive is structural and cross-corpus — not Farfetch-specific extraction drift.
+
+**Resolution.** Option A from §7 was implemented in this branch: the `logger.warning` at `src/gold_standard/v2_validator.py:2395` was replaced with `print(...)` + `sys.exit(2)`, making `--fail-on-regression` mutually incompatible with `--companies` / `--limit`. The pre-existing test asserting the warning behavior was rewritten to assert `SystemExit(2)`, and a companion test for `--limit` was added. `.claude/rules/gold-standard.md` §"Subsetting during iteration" now documents the new constraint alongside the existing `--update-baseline` rule. Known-issue `legacy-108` flipped to `status: resolved`.
+
+Option B (subset-aware comparison) is **not** pursued: it would require capturing per-company `tier1_presence_recall` in the baseline schema (currently corpus-only at `baseline.py:62-63`). The pre-commit hook and CI both run full-corpus validation, so subset-gating has no production use case to justify the schema work.

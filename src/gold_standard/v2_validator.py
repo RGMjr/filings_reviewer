@@ -2393,10 +2393,17 @@ def run_validation(
         validator.save_baseline(metrics, description=baseline_description)
 
     if fail_on_regression and (companies or limit is not None):
-        logger.warning(
-            "fail_on_regression with a subset: comparison is partial; "
-            "regressions outside the subset will not be caught"
+        print(
+            "ERROR: --fail-on-regression cannot be combined with --companies or --limit.\n"
+            "Subset-run aggregate metrics (including tier1_presence_recall) are\n"
+            "structurally incomparable to the full-corpus baseline. The comparator\n"
+            "compares the subset's overall against baseline.overall, producing\n"
+            "spurious regressions for any company whose own metrics fall below the\n"
+            "corpus average. Run without --companies/--limit for regression gating;\n"
+            "use --companies for development inspection without the gate.",
+            file=sys.stderr,
         )
+        sys.exit(2)
 
     if fail_on_regression:
         try:

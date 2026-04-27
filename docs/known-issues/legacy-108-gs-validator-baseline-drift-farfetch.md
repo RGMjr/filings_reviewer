@@ -6,12 +6,12 @@ id: 108
 severity: medium
 slug: gs-validator-baseline-drift-farfetch
 source: legacy
-status: partially-resolved
+status: resolved
 title: GS Validator Baseline Drift — Farfetch Reports has_regression=True on Unmodified Main
 touches:
   - src/gold_standard/v2_validator.py
   - data/gold_standard/Farfetch_Limited
-updated: '2026-04-25'
+updated: '2026-04-27'
 ---
 
 ### Problem
@@ -45,3 +45,11 @@ Cross-corpus check on Chewy confirms the pattern is systemic: Chewy's company-sp
 **Recommendation:** Do NOT update the baseline. Fix `src/gold_standard/v2_validator.py` lines 2224–2228 to refuse (exit 2) rather than warn when `--fail-on-regression` is combined with `--companies` or `--limit`. The comparison is structurally invalid for subset runs. See Option A in the analysis doc for the exact change. **The user must approve and run any code change.**
 
 Tier 1 metrics (cm_ltv_to_cac_ratio, cm_ltv_to_cac_ratio_by_cohort) are perfect on Farfetch (P=R=F1=100%). The 11 FPs are pre-existing Tier 2 issues (period/value mismatches on html_table rows for cm_active_customers_total and cm_purchase_transactions_overall) unchanged since at least HRV-4.
+
+### Resolution 2026-04-27
+
+After the PR2 baseline pivot (2026-04-25T20:43:45) the same structural false positive reproduced — the gate metric simply moved from `precision` to `tier1_presence_recall` (Farfetch subset 0.50 vs corpus baseline 0.853, delta −0.353). Cross-corpus check on Datadog (subset 1.00 vs 0.853) confirmed the pattern is structural and not Farfetch-specific. See `docs/analysis/gs-baseline-drift-investigation-2026-04-25.md` §9 for the post-PR2 numbers.
+
+Implemented Option A from the analysis doc: replaced the `logger.warning` at `src/gold_standard/v2_validator.py:2395` with `print(...)` + `sys.exit(2)` so `--fail-on-regression` is mutually incompatible with `--companies` / `--limit`. Subset runs without the gate flag continue to work for development inspection; the pre-commit hook and CI run full-corpus validation, which is unaffected.
+
+Tests: rewrote `test_run_validation_subset_warning_logged` → `test_run_validation_rejects_companies_with_fail_on_regression` (asserts `SystemExit(2)`); added companion `test_run_validation_rejects_limit_with_fail_on_regression`. Documented the new constraint in `.claude/rules/gold-standard.md` §"Subsetting during iteration".
