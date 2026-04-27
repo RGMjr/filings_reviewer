@@ -915,7 +915,7 @@ class V2PersistenceAdapter:
                 %(detected_keywords)s, %(detected_metrics)s, NOW()
             )
             ON CONFLICT (doc_id, filename) DO UPDATE SET
-                file_path = EXCLUDED.file_path,
+                file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path),
                 width = EXCLUDED.width,
                 height = EXCLUDED.height,
                 dom_locator = EXCLUDED.dom_locator,

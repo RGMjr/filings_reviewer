@@ -16,7 +16,12 @@ import requests
 
 from src.infra.exceptions import SECDataError, SECRateLimitError
 from src.infra.http_client import HTTPClient, RequestsHTTPClient
-from src.infra.validation import ValidationError, validate_date_range, validate_sic_code
+from src.infra.validation import (
+    ValidationError,
+    extract_sec_accession_token,
+    validate_date_range,
+    validate_sic_code,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -518,7 +523,14 @@ class SECClient:
         Returns:
             Full URL to primary HTML document, or None if not found
         """
-        accession_no_dashes = accession_number.replace("-", "")
+        bare = extract_sec_accession_token(accession_number)
+        if bare is None:
+            logger.warning(
+                f"resolve_primary_document_url: no SEC accession token in "
+                f"{accession_number!r}; cannot build EDGAR URL"
+            )
+            return None
+        accession_no_dashes = bare.replace("-", "")
         index_url = f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/index.json"
 
         try:
@@ -726,7 +738,14 @@ class SECClient:
             primary_docs = recent.get("primaryDocument", [])
 
             # Construct URLs
-            accession_no_dashes = accession_number.replace("-", "")
+            bare = extract_sec_accession_token(accession_number)
+            if bare is None:
+                logger.warning(
+                    f"get_filing_by_accession: no SEC accession token in "
+                    f"{accession_number!r}; cannot build EDGAR URL"
+                )
+                return None
+            accession_no_dashes = bare.replace("-", "")
             primary_doc_url = (
                 f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/"
                 f"{primary_docs[idx]}"
@@ -846,8 +865,15 @@ class SECClient:
         if self._image_cache_dir is None:
             return None
 
+        bare = extract_sec_accession_token(accession_number)
+        if bare is None:
+            logger.warning(
+                f"_get_image_cache_path: no SEC accession token in "
+                f"{accession_number!r}; cache path unavailable"
+            )
+            return None
         cik_stripped = cik.lstrip("0") or "0"
-        accession_no_dashes = accession_number.replace("-", "")
+        accession_no_dashes = bare.replace("-", "")
 
         return self._image_cache_dir / cik_stripped / accession_no_dashes / filename
 
@@ -930,9 +956,20 @@ class SECClient:
             - Validates Content-Type is an image type
             - Logs warnings for failures (does not raise exceptions)
         """
-        # Compute canonical key components used by both DB and disk caches
+        # Compute canonical key components used by both DB and disk caches.
+        # extract_sec_accession_token strips synthetic ``presentation:`` /
+        # ``transcript:`` prefixes so the resulting EDGAR URL is well-formed
+        # for filings ingested via the presentation/transcript path
+        # (legacy-104).
+        bare = extract_sec_accession_token(accession_number)
+        if bare is None:
+            logger.warning(
+                f"fetch_image: no SEC accession token in {accession_number!r}; "
+                f"cannot build EDGAR URL"
+            )
+            return None
         cik_stripped = cik.lstrip("0") or "0"
-        accession_no_dashes = accession_number.replace("-", "")
+        accession_no_dashes = bare.replace("-", "")
 
         # Check DB cache first (persists across redeploys)
         if self._db_adapter is not None:
@@ -1052,7 +1089,14 @@ class SECClient:
         for i, form in enumerate(forms):
             if form in form_types:
                 accession_number = accession_numbers[i]
-                accession_no_dashes = accession_number.replace("-", "")
+                bare = extract_sec_accession_token(accession_number)
+                if bare is None:
+                    logger.warning(
+                        f"_search_filings_array: no SEC accession token in "
+                        f"{accession_number!r}; skipping"
+                    )
+                    continue
+                accession_no_dashes = bare.replace("-", "")
                 primary_doc = primary_docs[i] if i < len(primary_docs) else ""
 
                 primary_doc_url = (

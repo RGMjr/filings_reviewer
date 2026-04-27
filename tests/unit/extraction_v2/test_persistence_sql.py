@@ -293,6 +293,35 @@ class TestImagePersistSQL:
             f"Expected match_nearby_text called 3 times (once per image), got {mock_matcher.call_count}"
         )
 
+    def test_file_path_coalesced_on_conflict(self) -> None:
+        """Regression guard for legacy-103: ON CONFLICT must COALESCE file_path.
+
+        Without COALESCE, an in-memory ImageAsset with file_path=None (e.g.,
+        from a force-reextract whose SEC fetch failed) clobbers an existing
+        non-NULL R2 storage key, orphaning the cached image.
+        """
+        adapter = _make_adapter()
+        cur = _make_cursor()
+        image = _make_image_asset()
+
+        with patch("src.extraction_v2.persistence.match_nearby_text", return_value=["kw"]):
+            adapter._persist_images_in_tx(cur, [image], filing_id=1)
+
+        sql_calls = [
+            call
+            for call in cur.execute.call_args_list
+            if "INSERT INTO v2_image_assets" in str(call)
+        ]
+        assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
+        sql_text = sql_calls[0].args[0]
+
+        assert (
+            "file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path)" in sql_text
+        ), (
+            "file_path on ON CONFLICT must COALESCE so a NULL inbound (failed SEC fetch) "
+            "does not overwrite an existing R2 storage key (legacy-103)."
+        )
+
     def test_empty_matches_persist_as_null(self) -> None:
         """When match_nearby_text returns [], detected_keywords param must be None (SQL NULL)."""
         adapter = _make_adapter()

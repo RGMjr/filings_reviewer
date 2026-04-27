@@ -704,6 +704,105 @@ class TestImagePersistence:
                 assert cd["series"][0]["points"][0]["y"] == 10.0
 
 
+class TestImageFilePathPreservation:
+    """Tests for legacy-103: file_path must survive a NULL inbound on re-extract.
+
+    When a force-reextract runs on a filing whose SEC image fetch fails (e.g.,
+    the legacy-104 malformed-URL bug, transient SEC outage), the OCR stage
+    emits an in-memory ImageAsset with file_path=None. The persistence upsert
+    must COALESCE EXCLUDED.file_path with the existing column so the cached
+    R2 storage key is not clobbered.
+    """
+
+    def test_force_reextract_with_failed_fetch_preserves_file_path(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        """Re-upserting with file_path=None preserves the previously-stored path."""
+        original_key = "pipeline/9999999999/9999999999999999/legacy103.png"
+
+        first = ImageAsset(
+            img_id=str(uuid.uuid4()),
+            filename="legacy103.png",
+            file_path=original_key,
+            classification=ImageClassification.CHART,
+            relevance_score=0.7,
+            nearby_text="Original nearby text",
+        )
+        persistence_adapter.persist_images([first], test_filing_id)
+
+        # Second pass simulates a force-reextract whose SEC fetch failed:
+        # file_path is None, but other classification/text fields legitimately
+        # update from the re-parsed HTML.
+        second = ImageAsset(
+            img_id=str(uuid.uuid4()),
+            filename="legacy103.png",
+            file_path=None,
+            classification=ImageClassification.TABLE_IMAGE,
+            relevance_score=0.85,
+            nearby_text="Refreshed nearby text",
+        )
+        persistence_adapter.persist_images([second], test_filing_id)
+
+        with db_adapter.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT file_path, classification, nearby_text
+                      FROM v2_image_assets
+                     WHERE doc_id = %s AND filename = %s
+                    """,
+                    (test_filing_id, "legacy103.png"),
+                )
+                result = cur.fetchone()
+
+        assert result["file_path"] == original_key, (
+            "file_path must be preserved when the inbound row is NULL "
+            "(legacy-103: COALESCE on ON CONFLICT)"
+        )
+        assert result["classification"] == "table_image", (
+            "Other columns must still refresh on re-extract — only file_path is preserved"
+        )
+        assert result["nearby_text"] == "Refreshed nearby text"
+
+    def test_non_null_file_path_overwrites(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        """COALESCE must NOT block a legitimate non-NULL update."""
+        first_key = "pipeline/9999999999/9999999999999999/v1.png"
+        second_key = "pipeline/9999999999/9999999999999999/v2.png"
+
+        first = ImageAsset(
+            img_id=str(uuid.uuid4()),
+            filename="legacy103_overwrite.png",
+            file_path=first_key,
+            classification=ImageClassification.CHART,
+        )
+        persistence_adapter.persist_images([first], test_filing_id)
+
+        second = ImageAsset(
+            img_id=str(uuid.uuid4()),
+            filename="legacy103_overwrite.png",
+            file_path=second_key,
+            classification=ImageClassification.CHART,
+        )
+        persistence_adapter.persist_images([second], test_filing_id)
+
+        with db_adapter.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT file_path FROM v2_image_assets WHERE doc_id = %s AND filename = %s",
+                    (test_filing_id, "legacy103_overwrite.png"),
+                )
+                result = cur.fetchone()
+        assert result["file_path"] == second_key
+
+
 class TestPipelineResultPersistence:
     """Tests for full pipeline result persistence."""
 

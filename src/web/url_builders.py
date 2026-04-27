@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from src.infra.validation import extract_sec_accession_token
+
 
 def _strip_leading_zeros(cik: str | None) -> str | None:
     """SEC EDGAR URLs drop CIK leading zeros; DB stores them padded."""
@@ -82,15 +84,13 @@ def build_image_cache_url(cik: str | None, accession_number: str | None, filenam
     (src/web/routes/image_cache.py). Mirrors the SQL expression in
     _V2_IMAGE_CANDIDATE_SELECT — kept in Python for tests and for callers that
     have the row in hand.
+
+    Uses ``extract_sec_accession_token`` so synthetic ``presentation:`` /
+    ``transcript:`` accessions resolve to their embedded SEC token for the
+    URL path, keeping the route shape ``/images/cache/<cik>/<acc>/<file>``.
     """
-    parsed = _parse_presentation_accession(accession_number) if accession_number else None
-    if parsed:
-        # For presentations: trust the embedded accession over the padded cik
-        # from the caller; they should match but the embedded form is canonical.
-        _cik_padded, acc, _filename = parsed
-        accession_normalised = acc
-    else:
-        accession_normalised = accession_number or ""
+    bare = extract_sec_accession_token(accession_number)
+    accession_normalised = bare or accession_number or ""
 
     cik_stripped = _strip_leading_zeros(cik) or "0"
     acc_no_dashes = accession_normalised.replace("-", "")
