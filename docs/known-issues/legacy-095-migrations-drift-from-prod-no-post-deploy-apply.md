@@ -6,14 +6,14 @@ id: 95
 severity: high
 slug: migrations-drift-from-prod-no-post-deploy-apply
 source: legacy
-status: open
+status: resolved
 title: Schema Migrations Drift From Prod — No Post-Deploy Apply Step
 touches:
   - scripts/apply_migrations.py
   - render.yaml
   - src/web/app.py
   - sql/
-updated: '2026-04-23'
+updated: '2026-04-27'
 ---
 
 ### Problem
@@ -81,3 +81,16 @@ Pick one (or more) of:
 - **legacy-090** — integration tests fail on sql/37 checksum. Same class of problem.
 - Commit `8d09001` (#111) — added the cluster-DDL pre-commit guard and the `-- cluster-ddl-ok:` marker that caused this round's checksum drift.
 - PR #151 — shipped `v.detected_metrics` SELECT without enforcing migration apply; the trigger case for this issue.
+
+### Resolution
+
+Pre-deploy hook landed in PR #199 (commit `eed95a8`, `render.yaml:36`).
+Comment-only checksum guard relaxed in this PR — `_checksum` now strips
+line-leading SQL comments before hashing, with a per-row self-heal in
+`apply_migration` that updates ledger entries whose stored hash matches the
+pre-rule-change raw-byte hash. Phase-2 items (#2 app-startup migration check,
+#4 CI schema-drift check, #5 alerting) are not currently tracked — file new
+fragments if re-prioritized. Note: this fix updates only
+`scripts/apply_migrations.py`. The parallel runner
+`scripts/apply_all_migrations.py` retains its own checksum logic and is
+tracked under legacy-110 (registry drift between the two scripts).

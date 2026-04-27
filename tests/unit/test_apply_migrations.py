@@ -19,6 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from scripts.apply_migrations import (  # noqa: E402
     MIGRATIONS,
     _checksum,
+    _raw_checksum,
     apply_migration,
 )
 
@@ -172,3 +173,89 @@ def test_migration_16_registered():
     idx_15 = MIGRATIONS.index("15_rename_cohort_heatmap_to_parfait.sql")
     idx_16 = MIGRATIONS.index("16_add_8k_form_type.sql")
     assert idx_16 > idx_15
+
+
+# ---------------------------------------------------------------------------
+# Tests for the comment-stripping checksum rule + rule-transition self-heal
+# (legacy-095)
+# ---------------------------------------------------------------------------
+
+
+def test_checksum_ignores_line_leading_comments():
+    """Two SQL strings differing only in line-leading -- comments hash equally."""
+    bare = "CREATE TABLE foo (id INT);\n"
+    with_comments = (
+        "-- header comment\n"
+        "  -- indented marker\n"
+        "CREATE TABLE foo (id INT);\n"
+        "-- trailing footer\n"
+    )
+    assert _checksum(bare) == _checksum(with_comments)
+
+
+def test_checksum_distinguishes_real_ddl_changes():
+    """Two SQL strings differing in actual DDL hash to different checksums."""
+    a = "CREATE TABLE foo (id INT);\n"
+    b = "CREATE TABLE foo (id BIGINT);\n"
+    assert _checksum(a) != _checksum(b)
+
+
+def test_checksum_preserves_inline_trailing_comments():
+    """Trailing -- after a statement is part of the line (not stripped)."""
+    bare = "SELECT 1;\n"
+    inline = "SELECT 1; -- note\n"
+    # Spec: only line-leading -- lines are stripped. Inline -- after a
+    # statement remains in the hashed content.
+    assert _checksum(bare) != _checksum(inline)
+
+
+def test_apply_migration_self_heals_rule_transition(tmp_path):
+    """A ledger row with the pre-rule-change raw-byte hash is auto-reconciled."""
+    name = "legacy_ledger.sql"
+    sql = "-- header comment\nCREATE TABLE foo (id INT);\n"
+    (tmp_path / name).write_text(sql)
+
+    # Stored hash predates the comment-strip rule (raw bytes).
+    stored = _raw_checksum(sql)
+    assert stored != _checksum(sql), "fixture must exercise the transition path"
+
+    executed = []
+
+    db = MagicMock()
+    db.query.side_effect = lambda q, params=None: (
+        [{"checksum": stored}] if params and params.get("id") == name else []
+    )
+
+    @contextmanager
+    def fake_get_connection():
+        conn = MagicMock()
+        cur = MagicMock()
+        cur.execute.side_effect = lambda q, params=None: executed.append((q, params))
+        conn.cursor.return_value.__enter__ = lambda s: cur
+        conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        yield conn
+
+    db.get_connection.side_effect = fake_get_connection
+
+    result = apply_migration(db, tmp_path, name)
+    assert result == "skipped"
+
+    update_calls = [
+        (q, p) for q, p in executed if "UPDATE schema_migrations" in q
+    ]
+    assert len(update_calls) == 1, f"expected exactly one UPDATE, got {executed}"
+    _, params = update_calls[0]
+    assert params == {"checksum": _checksum(sql), "id": name}
+
+
+def test_apply_migration_raises_when_neither_hash_matches(tmp_path):
+    """Stored matches neither new-rule nor raw hash: existing RuntimeError fires."""
+    name = "drifted.sql"
+    sql = "-- header\nCREATE TABLE foo (id INT);\n"
+    (tmp_path / name).write_text(sql)
+
+    # Some unrelated stored value — file was actually modified post-apply.
+    db = make_db(ledger_rows={name: "deadbeef" * 8})
+
+    with pytest.raises(RuntimeError, match="Checksum mismatch"):
+        apply_migration(db, tmp_path, name)

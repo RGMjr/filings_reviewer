@@ -5,6 +5,11 @@ Apply SQL migrations to the database.
 Tracks applied migrations in a schema_migrations ledger table. Skips already-applied
 migrations. Raises on checksum mismatch to prevent silent schema drift.
 
+`_checksum` strips line-leading SQL comments before hashing so cosmetic edits
+(e.g. adding a `-- cluster-ddl-ok:` marker, fixing a typo in a header comment)
+do not trip the guard. Ledger rows written before this rule existed self-heal
+on next encounter — see `apply_migration`.
+
 Usage:
     python3 scripts/apply_migrations.py          # Uses DATABASE_URL (required)
     python3 scripts/apply_migrations.py --test    # Uses TEST_DATABASE_URL (required)
@@ -15,6 +20,7 @@ import argparse
 import hashlib
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -96,7 +102,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 """
 
 
+_LINE_COMMENT_RE = re.compile(r"^\s*--")
+
+
 def _checksum(sql: str) -> str:
+    # Strip line-leading SQL comments so cosmetic edits don't trip the ledger guard.
+    lines = sql.splitlines(keepends=True)
+    stripped = "".join(line for line in lines if not _LINE_COMMENT_RE.match(line))
+    return hashlib.sha256(stripped.encode()).hexdigest()
+
+
+def _raw_checksum(sql: str) -> str:
+    # Pre-rule-change hash; used only by `apply_migration` to recognize ledger rows
+    # written before `_checksum` started stripping comments.
     return hashlib.sha256(sql.encode()).hexdigest()
 
 
@@ -137,6 +155,22 @@ def apply_migration(
     if rows:
         stored_checksum = rows[0]["checksum"]
         if stored_checksum != chk:
+            # Self-heal the rule-change transition: a ledger row written before
+            # `_checksum` started stripping comments may match the raw-byte hash
+            # even though it no longer matches the new-rule hash. Proves the file
+            # is byte-identical to what was applied — update the ledger row only.
+            if stored_checksum == _raw_checksum(sql):
+                with db.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE schema_migrations SET checksum = %(checksum)s "
+                            "WHERE id = %(id)s",
+                            {"checksum": chk, "id": migration_name},
+                        )
+                logger.info(
+                    f"  RECONCILED: {migration_name} (rule-change checksum update)"
+                )
+                return "skipped"
             raise RuntimeError(
                 f"Checksum mismatch for {migration_name}: "
                 f"expected {stored_checksum[:8]}…, got {chk[:8]}…. "
