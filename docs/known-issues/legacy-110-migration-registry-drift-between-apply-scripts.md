@@ -7,7 +7,7 @@ pr_refs: []
 severity: medium
 slug: migration-registry-drift-between-apply-scripts
 source: legacy
-status: open
+status: resolved
 title: Migration registry drift between apply_migrations.py and apply_all_migrations.py
 touches:
   - scripts/apply_migrations.py
@@ -88,3 +88,16 @@ Both apply scripts import and use this. The new alpha-sorted order matches `appl
 - Codex P1 finding: PR #197 review comments
 - Related: legacy-085 `apply-all-migrations-stale-at-40` (older sibling — may already capture some of this)
 - Related: legacy-088 `migration-order-drift-no-precommit-guard`
+
+### Resolution (2026-04-27)
+
+Single source of truth landed in `src/infra/migrations.py::migration_files()` — alpha-sorted glob over `sql/*.sql` minus `KNOWN_SKIPS = {00_init_databases.sql, register_gold_standard_filings.sql, seed_snap_s1a.sql}`. Both `scripts/apply_migrations.py` (prod predeploy) and `scripts/apply_all_migrations.py` (dev runner) consume it. The hand-curated `MIGRATIONS` and `MIGRATION_ORDER` literals are gone; the names remain as module-level aliases to the canonical list for backward compat with existing tests.
+
+Decisions baked into the canonical list:
+- `26_drop_filing_metric_incidence.sql`, `27_drop_v1_metric_tables.sql`, `41_normalize_accession_numbers.sql` — included (already on prod ledger; idempotent).
+- `33_fix_identity_index.sql` — included (drop the deliberate-skip annotation; on prod ledger so it's a no-op there; idempotent index fix needed for fresh-DB bootstrap).
+- `00_init_databases.sql` — explicitly skipped (Docker-init-only; requires superuser).
+
+Ordering: alpha sort. The 04-prefix order is now `03 → 04_add_post → 04_seed → 05`, dependency-safe (the seed depends on `metrics` which 03 creates). The 46-prefix swap (`46_extend` before `46_v2`) has no dependency impact — the two migrations are independent.
+
+Drift between the runners is now structurally impossible.

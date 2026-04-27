@@ -44,12 +44,10 @@ Region is pinned so blueprint re-deploys do not scatter services across regions.
 
 **For schema-change PRs**, the contract is:
 1. Add `sql/<timestamp>_<description>.sql` (timestamp filename per `.claude/rules/sql.md`).
-2. Register it in `MIGRATIONS` in `scripts/apply_migrations.py`.
-3. Merge the PR. The next Render deploy applies the migration automatically.
+2. Merge the PR. The next Render deploy applies the migration automatically. Registration is automatic — `src.infra.migrations.migration_files()` picks the file up from disk.
 
 **Failure mode.** A non-zero exit from the predeploy step aborts the deploy and leaves the previous container serving traffic. Common causes:
-- Migration not registered in `apply_migrations.py` (script exits non-zero on unregistered files).
-- Checksum mismatch — the migration file was edited after being applied to prod (script refuses to re-apply).
+- Checksum mismatch — the migration file was edited after being applied to prod with a non-comment change (script refuses to re-apply). Comment-only edits are normalized away by `_checksum` and do not trip the guard. If the edit truly is comment-only and the ledger predates the normalization (legacy-095 #3), reconcile once with `python3 scripts/apply_migrations.py --reconcile-checksums`.
 - `DATABASE_URL` not in scope at deploy phase (it should be — the env group `filings-shared-secrets` covers `filings-reviewer`).
 
 **Verification.** Render dashboard → `filings-reviewer` → **Events → Deploy** → predeploy log shows `APPLIED: <filename>` lines for any migrations the deploy applied.

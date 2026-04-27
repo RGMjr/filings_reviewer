@@ -19,7 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from scripts.apply_migrations import (  # noqa: E402
     MIGRATIONS,
     _checksum,
-    _raw_checksum,
+    _checksum_legacy,
     apply_migration,
 )
 
@@ -70,10 +70,45 @@ def write_sql_files(tmp_path: Path, names: list[str], content: str = "-- sql\n")
 # ---------------------------------------------------------------------------
 
 
-def test_checksum_is_sha256():
+def test_checksum_is_sha256_for_comment_free_sql():
+    """When the SQL has no whole-line `--` comments, _checksum equals raw SHA-256."""
     sql = "SELECT 1;"
     expected = hashlib.sha256(sql.encode()).hexdigest()
     assert _checksum(sql) == expected
+
+
+def test_checksum_strips_whole_line_comments():
+    """Whole-line `--` comments are excluded from the hash.
+
+    Comment-only edits to applied migration files (cluster-DDL markers,
+    operator notes, doc fixes) MUST NOT trip the checksum guard.
+    """
+    sql_a = "-- header v1\nSELECT 1;\n"
+    sql_b = "-- header v2 with totally different text\nSELECT 1;\n"
+    sql_c = "    -- whitespace-prefixed comment\nSELECT 1;\n"
+    assert _checksum(sql_a) == _checksum(sql_b)
+    assert _checksum(sql_a) == _checksum(sql_c)
+
+
+def test_checksum_preserves_inline_comments():
+    """Inline trailing `--` comments stay in the hash.
+
+    Only lines whose first non-whitespace token is `--` are dropped. A SQL
+    statement with a trailing comment ('SELECT 1; -- note') is still part of
+    the migration's semantic content.
+    """
+    sql_a = "SELECT 1; -- note one\n"
+    sql_b = "SELECT 1; -- note two\n"
+    assert _checksum(sql_a) != _checksum(sql_b)
+
+
+def test_checksum_legacy_matches_raw_bytes():
+    """_checksum_legacy is the pre-normalization raw-bytes hash, used by reconcile."""
+    sql = "-- header\nSELECT 1;\n"
+    expected = hashlib.sha256(sql.encode()).hexdigest()
+    assert _checksum_legacy(sql) == expected
+    # And: legacy differs from new when comments are present.
+    assert _checksum_legacy(sql) != _checksum(sql)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +251,7 @@ def test_apply_migration_self_heals_rule_transition(tmp_path):
     (tmp_path / name).write_text(sql)
 
     # Stored hash predates the comment-strip rule (raw bytes).
-    stored = _raw_checksum(sql)
+    stored = _checksum_legacy(sql)
     assert stored != _checksum(sql), "fixture must exercise the transition path"
 
     executed = []

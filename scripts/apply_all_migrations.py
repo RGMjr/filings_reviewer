@@ -1,40 +1,41 @@
 #!/usr/bin/env python3
-"""
-Apply all SQL migrations to a PostgreSQL database.
+"""Apply all SQL migrations to a PostgreSQL database (dev / fresh-DB runner).
 
-Applies all sql/*.sql files in the canonical order defined below.
-Works against any PostgreSQL connection (local Docker, Neon, etc.).
+Companion to `scripts/apply_migrations.py` (the prod predeploy runner). Both
+scripts consume the same source of truth — `src.infra.migrations.migration_files()`
+— so there is no parallel hand-curated list to drift. To add a migration:
+place the file under sql/.
 
-Migration tracking: a schema_migrations table records which migrations have
+Migration tracking: a `schema_migrations` table records which migrations have
 been applied. Already-applied migrations are skipped, making re-runs safe.
 
+Checksum normalization (legacy-095 #3): mirrors `apply_migrations.py`. Whole-line
+SQL comments (`^\\s*--`) are stripped before hashing so comment-only edits to
+applied migration files do not trip the checksum guard. To reconcile an existing
+ledger to the new normalization, use `scripts/apply_migrations.py --reconcile-checksums`.
+
 Usage:
-    # Apply new migrations (skips already-applied ones)
     python3 scripts/apply_all_migrations.py
-
-    # Apply to a specific database URL
     DATABASE_URL="postgresql://..." python3 scripts/apply_all_migrations.py
-
-    # Dry run (show which would be applied vs skipped without executing)
     python3 scripts/apply_all_migrations.py --dry-run
-
-    # Mark all migrations as applied WITHOUT running them.
-    # Use this ONCE on an existing database that was set up before tracking was added.
     python3 scripts/apply_all_migrations.py --mark-all-applied
 
 Notes:
     - Several legacy migration prefixes appear twice (04, 08, 09, 10, 11, 12,
-      46). The canonical order below was determined from file creation history
-      and dependency analysis. New migrations use timestamp filenames
-      (YYYYMMDDHHMM_description.sql) — see scripts/new_migration.py.
+      46). Order under alpha sort is dependency-safe; new migrations use
+      timestamp filenames (YYYYMMDDHHMM_description.sql) — see
+      scripts/new_migration.py.
     - For Neon (cloud PostgreSQL), set DATABASE_URL with sslmode=require:
       postgresql://user:password@host.neon.tech/dbname?sslmode=require
 """
+
+from __future__ import annotations
 
 import argparse
 import hashlib
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -42,99 +43,57 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
+from src.infra.migrations import KNOWN_SKIPS, migration_files
 
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
-# Canonical migration order.
-# Files with duplicate numeric prefixes (04, 08, 09, 10, 11, 12, 46) are listed
-# explicitly in the order they should be applied. New migrations use timestamp
-# filenames (YYYYMMDDHHMM_description.sql) — sorted lexicographically they
-# always come after the legacy NN_ entries below.
-MIGRATION_ORDER = [
-    "00_init_databases.sql",
-    "01_create_schema.sql",
-    "02_add_filing_storage.sql",
-    "03_create_analysis_schema.sql",
-    "04_add_post_combination.sql",
-    "04_seed_metrics_taxonomy.sql",
-    "05_add_business_type_exclusions.sql",
-    "07_create_review_schema.sql",
-    "08_add_richness_metadata.sql",
-    "08_add_suppressed_candidates.sql",
-    "09_create_image_review_schema.sql",
-    "09_v2_schema.sql",
-    "10_add_html_content_column.sql",
-    "10_v2_fact_identity_dedup.sql",
-    "11_transcript_support.sql",
-    "11_v2_definitions.sql",
-    "12_drop_v1_fk_constraints.sql",
-    "12_v2_documents_transcript_columns.sql",
-    "13_transcript_section_types.sql",
-    "14_presentation_section_types.sql",
-    "15_rename_cohort_heatmap_to_parfait.sql",
-    "16_add_8k_form_type.sql",
-    "17_add_cohort_type_to_v2.sql",
-    "18_add_presentation_detection_tier.sql",
-    "19_add_predicted_relevance.sql",
-    "20_add_auto_rejected_status.sql",
-    "21_create_image_cache.sql",
-    "22_seed_missing_metrics.sql",
-    "23_chart_source_dedup.sql",
-    "24_add_part_of_date_rejection_category.sql",
-    "25_cross_source_confirmation.sql",
-    "26_drop_filing_metric_incidence.sql",
-    "27_drop_v1_metric_tables.sql",
-    "28_extend_v2_image_assets_review.sql",
-    "29_create_v2_image_review_decisions.sql",
-    "30_drop_v1_image_review.sql",
-    "31_drop_v1_review_tables.sql",
-    "32_add_detected_keywords_to_v2_image_assets.sql",
-    "33_fix_identity_index.sql",
-    "34_dedup_v2_image_assets.sql",
-    "35_drop_v2_image_assets_segment_id.sql",
-    "36_backfill_presentation_urls.sql",
-    "37_create_analytics_role.sql",
-    "38_create_analytics_views.sql",
-    "39_v2_ingest_batches.sql",
-    "40_full_page_scan_and_ocr_provenance.sql",
-    "41_normalize_accession_numbers.sql",
-    "42_add_detected_metrics_to_v2_image_assets.sql",
-    "43_create_v2_image_metric_confirmations.sql",
-    "44_extend_image_rejection_reason_enum.sql",
-    "45_create_v2_image_classifications.sql",
-    "46_v2_text_metric_presence.sql",
-    "46_extend_audit_http_method_constraint.sql",
-    "47_add_skip_to_image_metric_confirmations.sql",
-]
+# Canonical migration order — derived from sql/*.sql at import time. Re-exported
+# for backward compat with any caller that still imports MIGRATION_ORDER.
+MIGRATION_ORDER: list[str] = migration_files()
 
-# Non-migration SQL files that live in sql/ but are not schema migrations.
-EXCLUDED_FILES = {
-    "register_gold_standard_filings.sql",
-    "seed_snap_s1a.sql",
-}
+# Backward-compat alias. The semantic meaning matches: files in sql/ that are
+# NOT migrations (seed/utility SQL, Docker-init-only). Single source of truth
+# now lives in src.infra.migrations.KNOWN_SKIPS.
+EXCLUDED_FILES: frozenset[str] = KNOWN_SKIPS
+
+_COMMENT_LINE = re.compile(r"^\s*--")
 
 
 def _checksum(sql: str) -> str:
-    return hashlib.sha256(sql.encode()).hexdigest()
+    """SHA-256 of the migration with whole-line `--` comments stripped.
+
+    Mirrors `scripts.apply_migrations._checksum`. See its docstring for
+    rationale.
+    """
+    lines = [ln for ln in sql.splitlines() if not _COMMENT_LINE.match(ln)]
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
 
 
 def check_unregistered_migrations(sql_dir: Path) -> list[str]:
-    """Return sql/*.sql filenames that are on disk but not in MIGRATION_ORDER."""
-    registered = set(MIGRATION_ORDER) | EXCLUDED_FILES
+    """Return sql/*.sql filenames that are on disk but neither registered nor explicitly skipped.
+
+    With the source-of-truth consolidation this is a tautology — every
+    sql/*.sql is either in `migration_files()` or in `KNOWN_SKIPS` by
+    construction — but we keep the function so the existing pre-commit hook
+    (`scripts/check_migration_order.py`) keeps working unchanged.
+    """
+    registered = set(migration_files(sql_dir)) | KNOWN_SKIPS
     on_disk = {f.name for f in sql_dir.glob("*.sql")}
     return sorted(on_disk - registered)
 
 
 def bootstrap_tracking(db: DatabaseAdapter) -> None:
     """Create schema_migrations table if it does not exist."""
-    db.execute("""
+    db.execute(
+        """
         CREATE TABLE IF NOT EXISTS schema_migrations (
             id          TEXT PRIMARY KEY,
             applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             checksum    TEXT NOT NULL
         )
-    """)
+        """
+    )
 
 
 def get_applied_migrations(db: DatabaseAdapter) -> set[str]:
@@ -223,8 +182,8 @@ def main() -> None:
         for f in unregistered:
             logger.error(f"  {f}")
         logger.error(
-            "Add these to MIGRATION_ORDER in scripts/apply_all_migrations.py "
-            "(or to EXCLUDED_FILES if they are not migrations)."
+            "Add them to KNOWN_SKIPS in src/infra/migrations.py if they are "
+            "not migrations; otherwise the glob picks them up automatically."
         )
         sys.exit(1)
 
