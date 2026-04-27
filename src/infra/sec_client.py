@@ -621,6 +621,32 @@ class SECClient:
             logger.error(f"Error resolving primary doc for {cik}/{accession_number}: {e}")
             return None
 
+    _EXHIBIT_991_RE = re.compile(r"ex(?:hibit)?[-_]?99[-_.]?1", re.IGNORECASE)
+
+    def get_exhibit_99_1_url(self, cik: str, accession_number: str) -> str | None:
+        """Return the EDGAR URL of exhibit 99.1 for an 8-K filing, or None if not found."""
+        bare = extract_sec_accession_token(accession_number)
+        if bare is None:
+            return None
+        accession_no_dashes = bare.replace("-", "")
+        index_url = (
+            f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
+            f"{accession_no_dashes}/index.json"
+        )
+        try:
+            data = self._make_request(index_url)
+        except Exception:
+            return None
+        items = data.get("directory", {}).get("item", [])
+        for item in items:
+            name = item.get("name", "")
+            if name.endswith((".htm", ".html")) and self._EXHIBIT_991_RE.search(name):
+                return (
+                    f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
+                    f"{accession_no_dashes}/{name}"
+                )
+        return None
+
     def get_company_info(self, cik: str) -> dict | None:
         """
         Get company information including SIC code from SEC submissions API.
