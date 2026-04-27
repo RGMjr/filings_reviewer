@@ -41,7 +41,7 @@ CI. The user has to cross-check with `gh pr list` to discover the gap.
 
 ### Resolution
 
-Closed in PR #TBD — sweep now writes `outcome="opened"` at capture time and
+Closed in PR #242 — sweep now writes `outcome="opened"` at capture time and
 `write_sweep_digest.py` polls `gh pr view --json state,mergedAt` to promote to
 `"merged"` only when actually merged, to `"abandoned"` if the PR was closed
 without merging, or leaves as `"opened"` (rendered as "Opened — awaiting CI")
