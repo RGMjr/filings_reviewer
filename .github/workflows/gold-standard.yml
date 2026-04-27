@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload test output
         if: always() && steps.baseline-check.outputs.baseline_exists == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gold-standard-output
           path: gold_standard_output.txt
