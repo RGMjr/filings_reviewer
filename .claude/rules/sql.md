@@ -37,21 +37,24 @@ You may freely edit a legacy file's body (comment fixes, etc.) — the
 
 ## Ordering Authority
 
-The **canonical apply order** is the `MIGRATION_ORDER` list in
-`scripts/apply_all_migrations.py`. Filename prefixes are informational; the
-runtime never sorts by filename. After creating a new migration:
+The **canonical migration list** is `src.infra.migrations.migration_files()`,
+computed from `sql/*.sql` minus `KNOWN_SKIPS`. Both `scripts/apply_migrations.py`
+(prod predeploy) and `scripts/apply_all_migrations.py` (dev runner) consume
+this single source. There is no hand-curated list to keep in sync.
 
-1. Append its filename to `MIGRATION_ORDER`.
-2. Pre-commit hook `migration-order-check`
-   (`scripts/check_migration_order.py`) fails the commit if you forget.
+Order is filename-lexicographic (alpha sort). To add a migration: place the
+file under `sql/` — registration is automatic. To exclude a non-migration SQL
+file (seed/utility), add it to `KNOWN_SKIPS` in `src/infra/migrations.py`.
 
-Among legacy duplicate prefixes the list dictates order — see the existing
-entries for the canonical sequence.
+The pre-commit hook `migration-order-check`
+(`scripts/check_migration_order.py`) is now a tautology guard against future
+shape changes.
 
 ## FK Dependency Rules
 
-- A migration may only reference tables defined in **earlier-listed**
-  migrations (`MIGRATION_ORDER` order, not filename order).
+- A migration may only reference tables defined in **earlier-sorted**
+  migrations (alpha-sorted filename order, the same order
+  `migration_files()` returns).
 - Never forward-reference a table that will be created by a later migration.
 - If two migrations are mutually dependent, combine them into one.
 
@@ -85,12 +88,11 @@ After creating a migration:
 
 1. `python3 scripts/new_migration.py "<description>"`
 2. Edit the body. Use the idempotency patterns above.
-3. Append the filename to `MIGRATION_ORDER` in
-   `scripts/apply_all_migrations.py`.
-4. If the migration adds tables/columns used by Python code, update
+3. If the migration adds tables/columns used by Python code, update
    `src/infra/db.py` in the same commit.
-5. Test locally before committing:
+4. Test locally before committing:
    `psql $TEST_DATABASE_URL -f sql/<timestamp>_<description>.sql`
-6. Commit. The three pre-commit hooks
+5. Commit. The three pre-commit hooks
    (`migration-name-guard`, `migration-order-check`, `cluster-ddl-guard`)
-   run automatically.
+   run automatically. Registration is automatic — `migration_files()` picks up
+   any new `sql/*.sql` not in `KNOWN_SKIPS`.

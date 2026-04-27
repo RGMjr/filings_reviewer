@@ -373,35 +373,16 @@ def _apply_migrations_to_test_db(_isolate_xdist_worker_database, _terminate_stal
         with lock_conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
 
-        import hashlib
-
         db = DatabaseAdapter(url)
         sql_dir = Path(__file__).parent.parent.parent / "sql"
 
         bootstrap_ledger(db)
 
-        # Migrations intentionally edited after being applied to the test DB
-        # (comment additions, hook-guard annotations — no schema-semantic change).
-        # Drop stale ledger rows so the normal loop re-applies the current file.
-        # All other checksum mismatches still raise as before.
-        _CHECKSUM_REFRESH_ALLOWLIST = {"37_create_analytics_role.sql"}
-        for _name in _CHECKSUM_REFRESH_ALLOWLIST:
-            _sql_file = sql_dir / _name
-            if not _sql_file.exists():
-                continue
-            _current_chk = hashlib.sha256(_sql_file.read_text().encode()).hexdigest()
-            _rows = db.query(
-                "SELECT checksum FROM schema_migrations WHERE id = %(id)s",
-                {"id": _name},
-            )
-            if _rows and _rows[0]["checksum"] != _current_chk:
-                with db.get_connection() as _conn:
-                    with _conn.cursor() as _cur:
-                        _cur.execute(
-                            "DELETE FROM schema_migrations WHERE id = %(id)s",
-                            {"id": _name},
-                        )
-
+        # The legacy _CHECKSUM_REFRESH_ALLOWLIST workaround for sql/37 is gone:
+        # the new comment-stripping `_checksum` (legacy-095 #3) treats whole-line
+        # `--` edits as semantic no-ops, so cosmetic edits no longer trip the
+        # guard. The test_url-exact-match recovery below still handles genuine
+        # schema-affecting edits during local dev.
         for migration_name in MIGRATIONS:
             sql_file = sql_dir / migration_name
             if sql_file.exists():

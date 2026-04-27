@@ -6,7 +6,7 @@ id: 95
 severity: high
 slug: migrations-drift-from-prod-no-post-deploy-apply
 source: legacy
-status: resolved
+status: partially-resolved
 title: Schema Migrations Drift From Prod — No Post-Deploy Apply Step
 touches:
   - scripts/apply_migrations.py
@@ -82,15 +82,15 @@ Pick one (or more) of:
 - Commit `8d09001` (#111) — added the cluster-DDL pre-commit guard and the `-- cluster-ddl-ok:` marker that caused this round's checksum drift.
 - PR #151 — shipped `v.detected_metrics` SELECT without enforcing migration apply; the trigger case for this issue.
 
-### Resolution
+### Resolution (Phase 1 complete, 2026-04-27)
 
-Pre-deploy hook landed in PR #199 (commit `eed95a8`, `render.yaml:36`).
-Comment-only checksum guard relaxed in this PR — `_checksum` now strips
-line-leading SQL comments before hashing, with a per-row self-heal in
-`apply_migration` that updates ledger entries whose stored hash matches the
-pre-rule-change raw-byte hash. Phase-2 items (#2 app-startup migration check,
-#4 CI schema-drift check, #5 alerting) are not currently tracked — file new
-fragments if re-prioritized. Note: this fix updates only
-`scripts/apply_migrations.py`. The parallel runner
-`scripts/apply_all_migrations.py` retains its own checksum logic and is
-tracked under legacy-110 (registry drift between the two scripts).
+- **#1 Render predeploy hook** — shipped in PR #199 (`render.yaml:36 preDeployCommand: python3 scripts/apply_migrations.py`).
+- **#3 Relax checksum guard for comment-only edits** — shipped together with the legacy-110 source-of-truth consolidation. `scripts/apply_migrations.py::_checksum` now strips whole-line `--` comments before hashing; cosmetic edits to applied migration files no longer trip the guard. A `--reconcile-checksums` admin mode (and `--check-checksums` read-only audit) reconciles existing ledger rows from the legacy raw-bytes hash to the new normalized hash. The normal apply path stays strict — reconciliation is a deliberate operator event, not silent self-healing.
+
+**Operator caution before running `--reconcile-checksums` against Neon prod.** During local verification of this PR, `--check-checksums` flagged 1 WARN on `sql/31_drop_v1_review_tables.sql` — the stored hash matched neither legacy nor new because PR #220 (`9ce34b9`, 2026-04-25) made the file idempotent *after* it had been applied. The reconciler correctly refused to silently update the row. The same drift may exist on Neon's ledger. **Run `--check-checksums` against Neon first**; if WARN appears on sql/31, drop the stale ledger row (`DELETE FROM schema_migrations WHERE id = '31_drop_v1_review_tables.sql';`) so the next predeploy re-applies the now-idempotent migration cleanly.
+
+### Remaining (Phase 2)
+
+- **#2 App-startup migration sentinel** — fail-fast in `create_app` if `MAX(id) FROM schema_migrations` lags the expected head.
+- **#4 CI schema-drift check** — diff applied set against `sql/` directory and fail if any file is unregistered (now redundant given the source-of-truth glob, but worth keeping as a defense-in-depth check that nothing was deleted from disk after application).
+- **#5 Alerting** — Render log alert on `MIGRATION_DRIFT_DETECTED` token from #2.
