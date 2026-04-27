@@ -2,7 +2,7 @@
 autonomy: safe
 discovered: '2026-04-27'
 estimated: XS
-id: 111
+id: 114
 severity: low
 slug: stale-conftest-checksum-workarounds-after-self-heal
 source: legacy
