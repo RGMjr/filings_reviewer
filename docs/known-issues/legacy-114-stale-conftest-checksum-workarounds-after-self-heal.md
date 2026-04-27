@@ -6,11 +6,12 @@ id: 114
 severity: low
 slug: stale-conftest-checksum-workarounds-after-self-heal
 source: legacy
-status: open
+status: resolved
 title: Stale checksum-drift workarounds in tests/integration/conftest.py after self-heal landed
 touches:
   - tests/integration/conftest.py
 updated: '2026-04-27'
+resolved: '2026-04-27'
 ---
 
 ### Problem
@@ -60,3 +61,32 @@ follow-up cleanup once the self-heal has soaked in CI for a few runs.
   introduced the self-heal that supersedes these workarounds).
 - legacy-110 — `migration-registry-drift-between-apply-scripts` (separate
   drift-class issue; not a precondition for this cleanup).
+
+### Resolution
+
+Deleted both stale workaround blocks from
+`tests/integration/conftest.py::_apply_migrations_to_test_db`:
+
+1. **`_CHECKSUM_REFRESH_ALLOWLIST` block** — removed the comment referencing
+   the `_CHECKSUM_REFRESH_ALLOWLIST` constant (the constant itself had
+   already been partially cleaned up on `origin/main`, but the explanatory
+   comment referencing it remained alongside the try/except retry).
+2. **`try/except RuntimeError("Checksum mismatch")` retry block** — removed
+   the entire try/except around `apply_migration` that caught checksum-drift
+   errors, deleted the stale ledger row, logged
+   `Auto-recovered checksum drift for ...`, and retried. Replaced with a
+   plain `apply_migration(db, sql_dir, migration_name)` call so genuine
+   checksum drift raises as designed.
+
+The `legacy-095` self-heal in `scripts/apply_migrations.py::apply_migration`
+now handles the comment-only-edit failure mode structurally: it computes a
+raw-byte hash equality fallback and, when the file is byte-identical to what
+was previously applied, performs an in-place ledger `UPDATE` rather than
+raising. There is no longer any need for the conftest to pre-empt or catch
+these errors.
+
+The cluster-DDL advisory-lock serialization (acquiring `pg_advisory_lock`
+on the admin `postgres` DB before the apply loop, released by closing the
+connection in the `finally` block) was preserved — it is unrelated to
+checksum drift and guards against concurrent `tuple concurrently updated`
+races on the cluster-level `metabase_ro` role created by sql/37.
