@@ -378,33 +378,10 @@ def _apply_migrations_to_test_db(_isolate_xdist_worker_database, _terminate_stal
 
         bootstrap_ledger(db)
 
-        # The legacy _CHECKSUM_REFRESH_ALLOWLIST workaround for sql/37 is gone:
-        # the new comment-stripping `_checksum` (legacy-095 #3) treats whole-line
-        # `--` edits as semantic no-ops, so cosmetic edits no longer trip the
-        # guard. The test_url-exact-match recovery below still handles genuine
-        # schema-affecting edits during local dev.
         for migration_name in MIGRATIONS:
             sql_file = sql_dir / migration_name
             if sql_file.exists():
-                try:
-                    apply_migration(db, sql_dir, migration_name)
-                except RuntimeError as exc:
-                    test_url = os.getenv("TEST_DATABASE_URL", "")
-                    if "Checksum mismatch" in str(exc) and url == test_url and test_url:
-                        # Test DB only: drop stale ledger row and re-apply
-                        # (test_url exact-match prevents accidental trigger on prod URLs)
-                        with db.get_connection() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    "DELETE FROM schema_migrations WHERE id = %s",
-                                    [migration_name],
-                                )
-                        logger.warning(
-                            "Auto-recovered checksum drift for %s on test DB", migration_name
-                        )
-                        apply_migration(db, sql_dir, migration_name)
-                    else:
-                        raise
+                apply_migration(db, sql_dir, migration_name)
     finally:
         lock_conn.close()  # closing the session releases the advisory lock
 

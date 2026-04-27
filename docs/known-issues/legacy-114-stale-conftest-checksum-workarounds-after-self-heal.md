@@ -1,17 +1,55 @@
 ---
-autonomy: safe
+autonomy: n/a
 discovered: '2026-04-27'
 estimated: XS
 id: 114
 severity: low
 slug: stale-conftest-checksum-workarounds-after-self-heal
 source: legacy
-status: open
+status: resolved
 title: Stale checksum-drift workarounds in tests/integration/conftest.py after self-heal landed
 touches:
   - tests/integration/conftest.py
 updated: '2026-04-27'
 ---
+
+### Resolution (2026-04-27)
+
+Both workaround blocks have been removed from
+`tests/integration/conftest.py::_apply_migrations_to_test_db`:
+
+- The `_CHECKSUM_REFRESH_ALLOWLIST = {"37_create_analytics_role.sql"}`
+  pre-emptive ledger refresh was deleted in a prior cleanup (origin/main
+  pre this PR).
+- The try/except retry around `apply_migration` that caught any
+  `RuntimeError("Checksum mismatch")` on the test DB, deleted the stale
+  ledger row, logged `Auto-recovered checksum drift for ...`, and
+  re-applied the migration is removed in this PR.
+
+The per-row self-heal in `scripts/apply_migrations.py::apply_migration`
+(lines 162–173 — `if stored_checksum == _raw_checksum(sql): UPDATE
+schema_migrations SET checksum = ...`) now handles the comment-only-edit
+case the workarounds were guarding by proving byte-identity to what was
+previously applied and reconciling the ledger row in place. Genuine drift
+(neither new-rule nor raw-byte hash matches what's stored) raises as
+designed.
+
+The conftest workaround was actively destructive: when `apply_migration`
+raised because raw-hash also missed, the workaround deleted the ledger row
+and re-ran the SQL — re-applying DDL like
+`17_add_cohort_type_to_v2.sql::ALTER TABLE … ADD COLUMN cohort_type` against
+a DB where the column already existed produced
+`psycopg.errors.DuplicateColumn`, breaking
+`tests/integration/infra/test_accession_normalization.py` and the broader
+integration suite on developer machines. With both blocks gone, that
+failure path no longer exists; legitimate drift on a stale local test DB
+is now recoverable by dropping and recreating it (`dropdb` + `createdb`),
+not by ledger surgery.
+
+The cluster-DDL advisory-lock serialization
+(`SELECT pg_advisory_lock(MIGRATION_LOCK_KEY)` against the `postgres` admin
+DB) is unchanged — that protects against concurrent migration application
+under `pytest-xdist` and is unrelated to checksum drift.
 
 ### Problem
 
