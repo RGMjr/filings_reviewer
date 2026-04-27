@@ -11,16 +11,22 @@ Payload shape (list of per-issue outcomes):
       {
         "issue": 60,
         "autonomy": "safe",
-        "outcome": "merged" | "awaiting_review" | "abandoned",
+        "outcome": "merged" | "opened" | "awaiting_review" | "abandoned",
         "pr_number": 78,          // omitted when outcome == "abandoned"
         "pr_url": "https://...",  // omitted when outcome == "abandoned"
-        "branch": "claude/...",   // omitted when outcome == "merged"
+        "branch": "claude/...",   // omitted when outcome == "merged" or "opened"
         "reason": "tests failed", // required when outcome == "abandoned"
         "started_at": "02:03",
         "finished_at": "02:17"
       },
       ...
     ]
+
+``opened`` is written by run_nightly_sweep.sh when a safe-tier PR URL is captured.
+Before rendering, write_sweep_digest.py polls ``gh pr view`` for each ``opened``
+outcome and promotes it: to ``merged`` if ``mergedAt`` is non-null, to ``abandoned``
+(reason: "closed without merge") if the PR was closed, or leaves it as ``opened``
+if CI is still pending or the poll fails.
 
 Usage:
     python3 scripts/write_sweep_digest.py --date 2026-04-22 [--input PATH] [--run-start 02:03] [--run-duration 14m]
@@ -33,11 +39,70 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DIGEST_DIR = REPO_ROOT / ".claude" / "sweep-digests"
+
+
+def _poll_pr_state(pr_number: int) -> dict:
+    """Query gh for a PR's current state and mergedAt timestamp.
+
+    Returns a dict with keys ``state`` and ``mergedAt`` on success.
+    On any failure (gh not available, network error, non-zero exit), returns
+    an empty dict so the caller can keep the outcome as ``opened``.
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "view", str(pr_number), "--json", "state,mergedAt"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0:
+            return {}
+        return json.loads(result.stdout)
+    except Exception:
+        return {}
+
+
+def _promote_opened_outcomes(outcomes: list[dict]) -> list[dict]:
+    """Re-classify ``opened`` outcomes by polling GitHub.
+
+    For each outcome with ``outcome == "opened"``:
+    - If ``mergedAt`` is non-null  → promote to ``merged``.
+    - If ``state == "CLOSED"``     → re-classify to ``abandoned``
+                                     with reason ``closed without merge``.
+    - Otherwise                    → leave as ``opened`` (CI still pending).
+
+    Returns a new list (does not mutate the input).
+    """
+    promoted: list[dict] = []
+    for o in outcomes:
+        if o.get("outcome") != "opened":
+            promoted.append(o)
+            continue
+        pr_num = o.get("pr_number")
+        if not pr_num:
+            promoted.append(o)
+            continue
+        gh_data = _poll_pr_state(int(pr_num))
+        if gh_data.get("mergedAt"):
+            promoted.append({**o, "outcome": "merged"})
+        elif gh_data.get("state") == "CLOSED":
+            promoted.append(
+                {
+                    **o,
+                    "outcome": "abandoned",
+                    "reason": "closed without merge",
+                }
+            )
+        else:
+            # Still open (CI pending) or poll failed — keep as opened.
+            promoted.append(o)
+    return promoted
 
 
 def render_digest(
@@ -47,6 +112,7 @@ def render_digest(
     run_duration: str | None = None,
 ) -> str:
     merged = [o for o in outcomes if o.get("outcome") == "merged"]
+    opened = [o for o in outcomes if o.get("outcome") == "opened"]
     awaiting = [o for o in outcomes if o.get("outcome") == "awaiting_review"]
     abandoned = [o for o in outcomes if o.get("outcome") == "abandoned"]
 
@@ -67,6 +133,19 @@ def render_digest(
             lines.append(
                 f"- #{o['issue']} — PR [#{o['pr_number']}]({o.get('pr_url', '')}) merged{ts}"
             )
+    lines.append("")
+
+    lines.append(f"## Opened — awaiting CI ({len(opened)})")
+    if not opened:
+        lines.append("- _(none)_")
+    else:
+        for o in opened:
+            pr_num = o.get("pr_number", "?")
+            pr_url = o.get("pr_url", "")
+            lines.append(
+                f"- #{o['issue']} — PR [#{pr_num}]({pr_url}) — open, CI pending"
+            )
+            lines.append(f"  - Status: `gh pr checks {pr_num}`")
     lines.append("")
 
     lines.append(f"## Awaiting your approval ({len(awaiting)})")
@@ -107,13 +186,15 @@ def validate_outcome(o: dict) -> None:
     missing = required - set(o)
     if missing:
         raise ValueError(f"Outcome {o!r} missing required fields: {sorted(missing)}")
-    valid_outcomes = {"merged", "awaiting_review", "abandoned"}
+    valid_outcomes = {"merged", "opened", "awaiting_review", "abandoned"}
     if o["outcome"] not in valid_outcomes:
         raise ValueError(
             f"Outcome {o['outcome']!r} not in {sorted(valid_outcomes)} for issue #{o['issue']}"
         )
     if o["outcome"] == "merged" and "pr_number" not in o:
         raise ValueError(f"Issue #{o['issue']} merged outcome missing pr_number")
+    if o["outcome"] == "opened" and "pr_number" not in o:
+        raise ValueError(f"Issue #{o['issue']} opened outcome missing pr_number")
     if o["outcome"] == "awaiting_review" and "pr_number" not in o:
         raise ValueError(f"Issue #{o['issue']} awaiting_review outcome missing pr_number")
     if o["outcome"] == "abandoned" and "reason" not in o:
@@ -159,6 +240,7 @@ def main() -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
 
+    outcomes = _promote_opened_outcomes(outcomes)
     digest = render_digest(outcomes, args.date, args.run_start, args.run_duration)
 
     if args.stdout:

@@ -227,7 +227,7 @@ EOF
 
   local outcome_json
   if [[ -n "$pr_url" && "$autonomy" == "safe" ]]; then
-    outcome_json=$(python3 -c "import json; print(json.dumps({'issue': $issue, 'autonomy': '$autonomy', 'outcome': 'merged', 'pr_number': int('$pr_number' or 0), 'pr_url': '$pr_url', 'branch': '$branch', 'started_at': '$started', 'finished_at': '$finished'}))")
+    outcome_json=$(python3 -c "import json; print(json.dumps({'issue': $issue, 'autonomy': '$autonomy', 'outcome': 'opened', 'pr_number': int('$pr_number' or 0), 'pr_url': '$pr_url', 'branch': '$branch', 'started_at': '$started', 'finished_at': '$finished'}))")
   elif [[ -n "$pr_url" && "$autonomy" == "review" ]]; then
     outcome_json=$(python3 -c "import json; print(json.dumps({'issue': $issue, 'autonomy': '$autonomy', 'outcome': 'awaiting_review', 'pr_number': int('$pr_number' or 0), 'pr_url': '$pr_url', 'branch': '$branch', 'started_at': '$started', 'finished_at': '$finished', 'reason': 'Autonomy=review — manual approval required'}))")
   else
@@ -316,4 +316,4 @@ if [[ -f "$DIGEST_PATH" ]]; then
   fi
 fi
 
-log "Sweep complete. Outcomes: $(python3 -c 'import json, sys; d=json.load(open(sys.argv[1])); print(len([o for o in d if o["outcome"]=="merged"])) , " merged,", len([o for o in d if o["outcome"]=="awaiting_review"]), "awaiting,", len([o for o in d if o["outcome"]=="abandoned"]), "abandoned"' "$OUTCOMES_FILE")"
+log "Sweep complete. Outcomes: $(python3 -c 'import json, sys; d=json.load(open(sys.argv[1])); print(len([o for o in d if o["outcome"]=="opened"]), "opened,", len([o for o in d if o["outcome"]=="awaiting_review"]), "awaiting,", len([o for o in d if o["outcome"]=="abandoned"]), "abandoned")' "$OUTCOMES_FILE")"
