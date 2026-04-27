@@ -11,7 +11,6 @@ title: Stale checksum-drift workarounds in tests/integration/conftest.py after s
 touches:
   - tests/integration/conftest.py
 updated: '2026-04-27'
-resolved: '2026-04-27'
 ---
 
 ### Problem
