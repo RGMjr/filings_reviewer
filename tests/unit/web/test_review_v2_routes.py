@@ -490,3 +490,77 @@ def test_next_filing_infers_tab_from_current_filing_when_list_tab_missing(
 
     call = mock_db.get_next_filing_with_pending_work.call_args
     assert call.kwargs["tab"] == "ipo"
+
+
+# =============================================================================
+# legacy-089: Image-OCR segments surfaced in the text tab
+# =============================================================================
+
+
+def test_review_filing_passes_image_ocr_segments_to_template(client, mock_db, mock_render_template):
+    """The unified review page passes v2_segments rows synthesized from
+    full-page-image OCR (source_type='image_ocr') to the template so the
+    text tab can render them — even when extraction produced no facts."""
+    mock_db.query.return_value = [FILING_ROW]
+    mock_db.get_v2_facts_for_filing.return_value = []
+    mock_db.count_v2_facts_for_filing.return_value = 0
+    mock_db.get_image_review_candidates_for_filing_v2.return_value = []
+    ocr_rows = [
+        {
+            "segment_id": "seg-1",
+            "segment_text": "Total payment volume of $387.7 billion.",
+            "sequence_idx": 0,
+            "section_path": [],
+            "section_type": "other",
+            "source_img_id": "img-1",
+            "image_filename": "page-001.png",
+            "image_ocr_text": "Total payment volume of $387.7 billion.",
+        },
+        {
+            "segment_id": "seg-2",
+            "segment_text": "Active accounts grew 4% YoY.",
+            "sequence_idx": 1,
+            "section_path": [],
+            "section_type": "other",
+            "source_img_id": "img-2",
+            "image_filename": "page-002.png",
+            "image_ocr_text": "Active accounts grew 4% YoY.",
+        },
+    ]
+    mock_db.get_v2_image_ocr_segments_for_filing.return_value = ocr_rows
+
+    client.get("/v2/review/1")
+
+    mock_db.get_v2_image_ocr_segments_for_filing.assert_called_once_with(1)
+    _, kwargs = mock_render_template.call_args
+    assert kwargs["image_ocr_segments"] == ocr_rows
+
+
+def test_review_filing_empty_when_no_image_ocr_segments(client, mock_db, mock_render_template):
+    """Filings without OCR'd image text get an empty list, not a missing key."""
+    mock_db.query.return_value = [FILING_ROW]
+    mock_db.get_v2_facts_for_filing.return_value = [FACT_ROW]
+    mock_db.count_v2_facts_for_filing.return_value = 1
+    mock_db.get_image_review_candidates_for_filing_v2.return_value = []
+    mock_db.get_v2_image_ocr_segments_for_filing.return_value = []
+
+    client.get("/v2/review/1")
+
+    _, kwargs = mock_render_template.call_args
+    assert kwargs["image_ocr_segments"] == []
+
+
+def test_review_filing_tolerates_image_ocr_query_failure(client, mock_db, mock_render_template):
+    """A DB error in get_v2_image_ocr_segments_for_filing must not break the
+    page — fall back to an empty list and log."""
+    mock_db.query.return_value = [FILING_ROW]
+    mock_db.get_v2_facts_for_filing.return_value = [FACT_ROW]
+    mock_db.count_v2_facts_for_filing.return_value = 1
+    mock_db.get_image_review_candidates_for_filing_v2.return_value = []
+    mock_db.get_v2_image_ocr_segments_for_filing.side_effect = RuntimeError("boom")
+
+    response = client.get("/v2/review/1")
+
+    assert response.status_code == 200
+    _, kwargs = mock_render_template.call_args
+    assert kwargs["image_ocr_segments"] == []
