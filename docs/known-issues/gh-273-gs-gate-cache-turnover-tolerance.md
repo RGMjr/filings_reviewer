@@ -5,6 +5,8 @@ estimated: M
 gh_issue: 273
 id: 273
 note: Resolved via Option B (re-run-on-fail retry) in run_validation; gate re-runs corpus on first fail and only blocks on consistent fail across two runs
+pr_refs:
+  - 305
 severity: low
 slug: gs-gate-cache-turnover-tolerance
 source: gh
