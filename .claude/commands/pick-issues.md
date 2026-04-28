@@ -127,10 +127,36 @@ Drafted: docs/worker-prompts/PICK_legacy-101_<slug>.md  →  ready to dispatch
 
 ### 7. Final summary
 
-Print:
-- N prompts drafted
-- File paths (for dispatch)
-- Suggested launch command per prompt: `claude -p "$(cat docs/worker-prompts/PICK_<id>_<slug>.md)"` (or just paste into a fresh Claude Code session)
+Print, in this exact order:
+
+1. **One-line-per-pick draft confirmation** (already produced in step 6).
+2. **A single fenced code block** containing a copy-paste-ready dispatch prompt for a fresh Claude Code session. Format depends on the number of picks AND the strategy:
+
+   **Single pick (count == 1):**
+   ```
+   Read and implement the plan found at docs/worker-prompts/PICK_<id>_<slug>.md
+   ```
+
+   **Multiple picks with `strategy: parallel-safe`** (paths are guaranteed disjoint, so parallelism is safe):
+   ```
+   Read and implement the plans found at:
+   - docs/worker-prompts/PICK_<id1>_<slug1>.md
+   - docs/worker-prompts/PICK_<id2>_<slug2>.md
+   - docs/worker-prompts/PICK_<id3>_<slug3>.md
+
+   Dispatch each plan to a separate subagent and run them in parallel. Each subagent should follow its plan end-to-end (worktree, plan-mode, /plan-review, Pre-Implementation Gate, tests, project-local /commit, fragment-status flip, auto-merge verification) and return its PR URL. Report all PR URLs when every subagent has finished.
+   ```
+
+   **Multiple picks with any other strategy** (footprints not verified disjoint — sequential is safer):
+   ```
+   Read and implement the plans found at:
+   - docs/worker-prompts/PICK_<id1>_<slug1>.md
+   - docs/worker-prompts/PICK_<id2>_<slug2>.md
+
+   Implement them sequentially (one PR per plan, in the order listed). Footprints have not been verified disjoint, so do not run them in parallel without first checking `touches:` for overlap. Report each PR URL as it merges.
+   ```
+
+The dispatch block is the **only thing the user needs to copy** — do not bury it under further commentary. After the code block, a one-line note is fine ("Paste the block above into a fresh Claude Code session.") but keep it short.
 
 ---
 
