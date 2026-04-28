@@ -11,7 +11,8 @@ touches: []
 discovered: '2026-04-28'
 updated: '2026-04-28'
 gh_issue: 298
-pr_refs: []
+pr_refs:
+  - 312
 note: 'Restructured `_persist_facts_in_tx` so chart_only=True with empty inbound now reaches the guard+DELETE block instead of early-returning. Future `--chart-only --force-reextract` runs actually drain.'
 ---
 
