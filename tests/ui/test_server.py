@@ -235,6 +235,7 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "classification_id": None,
     "predicted_metrics": None,
     "classification_confidence": None,
+    "image_review_state": "pending",
 }
 
 MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION = {
@@ -266,6 +267,7 @@ MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION = {
         {"metric_id": "cm_gross_margin_by_cohort", "score": 0.78},
     ],
     "classification_confidence": 0.93,
+    "image_review_state": "pending",
 }
 
 MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
@@ -301,6 +303,7 @@ MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
     "classification_id": None,
     "predicted_metrics": None,
     "classification_confidence": None,
+    "image_review_state": "pending",
 }
 
 MOCK_IMAGE_CANDIDATE_REVIEWED = {
@@ -329,6 +332,7 @@ MOCK_IMAGE_CANDIDATE_REVIEWED = {
     "classification_id": None,
     "predicted_metrics": None,
     "classification_confidence": None,
+    "image_review_state": "relevant",
 }
 
 IMAGE_CHART_TYPES = [

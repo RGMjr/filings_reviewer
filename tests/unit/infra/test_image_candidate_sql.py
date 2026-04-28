@@ -27,6 +27,30 @@ class TestSharedConstantUnchanged:
         multiple queries, only one of which has the classification LATERAL join."""
         assert "ic." not in DatabaseAdapter._V2_IMAGE_CANDIDATE_SELECT
 
+    def test_constant_includes_imc_rollup_columns(self):
+        """The shared projection must surface the per-metric confirmation rollup
+        so every consumer (list, single-fetch, next-pending) sees the same shape."""
+        select = DatabaseAdapter._V2_IMAGE_CANDIDATE_SELECT
+        assert "imc_rollup.positive_count" in select
+        assert "imc_rollup.detected_decided_count" in select
+        assert "imc_rollup.total_confirmation_count" in select
+        assert "imc_rollup.has_add" in select
+
+
+class TestConfirmationRollupJoin:
+    def test_join_uses_count_distinct_for_multi_reviewer_safety(self):
+        """The unique index on v2_image_metric_confirmations is per-reviewer, so
+        raw COUNT(*) double-counts when two reviewers decide the same metric."""
+        join = DatabaseAdapter._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN
+        assert "COUNT(DISTINCT confirmed_metric_id)" in join
+        assert "COUNT(DISTINCT detected_metric_id)" in join
+
+    def test_decided_filter_excludes_skip(self):
+        """Skip is a punt — does not count toward 'every detected metric decided'."""
+        join = DatabaseAdapter._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN
+        # The detected_decided_count filter must explicitly enumerate accept/reject/correct
+        assert "decision IN ('accept', 'reject', 'correct')" in join
+
 
 class TestImageCandidateSqlShape:
     def test_query_contains_lateral_join(self, db):
@@ -47,6 +71,81 @@ class TestImageCandidateSqlShape:
         sql = db.query.call_args[0][0]
         assert "ORDER BY created_at DESC" in sql
         assert "LIMIT 1" in sql
+
+
+class TestDeriveImageReviewState:
+    """Pure-function tests for _derive_image_review_state — the rollup-to-glyph mapper."""
+
+    def _row(self, **kwargs):
+        base = {
+            "review_status": "pending",
+            "detected_metrics": [],
+            "total_confirmation_count": 0,
+            "detected_decided_count": 0,
+            "positive_count": 0,
+            "has_add": False,
+        }
+        base.update(kwargs)
+        return base
+
+    def test_image_skipped_short_circuits_to_no_relevant(self):
+        row = self._row(review_status="skipped")
+        assert DatabaseAdapter._derive_image_review_state(row) == "no_relevant"
+
+    def test_auto_rejected_is_no_relevant(self):
+        row = self._row(review_status="auto_rejected")
+        assert DatabaseAdapter._derive_image_review_state(row) == "no_relevant"
+
+    def test_no_detections_no_confirmations_is_pending(self):
+        assert DatabaseAdapter._derive_image_review_state(self._row()) == "pending"
+
+    def test_all_detected_accepted_is_relevant(self):
+        row = self._row(
+            detected_metrics=[{"metric_id": "cm_a"}, {"metric_id": "cm_b"}],
+            total_confirmation_count=2,
+            detected_decided_count=2,
+            positive_count=2,
+        )
+        assert DatabaseAdapter._derive_image_review_state(row) == "relevant"
+
+    def test_all_detected_rejected_is_no_relevant(self):
+        row = self._row(
+            detected_metrics=[{"metric_id": "cm_a"}, {"metric_id": "cm_b"}],
+            total_confirmation_count=2,
+            detected_decided_count=2,
+            positive_count=0,
+        )
+        assert DatabaseAdapter._derive_image_review_state(row) == "no_relevant"
+
+    def test_partial_decision_is_pending(self):
+        row = self._row(
+            detected_metrics=[{"metric_id": "cm_a"}, {"metric_id": "cm_b"}, {"metric_id": "cm_c"}],
+            total_confirmation_count=1,
+            detected_decided_count=1,
+            positive_count=1,
+        )
+        assert DatabaseAdapter._derive_image_review_state(row) == "pending"
+
+    def test_skip_does_not_count_as_decided(self):
+        # Two detected, one accepted, one skipped — coverage incomplete.
+        row = self._row(
+            detected_metrics=[{"metric_id": "cm_a"}, {"metric_id": "cm_b"}],
+            total_confirmation_count=2,
+            detected_decided_count=1,  # only the accept counts; skip excluded by SQL filter
+            positive_count=1,
+        )
+        assert DatabaseAdapter._derive_image_review_state(row) == "pending"
+
+    def test_add_only_on_zero_detected_is_relevant(self):
+        # Reviewer added a missed metric on an image with no detections.
+        row = self._row(
+            detected_metrics=[],
+            total_confirmation_count=1,
+            detected_decided_count=0,
+            positive_count=1,
+            has_add=True,
+        )
+        assert DatabaseAdapter._derive_image_review_state(row) == "relevant"
 
 
 class TestClassificationFallback:

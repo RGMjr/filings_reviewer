@@ -34,6 +34,12 @@
   .status-dot.rejected { background: #dc3545; }
   .status-dot.corrected { background: #0d6efd; }
 
+  /* Reviewed-status glyph rendered alongside the dot. ✓ accepted, ✗ rejected, △ corrected. */
+  .fact-nav-item .status-glyph { display: inline-block; font-size: 0.85rem; font-weight: bold; margin-right: 4px; line-height: 1; }
+  .status-glyph.accepted { color: #198754; }
+  .status-glyph.rejected { color: #dc3545; }
+  .status-glyph.corrected { color: #0d6efd; }
+
   .kbd { display: inline-block; padding: 2px 6px; font-size: 0.75rem; background: #f1f1f1; border: 1px solid #ccc; border-radius: 3px; font-family: monospace; }
 
   .context-text { color: #666; font-size: 0.9rem; font-style: italic; }
@@ -267,6 +273,13 @@
            class="d-block text-decoration-none text-dark fact-nav-item {% if current_fact and fact.fact_id == current_fact.fact_id %}active{% endif %}"
            style="border-bottom: 1px solid #eee;">
           <span class="status-dot {{ fact.review_status }}"></span>
+          {% if fact.review_status in ('accepted', 'auto_accepted') %}
+          <span class="status-glyph accepted" title="Accepted">&#10003;</span>
+          {% elif fact.review_status == 'rejected' %}
+          <span class="status-glyph rejected" title="Rejected">&#10007;</span>
+          {% elif fact.review_status == 'corrected' %}
+          <span class="status-glyph corrected" title="Corrected">&#9651;</span>
+          {% endif %}
           <strong>{{ fact.canonical_metric_id }}</strong>
           <br>
           <small class="text-muted ms-3">
@@ -704,8 +717,9 @@
             {% for candidate in image_candidates %}
             {% set is_current = current_image and candidate.img_id == current_image.img_id %}
             <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, img_id=candidate.img_id, image_status=image_filters.status, tab='images') }}"
-               class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.review_status == 'reviewed' else '' }}"
-               data-img-id="{{ candidate.img_id }}">
+               class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.image_review_state in ('relevant', 'no_relevant') else '' }}"
+               data-img-id="{{ candidate.img_id }}"
+               data-image-review-state="{{ candidate.image_review_state or 'pending' }}">
               <div class="d-flex align-items-center gap-2">
                 <div class="thumbnail-preview">
                   <img src="{{ candidate.image_url }}"
@@ -719,14 +733,10 @@
                 <div class="thumbnail-info flex-grow-1">
                   <div class="d-flex justify-content-between align-items-center">
                     <span class="thumbnail-index">#{{ loop.index }}</span>
-                    {% if candidate.review_status == 'reviewed' %}
-                      {% if candidate.decision == 'relevant' %}
-                      <span class="status-indicator relevant" title="Relevant">&#10003;</span>
-                      {% else %}
-                      <span class="status-indicator not-relevant" title="Not Relevant">&#10007;</span>
-                      {% endif %}
-                    {% elif candidate.review_status == 'skipped' %}
-                      <span class="status-indicator skipped" title="Skipped">&#8634;</span>
+                    {% if candidate.image_review_state == 'relevant' %}
+                    <span class="status-indicator relevant" title="Reviewed — relevant">&#10003;</span>
+                    {% elif candidate.image_review_state == 'no_relevant' %}
+                    <span class="status-indicator not-relevant" title="Reviewed — no relevant metrics">&#10007;</span>
                     {% endif %}
                   </div>
                   <span class="tier-badge tier-{{ candidate.detection_tier or 'unknown' }}">

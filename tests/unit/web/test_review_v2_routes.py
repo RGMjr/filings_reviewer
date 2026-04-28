@@ -274,6 +274,35 @@ def test_review_filing_pagination_in_template(client, mock_db, mock_render_templ
     assert kwargs["total_facts"] == 75
 
 
+def test_review_filing_partitions_facts_pending_first(client, mock_db, mock_render_template):
+    """Pending facts must sort before reviewed ones in the strip — display
+    order matches /api/v2/decisions auto-advance order. Stable within a
+    partition (preserves the user's sort_by within each)."""
+    mock_db.query.return_value = [FILING_ROW]
+    mock_db.count_v2_facts_for_filing.return_value = 4
+    mock_db.get_image_review_candidates_for_filing_v2.return_value = []
+
+    accepted = {**FACT_ROW, "fact_id": "f-accepted-1", "review_status": "accepted"}
+    pending_a = {**FACT_ROW, "fact_id": "f-pending-a", "review_status": "pending_review"}
+    rejected = {**FACT_ROW, "fact_id": "f-rejected", "review_status": "rejected"}
+    pending_b = {**FACT_ROW, "fact_id": "f-pending-b", "review_status": "pending_review"}
+
+    # DB returns mixed order (e.g., the user's chosen sort interleaves statuses).
+    mock_db.get_v2_facts_for_filing.return_value = [
+        accepted,
+        pending_a,
+        rejected,
+        pending_b,
+    ]
+
+    client.get("/v2/review/1")
+
+    _, kwargs = mock_render_template.call_args
+    rendered = [f["fact_id"] for f in kwargs["facts"]]
+    # Both pending rows come first, in their original DB order; reviewed follow.
+    assert rendered == ["f-pending-a", "f-pending-b", "f-accepted-1", "f-rejected"]
+
+
 # =============================================================================
 # WI-05: Backward compatibility — db.py level (no limit = all rows)
 # =============================================================================

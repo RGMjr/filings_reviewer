@@ -1762,8 +1762,58 @@ class DatabaseAdapter:
         d.rejection_reason,
         d.reviewer_notes AS decision_notes,
         d.review_time_seconds,
-        d.created_at AS decision_created_at
+        d.created_at AS decision_created_at,
+        COALESCE(imc_rollup.positive_count, 0) AS positive_count,
+        COALESCE(imc_rollup.detected_decided_count, 0) AS detected_decided_count,
+        COALESCE(imc_rollup.total_confirmation_count, 0) AS total_confirmation_count,
+        COALESCE(imc_rollup.has_add, FALSE) AS has_add
     """
+
+    # Lateral join over per-metric confirmations. Embedded by every consumer of
+    # _V2_IMAGE_CANDIDATE_SELECT so the four imc_rollup.* projections resolve.
+    # Use COUNT(DISTINCT ...) so multi-reviewer rows don't double-count.
+    _V2_IMAGE_CONFIRMATION_ROLLUP_JOIN = """
+        LEFT JOIN LATERAL (
+            SELECT
+                COUNT(DISTINCT confirmed_metric_id) FILTER (
+                    WHERE decision IN ('accept', 'correct', 'add')
+                      AND confirmed_metric_id IS NOT NULL
+                ) AS positive_count,
+                COUNT(DISTINCT detected_metric_id) FILTER (
+                    WHERE detected_metric_id IS NOT NULL
+                      AND decision IN ('accept', 'reject', 'correct')
+                ) AS detected_decided_count,
+                COUNT(*) AS total_confirmation_count,
+                BOOL_OR(decision = 'add') AS has_add
+            FROM v2_image_metric_confirmations
+            WHERE img_id = v.img_id
+        ) imc_rollup ON TRUE
+    """
+
+    @staticmethod
+    def _derive_image_review_state(row: dict) -> str:
+        """Map per-metric confirmation rollup to a thumbnail indicator.
+
+        Returns one of "relevant" (✓), "no_relevant" (✗), or "pending" (no glyph).
+        Skip is treated as a punt, not a decision — partial-skip leaves the
+        image in pending until every detected metric has accept/reject/correct.
+        """
+        if row.get("review_status") in ("skipped", "auto_rejected"):
+            return "no_relevant"
+
+        detected = row.get("detected_metrics") or []
+        detected_count = len(detected) if isinstance(detected, list) else 0
+        total = row.get("total_confirmation_count") or 0
+        decided = row.get("detected_decided_count") or 0
+        positive = row.get("positive_count") or 0
+
+        if detected_count == 0 and total == 0:
+            return "pending"
+        if decided >= detected_count and positive > 0:
+            return "relevant"
+        if decided >= detected_count and positive == 0:
+            return "no_relevant"
+        return "pending"
 
     def get_image_review_candidates_for_filing_v2(
         self,
@@ -1855,6 +1905,7 @@ class DatabaseAdapter:
                 ORDER BY created_at DESC
                 LIMIT 1
             ) ic ON true
+            {self._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN}
             WHERE v.doc_id = %(filing_id)s
               AND v.img_id IN (SELECT img_id FROM deduped_img)
               AND v.classification NOT IN ('decorative', 'logo', 'signature')
@@ -1864,7 +1915,10 @@ class DatabaseAdapter:
             ORDER BY {order_by}
             LIMIT %(limit)s OFFSET %(offset)s
         """
-        return self.query(sql, params)
+        results = self.query(sql, params)
+        for row in results:
+            row["image_review_state"] = self._derive_image_review_state(row)
+        return results
 
     def get_image_review_candidate_v2(self, img_id: str) -> dict | None:
         """V2-native single-image fetch with decision (if any)."""
@@ -1885,10 +1939,14 @@ class DatabaseAdapter:
                 ORDER BY created_at DESC
                 LIMIT 1
             ) ic ON true
+            {self._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN}
             WHERE v.img_id = %(img_id)s
         """
         results = self.query(sql, {"img_id": img_id})
-        return results[0] if results else None
+        if not results:
+            return None
+        results[0]["image_review_state"] = self._derive_image_review_state(results[0])
+        return results[0]
 
     def get_next_pending_image_candidate_v2(
         self,
@@ -1944,6 +2002,7 @@ class DatabaseAdapter:
             JOIN filings f ON v.doc_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            {self._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN}
             WHERE v.doc_id = %(filing_id)s
               AND v.img_id IN (SELECT img_id FROM deduped_img)
               AND v.review_status = ANY(%(status_list)s)
