@@ -368,6 +368,66 @@ def unskip_image_candidate(img_id):
         return jsonify({"status": "error", "message": "Internal server error"}), 500
 
 
+@api_unified_bp.route("/image-candidates/<uuid:img_id>/reopen", methods=["POST"])
+def reopen_image_candidate(img_id):
+    """
+    Re-open a reviewed image — flip review_status='reviewed' back to 'pending'.
+
+    Requires X-Reviewer-Id header to identify who is reopening the image.
+    Preserves all v2_image_review_decisions and v2_image_metric_confirmations
+    rows (ML training signal).
+
+    Returns:
+        200: Reopened — returns img_id and new review_status.
+        400: Missing X-Reviewer-Id header.
+        404: Image not found or not in 'reviewed' status.
+        500: Internal server error.
+    """
+    reviewer_id = (request.headers.get("X-Reviewer-Id") or "").strip()
+    if not reviewer_id:
+        return (
+            jsonify({"status": "error", "message": "X-Reviewer-Id header is required"}),
+            400,
+        )
+
+    img_id_str = str(img_id)
+    db = get_db()
+
+    try:
+        success = db.reopen_image_candidate_v2(img_id_str)
+        if not success:
+            logger.warning(f"Reopen: v2 image not found or not reviewed: {img_id_str}")
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Image not found or not in 'reviewed' status",
+                    }
+                ),
+                404,
+            )
+
+        logger.info(f"Reopened v2 image {img_id_str} by reviewer {reviewer_id}")
+
+        return jsonify(
+            {
+                "img_id": img_id_str,
+                "review_status": "pending",
+            }
+        ), 200
+
+    except psycopg.DatabaseError as e:
+        logger.error(f"Database error reopening v2 image: {e}", exc_info=True)
+        return (
+            jsonify({"status": "error", "message": "Database error occurred"}),
+            500,
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error reopening v2 image: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
+
+
 # =============================================================================
 # Missed Metric (new endpoint)
 # =============================================================================
