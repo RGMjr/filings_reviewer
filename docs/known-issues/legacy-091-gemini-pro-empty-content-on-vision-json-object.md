@@ -3,15 +3,17 @@ autonomy: n/a
 discovered: '2026-04-23'
 estimated: S
 id: 91
+pr_refs:
+  - 267
 severity: medium
 slug: gemini-pro-empty-content-on-vision-json-object
 source: legacy
-status: open
+status: resolved
 title: gemini-pro Returns Empty Content on vision + response_format=json_object
 touches:
   - src/llm/vision_client.py
   - scripts/benchmark_vision.py
-updated: '2026-04-23'
+updated: '2026-04-27'
 ---
 
 ### Problem
@@ -42,3 +44,23 @@ Not reproducing on any other provider in `PROVIDER_CONFIGS`.
 - Until resolved, omit `gemini-pro` from the classify bake-off order
   (`BAKEOFF_PROVIDER_ORDER_METRIC_CLASSIFY`) — current ordering
   already excludes `two-stage` for a similar reason.
+
+### Resolution
+
+Root cause: Gemini 2.5 Pro runs an extended-thinking phase before emitting
+output tokens. When `max_output_tokens` is low (e.g. 400 for
+`analyze_image_for_metric_classification`), the thinking phase silently
+consumes the entire budget, leaving the text response empty. The
+google-genai SDK's `response.text` property correctly skips `thought=True`
+parts, so the empty-content symptom was masked at the adapter level.
+
+Fix: `GeminiVisionProvider.call_api` in `src/llm/providers/gemini.py` now
+detects thinking-capable models (any model whose name contains
+`"gemini-2.5-pro"`) via the new `_is_thinking_model()` helper, and sets
+`thinking_config=ThinkingConfig(thinking_budget=0)` in the
+`GenerateContentConfig` to disable thinking for vision calls. The
+`response_mime_type="application/json"` field is also now set in the config
+when JSON mode is requested, replacing the prompt-injection-only approach
+with the proper API-level control. Non-Pro Gemini models and non-Gemini
+providers are unaffected. Regression guard: 15 new unit tests in
+`tests/unit/llm/test_gemini_provider.py`.
