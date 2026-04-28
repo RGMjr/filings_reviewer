@@ -11,6 +11,7 @@ import functools
 import hmac
 import logging
 import time
+import urllib.parse
 from collections.abc import Callable
 from typing import Any
 
@@ -35,10 +36,17 @@ def _verify_api_key() -> Any:
     if origin and origin.split("://", 1)[-1] == request.host:
         return None
 
-    # Fallback: Referer header (sent for GET and same-origin navigations)
+    # Fallback: Referer header (sent for GET and same-origin navigations).
+    # Browsers omit Origin for same-origin no-CORS GET/HEAD requests, so this
+    # branch is the only same-origin signal for those. Compare hosts directly
+    # (scheme-independent) for parity with the Origin check above — under
+    # HTTPS-terminating proxies (Render) the page Referer is https:// while
+    # request.host_url is http://, so a startswith match would miss.
     referer = request.headers.get("Referer", "")
-    if referer and referer.startswith(request.host_url):
-        return None
+    if referer:
+        referer_host = urllib.parse.urlsplit(referer).netloc
+        if referer_host and referer_host == request.host:
+            return None
 
     api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
     expected_key = current_app.config.get("API_KEY")
@@ -49,15 +57,13 @@ def _verify_api_key() -> Any:
 
     if not api_key:
         logger.warning(
-            f"Missing API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
+            f"Missing API key for {request.method} {request.path} from {request.remote_addr}"
         )
         return jsonify({"status": "error", "message": "API key required"}), 401
 
     if not hmac.compare_digest(api_key, expected_key):
         logger.warning(
-            f"Invalid API key for {request.method} {request.path} "
-            f"from {request.remote_addr}"
+            f"Invalid API key for {request.method} {request.path} from {request.remote_addr}"
         )
         return jsonify({"status": "error", "message": "Invalid API key"}), 401
 
@@ -71,6 +77,7 @@ def register_api_auth(bp: Blueprint) -> None:
     Checks the X-API-Key header. Returns 401 if missing or invalid.
     Skips authentication if API_KEY_REQUIRED is False (development mode).
     """
+
     @bp.before_request
     def _check_api_key():
         return _verify_api_key()
@@ -83,6 +90,7 @@ def require_api_key(view: Callable) -> Callable:
     (e.g., a mixed blueprint where HTML pages are intentionally public but
     specific endpoints need auth).
     """
+
     @functools.wraps(view)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         rejection = _verify_api_key()
@@ -99,6 +107,7 @@ def register_timing(bp: Blueprint) -> None:
 
     Stores g.request_start_time for use in after_request audit logging.
     """
+
     @bp.before_request
     def _log_request_start():
         g.request_start_time = time.time()
