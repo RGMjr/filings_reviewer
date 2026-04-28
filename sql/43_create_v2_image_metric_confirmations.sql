@@ -3,7 +3,11 @@
 -- Stores per-reviewer adjudication decisions for metric-presence signals on chart images.
 -- Four decision types:
 --   accept  : detected_metric_id = confirmed_metric_id (both non-null)
---   reject  : detected_metric_id non-null, confirmed_metric_id null, rejection_reason required
+--   reject  : detected_metric_id non-null, confirmed_metric_id null, rejection_reason required.
+--             Sentinel exception: when rejection_reason='no_relevant_metrics'
+--             ("Reject all" on an image with zero keyword-detected metrics)
+--             BOTH IDs may be NULL. The unique-index COALESCE(.., '') admits
+--             one such sentinel row per (img_id, reviewer_id).
 --   correct : both IDs non-null and different, rejection_reason optional
 --   add     : detected_metric_id null, confirmed_metric_id non-null (reviewer adds missed metric)
 
