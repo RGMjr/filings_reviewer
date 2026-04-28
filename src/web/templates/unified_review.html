@@ -603,12 +603,10 @@
       <div class="modal-body">
         <div class="mb-3">
           <label for="missed-metric-id" class="form-label">Metric <span class="text-danger">*</span></label>
-          <select id="missed-metric-id" class="form-select">
-            <option value=""></option>
-            {% for m in available_metrics %}
-            <option value="{{ m }}">{{ m }}</option>
-            {% endfor %}
-          </select>
+          <input type="text" id="missed-metric-id" class="form-control"
+                 list="all-metrics-datalist"
+                 placeholder="Search metrics…"
+                 autocomplete="off">
         </div>
         <div class="mb-3">
           <label for="missed-value-raw" class="form-label">Value (raw text) <span class="text-danger">*</span></label>
@@ -1267,9 +1265,19 @@ function hideCorrectForm() {
 function addMissedMetric() {
   const reviewerName = requireReviewerName();
   if (!reviewerName) return;
+  const metricId = document.getElementById('missed-metric-id').value.trim();
+  if (metricId) {
+    const validIds = Array.from(
+      document.querySelectorAll('#all-metrics-datalist option')
+    ).map(o => o.value);
+    if (!validIds.includes(metricId)) {
+      alert('Please select a valid metric from the list (use the dropdown suggestions).');
+      return;
+    }
+  }
   const body = {
     filing_id: FILING_ID,
-    canonical_metric_id: document.getElementById('missed-metric-id').value,
+    canonical_metric_id: metricId,
     value_raw: document.getElementById('missed-value-raw').value,
     value: parseFloat(document.getElementById('missed-value').value) || null,
     unit: document.getElementById('missed-unit').value,

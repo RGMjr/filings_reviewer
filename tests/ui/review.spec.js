@@ -744,13 +744,14 @@ test.describe('Add Missed Metric Modal', () => {
     await expect(page.locator('#missed-scope')).toBeVisible({ timeout: 5000 });
   });
 
-  test('modal metrics list includes available metrics', async ({ page }) => {
+  test('modal metric input is wired to all-metrics datalist', async ({ page }) => {
     await page.goto('/');
     await page.locator('button[data-bs-target="#addMissedMetricModal"]').first().click();
     await page.locator('#missed-metric-id').waitFor({ state: 'visible', timeout: 5000 });
-    const options = page.locator('#missed-metric-id option');
-    // "" + 5 metrics = 6
-    await expect(options).toHaveCount(6);
+    await expect(page.locator('#missed-metric-id')).toHaveAttribute('list', 'all-metrics-datalist');
+    // MOCK_ALL_METRICS has 8 entries; datalist has no placeholder option.
+    const options = page.locator('#all-metrics-datalist option');
+    await expect(options).toHaveCount(8);
   });
 });
 
