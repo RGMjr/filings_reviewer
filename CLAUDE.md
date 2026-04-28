@@ -14,11 +14,11 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 
 ## Workflow
 
-**PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit` (project-local): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass.
+**PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit-proj` (project-local; renamed from `/commit` to disambiguate from the global skill of the same name): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass. The global `/commit` will also work in a pinch (it now branches + opens a PR), but it does not handle this project's pre-commit framework, fragment-based known-issues, or required-check recital.
 
-**Worktree-first.** Run `/commit` (and any HEAD-moving git work) from a `ccw` worktree, not the primary tree — a PreToolUse guard denies `git checkout`/`switch`/`checkout -b` in the primary tree to protect concurrent sessions. Use `EnterWorktree` inside a session or `ccw [branch]` from the shell. See `docs/development/claude-sessions-and-worktrees.md`.
+**Worktree-first.** Run `/commit-proj` (and any HEAD-moving git work) from a `ccw` worktree, not the primary tree — a PreToolUse guard denies `git checkout`/`switch`/`checkout -b` in the primary tree to protect concurrent sessions. Use `EnterWorktree` inside a session or `ccw [branch]` from the shell. See `docs/development/claude-sessions-and-worktrees.md`.
 
-**Planning rule.** For any plan touching 3+ files or new deps / config, make worktree setup (`EnterWorktree` or `ccw <branch>`) the first step. The `/commit` skill assumes you're in one.
+**Planning rule.** For any plan touching 3+ files or new deps / config, make worktree setup (`EnterWorktree` or `ccw <branch>`) the first step. The `/commit-proj` skill assumes you're in one.
 
 Required status checks: **Lint**, **Unit Tests**, **Vulnerability Scan**, **Integration Tests**, **UI E2E (Playwright)**. Use `/ci-fix` when checks fail; `/merge-check` for a manual pre-merge sweep.
 
@@ -28,7 +28,7 @@ See `docs/development/CONTRIBUTING.md` for the full flow.
 
 **Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 5 eligible issues (autonomy `safe`, status `open` or `partially-resolved`) from `docs/known-issues/` fragment frontmatter, auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Gated by `SWEEP_FORCE=1` in Render's `filings-claude-secrets` env group; unset (or set to anything else) to pause. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs. The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run (see `.github/workflows/ci.yml` job `known-issues-artifact`).
 
-**Known-issues fragments use `gh-<issue>-<slug>.md`** — server-allocated GitHub issue numbers, no local coordination, no collisions. The validator rejects any new `legacy-*` filename; the frozen set lives in `docs/known-issues/.legacy-allowlist.txt`. See `docs/development/CONTRIBUTING.md` and `.claude/commands/commit.md` step 9.
+**Known-issues fragments use `gh-<issue>-<slug>.md`** — server-allocated GitHub issue numbers, no local coordination, no collisions. The validator rejects any new `legacy-*` filename; the frozen set lives in `docs/known-issues/.legacy-allowlist.txt`. See `docs/development/CONTRIBUTING.md` and `.claude/commands/commit-proj.md` step 9.
 
 ## Key Commands
 
@@ -87,7 +87,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 
 ## Hooks
 
-A PreToolUse hook nudges `/simplify` when 3+ files are modified before `/commit` — see `.claude/hooks/precommit-simplify-check.sh`.
+A PreToolUse hook nudges `/simplify` when 3+ files are modified before `/commit-proj` (or `/commit`) — see `.claude/hooks/precommit-simplify-check.sh`.
 
 ## Compact Instructions
 

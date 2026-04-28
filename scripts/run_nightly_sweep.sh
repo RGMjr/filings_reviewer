@@ -172,7 +172,7 @@ sweep_issue() {
     return
   fi
 
-  # Prompt briefs Claude on the issue, restricts scope, calls /commit.
+  # Prompt briefs Claude on the issue, restricts scope, calls /commit-proj.
   local prompt
   prompt=$(cat <<EOF
 You are the nightly autonomous sweeper working issue #${issue}.
@@ -182,9 +182,9 @@ Classification: Autonomy=${autonomy}. Note: "${note}".
 Rules (STRICT):
 1. Find the fragment file for issue #${issue} under docs/known-issues/ (filename prefix is either legacy- or gh-, e.g. legacy-${issue}-*.md or gh-${issue}-*.md) and read it in full. Do exactly what its "Next Steps" section asks, no more.
 2. If the issue requires schema migrations, infra edits, credential changes, or anything outside the "Touches" globs declared in the classification table: ABORT and explain.
-3. After implementing, invoke the /commit skill. The skill handles branch/tests/PR/auto-merge.
+3. After implementing, invoke the /commit-proj skill (project-local; renamed from /commit). The skill handles branch/tests/PR/auto-merge.
 4. If tests fail or you cannot complete the work cleanly, abort. Do NOT update baselines, do NOT skip tests, do NOT use --no-verify.
-5. On successful /commit, report the PR URL on stdout as: "PR_URL=<url>".
+5. On successful /commit-proj, report the PR URL on stdout as: "PR_URL=<url>".
 6. On abort, report the reason on stdout as: "ABORT_REASON=<short reason>".
 
 Begin.

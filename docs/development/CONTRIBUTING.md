@@ -32,19 +32,22 @@ feature branch → PR against main → CI green → squash-merge
 [`docs/operations/ci-branch-protection.md`](../operations/ci-branch-protection.md)).
 Direct pushes are refused; a red CI blocks the merge button. Branches do NOT need to be up-to-date with `main` before merging — auto-merge squash-merges whichever PR finishes CI first; subsequent PRs merge on top.
 
-Run `/commit` from a `ccw` worktree. HEAD-moving git commands in the primary tree are blocked by a PreToolUse hook — see `docs/development/claude-sessions-and-worktrees.md`.
+Run `/commit-proj` from a `ccw` worktree. HEAD-moving git commands in the primary tree are blocked by a PreToolUse hook — see `docs/development/claude-sessions-and-worktrees.md`.
 
-### Committing via `/commit` (Claude Code)
+### Committing via `/commit-proj` (Claude Code)
 
-The project-local `/commit` skill (`.claude/commands/commit.md`) handles the
-full flow in one invocation:
+The project-local `/commit-proj` skill (`.claude/commands/commit-proj.md`) handles the
+full flow in one invocation. (Renamed from `/commit` to disambiguate from the
+global skill of the same name; the global `/commit` will also branch + open a PR
+now, but does not handle this project's pre-commit framework, fragment-based
+known-issues, or required-checks recital.)
 
-1. **Branch preflight.** `/commit` must run inside a `ccw` worktree — the
+1. **Branch preflight.** `/commit-proj` must run inside a `ccw` worktree — the
    PreToolUse hook in `~/.claude/hooks/guard-destructive-git.sh` refuses
    `git checkout -b` in the primary tree. If no worktree exists yet, enter
    one first (`EnterWorktree` from a Claude session, or `ccw [branch]`
    from a shell). See [§ Orchestration pattern](claude-sessions-and-worktrees.md#orchestration-pattern-planning-session--parallel-subagents)
-   for the recommended flow. On first-commit for a branch, `/commit` derives
+   for the recommended flow. On first-commit for a branch, `/commit-proj` derives
    the branch name (`claude/<type>-<slug>`) from the staged diff; on a
    pre-existing branch it reuses the current one.
 2. **Pre-commit framework check.** Verifies `.git/hooks/pre-commit` is
@@ -63,12 +66,12 @@ Local safety rails in `.claude/settings.json`:
 - `git push origin main`, `git push --force*`, and `gh pr merge*--admin*` are
   denied before the Bash tool fires them.
 - A PreToolUse hook refuses `git commit` while on `main` (belt-and-suspenders
-  if you bypass `/commit`).
+  if you bypass `/commit-proj`).
 
 ### When checks fail
 
 - **Red CI on a PR:** invoke `/ci-fix` — it iterates ruff/mypy/pytest to
-  green, then defers to `/commit` to push the fix. Auto-merge stays armed and
+  green, then defers to `/commit-proj` to push the fix. Auto-merge stays armed and
   completes when the next run is green.
 - **Pre-merge sanity:** `/merge-check` runs the full local gauntlet (CI
   status, migrations, import integrity, tests, type check, branch freshness)
@@ -154,6 +157,6 @@ specific files by name.
 
 ## Known-issues triage
 
-New issues surfaced during contribution go into a new `docs/known-issues/gh-N-<slug>.md` fragment file, where `N` is the GitHub issue number returned by `gh issue create`. The `/commit` skill step 9 automates this — see the frontmatter template there. Existing `legacy-NNN-*.md` fragments (pre-2026-04-24) are frozen in place; do not rename them, and **do not mint new `legacy-*` filenames** — the validator (`scripts/validate_known_issues_fragments.py`, run by pre-commit and CI) rejects any `legacy-*` filename not listed in `docs/known-issues/.legacy-allowlist.txt`. GitHub issue numbers are server-allocated, so `gh-N` cannot collide. Fragments are the source of truth.
+New issues surfaced during contribution go into a new `docs/known-issues/gh-N-<slug>.md` fragment file, where `N` is the GitHub issue number returned by `gh issue create`. The `/commit-proj` skill step 9 automates this — see the frontmatter template there. Existing `legacy-NNN-*.md` fragments (pre-2026-04-24) are frozen in place; do not rename them, and **do not mint new `legacy-*` filenames** — the validator (`scripts/validate_known_issues_fragments.py`, run by pre-commit and CI) rejects any `legacy-*` filename not listed in `docs/known-issues/.legacy-allowlist.txt`. GitHub issue numbers are server-allocated, so `gh-N` cannot collide. Fragments are the source of truth.
 
 The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run (`.github/workflows/ci.yml` job `known-issues-artifact`). Download the latest rendered rollup from the Actions tab of any `main` build. To regenerate locally for preview: `python3 scripts/regenerate_known_issues.py --output /tmp/KNOWN_ISSUES.md`.
