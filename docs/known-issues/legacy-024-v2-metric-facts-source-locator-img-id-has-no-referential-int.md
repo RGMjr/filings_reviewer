@@ -7,6 +7,8 @@ note: 'Resolved 2026-04-28 as fragment-only closure: dev (Neon prod) and local
   Docker test DB both report 0 Class (B) orphans against
   scripts/check_image_referential_integrity.py. Class (B) promoted from
   warning-only to blocking in the same PR to lock against regression.'
+pr_refs:
+  - 318
 severity: low
 slug: v2-metric-facts-source-locator-img-id-has-no-referential-int
 source: legacy
