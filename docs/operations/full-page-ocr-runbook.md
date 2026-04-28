@@ -57,6 +57,24 @@ segment is synthesized and the image stays `UNKNOWN`.
 Per-filing cap: `MAX_PRESCAN_CALLS_PER_DOCUMENT = 10`. Worst-case cost
 per filing: ~$1 (10 pre-scans + 10 escalations at ~$0.05 each).
 
+#### A2 additions (2026-04-28)
+
+`analyze_image_for_text` now also returns `contains_table` (bool) alongside
+`contains_chart` in the JSON response. `_prescan_ambiguous_images` uses both
+fields to choose the promoted classification:
+
+- `contains_table=True, contains_chart=False` → `TABLE_IMAGE`
+- `contains_chart=True, contains_table=False` → `CHART`
+- both True → `TABLE_IMAGE` when `chart_hint == "none"` (no structural chart
+  signal); otherwise `CHART`
+- both False → `TABLE_IMAGE` (Tier-1 keyword matched but no structural signal;
+  conservative default)
+
+Pre-scan now also examines images already classified as weak `CHART` (relevance
+0.3–0.5), not only `UNKNOWN` images. These are images claimed by `_is_chart`'s
+"large + metric keyword" heuristic that may be table-shaped — the Vision call
+disambiguates them before downstream scoring runs.
+
 ## Turning the flags on
 
 Both flags live on `PipelineConfig` (`src/extraction_v2/pipeline.py`):

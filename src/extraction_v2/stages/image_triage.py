@@ -313,12 +313,12 @@ class ImageTriageStage:
         filename_normalized = asset.filename.lower().replace("_", " ").replace("-", " ")
         combined_text = f"{filename_normalized} {asset.nearby_text}".lower()
 
-        # Explicit table references (in text or filename)
+        # Explicit table references (in text or filename).
+        # Note: no _is_chart() guard here — classify_image() checks _is_table_image
+        # BEFORE _is_chart(), so table-structural signals win on conflict.
         table_keywords = ["table", "schedule", "summary of", "breakdown"]
         if any(kw in combined_text for kw in table_keywords):
-            # Make sure it's not already classified as a chart
-            if not self._is_chart(asset):
-                return True
+            return True
 
         # Wide aspect ratio suggests table layout
         if asset.width > 0 and asset.height > 0:
@@ -379,10 +379,19 @@ class ImageTriageStage:
         Priority order:
         1. Logo detection (filename + dimensions)
         2. Signature detection
-        3. Chart detection (filename + text patterns)
-        4. Table image detection
+        3. Table image detection (explicit structural signals — before chart)
+        4. Chart detection (filename + text patterns)
         5. Decorative detection (fallback)
         6. Unknown
+
+        Note on ordering (A1, 2026-04-28): _is_table_image runs before _is_chart
+        so that images with explicit table signals (filename/text keyword "table",
+        "schedule", etc. OR wide aspect-ratio + financial keywords) are routed to
+        the table-OCR path instead of the chart path.  _is_chart's broad
+        "large/dimensionless + metric keyword" branch (lines 287-298) would
+        otherwise claim most PayPal-style cohort tables.  The inner
+        `not self._is_chart()` guard that previously lived in _is_table_image was
+        removed at the same time — it is now redundant (and was self-conflicting).
 
         Args:
             asset: ImageAsset to classify
@@ -398,13 +407,13 @@ class ImageTriageStage:
         if self._is_signature(asset):
             return ImageClassification.SIGNATURE
 
-        # 3. Chart detection
-        if self._is_chart(asset):
-            return ImageClassification.CHART
-
-        # 4. Table image detection
+        # 3. Table image detection (structural signals take priority over chart)
         if self._is_table_image(asset):
             return ImageClassification.TABLE_IMAGE
+
+        # 4. Chart detection
+        if self._is_chart(asset):
+            return ImageClassification.CHART
 
         # 5. Decorative detection (fallback for non-content)
         if self._is_decorative(asset):

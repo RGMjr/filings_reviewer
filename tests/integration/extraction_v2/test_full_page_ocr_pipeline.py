@@ -169,6 +169,7 @@ def mock_vision_client() -> MagicMock:
             "Net revenue retention: 105%. Gross margin: 72%."
         ),
         contains_chart=False,
+        contains_table=False,
         chart_hint=None,
         cost_usd=0.0,
         raw_response={"choices": [{"message": {"content": "stub"}}]},

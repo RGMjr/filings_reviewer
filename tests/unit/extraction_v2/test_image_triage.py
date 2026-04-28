@@ -1084,3 +1084,99 @@ class TestLearnedTriageGate:
         # Asset was classified but not queued (below learned threshold).
         assert asset.classification == ImageClassification.CHART
         assert len(result) == 0
+
+
+# ============================================================================
+# A1 reorder regression tests (2026-04-28)
+# ============================================================================
+
+
+class TestA1ReorderBehavior:
+    """Pin the A1 priority-reorder: _is_table_image runs before _is_chart.
+
+    These tests document the documented PayPal misrouting regression and
+    confirm that the inner ``not self._is_chart()`` guard inside
+    ``_is_table_image`` is gone — table structural signals win on conflict.
+    """
+
+    @pytest.fixture
+    def stage(self) -> ImageTriageStage:
+        return ImageTriageStage()
+
+    def test_paypal_style_table_routes_to_table_image(self, stage: ImageTriageStage) -> None:
+        """PayPal-style cohort table: image with "schedule" in nearby text wins TABLE_IMAGE.
+
+        Before A1, ``_is_table_image`` contained a ``not self._is_chart()`` guard —
+        so images with both table keywords ("schedule") and metric keywords
+        ("revenue", "cohort") in nearby_text would be claimed by CHART.
+        After A1, ``_is_table_image`` runs first and has no inner guard, so the
+        explicit "schedule" keyword routes this to TABLE_IMAGE.
+        """
+        asset = ImageAsset(
+            img_id="paypal_cohort_table",
+            filename="cohort_revenue.png",
+            nearby_text="Schedule: cohort revenue by year",
+            width=1200,
+            height=900,
+        )
+        result = stage.classify_image(asset)
+        assert result == ImageClassification.TABLE_IMAGE
+
+    def test_wide_aspect_financial_table_routes_to_table_image(
+        self, stage: ImageTriageStage
+    ) -> None:
+        """Strongly wide image (aspect 2.67) with financial keywords → TABLE_IMAGE.
+
+        aspect = 1600/600 = 2.67, well above the 2.0 threshold in _is_table_image;
+        nearby text has "revenue" and "period", both in the financial_keywords list.
+        Without the A1 reorder this image would have been claimed first by _is_chart
+        (large dimensions + metric keyword), never reaching the aspect-ratio check.
+        """
+        asset = ImageAsset(
+            img_id="wide_financial_table",
+            filename="data_table_001.png",
+            nearby_text="quarterly revenue breakdown by period",
+            width=1600,
+            height=600,
+        )
+        result = stage.classify_image(asset)
+        assert result == ImageClassification.TABLE_IMAGE
+
+    def test_pure_chart_filename_still_wins(self, stage: ImageTriageStage) -> None:
+        """Chart-pattern filename with no table keywords → CHART.
+
+        Confirms that moving _is_table_image before _is_chart did not suppress
+        legitimate chart detection.  A filename hit in _is_chart beats anything
+        that _is_table_image could claim (because _is_table_image has no keyword
+        match for this asset).
+        """
+        asset = ImageAsset(
+            img_id="bar_chart_growth",
+            filename="bar_chart_growth.png",
+            nearby_text="Annual customer growth",
+            width=800,
+            height=600,
+        )
+        result = stage.classify_image(asset)
+        assert result == ImageClassification.CHART
+
+    def test_table_keyword_beats_chart_signal(self, stage: ImageTriageStage) -> None:
+        """Image whose signals would previously conflict now resolves to TABLE_IMAGE.
+
+        This test covers the removal of the inner ``not self._is_chart()`` guard
+        that used to live inside ``_is_table_image``.  With the guard gone and
+        table-check-first ordering, an image that has BOTH a table keyword (e.g.,
+        "schedule" in nearby text) AND would satisfy _is_chart (large dimensions
+        + metric keyword) returns TABLE_IMAGE, not CHART.
+        """
+        asset = ImageAsset(
+            img_id="conflicting_signals",
+            filename="img_summary.png",
+            # "schedule" is an explicit table_keyword; "revenue" is a metric keyword
+            # that would also satisfy _is_chart's large-image branch.
+            nearby_text="Schedule 2: revenue by cohort",
+            width=900,
+            height=700,
+        )
+        result = stage.classify_image(asset)
+        assert result == ImageClassification.TABLE_IMAGE
