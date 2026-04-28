@@ -3,10 +3,12 @@ autonomy: safe
 discovered: '2026-04-27'
 estimated: S
 id: 113
+pr_refs:
+  - 265
 severity: medium
 slug: test-db-filings-reviewers-v2-documents-missing
 source: legacy
-status: open
+status: resolved
 title: test_db_filings_reviewers.py — test_reviewers_aggregates_text_and_image_sources fails on missing v2_documents relation
 touches:
   - tests/integration/test_db_filings_reviewers.py
@@ -33,3 +35,11 @@ This is **not** the same as legacy-076 (which was about *missing tests*; that te
 - Cross-reference with legacy-110 (migration registry drift between apply scripts) — likely the same root cause.
 - Either fix the migration registry / conftest setup, or update the test to skip when V2 schema is absent (last resort).
 - Confirm by running `pytest tests/integration/test_db_filings_reviewers.py -x -q`.
+
+### Resolution
+
+Incidentally fixed by the legacy-110 resolution (PR #254 / #255). The root cause was migration registry drift: `scripts/apply_migrations.py::MIGRATIONS` was a hand-curated list that was missing `09_v2_schema.sql` (and several other migrations) relative to what `apply_all_migrations.py::MIGRATION_ORDER` ran. The integration test conftest (`tests/integration/conftest.py::_apply_migrations_to_test_db`) consumed `MIGRATIONS`, so the V2 schema was never created in the test DB — causing the `relation "v2_documents" does not exist` error.
+
+The fix: `src/infra/migrations.py::migration_files()` replaced both hand-curated lists with a single alpha-sorted glob over `sql/*.sql` (minus an explicit KNOWN_SKIPS set). Both apply scripts now import this function, making drift structurally impossible. With the full migration set applied, `09_v2_schema.sql` runs and creates `v2_documents`, and all three tests in `test_db_filings_reviewers.py` pass.
+
+Verified on 2026-04-27: `pytest tests/integration/test_db_filings_reviewers.py -x -q` → 3 passed.
