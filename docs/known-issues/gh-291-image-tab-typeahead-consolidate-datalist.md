@@ -12,6 +12,8 @@ discovered: 2026-04-28
 updated: 2026-04-28
 gh_issue: 291
 note: Image-tab metric inputs now point at the server-rendered all-metrics-datalist; loadMetricsList JS and detected-metrics-datalist removed.
+pr_refs:
+  - 310
 ---
 
 ### Problem
