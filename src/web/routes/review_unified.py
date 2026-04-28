@@ -313,6 +313,15 @@ def review_filing(filing_id: int):
             limit=per_page,
             offset=(page - 1) * per_page,
         )
+
+        # Pending-first partition: same idea as image_candidates — display
+        # order matches the order /api/v2/decisions advances through.
+        # Stable within each partition (preserves user's chosen sort_by).
+        facts = sorted(
+            facts,
+            key=lambda f: 0 if f["review_status"] == "pending_review" else 1,
+        )
+
         total_pages = max(1, -(-total_filtered // per_page))  # ceiling division
 
         # Get unique metrics for filter dropdown (filing-scoped)

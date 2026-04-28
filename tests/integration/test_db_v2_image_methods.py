@@ -82,8 +82,13 @@ class TestGetImageReviewCandidatesForFilingV2:
             clean_db, cik="0001234567", accession_number="0001234567-24-000001"
         )
         _insert_v2_image(
-            clean_db, filing_id, "chart.jpg",
-            classification="chart", relevance_score=0.9, width=800, height=600,
+            clean_db,
+            filing_id,
+            "chart.jpg",
+            classification="chart",
+            relevance_score=0.9,
+            width=800,
+            height=600,
         )
 
         rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
@@ -99,8 +104,7 @@ class TestGetImageReviewCandidatesForFilingV2:
         assert row["detection_tier"] == "tier_1_cohort"  # chart + relevance >= 0.6
         assert row["image_url"] == "/images/cache/1234567/000123456724000001/chart.jpg"
         assert row["image_src_url"] == (
-            "https://www.sec.gov/Archives/edgar/data/"
-            "1234567/000123456724000001/chart.jpg"
+            "https://www.sec.gov/Archives/edgar/data/1234567/000123456724000001/chart.jpg"
         )
         # decision fields NULL when no decision exists
         assert row["image_decision_id"] is None
@@ -108,12 +112,33 @@ class TestGetImageReviewCandidatesForFilingV2:
 
     def test_detection_tier_derivation(self, clean_db):
         _, filing_id = create_test_company_and_filing(clean_db)
-        _insert_v2_image(clean_db, filing_id, "t1.jpg",
-                         classification="chart", relevance_score=0.7, width=100, height=100)
-        _insert_v2_image(clean_db, filing_id, "t2.jpg",
-                         classification="table_image", relevance_score=0.3, width=400, height=400)
-        _insert_v2_image(clean_db, filing_id, "t3.jpg",
-                         classification="unknown", relevance_score=0.1, width=100, height=100)
+        _insert_v2_image(
+            clean_db,
+            filing_id,
+            "t1.jpg",
+            classification="chart",
+            relevance_score=0.7,
+            width=100,
+            height=100,
+        )
+        _insert_v2_image(
+            clean_db,
+            filing_id,
+            "t2.jpg",
+            classification="table_image",
+            relevance_score=0.3,
+            width=400,
+            height=400,
+        )
+        _insert_v2_image(
+            clean_db,
+            filing_id,
+            "t3.jpg",
+            classification="unknown",
+            relevance_score=0.1,
+            width=100,
+            height=100,
+        )
 
         rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id, sort_by="position")
         tiers = {row["filename"]: row["detection_tier"] for row in rows}
@@ -145,12 +170,172 @@ class TestGetImageReviewCandidatesForFilingV2:
 
     def test_sort_by_relevance_orders_predicted_first(self, clean_db):
         _, filing_id = create_test_company_and_filing(clean_db)
-        _insert_v2_image(clean_db, filing_id, "low.jpg", relevance_score=0.5, predicted_relevance=0.2)
-        _insert_v2_image(clean_db, filing_id, "high.jpg", relevance_score=0.5, predicted_relevance=0.9)
+        _insert_v2_image(
+            clean_db, filing_id, "low.jpg", relevance_score=0.5, predicted_relevance=0.2
+        )
+        _insert_v2_image(
+            clean_db, filing_id, "high.jpg", relevance_score=0.5, predicted_relevance=0.9
+        )
 
         rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id, sort_by="relevance")
 
         assert [r["filename"] for r in rows] == ["high.jpg", "low.jpg"]
+
+
+def _set_detected_metrics(db: DatabaseAdapter, img_id: str, metrics: list[dict]) -> None:
+    """Set v2_image_assets.detected_metrics directly for rollup-state fixtures."""
+    import json
+
+    db.execute(
+        "UPDATE v2_image_assets SET detected_metrics = %(m)s::jsonb WHERE img_id = %(id)s",
+        {"m": json.dumps(metrics), "id": img_id},
+    )
+
+
+def _insert_confirmation(
+    db: DatabaseAdapter,
+    img_id: str,
+    decision: str,
+    detected_metric_id: str | None = None,
+    confirmed_metric_id: str | None = None,
+    reviewer_id: str = "RGM",
+    rejection_reason: str | None = None,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO v2_image_metric_confirmations
+            (img_id, detected_metric_id, confirmed_metric_id, decision,
+             rejection_reason, reviewer_id)
+        VALUES
+            (%(img_id)s, %(d)s, %(c)s, %(decision)s, %(rej)s, %(rev)s)
+        """,
+        {
+            "img_id": img_id,
+            "d": detected_metric_id,
+            "c": confirmed_metric_id,
+            "decision": decision,
+            "rej": rejection_reason,
+            "rev": reviewer_id,
+        },
+    )
+
+
+class TestImageReviewStateRollup:
+    """End-to-end coverage of the lateral-join rollup + Python derivation."""
+
+    def test_no_confirmations_no_detections_pending(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
+        assert rows[0]["image_review_state"] == "pending"
+
+    def test_all_detected_accepted_is_relevant(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db,
+            img_id,
+            [{"metric_id": "cm_a", "score": 0.9}, {"metric_id": "cm_b", "score": 0.7}],
+        )
+        _insert_confirmation(clean_db, img_id, "accept", "cm_a", "cm_a")
+        _insert_confirmation(clean_db, img_id, "accept", "cm_b", "cm_b")
+        rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
+        assert rows[0]["image_review_state"] == "relevant"
+
+    def test_all_detected_rejected_is_no_relevant(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db,
+            img_id,
+            [{"metric_id": "cm_a", "score": 0.9}],
+        )
+        _insert_confirmation(
+            clean_db,
+            img_id,
+            "reject",
+            "cm_a",
+            rejection_reason="not_present",
+        )
+        rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
+        assert rows[0]["image_review_state"] == "no_relevant"
+
+    def test_image_skipped_short_circuits_to_no_relevant(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(
+            clean_db,
+            filing_id,
+            "chart.jpg",
+            review_status="skipped",
+        )
+        _set_detected_metrics(
+            clean_db,
+            img_id,
+            [{"metric_id": "cm_a", "score": 0.9}],
+        )
+        rows = clean_db.get_image_review_candidates_for_filing_v2(
+            filing_id,
+            status="skipped",
+        )
+        assert rows[0]["image_review_state"] == "no_relevant"
+
+    def test_partial_decision_is_pending(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db,
+            img_id,
+            [{"metric_id": "cm_a", "score": 0.9}, {"metric_id": "cm_b", "score": 0.7}],
+        )
+        _insert_confirmation(clean_db, img_id, "accept", "cm_a", "cm_a")
+        # cm_b not yet decided
+        rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
+        assert rows[0]["image_review_state"] == "pending"
+
+    def test_skip_does_not_count_as_decided(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db,
+            img_id,
+            [{"metric_id": "cm_a", "score": 0.9}, {"metric_id": "cm_b", "score": 0.7}],
+        )
+        _insert_confirmation(clean_db, img_id, "accept", "cm_a", "cm_a")
+        _insert_confirmation(clean_db, img_id, "skip", "cm_b")
+        rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
+        # skip is a punt, not a decision — coverage incomplete
+        assert rows[0]["image_review_state"] == "pending"
+
+    def test_add_only_with_zero_detected_is_relevant(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(clean_db, img_id, [])
+        _insert_confirmation(
+            clean_db,
+            img_id,
+            "add",
+            detected_metric_id=None,
+            confirmed_metric_id="cm_added",
+        )
+        rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
+        assert rows[0]["image_review_state"] == "relevant"
+
+    def test_multi_reviewer_does_not_double_count_coverage(self, clean_db):
+        """If two reviewers each accept the same detected metric, coverage
+        counts that metric ONCE — without DISTINCT this would tip an
+        incomplete coverage to "relevant" prematurely."""
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db,
+            img_id,
+            [{"metric_id": "cm_a", "score": 0.9}, {"metric_id": "cm_b", "score": 0.7}],
+        )
+        _insert_confirmation(clean_db, img_id, "accept", "cm_a", "cm_a", reviewer_id="alice")
+        _insert_confirmation(clean_db, img_id, "accept", "cm_a", "cm_a", reviewer_id="bob")
+        # cm_b still not decided — must remain pending
+        rows = clean_db.get_image_review_candidates_for_filing_v2(filing_id)
+        assert rows[0]["image_review_state"] == "pending"
 
 
 class TestGetImageReviewCandidateV2:
@@ -166,9 +351,7 @@ class TestGetImageReviewCandidateV2:
         assert row["company_name"] == "Test Corp"
 
     def test_returns_none_for_unknown_img(self, clean_db):
-        result = clean_db.get_image_review_candidate_v2(
-            "00000000-0000-0000-0000-000000000000"
-        )
+        result = clean_db.get_image_review_candidate_v2("00000000-0000-0000-0000-000000000000")
         assert result is None
 
 
@@ -178,7 +361,9 @@ class TestInsertImageReviewDecisionV2:
         img_id = _insert_v2_image(clean_db, filing_id, "c.jpg")
 
         decision_id = clean_db.insert_image_review_decision_v2(
-            img_id=img_id, decision="relevant", chart_type="cohort_table",
+            img_id=img_id,
+            decision="relevant",
+            chart_type="cohort_table",
         )
 
         assert decision_id > 0
@@ -197,7 +382,8 @@ class TestInsertImageReviewDecisionV2:
 
         with pytest.raises(ValidationError, match="rejection_reason"):
             clean_db.insert_image_review_decision_v2(
-                img_id=img_id, decision="not_relevant",
+                img_id=img_id,
+                decision="not_relevant",
             )
 
     def test_insert_relevant_requires_chart_type(self, clean_db):
@@ -206,7 +392,8 @@ class TestInsertImageReviewDecisionV2:
 
         with pytest.raises(ValidationError, match="chart_type"):
             clean_db.insert_image_review_decision_v2(
-                img_id=img_id, decision="relevant",
+                img_id=img_id,
+                decision="relevant",
             )
 
     def test_invalid_chart_type_raises(self, clean_db):
@@ -215,7 +402,9 @@ class TestInsertImageReviewDecisionV2:
 
         with pytest.raises(ValidationError):
             clean_db.insert_image_review_decision_v2(
-                img_id=img_id, decision="relevant", chart_type="bogus",
+                img_id=img_id,
+                decision="relevant",
+                chart_type="bogus",
             )
 
 
@@ -224,7 +413,9 @@ class TestDeleteImageReviewDecisionV2:
         _, filing_id = create_test_company_and_filing(clean_db)
         img_id = _insert_v2_image(clean_db, filing_id, "c.jpg")
         decision_id = clean_db.insert_image_review_decision_v2(
-            img_id=img_id, decision="relevant", chart_type="bar_chart",
+            img_id=img_id,
+            decision="relevant",
+            chart_type="bar_chart",
         )
 
         result = clean_db.delete_image_review_decision_v2(decision_id)
@@ -254,10 +445,7 @@ class TestSkipImageCandidateV2:
         assert rows[0]["review_status"] == "skipped"
 
     def test_skip_missing_returns_false(self, clean_db):
-        assert (
-            clean_db.skip_image_candidate_v2("00000000-0000-0000-0000-000000000000")
-            is False
-        )
+        assert clean_db.skip_image_candidate_v2("00000000-0000-0000-0000-000000000000") is False
 
 
 class TestGetImageReviewProgressV2:
@@ -267,8 +455,9 @@ class TestGetImageReviewProgressV2:
         _insert_v2_image(clean_db, filing_id, "b.jpg", review_status="reviewed")
         _insert_v2_image(clean_db, filing_id, "c.jpg", review_status="skipped")
         _insert_v2_image(clean_db, filing_id, "d.jpg", review_status="auto_rejected")
-        _insert_v2_image(clean_db, filing_id, "logo.jpg", classification="logo",
-                         review_status="pending")  # excluded from queue
+        _insert_v2_image(
+            clean_db, filing_id, "logo.jpg", classification="logo", review_status="pending"
+        )  # excluded from queue
 
         progress = clean_db.get_image_review_progress_v2(filing_id=filing_id)
 
@@ -353,7 +542,9 @@ class TestPersistImagesStableImgId:
 
         # Reviewer decides on the image.
         clean_db.insert_image_review_decision_v2(
-            img_id=stable_img_id, decision="relevant", chart_type="cohort_table",
+            img_id=stable_img_id,
+            decision="relevant",
+            chart_type="cohort_table",
         )
 
         # Second run: same filename, fresh random img_id (simulating re-extraction).

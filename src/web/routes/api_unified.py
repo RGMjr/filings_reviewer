@@ -167,9 +167,11 @@ def create_decision():
 
         logger.info(f"V2 decision {decision_id} for fact {fact_id}: {decision}")
 
-        # Find next pending fact in same filing
+        # Find next pending fact in same filing — honor the reviewer's chosen
+        # sort so display order in the strip matches advance order.
         filing_id = fact["doc_id"]
-        next_fact = _get_next_pending_fact(db, filing_id, fact_id)
+        sort_param = data.get("sort") or "confidence_desc"
+        next_fact = _get_next_pending_fact(db, filing_id, fact_id, sort_by=sort_param)
 
         return jsonify(
             {
@@ -756,9 +758,14 @@ def _validate_v2_decision(data: dict[str, Any]) -> dict[str, str]:
     return errors
 
 
-def _get_next_pending_fact(db, filing_id: int, current_fact_id: str) -> dict | None:
-    """Find next pending_review fact in the same filing."""
-    facts = db.get_v2_facts_for_filing(filing_id, status="pending_review")
+def _get_next_pending_fact(
+    db,
+    filing_id: int,
+    current_fact_id: str,
+    sort_by: str = "confidence_desc",
+) -> dict | None:
+    """Find next pending_review fact in the same filing using the caller's sort."""
+    facts = db.get_v2_facts_for_filing(filing_id, status="pending_review", sort_by=sort_by)
     if not facts:
         return None
 
