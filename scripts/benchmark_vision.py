@@ -3,8 +3,11 @@
 
 Two modes:
 
-  --build-corpus   Export a stratified manifest from v2_image_review_decisions.
-                   Writes to tests/fixtures/image_benchmark/manifest.json.
+  --build-corpus   Export a stratified manifest from both reviewer surfaces
+                   (v2_image_review_decisions legacy + v2_image_metric_confirmations
+                   per-metric, aggregated to image-level). Legacy rows take
+                   precedence on duplicate img_id. Writes to
+                   tests/fixtures/image_benchmark/manifest.json.
                    DB-read-only; never mutates any rows.
 
   --provider       Run the chart/table extraction pipeline against each image
@@ -180,9 +183,28 @@ CLASSIFY_REJECTION_REASONS: frozenset[str] = frozenset(
 CLASSIFY_RELEVANCE_THRESHOLD: float = 0.5
 
 
-# ---- DB query -----------------------------------------------------------------
+# ---- DB queries ---------------------------------------------------------------
+#
+# _CORPUS_QUERY_LEGACY pulls image-level decisions from v2_image_review_decisions
+# (the legacy reviewer surface, frozen after PR #192).
+#
+# _CORPUS_QUERY_CONFIRMATIONS pulls per-metric confirmations from
+# v2_image_metric_confirmations, aggregated to image-level using the same
+# rules as export_image_training_data.py:
+#   relevant     = any confirmation in {accept, correct, add}
+#   not_relevant = at least one confirmation, all rejects
+#   excluded     = only skips, or zero confirmations (filtered by HAVING)
+#
+# chart_type is not captured in v2_image_metric_confirmations (no schema column).
+# Confirmation-derived rows emit chart_type=NULL; the stratifier treats None as
+# an unknown stratum rather than a hard failure (conservative minimal path —
+# chart_type schema extension is deferred, gh-196 note).
+#
+# Legacy rows take precedence when the same img_id appears in both surfaces,
+# matching the authoritative logic in export_image_training_data.export_sec_rows().
+# This preserves historical reviewer intent and prevents silent label flips.
 
-_CORPUS_QUERY = """
+_CORPUS_QUERY_LEGACY = """
 SELECT
     d.img_id::text                               AS img_id,
     f.accession_number                           AS filing_key,
@@ -201,6 +223,42 @@ JOIN v2_image_assets           v ON v.img_id = d.img_id
 JOIN filings                   f ON v.doc_id = f.filing_id
 JOIN companies                 c ON f.company_id = c.company_id
 ORDER BY d.created_at
+"""
+
+_CORPUS_QUERY_CONFIRMATIONS = """
+SELECT
+    v.img_id::text                               AS img_id,
+    f.accession_number                           AS filing_key,
+    v.filename                                   AS filename,
+    CASE
+        WHEN bool_or(imc.decision IN ('accept','correct','add'))
+             THEN 'relevant'
+        ELSE 'not_relevant'
+    END                                          AS decision,
+    NULL::text                                   AS chart_type,
+    (
+        SELECT imc2.rejection_reason
+          FROM v2_image_metric_confirmations imc2
+         WHERE imc2.img_id = v.img_id
+           AND imc2.decision = 'reject'
+           AND imc2.rejection_reason IS NOT NULL
+         ORDER BY imc2.created_at
+         LIMIT 1
+    )                                            AS rejection_reason,
+    NULL::text                                   AS reviewer_notes,
+    v.file_path                                  AS storage_key,
+    f.accession_number                           AS accession_number,
+    c.cik                                        AS cik,
+    c.company_name                               AS company_name,
+    v.relevance_score                            AS relevance_score
+FROM v2_image_metric_confirmations imc
+JOIN v2_image_assets               v ON v.img_id = imc.img_id
+JOIN filings                       f ON v.doc_id = f.filing_id
+JOIN companies                     c ON f.company_id = c.company_id
+GROUP BY v.img_id, v.filename, v.file_path, v.relevance_score,
+         f.accession_number, c.cik, c.company_name
+HAVING bool_or(imc.decision IN ('accept','correct','add','reject'))
+ORDER BY c.company_name, v.img_id
 """
 
 _TIER1_FACTS_QUERY = """
@@ -1140,7 +1198,12 @@ Examples:
     parser.add_argument(
         "--build-corpus",
         action="store_true",
-        help="Export a stratified corpus manifest from v2_image_review_decisions.",
+        help=(
+            "Export a stratified corpus manifest from both reviewer surfaces: "
+            "v2_image_review_decisions (legacy) and v2_image_metric_confirmations "
+            "(per-metric; aggregated to image-level). Legacy rows take precedence "
+            "when the same img_id appears in both."
+        ),
     )
     parser.add_argument(
         "--provider",
@@ -1420,9 +1483,20 @@ def main() -> None:
 
         db = DatabaseAdapter(db_url)
 
-        logger.info("Querying v2_image_review_decisions for corpus...")
-        rows = db.query(_CORPUS_QUERY, {})
-        logger.info("  %d labeled images in DB", len(rows))
+        logger.info("Querying reviewer surfaces for corpus...")
+        legacy_rows = db.query(_CORPUS_QUERY_LEGACY, {})
+        logger.info("  %d legacy rows (v2_image_review_decisions)", len(legacy_rows))
+        confirmation_rows = db.query(_CORPUS_QUERY_CONFIRMATIONS, {})
+        logger.info(
+            "  %d confirmation-derived rows (v2_image_metric_confirmations)",
+            len(confirmation_rows),
+        )
+        # Legacy takes precedence: same dedup logic as export_image_training_data.py.
+        legacy_img_ids = {str(r["img_id"]) for r in legacy_rows}
+        rows = list(legacy_rows) + [
+            r for r in confirmation_rows if str(r["img_id"]) not in legacy_img_ids
+        ]
+        logger.info("  %d labeled images in DB (after dedup)", len(rows))
 
         # Fetch tier-1 fact counts per image
         logger.info("Fetching Tier-1 fact counts per image...")
