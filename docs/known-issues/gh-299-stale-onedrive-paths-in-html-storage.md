@@ -11,7 +11,8 @@ touches: []
 discovered: '2026-04-28'
 updated: '2026-04-28'
 gh_issue: 299
-pr_refs: []
+pr_refs:
+  - 311
 note: 'Migration script rewrote 13 prod rows from /Users/.../OneDrive-CMASB/... paths to worktree-relative form and populated html_content from disk; superseded by gh-300 (R2 storage migration).'
 ---
 
