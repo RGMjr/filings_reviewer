@@ -2,7 +2,7 @@
 # run_nightly_sweep.sh — orchestrator for the nightly KNOWN_ISSUES sweeper.
 #
 # Flow:
-#   1. Honor .claude/sweep.pause kill switch.
+#   1. Honor SWEEP_FORCE env-var gate (must be "1" to proceed).
 #   2. Fetch latest main, check out.
 #   3. Call scripts/known_issues_selector.py for up to N picks.
 #   4. For each pick: create a worktree, invoke `claude -p` with an issue-scoped
@@ -12,6 +12,10 @@
 #   7. Clean up worktrees that produced no commits; delete stale branches.
 #
 # Environment:
+#   SWEEP_FORCE          REQUIRED: must be "1" or the script exits 0 immediately.
+#                        Set on Render `filings-nightly-sweep` via env group
+#                        `filings-claude-secrets`. Local manual /sweep runs
+#                        must invoke as `SWEEP_FORCE=1 bash scripts/...`.
 #   SWEEP_MAX            max picks per run (default: 3)
 #   SWEEP_INCLUDE_REVIEW if set to 1, include Autonomy=review (default: 0)
 #   SWEEP_WALL_BUDGET    total wall-clock budget in seconds (default: 2700 = 45m)
@@ -20,7 +24,7 @@
 #   GH_TOKEN             required by `gh` (or prior `gh auth login`)
 #
 # Exits:
-#   0 — ran to completion (including empty picks / paused)
+#   0 — ran to completion (including empty picks / SWEEP_FORCE not set)
 #   1 — fatal prerequisite missing (git, claude, gh, or selector failure)
 
 set -euo pipefail
@@ -36,7 +40,6 @@ DATE="$(date +%Y-%m-%d)"
 RUN_START_EPOCH="$(date +%s)"
 RUN_START_HHMM="$(date +%H:%M)"
 
-PAUSE_FILE="$REPO_ROOT/.claude/sweep.pause"
 WORKTREE_ROOT="$REPO_ROOT/.claude/worktrees"
 DIGEST_DIR="$REPO_ROOT/.claude/sweep-digests"
 OUTCOMES_FILE="$(mktemp -t sweep-outcomes.XXXXXX.json)"
@@ -54,13 +57,12 @@ cleanup() {
 trap cleanup EXIT
 
 # --- 1. Kill switch ---
-if [[ -f "$PAUSE_FILE" ]]; then
-  if [[ "${SWEEP_FORCE:-0}" == "1" ]]; then
-    log "Kill switch active but SWEEP_FORCE=1 — proceeding anyway."
-  else
-    log "Kill switch active ($PAUSE_FILE exists). Exiting."
-    exit 0
-  fi
+# SWEEP_FORCE is the authoritative gate. On Render, it lives in env group
+# `filings-claude-secrets`; unset (or set to anything other than "1") to pause.
+# Local manual /sweep runs must invoke as `SWEEP_FORCE=1 bash scripts/...`.
+if [[ "${SWEEP_FORCE:-0}" != "1" ]]; then
+  log "SWEEP_FORCE not set to 1 — sweeper disabled. Exiting."
+  exit 0
 fi
 
 # --- 2. Prereqs + fresh main ---

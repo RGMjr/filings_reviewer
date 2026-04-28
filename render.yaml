@@ -90,8 +90,10 @@ services:
   # Safe issues auto-merge on green CI; review issues open draft PRs for
   # the morning review. See docs/operations/nightly-sweep-runbook.md.
   #
-  # SAFETY: .claude/sweep.pause (committed) halts all sweeps until deleted.
-  # Remove that file to activate the sweeper.
+  # SAFETY: gated by `SWEEP_FORCE=1` in env group `filings-claude-secrets`.
+  # Set to anything other than "1" (or unset) to pause all sweeps. The cron
+  # still fires on schedule; the script exits 0 with a "sweeper disabled"
+  # log line. No commit needed — Render env changes take effect next tick.
   - type: cron
     name: filings-nightly-sweep
     region: ohio

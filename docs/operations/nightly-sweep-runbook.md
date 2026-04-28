@@ -21,24 +21,30 @@ Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron se
 
 The source of truth for which issues the sweeper may touch is the `autonomy:` field in each fragment's YAML frontmatter under `docs/known-issues/`. The rollup `docs/KNOWN_ISSUES.md` is a CI-generated build artifact (not tracked in git); fragments are authoritative.
 
-## Activate / pause
+## Pause / unpause
 
-The sweeper ships **paused**. To activate:
+The sweeper is gated by the `SWEEP_FORCE` env var on the
+`filings-nightly-sweep` Render cron service (env group
+`filings-claude-secrets`).
+
+- `SWEEP_FORCE=1` → cron runs.
+- `SWEEP_FORCE=0` (or unset) → cron exits `0` with a "SWEEP_FORCE not set to 1
+  — sweeper disabled" log line on the Render service page. The cron still
+  fires on schedule.
+
+**To pause:** set `SWEEP_FORCE=0` (or remove it) in the Render dashboard
+under env group `filings-claude-secrets`.
+**To unpause:** set `SWEEP_FORCE=1`.
+
+No commit needed — Render env-group changes propagate to the next cron tick.
+
+Local manual `/sweep` runs require `SWEEP_FORCE=1` in the invoking shell:
 
 ```bash
-rm .claude/sweep.pause
-# commit via /commit; land the PR
+SWEEP_FORCE=1 bash scripts/run_nightly_sweep.sh
 ```
 
-To pause again any time:
-
-```bash
-touch .claude/sweep.pause
-git add .claude/sweep.pause
-# commit via /commit; land the PR
-```
-
-The cron still fires on schedule — it just exits `0` with a log line on the Render service page.
+Without the env var, the script exits 0 immediately.
 
 ## Morning review workflow
 
@@ -103,7 +109,7 @@ Configurable via Render env vars on the `filings-nightly-sweep` service (default
 
 **A `safe`-tagged issue gets merged but introduced a regression**: the CI gates should have caught it. If they didn't, downgrade the offending issue class to `review` (or `skip`) and file an issue on the CI gap.
 
-**An issue was misclassified and the sweeper worked on something risky**: pause with `.claude/sweep.pause`, revert the bad PR via `gh pr revert`, reclassify the issue to `skip`, unpause.
+**An issue was misclassified and the sweeper worked on something risky**: pause by setting `SWEEP_FORCE=0` in Render env group `filings-claude-secrets`, revert the bad PR via `gh pr revert`, reclassify the issue to `skip`, unpause by restoring `SWEEP_FORCE=1`.
 
 **Render cron is not firing**: check the Render service dashboard — the cron may be disabled, suspended, or failing at Docker build. Logs are on the service page.
 
