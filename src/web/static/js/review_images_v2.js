@@ -315,7 +315,6 @@
 
     const CARD_ID = 'detected-metrics-card';
     const ROW_SELECTOR = '.detected-metric-row';
-    const DATALIST_ID = 'detected-metrics-datalist';
 
     const state = {
         imgId: null,
@@ -324,7 +323,6 @@
         confirmationIds: {}, // same keys, maps → server-assigned confirmation id
         submitting: false,
         focusedRow: null,
-        metricsList: [],
         imageStatus: 'all',
         textPending: 0,
         nextFilingUrl: null,
@@ -355,7 +353,6 @@
             console.warn('Failed to parse confirmations:', e);
         }
 
-        loadMetricsList();
         applyInitialDecisionState();
         bindCardEvents(card);
         document.addEventListener('keydown', handleRowKeydown, true);
@@ -385,37 +382,6 @@
 
     function addKey(metricId) {
         return `__add__${metricId}`;
-    }
-
-    async function loadMetricsList() {
-        try {
-            const resp = await fetch('/api/v2/metrics/list', {
-                headers: { 'Accept': 'application/json' },
-            });
-            if (!resp.ok) return;
-            const data = await resp.json();
-            if (Array.isArray(data)) {
-                state.metricsList = data;
-                populateDatalist(data);
-            }
-        } catch (err) {
-            console.warn('Failed to load metrics list:', err);
-        }
-    }
-
-    function populateDatalist(metrics) {
-        const dl = document.getElementById(DATALIST_ID);
-        if (!dl) return;
-        dl.innerHTML = '';
-        metrics.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m.metric_id;
-            if (m.display_name && m.display_name !== m.metric_id) {
-                opt.label = m.display_name;
-                opt.textContent = m.display_name;
-            }
-            dl.appendChild(opt);
-        });
     }
 
     function applyInitialDecisionState() {

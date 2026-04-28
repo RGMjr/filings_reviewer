@@ -970,7 +970,7 @@
                     <label class="form-label small mb-1">Correct to</label>
                     <input type="text"
                            class="form-control form-control-sm metric-correct-input"
-                           list="detected-metrics-datalist"
+                           list="all-metrics-datalist"
                            placeholder="Search metrics…">
                   </div>
                   <div class="metric-state-indicator small mt-1 text-muted"
@@ -988,7 +988,7 @@
                   <input type="text"
                          id="add-missed-detected-input"
                          class="form-control form-control-sm"
-                         list="detected-metrics-datalist"
+                         list="all-metrics-datalist"
                          placeholder="Search metrics…">
                   <button type="button" class="btn btn-outline-primary btn-sm mt-2"
                           id="btn-add-missed-detected-confirm">
@@ -1004,7 +1004,6 @@
               </div>
             </div>
           </div>
-          <datalist id="detected-metrics-datalist"></datalist>
           {% endif %}
         </div>
       </div>
