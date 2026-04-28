@@ -4,6 +4,8 @@ discovered: '2026-04-20'
 estimated: S
 id: 62
 note: Resolved — `--cleanup-stuck` admin flag, SIGTERM log update, docs section shipped.
+pr_refs:
+- 303
 severity: low
 slug: local-dev-stuck-batch-recovery-is-manual
 source: legacy
