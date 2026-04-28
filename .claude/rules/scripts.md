@@ -26,3 +26,8 @@ paths:
 ## Notes
 
 Scripts are not directly unit-tested; their logic is tested via the modules they call. Run `python3 scripts/foo.py --help` for usage.
+
+## Testing
+
+- **Pure-logic scripts** (no DB writes, no external services): tested via the modules they call.
+- **DB-touching migration or CLI-integration scripts**: write integration tests at `tests/integration/test_<script>.py` (sibling pattern, not under `tests/unit/scripts/`). The script is loaded via `importlib` in the test; the `clean_db` / `test_db_adapter` fixtures from `tests/integration/conftest.py` are available. Precedents: `tests/integration/test_onboard_tickers_cli.py`, `tests/integration/test_migrate_onedrive_html_paths.py`, `tests/integration/test_migrate_filing_html_to_r2.py`.
