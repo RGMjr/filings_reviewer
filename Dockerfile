@@ -42,8 +42,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.lock,target=requirements.lock \
     python -m pip install -r requirements.lock
 
-# Copy the source code into the container.
-COPY --chown=appuser:appuser . .
+# Copy only the dirs read at runtime. Keeping this list explicit prevents
+# unrelated tree changes (docs, tests, .claude/) from busting the layer cache.
+COPY --chown=appuser:appuser src/ ./src/
+COPY --chown=appuser:appuser scripts/ ./scripts/
+COPY --chown=appuser:appuser sql/ ./sql/
+COPY --chown=appuser:appuser config/ ./config/
 
 # Create directories for logs, data, and coverage with proper permissions
 RUN mkdir -p /app/logs /app/data /app/filings_cache /app/htmlcov && \
