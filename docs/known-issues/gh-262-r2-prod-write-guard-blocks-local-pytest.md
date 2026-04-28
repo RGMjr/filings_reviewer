@@ -16,7 +16,7 @@ discovered: '2026-04-27'
 updated: '2026-04-28'
 gh_issue: 262
 pr_refs:
-  - 275
+  - 288
 ---
 
 ### Problem
@@ -41,7 +41,7 @@ Pick one of:
 
 ### Resolution
 
-Fixed via test-side fixture (Option A) in PR #275.
+Fixed via test-side fixture (Option A) in PR #288.
 
 Added `tests/integration/extraction_v2/conftest.py` with an autouse `_force_local_image_storage` fixture that clears R2 env vars (`R2_BUCKET`, `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) and calls `get_image_storage.cache_clear()` before and after each test. This redirects the pipeline to `LocalFilesystemStorage` for the duration of each test, regardless of the caller's shell environment.
 
