@@ -623,10 +623,10 @@ def create_image_metric_confirmations():
                 confirmed_metric_id = confirmed_metric_id or detected_metric_id
 
             elif decision == "reject":
-                if not detected_metric_id:
-                    return jsonify({"error": f"{prefix}: reject requires detected_metric_id"}), 400
                 if not rejection_reason:
                     return jsonify({"error": f"{prefix}: reject requires rejection_reason"}), 400
+                if not detected_metric_id and rejection_reason != "no_relevant_metrics":
+                    return jsonify({"error": f"{prefix}: reject requires detected_metric_id"}), 400
                 confirmed_metric_id = None
 
             elif decision == "correct":

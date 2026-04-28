@@ -340,7 +340,12 @@ def review_filing(filing_id: int):
         if current_fact:
             current_fact = _enrich_sparse_evidence(db, filing_id, current_fact)
 
-        # Calculate progress
+        # Calculate progress. Green/red badges merge text-fact decisions
+        # with per-metric image rejections so reviewers see one combined
+        # total. Image accepts already promote into v2_metric_facts via
+        # _promote_chart_fact, so the green count picks them up through
+        # all_facts. Image rejects deliberately do not promote a fact row
+        # (CLAUDE.md principle 4), so we count them separately.
         pending_count = sum(1 for f in all_facts if f["review_status"] == "pending_review")
         accepted_count = sum(
             1 for f in all_facts if f["review_status"] in ("accepted", "auto_accepted")
@@ -348,6 +353,7 @@ def review_filing(filing_id: int):
         rejected_count = sum(
             1 for f in all_facts if f["review_status"] in ("rejected", "corrected")
         )
+        rejected_count += db.count_image_metric_rejections_for_filing(filing_id)
 
         # Extract existing decision from current fact
         existing_decision = None

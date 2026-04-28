@@ -174,8 +174,8 @@
         <div class="text-end review-pill-row">
           <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
           <span class="badge bg-warning text-dark">{{ pending_count }} pending</span>
-          <span class="badge bg-success">{{ accepted_count|default(0) }} accepted</span>
-          <span class="badge bg-danger">{{ rejected_count|default(0) }} rejected</span>
+          <span class="badge bg-success" title="Text-fact accepts (image accepts also promote a chart fact and are included).">{{ accepted_count|default(0) }} accepted</span>
+          <span class="badge bg-danger" title="Text-fact rejects + per-metric image-rejection decisions (one row per metric, plus the no-relevant-metrics sentinel).">{{ rejected_count|default(0) }} rejected</span>
           {% if image_pending is defined %}
           <span class="badge bg-info text-dark ms-2">{{ image_pending }} img pending</span>
           {% if image_auto_rejected is defined and image_auto_rejected > 0 %}
