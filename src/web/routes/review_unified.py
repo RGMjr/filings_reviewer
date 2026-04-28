@@ -26,7 +26,7 @@ from flask import (
     url_for,
 )
 
-from src.infra.db import DatabaseAdapter
+from src.infra.db import DatabaseAdapter, infer_tab_from_filing
 from src.review.models import (
     IMAGE_CHART_TYPE_LABELS,
     IMAGE_CHART_TYPES,
@@ -388,9 +388,9 @@ def review_filing(filing_id: int):
         )
 
         # Stable partition: pending first (in existing probability-desc order),
-        # then everything else. Matches the order the reviewer will be advanced
-        # through via /api/v2/image-decisions -> next_candidate, so the thumbnail
-        # strip lets them glance ahead.
+        # then everything else. The same partition runs in
+        # `_get_next_image_candidate_info` so the next-image pointer walks the
+        # same order the thumbnail strip is rendering — keep them aligned.
         image_candidates = sorted(
             image_candidates,
             key=lambda c: 0 if c["review_status"] == "pending" else 1,
@@ -513,9 +513,31 @@ def next_filing():
         hide_completed = request.args.get("list_hide_completed", "0") == "1"
         reviewer_ids = [r for r in request.args.getlist("list_reviewer_id") if r]
 
+        # Tab-scoping fallback: if the reviewer arrived from the "All" view of
+        # the filings list (list_tab is None), keep advancement within the
+        # current filing's analytical tab so a 10-K reviewer doesn't jump to
+        # an investor-day deck. Look up document_type/form_type once.
+        effective_tab = list_tab
+        if effective_tab is None:
+            current_row = db.query(
+                """
+                SELECT f.form_type, d.document_type
+                FROM filings f
+                LEFT JOIN v2_documents d ON d.filing_id = f.filing_id
+                WHERE f.filing_id = %(filing_id)s
+                LIMIT 1
+                """,
+                {"filing_id": current_filing_id},
+            )
+            if current_row:
+                effective_tab = infer_tab_from_filing(
+                    current_row[0].get("document_type"),
+                    current_row[0].get("form_type"),
+                )
+
         next_id = db.get_next_filing_with_pending_work(
             current_filing_id=current_filing_id,
-            tab=list_tab,
+            tab=effective_tab,
             hide_completed=hide_completed,
             sort_by=sort_by,
             sort_dir=sort_dir,
@@ -523,14 +545,22 @@ def next_filing():
         )
 
         if next_id:
-            # Intentionally omit tab= so review_filing() can pick the tab based
-            # on which side actually has pending work (text vs images).
+            # Smart default: pick tab + status from the target filing's pending
+            # counts. Setting them explicitly in the redirect URL prevents the
+            # review-page localStorage restore from quietly swapping in a
+            # filter saved on a previous filing.
+            counts = db.get_filing_pending_counts(next_id)
             params_list: list[tuple[str, Any]] = [
-                ("status", "pending_review"),
                 ("list_sort_by", sort_by),
                 ("list_sort_dir", sort_dir),
                 ("list_hide_completed", 1 if hide_completed else 0),
             ]
+            if counts["facts_pending"] > 0:
+                params_list.insert(0, ("status", "pending_review"))
+            elif counts["images_pending"] > 0:
+                params_list.insert(0, ("tab", "images"))
+            else:
+                params_list.insert(0, ("status", "all"))
             if list_tab:
                 params_list.append(("list_document_type", list_tab))
             for rid in reviewer_ids:

@@ -238,13 +238,27 @@
               {% endif %}
             </td>
             <td>
+              {# Smart-default landing tab + status, computed per-filing from
+                 the pending counts already in the list query. Text-pending →
+                 Text+Pending Review; only-image-pending → Images; nothing
+                 pending → Text+All Statuses. Setting the param explicitly
+                 (rather than letting the route default) is required so the
+                 review-page localStorage restore (cmasb:review:text_filter /
+                 cmasb:review:image_filter) does not silently swap in a stored
+                 filter from a previous filing. #}
               {%- set review_kwargs = {
                 'filing_id': f.filing_id,
-                'status': 'pending_review',
                 'list_sort_by': sort_by,
                 'list_sort_dir': sort_dir,
                 'list_hide_completed': 1 if hide_completed else 0
               } -%}
+              {%- if (f.facts_pending or 0) > 0 -%}
+                {% set _ = review_kwargs.update({'status': 'pending_review'}) %}
+              {%- elif (f.images_pending or 0) > 0 -%}
+                {% set _ = review_kwargs.update({'tab': 'images'}) %}
+              {%- else -%}
+                {% set _ = review_kwargs.update({'status': 'all'}) %}
+              {%- endif -%}
               {%- if current_document_type and current_document_type != 'all' -%}
                 {% set _ = review_kwargs.update({'list_document_type': current_document_type}) %}
               {%- endif -%}

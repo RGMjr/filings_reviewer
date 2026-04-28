@@ -55,6 +55,25 @@ def tab_filter_sql(tab: str | None) -> str:
     return ""
 
 
+def infer_tab_from_filing(document_type: str | None, form_type: str | None) -> str | None:
+    """Map a (document_type, form_type) pair to the analytical tab it belongs to.
+
+    Used by cross-filing advance when the user arrived from the "All" view of
+    the filings list — `next_filing` falls back to the current filing's tab so
+    advancement stays within IPO / Earnings / Investor Day.
+    """
+    if document_type == "investor_presentation":
+        return "investor_day"
+    if document_type == "earnings_call":
+        return "earnings"
+    if document_type == "sec_filing":
+        if form_type in ("S-1", "S-1/A", "F-1", "F-1/A"):
+            return "ipo"
+        if form_type in ("8-K", "8-K/A", "10-K", "10-K/A", "10-Q", "10-Q/A"):
+            return "earnings"
+    return None
+
+
 class DatabaseAdapter:
     """
     Database adapter for Postgres operations.
@@ -1138,6 +1157,35 @@ class DatabaseAdapter:
             ORDER BY 1
         """
         return [row["reviewer_id"] for row in self.query(sql)]
+
+    def get_filing_pending_counts(self, filing_id: int) -> dict[str, int]:
+        """Return per-filing pending-review counts for text and image work.
+
+        Used by `next_filing` (and any other smart-default landing) to pick
+        between Text+Pending Review, Images, and Text+All Statuses without a
+        full filings-list query.
+        """
+        sql = """
+            SELECT
+                COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS facts_pending
+            FROM v2_metric_facts mf
+            WHERE mf.doc_id = %(filing_id)s
+        """
+        text_row = self.query(sql, {"filing_id": filing_id})
+        facts_pending = int(text_row[0]["facts_pending"]) if text_row else 0
+
+        sql_img = """
+            SELECT
+                COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending
+            FROM v2_image_assets v
+            WHERE v.doc_id = %(filing_id)s
+              AND v.classification NOT IN ('decorative', 'logo', 'signature')
+              AND v.filename IS NOT NULL AND v.filename != ''
+        """
+        img_row = self.query(sql_img, {"filing_id": filing_id})
+        images_pending = int(img_row[0]["images_pending"]) if img_row else 0
+
+        return {"facts_pending": facts_pending, "images_pending": images_pending}
 
     def get_v2_facts_for_filing(
         self,

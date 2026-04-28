@@ -167,9 +167,20 @@ def create_decision():
 
         logger.info(f"V2 decision {decision_id} for fact {fact_id}: {decision}")
 
-        # Find next pending fact in same filing
+        # Find next fact in the reviewer's current filtered view
         filing_id = fact["doc_id"]
-        next_fact = _get_next_pending_fact(db, filing_id, fact_id)
+        view_filters = (
+            data.get("view_filters") if isinstance(data.get("view_filters"), dict) else None
+        )
+        anchor_raw = data.get("anchor_index")
+        anchor_index = anchor_raw if isinstance(anchor_raw, int) else None
+        next_fact = _get_next_pending_fact(
+            db,
+            filing_id,
+            fact_id,
+            view_filters=view_filters,
+            anchor_index=anchor_index,
+        )
 
         return jsonify(
             {
@@ -277,7 +288,20 @@ def skip_image_candidate(img_id):
         logger.info(f"Skipped v2 image {img_id_str}")
 
         filing_id = candidate["filing_id"]
-        next_cand = _get_next_image_candidate_info(db, filing_id, img_id_str)
+        # Skip is fire-and-forget for the image; the body is empty for GET-style
+        # callers, so accept view_filters from query string OR JSON body.
+        view_filters: dict[str, Any] | None = None
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            if isinstance(data.get("view_filters"), dict):
+                view_filters = data["view_filters"]
+        if view_filters is None:
+            qs_status = request.args.get("image_status")
+            if qs_status:
+                view_filters = {"status": qs_status}
+        next_cand = _get_next_image_candidate_info(
+            db, filing_id, img_id_str, view_filters=view_filters
+        )
 
         return jsonify(
             {
@@ -657,7 +681,35 @@ def create_image_metric_confirmations():
                     r[k] = r[k].isoformat()
             serialised.append(r)
 
-        return jsonify({"ok": True, "upserted": upserted, "confirmations": serialised}), 200
+        # Compute next image candidate in the reviewer's filtered view so the
+        # client can advance after a per-metric submission. The N-decision
+        # batch maps to a single next_candidate (the image is the unit, not
+        # the metric). null fires the cross-tab / cross-doc cascade.
+        view_filters = (
+            data.get("view_filters") if isinstance(data.get("view_filters"), dict) else None
+        )
+        next_cand: dict[str, Any] | None = None
+        try:
+            candidate_row = db.get_image_review_candidate_v2(img_id)
+            if candidate_row:
+                next_cand = _get_next_image_candidate_info(
+                    db,
+                    candidate_row["filing_id"],
+                    img_id,
+                    view_filters=view_filters,
+                )
+        except Exception as exc:  # noqa: BLE001
+            # Advancement is a best-effort UX hint; never block decision write.
+            logger.warning("next_candidate lookup failed for img_id=%s: %s", img_id, exc)
+
+        return jsonify(
+            {
+                "ok": True,
+                "upserted": upserted,
+                "confirmations": serialised,
+                "next_candidate": next_cand,
+            }
+        ), 200
 
     except psycopg.errors.ForeignKeyViolation:
         return jsonify({"error": "img_id not found in v2_image_assets"}), 400
@@ -756,13 +808,59 @@ def _validate_v2_decision(data: dict[str, Any]) -> dict[str, str]:
     return errors
 
 
-def _get_next_pending_fact(db, filing_id: int, current_fact_id: str) -> dict | None:
-    """Find next pending_review fact in the same filing."""
-    facts = db.get_v2_facts_for_filing(filing_id, status="pending_review")
+_VALID_TEXT_SORTS = ("confidence_desc", "confidence_asc", "metric", "period")
+_VALID_TEXT_STATUSES = (
+    "pending_review",
+    "accepted",
+    "rejected",
+    "corrected",
+    "auto_accepted",
+)
+
+
+def _get_next_pending_fact(
+    db,
+    filing_id: int,
+    current_fact_id: str,
+    view_filters: dict[str, Any] | None = None,
+    anchor_index: int | None = None,
+) -> dict | None:
+    """Return the next fact to advance to, scoped to the reviewer's active view.
+
+    `view_filters` mirrors the URL params the review page is rendering with
+    (`status`, `metric`, `sort`). When provided, advancement walks the same
+    filtered+sorted list the user is looking at — so the next-fact pointer is
+    synchronized with the rendered thumbnail strip.
+
+    `anchor_index` is the position of the just-reviewed fact in the filtered
+    FACTS array at decision time. If the just-reviewed fact dropped out of the
+    filter (e.g. reject under `status=pending_review`), we fall back to that
+    index in the freshly-queried list — which now points at the *next* fact in
+    the user's view because the list shrunk by one.
+
+    Returns None when there is no further fact in the current view (the
+    cross-tab / cross-document cascade fires client-side).
+    """
+    view_filters = view_filters or {}
+    raw_status = view_filters.get("status")
+    raw_metric = view_filters.get("metric")
+    raw_sort = view_filters.get("sort")
+
+    db_status = raw_status if raw_status in _VALID_TEXT_STATUSES else None
+    db_metric = raw_metric if raw_metric and raw_metric != "all" else None
+    db_sort = raw_sort if raw_sort in _VALID_TEXT_SORTS else "confidence_desc"
+
+    facts = db.get_v2_facts_for_filing(
+        filing_id,
+        status=db_status,
+        metric_id=db_metric,
+        sort_by=db_sort,
+    )
     if not facts:
         return None
 
-    # Find current index
+    next_fact = None
+
     current_idx = None
     for i, f in enumerate(facts):
         if str(f["fact_id"]) == current_fact_id:
@@ -771,10 +869,16 @@ def _get_next_pending_fact(db, filing_id: int, current_fact_id: str) -> dict | N
 
     if current_idx is not None and current_idx + 1 < len(facts):
         next_fact = facts[current_idx + 1]
-    elif facts:
-        # Current not in pending list (just reviewed) or at end — take first
-        next_fact = facts[0]
-    else:
+    elif current_idx is None and isinstance(anchor_index, int) and anchor_index >= 0:
+        # The reviewed fact dropped out of the filter — the list shrank by
+        # one, so the same anchor_index now points at what was previously
+        # anchor_index+1. If the anchor was past the end, the user is done.
+        if anchor_index < len(facts):
+            candidate = facts[anchor_index]
+            if str(candidate["fact_id"]) != current_fact_id:
+                next_fact = candidate
+
+    if next_fact is None:
         return None
 
     if str(next_fact["fact_id"]) == current_fact_id:
@@ -791,35 +895,65 @@ def _get_next_pending_fact(db, filing_id: int, current_fact_id: str) -> dict | N
 # =============================================================================
 
 
+_VALID_IMAGE_STATUSES = ("pending", "reviewed", "skipped", "auto_rejected")
+
+
 def _get_next_image_candidate_info(
     db,
     filing_id: int,
     current_img_id: str,
+    view_filters: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """
-    Get the next pending V2 image for navigation.
+    """Return the next image candidate to advance to, scoped to the reviewer's view.
 
-    Returns dict with `img_id` and `url`, or None if no more candidates.
+    `view_filters['status']` mirrors `?image_status=` on the review page; when
+    present, advancement walks the same filtered list the user sees in the
+    thumbnail strip (pending-first partition + relevance ordering, matching
+    the partition applied at review_unified.py around the
+    `image_candidates = sorted(...)` block).
+
+    Returns None when the user is at the end of the current view; the
+    cross-tab / cross-document cascade then fires client-side.
     """
-    next_candidate = db.get_next_pending_image_candidate_v2(
+    view_filters = view_filters or {}
+    raw_status = view_filters.get("status")
+    db_status = raw_status if raw_status in _VALID_IMAGE_STATUSES else None
+
+    candidates = db.get_image_review_candidates_for_filing_v2(
         filing_id=filing_id,
-        current_img_id=current_img_id,
+        status=db_status,
+        sort_by="relevance",
+        limit=1000,
     )
-
-    # No more pending — fall back to first skipped (wrap around)
-    if not next_candidate:
-        next_candidate = db.get_next_pending_image_candidate_v2(
-            filing_id=filing_id,
-            current_img_id=None,
-            include_skipped=True,
-        )
-
-    if not next_candidate:
+    if not candidates:
         return None
 
-    next_id = str(next_candidate["img_id"])
+    # Same partition as the rendered thumbnail strip.
+    candidates = sorted(
+        candidates,
+        key=lambda c: 0 if c["review_status"] == "pending" else 1,
+    )
 
+    current_idx = None
+    for i, c in enumerate(candidates):
+        if str(c["img_id"]) == current_img_id:
+            current_idx = i
+            break
+
+    if current_idx is None or current_idx + 1 >= len(candidates):
+        return None
+
+    next_candidate = candidates[current_idx + 1]
+    next_id = str(next_candidate["img_id"])
+    if next_id == current_img_id:
+        return None
+
+    # Preserve the active image_status filter on the next URL so the strip
+    # the reviewer lands on shows the same scope.
+    qs = f"img_id={next_id}&tab=images"
+    if db_status:
+        qs += f"&image_status={db_status}"
     return {
         "img_id": next_id,
-        "url": f"/v2/review/{filing_id}?img_id={next_id}&tab=images",
+        "url": f"/v2/review/{filing_id}?{qs}",
     }

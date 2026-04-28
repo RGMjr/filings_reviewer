@@ -334,6 +334,13 @@ def test_v2_index_redirects_to_filings(client):
 def test_next_filing_preserves_sort_order(client, mock_db, mock_render_template):
     """Sort params passed to /next-filing reach get_next_filing_with_pending_work."""
     mock_db.get_next_filing_with_pending_work.return_value = 42
+    # Tab-inference fallback queries the current filing's metadata; an empty
+    # row keeps effective_tab=None so the original assertion still holds.
+    mock_db.query.return_value = []
+    mock_db.get_filing_pending_counts.return_value = {
+        "facts_pending": 1,
+        "images_pending": 0,
+    }
 
     client.get("/v2/review/next-filing?current_filing_id=1&list_sort_by=company&list_sort_dir=asc")
 
@@ -351,6 +358,11 @@ def test_next_filing_threads_reviewer_filter(client, mock_db, mock_render_templa
     """list_reviewer_id params are threaded into the DB call so cross-filing
     advance stays within the reviewer scope."""
     mock_db.get_next_filing_with_pending_work.return_value = 99
+    mock_db.query.return_value = []
+    mock_db.get_filing_pending_counts.return_value = {
+        "facts_pending": 1,
+        "images_pending": 0,
+    }
 
     response = client.get(
         "/v2/review/next-filing?current_filing_id=1&list_reviewer_id=alice&list_reviewer_id=bob"
@@ -378,6 +390,7 @@ def test_next_filing_when_queue_empty_returns_to_list_with_scope(
 ):
     """When no next filing exists, redirect to list preserves sort + reviewer filters."""
     mock_db.get_next_filing_with_pending_work.return_value = None
+    mock_db.query.return_value = []
 
     response = client.get(
         "/v2/review/next-filing?"
@@ -390,3 +403,61 @@ def test_next_filing_when_queue_empty_returns_to_list_with_scope(
     assert "sort_by=company" in response.location
     assert "sort_dir=asc" in response.location
     assert "reviewer_id=alice" in response.location
+
+
+def test_next_filing_smart_default_targets_images_when_text_done(
+    client, mock_db, mock_render_template
+):
+    """If the next filing has 0 pending text but pending images, the redirect
+    URL opens the images tab (not Text+Pending Review on an empty list)."""
+    mock_db.get_next_filing_with_pending_work.return_value = 77
+    mock_db.query.return_value = []
+    mock_db.get_filing_pending_counts.return_value = {
+        "facts_pending": 0,
+        "images_pending": 5,
+    }
+
+    response = client.get("/v2/review/next-filing?current_filing_id=1")
+
+    assert response.status_code == 302
+    assert "tab=images" in response.location
+    assert "status=" not in response.location.split("?")[1]
+
+
+def test_next_filing_smart_default_falls_back_to_all_when_nothing_pending(
+    client, mock_db, mock_render_template
+):
+    """If the next filing has no pending work (edge case via reviewer scope),
+    open Text+All Statuses rather than Pending Review."""
+    mock_db.get_next_filing_with_pending_work.return_value = 88
+    mock_db.query.return_value = []
+    mock_db.get_filing_pending_counts.return_value = {
+        "facts_pending": 0,
+        "images_pending": 0,
+    }
+
+    response = client.get("/v2/review/next-filing?current_filing_id=1")
+
+    assert response.status_code == 302
+    assert "status=all" in response.location
+
+
+def test_next_filing_infers_tab_from_current_filing_when_list_tab_missing(
+    client, mock_db, mock_render_template
+):
+    """When the reviewer arrived from the 'All' filings view (no
+    list_document_type), advancement still scopes to the current filing's
+    analytical tab (IPO / Earnings / Investor Day)."""
+    mock_db.get_next_filing_with_pending_work.return_value = 55
+    mock_db.query.return_value = [
+        {"document_type": "sec_filing", "form_type": "S-1"},
+    ]
+    mock_db.get_filing_pending_counts.return_value = {
+        "facts_pending": 3,
+        "images_pending": 0,
+    }
+
+    client.get("/v2/review/next-filing?current_filing_id=1")
+
+    call = mock_db.get_next_filing_with_pending_work.call_args
+    assert call.kwargs["tab"] == "ipo"
