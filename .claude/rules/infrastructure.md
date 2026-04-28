@@ -54,6 +54,10 @@ Region is pinned so blueprint re-deploys do not scatter services across regions.
 
 **Limitations.** Only `filings-reviewer` has the predeploy hook. Other services (`filings-extraction`, `filings-onboarding-runner`, `filings-nightly-sweep`, `filings-metabase`) rely on `filings-reviewer` running its predeploy first when a schema change ships — they redeploy in parallel but share the database, so the order doesn't matter for safety, only for log visibility.
 
+### Healthcheck
+
+`filings-reviewer` declares `healthCheckPath: /health` in `render.yaml`. The endpoint is registered in `src/web/app.py::_register_health_check`, requires no auth, and returns 200 when the DB pool is reachable, 503 otherwise. Render uses it to flip traffic to the new container the moment the app is live (vs. waiting on TCP-probe heuristics) and to abort a deploy whose container never reports healthy. Transient 503s during pool init are tolerated by Render's retry window.
+
 ## DATABASE_URL vs TEST_DATABASE_URL — IMPORTANT
 
 **In this project's `.env`, `DATABASE_URL` points at the Neon prod database, NOT local Postgres.** The local Docker Postgres is addressed by `TEST_DATABASE_URL`.

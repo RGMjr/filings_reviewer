@@ -45,3 +45,34 @@ README.md
 **/filings_cache
 **/logs
 **/data
+
+# Dev tooling, IDE, and AI assistant scaffolding — not read at runtime.
+**/.claude
+**/.github
+**/.idea
+**/.benchmarks
+**/.githooks
+**/.claudeignore
+
+# Test, docs, and design assets — not read by deployed services.
+**/screenshots
+**/ast-grep-rules
+**/tests
+**/docs
+
+# Build/dev manifests — runtime uses requirements.lock only.
+**/Makefile
+**/requirements-dev.txt
+**/uv.lock
+**/package.json
+**/package-lock.json
+**/pyproject.toml
+
+# Repo metadata not needed inside the image.
+**/render.yaml
+**/sgconfig.yml
+**/metrics_catalog.csv
+**/MANUAL_TESTING_GUIDE.md
+**/README.Docker.md
+**/CLAUDE.md
+**/.env.template

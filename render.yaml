@@ -34,6 +34,7 @@ services:
     # (schema_migrations ledger) so this is safe on every push to main.
     # DATABASE_URL is available here via the filings-shared-secrets group below.
     preDeployCommand: python3 scripts/apply_migrations.py
+    healthCheckPath: /health
     envVars:
       - fromGroup: filings-shared-secrets
       - key: SECRET_KEY
