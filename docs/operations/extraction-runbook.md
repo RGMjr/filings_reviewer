@@ -320,3 +320,76 @@ psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM filings WHERE html_storage_path LI
 > **Note (gh-300):** This is a tactical fix. gh-300 will replace
 > `html_storage_path` semantics with R2 storage keys, superseding this
 > migration's worktree-relative path format.
+
+---
+
+## Migrating filing HTMLs to R2
+
+Post-gh-300, filing source HTML lives in Cloudflare R2 and `filings.html_storage_path`
+stores opaque storage keys (`filings/<cik>/<accession>/primary.htm`). The migration
+script `scripts/migrate_filing_html_to_r2.py` uploads bytes from
+`html_content` (DB) → local disk → SEC re-fetch (in priority order), verifies via
+HEAD, then rewrites the column. The selector is self-filtering, so re-running
+the script is idempotent — useful when newly fetched filings (still written by
+the legacy fetcher path) accumulate.
+
+> See `.claude/rules/infrastructure.md#filing-html-storage` for the storage
+> contract and reader-side compatibility notes.
+
+### Audit (read-only)
+
+```bash
+psql "$DATABASE_URL" -c "
+SELECT COUNT(*) FILTER (WHERE html_storage_path LIKE 'filings/%/%/%') AS r2_keys,
+       COUNT(*) FILTER (WHERE html_storage_path IS NOT NULL
+                          AND html_storage_path NOT LIKE 'filings/%/%/%') AS not_yet_migrated,
+       COUNT(*) AS total
+  FROM filings;"
+```
+
+### Dry-run
+
+```bash
+python3 scripts/migrate_filing_html_to_r2.py
+```
+
+Reports the rows that would be migrated without uploading anything.
+
+### Apply
+
+```bash
+# Local DB (runs against LocalFilesystemFilingStorage when R2_BUCKET unset)
+DATABASE_URL="$TEST_DATABASE_URL" python3 scripts/migrate_filing_html_to_r2.py --apply
+
+# Prod (Neon + R2) — requires both --allow-prod and FILINGS_REVIEWER_ALLOW_PROD_WRITES=1
+FILINGS_REVIEWER_ALLOW_PROD_WRITES=1 \
+  python3 scripts/migrate_filing_html_to_r2.py --apply --allow-prod
+```
+
+### Verify
+
+```bash
+psql "$DATABASE_URL" -c "
+SELECT COUNT(*) FILTER (WHERE html_storage_path LIKE 'filings/%/%/%') AS r2_keys,
+       COUNT(*) FILTER (WHERE html_storage_path IS NOT NULL
+                          AND html_storage_path NOT LIKE 'filings/%/%/%') AS not_yet_migrated
+  FROM filings;"
+# Expected: not_yet_migrated = 0 (or = the count of rows where all sources failed)
+```
+
+Spot-check one filing through the refactored extraction path:
+
+```bash
+python3 scripts/run_v2_extraction.py --filing-id <ID> --dry-run
+```
+
+The log line `read from R2 key filings/<cik>/<accession>/primary.htm` confirms
+the R2 short-circuit is engaged.
+
+> **Follow-up (deferred):** `src/filing_fetcher/filing_fetcher.py` still writes
+> filesystem paths on fetch. Newly fetched filings are migrated to R2 keys by
+> re-running this script. A future PR will refactor the fetcher to write R2
+> keys directly. After that, this migration script becomes a one-time cleanup
+> tool. The `html_content` column is also retained as a fallback during the
+> initial soak; a separate follow-up will drop it once R2 has been stable for
+> ≥30 days without incident.

@@ -47,6 +47,8 @@ PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_met
 
 Image bytes live in Cloudflare R2 (prod) / local filesystem (dev) via `src/infra/image_storage.py`, NOT in Postgres. `v2_image_assets.file_path` stores an opaque storage key (e.g. `pipeline/<cik>/<accession>/<filename>`) — see `.claude/rules/infrastructure.md#image-storage`.
 
+Filing HTML persists the same way via `src/infra/filing_storage.py` (gh-300). `filings.html_storage_path` stores an opaque storage key (e.g. `filings/<cik>/<accession>/primary.htm`); legacy filesystem paths still resolve via the existing disk + `html_content` DB-blob fallback. See `.claude/rules/infrastructure.md#filing-html-storage`.
+
 ## Testing Standards
 
 - **Coverage**: 80% minimum (enforced)
