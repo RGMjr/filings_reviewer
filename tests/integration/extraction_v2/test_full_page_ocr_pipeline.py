@@ -146,19 +146,6 @@ def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
     _cleanup()
 
 
-@pytest.fixture(autouse=True)
-def _local_image_storage(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Force ``get_image_storage()`` to LocalFilesystemStorage.
-
-    When a contributor sources prod ``.env`` for one-off psql/boto3 work,
-    ``R2_BUCKET`` is set, and the post-#80 guard then refuses
-    ``put_bytes`` in ingestion. Clearing the R2 env vars here makes the
-    test deterministic regardless of caller env.
-    """
-    for var in ("R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
-        monkeypatch.delenv(var, raising=False)
-
-
 @pytest.fixture
 def mock_vision_client() -> MagicMock:
     """`VisionClient` mock that returns canned page-OCR text."""
