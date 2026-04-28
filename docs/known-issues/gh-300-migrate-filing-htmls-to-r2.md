@@ -11,7 +11,8 @@ touches: []
 discovered: '2026-04-28'
 updated: '2026-04-28'
 gh_issue: 300
-pr_refs: []
+pr_refs:
+  - 316
 note: 'Shipped src/infra/filing_storage.py + extraction call-site refactor + migration script. 79 prod rows migrated to R2 keys; html_content kept as fallback. Fetcher refactor and html_content drop deferred to follow-up fragments.'
 ---
 
