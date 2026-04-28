@@ -58,6 +58,17 @@ Region is pinned so blueprint re-deploys do not scatter services across regions.
 
 `filings-reviewer` declares `healthCheckPath: /health` in `render.yaml`. The endpoint is registered in `src/web/app.py::_register_health_check`, requires no auth, and returns 200 when the DB pool is reachable, 503 otherwise. Render uses it to flip traffic to the new container the moment the app is live (vs. waiting on TCP-probe heuristics) and to abort a deploy whose container never reports healthy. Transient 503s during pool init are tolerated by Render's retry window.
 
+### Multi-stage Dockerfile shape
+
+Both `Dockerfile` and `Dockerfile.nightly-sweep` are multi-stage builds:
+
+- **builder** (`python:3.11-slim`) installs `gcc` + `libpq-dev` and runs `pip install -r requirements.lock` into `/opt/venv`.
+- **runtime** (`python:3.11-slim`) installs only `libpq5` (the runtime shared library psycopg links against), copies `/opt/venv` from the builder, and adds the application source. The `gcc`/`libpq-dev` headers and pip's intermediate cache do not ship.
+
+Net effect on Render: smaller cached layers → faster pull from the build cache, faster image pull on the runtime VM, and faster cold-start. The builder/runtime stages share an identical Python base so wheels compiled against builder glibc remain ABI-compatible with runtime.
+
+The nightly-sweep image's runtime stage additionally pulls in `git`, `curl`, `ca-certificates` and the pinned `gh` and `claude` CLI binaries — those tools are invoked by `scripts/run_nightly_sweep.sh` at run time and must live in the runtime stage, not the builder.
+
 ## DATABASE_URL vs TEST_DATABASE_URL — IMPORTANT
 
 **In this project's `.env`, `DATABASE_URL` points at the Neon prod database, NOT local Postgres.** The local Docker Postgres is addressed by `TEST_DATABASE_URL`.
