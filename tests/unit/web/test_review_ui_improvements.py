@@ -234,9 +234,16 @@ def test_image_thumbnails_pending_items_first(client):
     )
 
 
-def test_next_filing_redirect_omits_tab_param(client):
+def test_next_filing_redirect_omits_tab_param_when_text_pending(client):
+    """Smart default: text pending → status=pending_review, no tab= override
+    (the route renders Text by default so tab= is unnecessary)."""
     mock_db = MagicMock()
     mock_db.get_next_filing_with_pending_work.return_value = 99
+    mock_db.query.return_value = []
+    mock_db.get_filing_pending_counts.return_value = {
+        "facts_pending": 4,
+        "images_pending": 0,
+    }
 
     with patch("src.web.routes.review_unified.get_db", return_value=mock_db):
         response = client.get(
@@ -250,6 +257,7 @@ def test_next_filing_redirect_omits_tab_param(client):
         f"Expected redirect to /v2/review/99, got {location!r}"
     )
     assert "tab=" not in location, f"next-filing redirect must not hardcode tab=; got {location!r}"
+    assert "status=pending_review" in location
 
 
 def test_window_text_pending_exposed_on_images_tab(client):

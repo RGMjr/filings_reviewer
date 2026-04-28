@@ -21,6 +21,7 @@
         currentImgId: null,
         candidates: [],
         submitting: false,
+        imageStatus: null,
     };
 
     function init() {
@@ -29,6 +30,7 @@
 
         state.filingId = container.dataset.filingId;
         state.currentImgId = container.dataset.imgId;
+        state.imageStatus = container.dataset.imageStatus || 'all';
 
         try {
             state.candidates = JSON.parse(container.dataset.candidates || '[]');
@@ -115,8 +117,11 @@
         state.submitting = true;
 
         try {
+            const qs = state.imageStatus && state.imageStatus !== 'all'
+                ? `?image_status=${encodeURIComponent(state.imageStatus)}`
+                : '';
             const response = await fetch(
-                `/api/v2/image-candidates/${state.currentImgId}/skip`,
+                `/api/v2/image-candidates/${state.currentImgId}/skip${qs}`,
                 { method: 'POST' }
             );
             const data = await response.json();
@@ -259,6 +264,9 @@
         submitting: false,
         focusedRow: null,
         metricsList: [],
+        imageStatus: 'all',
+        textPending: 0,
+        nextFilingUrl: null,
     };
 
     function init() {
@@ -266,6 +274,12 @@
         if (!card) return;
 
         state.imgId = card.dataset.imgId || null;
+        const container = document.getElementById('review-container');
+        if (container) {
+            state.imageStatus = container.dataset.imageStatus || 'all';
+        }
+        state.textPending = (typeof window.TEXT_PENDING === 'number') ? window.TEXT_PENDING : 0;
+        state.nextFilingUrl = window.NEXT_FILING_URL || null;
         try {
             state.detectedMetrics = JSON.parse(card.dataset.detectedMetrics || '[]');
         } catch (e) {
@@ -712,6 +726,7 @@
             img_id: state.imgId,
             reviewer_id: reviewerName,
             decisions,
+            view_filters: { status: state.imageStatus },
         };
 
         try {
@@ -730,6 +745,23 @@
                 document.querySelectorAll('#detected-metrics-list .added-metric-row')
                     .forEach(n => n.remove());
                 applyInitialDecisionState();
+
+                // Advance: prefer the server-computed next_candidate (already
+                // scoped to view_filters). When null, the user is at the end
+                // of the filtered list — fall through to the cross-tab /
+                // cross-doc cascade. The image-level skip / unskip flow uses
+                // the same shape via /api/v2/image-candidates/<id>/skip.
+                if (data.next_candidate && data.next_candidate.url) {
+                    window.location.href = data.next_candidate.url;
+                    return;
+                }
+                if (state.textPending > 0 && window.FILING_ID) {
+                    window.location.href = `/v2/review/${window.FILING_ID}?tab=text`;
+                    return;
+                }
+                if (state.nextFilingUrl) {
+                    window.location.href = state.nextFilingUrl;
+                }
             } else {
                 showMetricsToast(data.error || 'Failed to save', 'danger');
             }
@@ -786,6 +818,7 @@
                     decision: 'reject',
                     rejection_reason: 'not_present',
                 })),
+                view_filters: { status: state.imageStatus },
             };
             const resp = await fetch('/api/v2/image-metric-confirmations', {
                 method: 'POST',
@@ -798,8 +831,11 @@
                 return;
             }
 
+            const skipQs = state.imageStatus && state.imageStatus !== 'all'
+                ? `?image_status=${encodeURIComponent(state.imageStatus)}`
+                : '';
             const skipResp = await fetch(
-                `/api/v2/image-candidates/${state.imgId}/skip`,
+                `/api/v2/image-candidates/${state.imgId}/skip${skipQs}`,
                 { method: 'POST' }
             );
             const skipData = await skipResp.json();
@@ -807,7 +843,15 @@
                 window.location.href = skipData.next_candidate.url;
                 return;
             }
-            // Skip failed or queue empty — rejections are still saved; reload page.
+            // Filtered queue empty — fall through to cross-tab / cross-doc cascade.
+            if (state.textPending > 0 && window.FILING_ID) {
+                window.location.href = `/v2/review/${window.FILING_ID}?tab=text`;
+                return;
+            }
+            if (state.nextFilingUrl) {
+                window.location.href = state.nextFilingUrl;
+                return;
+            }
             showMetricsToast('Rejections saved', 'success');
             window.location.reload();
         } catch (err) {
