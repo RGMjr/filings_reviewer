@@ -67,7 +67,26 @@
         if (event.metaKey || event.ctrlKey || event.altKey) return;
         if (state.submitting) return;
 
+        // Shift+R — reject all (no relevant metrics). Fires regardless of
+        // whether a per-metric row is focused, so this check must come before
+        // the focusedRow early-return below.
+        if (event.shiftKey && (event.key === 'R' || event.key === 'r')) {
+            event.preventDefault();
+            rejectAllUnreviewed();
+            return;
+        }
+
         const key = event.key.toLowerCase();
+
+        // N / P image-level navigation — only fire when no per-metric row is
+        // focused (per-row N uses focusNextUnreviewed instead).
+        if (key === 'n' || key === 'p') {
+            if (state.focusedRow) return;
+            event.preventDefault();
+            if (key === 'n') navigateNext();
+            else navigatePrevious();
+            return;
+        }
 
         switch (key) {
             case 's':
@@ -171,6 +190,46 @@
         }
     }
 
+    async function reopenImage() {
+        if (state.submitting) return;
+
+        const btn = document.getElementById('btn-reopen-image');
+        const imgId = (btn && btn.dataset.imgId) || state.currentImgId;
+        if (!imgId) return;
+
+        const reviewerName = (typeof window.requireReviewerName === 'function')
+            ? window.requireReviewerName()
+            : localStorage.getItem('reviewer_name');
+        if (!reviewerName) return;
+
+        state.submitting = true;
+        try {
+            const qs = state.imageStatus && state.imageStatus !== 'all'
+                ? `?image_status=${encodeURIComponent(state.imageStatus)}`
+                : '';
+            const response = await fetch(
+                `/api/v2/image-candidates/${imgId}/reopen${qs}`,
+                {
+                    method: 'POST',
+                    headers: { 'X-Reviewer-Id': reviewerName },
+                }
+            );
+            const data = await response.json();
+            if (response.ok) {
+                showToast('Image re-opened for review', 'success');
+                window.location.href =
+                    `/v2/review/${state.filingId}?tab=images&image_status=pending`;
+            } else {
+                showToast(data.message || 'Failed to re-open image', 'danger');
+            }
+        } catch (err) {
+            showToast('Network error', 'danger');
+            console.error('Reopen error:', err);
+        } finally {
+            state.submitting = false;
+        }
+    }
+
     function navigateNext() {
         const currentIndex = state.candidates.findIndex(c => c.img_id === state.currentImgId);
         if (currentIndex < state.candidates.length - 1) {
@@ -194,9 +253,11 @@
     function bindButtonEvents() {
         const skipBtn = document.getElementById('btn-skip');
         const undoBtn = document.getElementById('btn-undo');
+        const reopenBtn = document.getElementById('btn-reopen-image');
 
         if (skipBtn) skipBtn.addEventListener('click', submitSkip);
         if (undoBtn) undoBtn.addEventListener('click', undoSkip);
+        if (reopenBtn) reopenBtn.addEventListener('click', reopenImage);
     }
 
     function showToast(message, type = 'info') {
@@ -484,6 +545,9 @@
             event.stopPropagation();
             acceptRow(row);
         } else if (key === 'r') {
+            // Shift+R is handled at the image level (rejectAllUnreviewed).
+            // Let it propagate up rather than opening the per-row reject form.
+            if (event.shiftKey) return;
             event.preventDefault();
             event.stopPropagation();
             openReject(row);

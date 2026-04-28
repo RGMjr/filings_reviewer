@@ -2166,6 +2166,22 @@ class DatabaseAdapter:
         result = self.query(sql, {"img_id": img_id})
         return len(result) > 0
 
+    def reopen_image_candidate_v2(self, img_id: str) -> bool:
+        """Flip review_status='reviewed' -> 'pending'. Returns True if a row was updated.
+
+        Preserves v2_image_review_decisions and v2_image_metric_confirmations rows
+        (ML training signal — see CLAUDE.md).
+        """
+        sql = """
+            UPDATE v2_image_assets
+            SET review_status = 'pending'
+            WHERE img_id = %(img_id)s
+              AND review_status = 'reviewed'
+            RETURNING img_id
+        """
+        result = self.query(sql, {"img_id": img_id})
+        return len(result) > 0
+
     def get_image_review_progress_v2(self, filing_id: int | None = None) -> dict[str, Any]:
         """
         V2-native progress counts. If filing_id is given, counts are filing-scoped;

@@ -22,7 +22,9 @@ import pytest
 from src.infra.db import DatabaseAdapter
 from src.universe.onboarding import Candidate, FilingEvent, RunSummary
 from src.universe.onboarding_runner import (
+    ProdGuardError,
     claim_batch,
+    cleanup_stuck_batches,
     run_one,
 )
 
@@ -335,3 +337,110 @@ class TestExpiredLock:
 
         row = claim_batch(db, uuid.UUID(batch_id))
         assert row is None, "Should not be able to claim a batch with an active lock"
+
+
+# ---------------------------------------------------------------------------
+# cleanup_stuck_batches: NS2 admin flag (legacy-062)
+# ---------------------------------------------------------------------------
+
+
+def _set_lock(db: DatabaseAdapter, batch_id: str, interval_sql: str) -> None:
+    """Force-set run_lock_until on a batch (interval is raw SQL, test-only)."""
+    db.execute(
+        f"UPDATE v2_ingest_batches SET run_lock_until = NOW() + ({interval_sql}) "
+        "WHERE batch_id = %s",
+        [batch_id],
+    )
+
+
+class TestCleanupStuckBatches:
+    def test_dry_run_identifies_stuck_rows_without_writing(
+        self, clean_batch_db: DatabaseAdapter
+    ) -> None:
+        db = clean_batch_db
+        batch_id = _insert_batch(db, status="running", total_filings=1)
+        _set_lock(db, batch_id, "INTERVAL '-2 hours'")
+
+        result = cleanup_stuck_batches(db, threshold="1 hour", apply=False)
+
+        assert result["matched"] == 1
+        assert result["marked_failed"] == 0
+        assert batch_id in result["batch_ids"]
+        row = _get_batch(db, batch_id)
+        assert row is not None
+        assert row["status"] == "running"
+        assert row["finished_at"] is None
+
+    def test_apply_marks_failed(self, clean_batch_db: DatabaseAdapter) -> None:
+        db = clean_batch_db
+        batch_id = _insert_batch(db, status="running", total_filings=1)
+        _set_lock(db, batch_id, "INTERVAL '-2 hours'")
+
+        result = cleanup_stuck_batches(db, threshold="1 hour", apply=True)
+
+        assert result["matched"] == 1
+        assert result["marked_failed"] == 1
+        row = _get_batch(db, batch_id)
+        assert row is not None
+        assert row["status"] == "failed"
+        assert row["finished_at"] is not None
+        assert row["run_lock_until"] is None
+
+    def test_threshold_honored(self, clean_batch_db: DatabaseAdapter) -> None:
+        db = clean_batch_db
+        batch_id = _insert_batch(db, status="running", total_filings=1)
+        _set_lock(db, batch_id, "INTERVAL '-30 minutes'")
+
+        result = cleanup_stuck_batches(db, threshold="1 hour", apply=False)
+
+        assert result["matched"] == 0
+        assert result["marked_failed"] == 0
+        row = _get_batch(db, batch_id)
+        assert row is not None
+        assert row["status"] == "running"
+
+    def test_live_watcher_not_flagged(self, clean_batch_db: DatabaseAdapter) -> None:
+        db = clean_batch_db
+        batch_id = _insert_batch(db, status="running", total_filings=1)
+        _set_lock(db, batch_id, "INTERVAL '5 minutes'")
+
+        result = cleanup_stuck_batches(db, threshold="1 hour", apply=True)
+
+        assert result["matched"] == 0
+        assert result["marked_failed"] == 0
+        row = _get_batch(db, batch_id)
+        assert row is not None
+        assert row["status"] == "running"
+
+    def test_prod_host_guard_refuses_apply(self, clean_batch_db: DatabaseAdapter) -> None:
+        db = clean_batch_db
+        batch_id = _insert_batch(db, status="running", total_filings=1)
+        _set_lock(db, batch_id, "INTERVAL '-2 hours'")
+
+        prod_url = "postgresql://user:pw@ep-foo-1234.us-east-2.aws.neon.tech/db"
+        with pytest.raises(ProdGuardError):
+            cleanup_stuck_batches(
+                db,
+                threshold="1 hour",
+                apply=True,
+                allow_prod=False,
+                db_url=prod_url,
+            )
+
+        # Confirm no write occurred.
+        row = _get_batch(db, batch_id)
+        assert row is not None
+        assert row["status"] == "running"
+
+        # Dry-run against the same prod URL is permitted.
+        result = cleanup_stuck_batches(
+            db, threshold="1 hour", apply=False, allow_prod=False, db_url=prod_url
+        )
+        assert result["matched"] == 1
+        assert result["marked_failed"] == 0
+
+        # --allow-prod permits the write.
+        result = cleanup_stuck_batches(
+            db, threshold="1 hour", apply=True, allow_prod=True, db_url=prod_url
+        )
+        assert result["marked_failed"] == 1

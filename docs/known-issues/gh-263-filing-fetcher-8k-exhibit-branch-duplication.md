@@ -3,7 +3,7 @@ id: 263
 source: gh
 slug: filing-fetcher-8k-exhibit-branch-duplication
 title: FilingFetcher.fetch_filing duplicates 8-K exhibit-99-1 logic across cold-fetch and cached-backfill branches
-status: open
+status: resolved
 severity: low
 autonomy: safe
 estimated: S
@@ -12,6 +12,8 @@ touches:
 discovered: '2026-04-27'
 updated: '2026-04-27'
 gh_issue: 263
+pr_refs:
+  - 272
 ---
 
 ### Problem
@@ -40,3 +42,17 @@ The day someone forgets one branch, we ship a half-fix: the cold-fetch path beha
 ### Out of scope
 
 This is a refactor, not a bug fix. Defer until someone is touching this code path for an unrelated reason — the duplication is a hazard, not a current breakage.
+
+### Resolution
+
+PR #272 (merged 2026-04-28) extracted `_maybe_append_exhibit_991`
+in `src/filing_fetcher/filing_fetcher.py` and routes both the
+cold-fetch and cached-backfill branches through it. Both legacy-058's
+`get_exhibit_99_1_url` fetch logic and legacy-115's PDF skip+warn
+guard now live in the helper, removing the matched-edits hazard
+this fragment flagged.
+
+The fragment was not flipped at PR #272 merge time because `pr_refs`
+was not set on the fragment in that PR — the same drift gh-258
+(PR #286) now warns against. This closure PR is the bookkeeping
+half.

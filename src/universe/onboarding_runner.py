@@ -7,12 +7,24 @@ filing in sequence and writing progress to v2_ingest_batch_filings.
 Entry point:
     python3 -m src.universe.onboarding_runner --batch-id <UUID>
     python3 -m src.universe.onboarding_runner --watch [--poll-interval 10]
+    python3 -m src.universe.onboarding_runner --cleanup-stuck [--apply]
+        [--stuck-threshold '1 hour'] [--allow-prod]
 
 CLI flags
 ---------
 --batch-id UUID         Process a single batch then exit.
 --watch                 Long-running mode; claim queued batches one at a time.
+--cleanup-stuck         Admin mode: scan for stuck running batches whose
+                        run_lock_until is older than --stuck-threshold and
+                        mark them failed. Dry-run by default; pass --apply
+                        to write. Refuses --apply against a *.neon.tech
+                        host unless --allow-prod is set.
 --poll-interval N       Watch-mode sleep between claims (default: 10 seconds).
+--stuck-threshold T     Postgres interval string for cleanup-stuck cutoff
+                        (default: '1 hour').
+--apply                 cleanup-stuck only: actually write the UPDATE.
+--allow-prod            cleanup-stuck only: permit --apply against a
+                        *.neon.tech DATABASE_URL.
 --verbose               DEBUG-level logging.
 """
 
@@ -25,6 +37,7 @@ import os
 import re
 import signal
 import time
+import urllib.parse
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -54,7 +67,12 @@ _shutdown_requested: bool = False
 def _signal_handler(signum: int, frame: Any) -> None:  # noqa: ANN401
     global _shutdown_requested
     _shutdown_requested = True
-    logger.info("Shutdown signal received (%s); will stop after current filing.", signum)
+    logger.info(
+        "Shutdown signal received (%s); will stop after current filing. "
+        "To recover stuck batches afterwards, run: "
+        "python3 -m src.universe.onboarding_runner --cleanup-stuck",
+        signum,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +185,30 @@ WHERE batch_id = %s;
 """
 
 _FACT_COUNT_RE = re.compile(r"(\d+)\s+facts")
+
+_CLEANUP_STUCK_SELECT_SQL = """\
+SELECT batch_id::text AS batch_id, started_at, run_lock_until
+FROM v2_ingest_batches
+WHERE status = 'running'
+  AND run_lock_until IS NOT NULL
+  AND run_lock_until < NOW() - (%(threshold)s)::interval
+ORDER BY started_at NULLS LAST, batch_id;
+"""
+
+_CLEANUP_STUCK_UPDATE_SQL = """\
+UPDATE v2_ingest_batches
+SET status = 'failed',
+    finished_at = NOW(),
+    run_lock_until = NULL
+WHERE status = 'running'
+  AND run_lock_until IS NOT NULL
+  AND run_lock_until < NOW() - (%(threshold)s)::interval
+RETURNING batch_id::text AS batch_id;
+"""
+
+
+class ProdGuardError(RuntimeError):
+    """Raised when --apply is attempted against a production DATABASE_URL without --allow-prod."""
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +436,97 @@ def _run_populate(db: DatabaseAdapter, batch_row: dict[str, Any]) -> None:
     logger.info("_run_populate: batch_id=%s done", batch_id_str)
 
 
+def _is_prod_db_url(db_url: str) -> bool:
+    """Return True if *db_url*'s host looks like a Neon production endpoint.
+
+    Matches any hostname ending in ``.neon.tech`` (case-insensitive).
+    """
+    try:
+        host = urllib.parse.urlparse(db_url).hostname or ""
+    except (ValueError, AttributeError):
+        return False
+    return host.lower().endswith(".neon.tech")
+
+
+def cleanup_stuck_batches(
+    db: DatabaseAdapter,
+    threshold: str,
+    apply: bool,
+    *,
+    allow_prod: bool = False,
+    db_url: str | None = None,
+) -> dict[str, Any]:
+    """Identify (and optionally fail) batches stuck in ``status='running'``.
+
+    A batch is considered stuck when its ``run_lock_until`` is non-null and
+    older than ``NOW() - threshold``. Live workers extend ``run_lock_until``
+    on every progress event, so any active watcher is filtered out by
+    construction.
+
+    Behaviour
+    ---------
+    Dry-run (``apply=False``): SELECT the candidate rows and return their
+    count. No UPDATE is issued.
+
+    Apply (``apply=True``): UPDATE matched rows to ``status='failed'``,
+    ``finished_at=NOW()``, ``run_lock_until=NULL`` and return the count of
+    rows actually modified (via ``RETURNING``).
+
+    Raises
+    ------
+    ProdGuardError
+        If ``apply=True`` and ``db_url`` points at a ``*.neon.tech`` host
+        without ``allow_prod=True``.
+
+    Returns
+    -------
+    dict with keys ``matched`` (always populated) and ``marked_failed``
+    (zero in dry-run; UPDATE rowcount in apply mode), plus ``batch_ids``
+    (list of stringified candidate batch_ids from the dry-run SELECT).
+    """
+    if apply and db_url is not None and _is_prod_db_url(db_url) and not allow_prod:
+        raise ProdGuardError(
+            "Refusing --apply against a *.neon.tech DATABASE_URL. "
+            "Pass --allow-prod to override (this writes to production)."
+        )
+
+    candidates = db.query(_CLEANUP_STUCK_SELECT_SQL, {"threshold": threshold})
+    matched = len(candidates)
+    batch_ids = [str(r["batch_id"]) for r in candidates]
+
+    if matched:
+        logger.info(
+            "cleanup-stuck: %d candidate batch(es) older than threshold=%r:",
+            matched,
+            threshold,
+        )
+        for row in candidates:
+            logger.info(
+                "  batch_id=%s started_at=%s run_lock_until=%s",
+                row["batch_id"],
+                row["started_at"],
+                row["run_lock_until"],
+            )
+    else:
+        logger.info("cleanup-stuck: no stuck batches matched threshold=%r.", threshold)
+
+    if not apply:
+        logger.info(
+            "cleanup-stuck: matched=%d marked_failed=0 (dry-run)",
+            matched,
+        )
+        return {"matched": matched, "marked_failed": 0, "batch_ids": batch_ids}
+
+    updated = db.execute(_CLEANUP_STUCK_UPDATE_SQL, {"threshold": threshold}, fetch=True)
+    marked_failed = len(updated or [])
+    logger.info(
+        "cleanup-stuck: matched=%d marked_failed=%d (applied)",
+        matched,
+        marked_failed,
+    )
+    return {"matched": matched, "marked_failed": marked_failed, "batch_ids": batch_ids}
+
+
 def main() -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -411,12 +544,42 @@ def main() -> int:
         action="store_true",
         help="Long-running mode; claim queued batches one at a time.",
     )
+    mode_group.add_argument(
+        "--cleanup-stuck",
+        action="store_true",
+        help=(
+            "Admin mode: scan for batches stuck in status='running' with "
+            "run_lock_until older than --stuck-threshold. Dry-run by default; "
+            "pass --apply to mark them failed."
+        ),
+    )
     parser.add_argument(
         "--poll-interval",
         type=int,
         default=10,
         metavar="SECONDS",
         help="Watch-mode sleep between claim attempts (default: 10).",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="cleanup-stuck only: actually write the UPDATE (default: dry-run).",
+    )
+    parser.add_argument(
+        "--stuck-threshold",
+        default="1 hour",
+        metavar="INTERVAL",
+        help=(
+            "cleanup-stuck only: Postgres interval string for the stuck cutoff (default: '1 hour')."
+        ),
+    )
+    parser.add_argument(
+        "--allow-prod",
+        action="store_true",
+        help=(
+            "cleanup-stuck only: permit --apply against a *.neon.tech "
+            "DATABASE_URL. Required to write to production."
+        ),
     )
     parser.add_argument(
         "--verbose",
@@ -456,6 +619,23 @@ def main() -> int:
             return 1
 
         run_one(db, batch_row)
+        return 0
+
+    if args.cleanup_stuck:
+        try:
+            result = cleanup_stuck_batches(
+                db,
+                threshold=args.stuck_threshold,
+                apply=args.apply,
+                allow_prod=args.allow_prod,
+                db_url=db_url,
+            )
+        except ProdGuardError as exc:
+            logger.error("%s", exc)
+            return 2
+        # Non-zero exit if apply requested but nothing was written and matches existed
+        # would be misleading; success means "ran cleanly". Caller reads the log line.
+        _ = result
         return 0
 
     # --watch mode

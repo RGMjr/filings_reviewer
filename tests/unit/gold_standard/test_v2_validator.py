@@ -2426,6 +2426,193 @@ class TestRunValidationGuardsAndWorkers:
         assert exc.value.code == 2
 
 
+class TestRunValidationRerunOnFail:
+    """Tests for the gh-273 re-run-on-fail retry on the Tier-1 presence-recall gate.
+
+    The gate is zero-tolerance, but LLM responses can vary by 1-2 cells on cache
+    miss even at temperature=0 (~1pp recall noise on the corpus). The retry
+    discriminates cache-turnover noise (clears on second run) from a real
+    production regression (consistent across both runs).
+    """
+
+    @staticmethod
+    def _make_metrics(
+        *,
+        tp: int = 10,
+        fp: int = 1,
+        fn: int = 1,
+    ) -> AggregateMetrics:
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        return AggregateMetrics(
+            precision=precision,
+            recall=recall,
+            f1=f1,
+            total_true_positives=tp,
+            total_false_positives=fp,
+            total_false_negatives=fn,
+        )
+
+    @staticmethod
+    def _make_comparison(
+        *,
+        has_regression: bool,
+        tier1_delta: float | None,
+    ):
+        from src.gold_standard.baseline import ComparisonResult
+
+        return ComparisonResult(
+            precision_delta=0.0,
+            recall_delta=0.0,
+            f1_delta=0.0,
+            has_regression=has_regression,
+            regressed_companies=[],
+            regressed_metrics=(["[GATE] tier1_presence_recall"] if has_regression else []),
+            tier1_presence_recall_delta=tier1_delta,
+        )
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_real_regression_both_runs_fail_exits_one(
+        self, mock_validator_cls: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Real regression: both runs trip the gate → sys.exit(1), retry fired."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = self._make_metrics()
+        # Both compare_to_baseline calls return has_regression=True
+        regressed = self._make_comparison(has_regression=True, tier1_delta=-0.05)
+        mock_instance.compare_to_baseline.side_effect = [regressed, regressed]
+
+        from src.gold_standard.v2_validator import run_validation
+
+        with pytest.raises(SystemExit) as exc:
+            run_validation(fail_on_regression=True)
+        assert exc.value.code == 1
+
+        # Validate retry actually fired: validate_all called twice (initial + retry).
+        # NB: V2GoldStandardValidator was patched at the class level, so the
+        # retry's V2GoldStandardValidator() call returns the same mock_instance.
+        # We assert call counts on validate_all/compute_metrics rather than
+        # instance identity.
+        assert mock_instance.validate_all.call_count == 2
+        assert mock_instance.compute_metrics.call_count == 2
+        assert mock_instance.compare_to_baseline.call_count == 2
+
+        captured = capsys.readouterr()
+        assert "re-running validation once" in captured.out
+        assert "CONSISTENT FAIL" in captured.out
+        assert "first delta=-5.0%" in captured.out
+        assert "retry delta=-5.0%" in captured.out
+        assert "COMMIT BLOCKED" in captured.out
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_cache_turnover_first_fail_second_clears(
+        self, mock_validator_cls: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Cache turnover: first fail, second clears → no exit, retry log emitted."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = self._make_metrics()
+        first = self._make_comparison(has_regression=True, tier1_delta=-0.01)
+        second = self._make_comparison(has_regression=False, tier1_delta=0.0)
+        mock_instance.compare_to_baseline.side_effect = [first, second]
+
+        from src.gold_standard.v2_validator import run_validation
+
+        # No SystemExit expected: retry cleared the gate
+        run_validation(fail_on_regression=True)
+
+        assert mock_instance.validate_all.call_count == 2
+        assert mock_instance.compare_to_baseline.call_count == 2
+
+        captured = capsys.readouterr()
+        assert "re-running validation once" in captured.out
+        assert "Retry cleared the gate" in captured.out
+        assert "first delta=-1.0%" in captured.out
+        assert "retry delta=+0.0%" in captured.out
+        assert "cache turnover" in captured.out.lower()
+        # Must not block:
+        assert "COMMIT BLOCKED" not in captured.out
+        assert "CONSISTENT FAIL" not in captured.out
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_no_retry_when_first_call_clean(
+        self, mock_validator_cls: MagicMock, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """First call has no regression → validate_all called exactly once, no retry."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = self._make_metrics()
+        clean = self._make_comparison(has_regression=False, tier1_delta=0.0)
+        mock_instance.compare_to_baseline.return_value = clean
+
+        from src.gold_standard.v2_validator import run_validation
+
+        run_validation(fail_on_regression=True)
+
+        # Single validation run: initial call only, no retry.
+        assert mock_instance.validate_all.call_count == 1
+        assert mock_instance.compute_metrics.call_count == 1
+        assert mock_instance.compare_to_baseline.call_count == 1
+
+        captured = capsys.readouterr()
+        assert "re-running validation once" not in captured.out
+        assert "Retry cleared" not in captured.out
+        assert "no regression" in captured.out
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_retry_does_not_fire_without_fail_on_regression_flag(
+        self, mock_validator_cls: MagicMock
+    ) -> None:
+        """Without fail_on_regression, retry must not run even if comparison would
+        flag a regression. Informational invocations stay single-run."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = self._make_metrics()
+        # Set up compare_to_baseline to return a regression — but the gate code
+        # path should not even invoke it without fail_on_regression=True.
+        regressed = self._make_comparison(has_regression=True, tier1_delta=-0.05)
+        mock_instance.compare_to_baseline.return_value = regressed
+
+        from src.gold_standard.v2_validator import run_validation
+
+        # No fail_on_regression → no retry, no SystemExit
+        run_validation(fail_on_regression=False)
+
+        # validate_all called exactly once (initial run); compare_to_baseline
+        # is not invoked from the gate path when fail_on_regression is False.
+        assert mock_instance.validate_all.call_count == 1
+        assert mock_instance.compute_metrics.call_count == 1
+
+    @patch("src.gold_standard.v2_validator.V2GoldStandardValidator")
+    def test_retry_constructs_fresh_validator_state(self, mock_validator_cls: MagicMock) -> None:
+        """The retry must construct a new V2GoldStandardValidator instance so
+        that any in-process state is fresh. Verified via the patched class
+        constructor's call_count: initial + retry = 2 constructions."""
+        mock_instance = mock_validator_cls.return_value
+        mock_instance.validate_all.return_value = []
+        mock_instance.compute_metrics.return_value = self._make_metrics()
+        regressed = self._make_comparison(has_regression=True, tier1_delta=-0.02)
+        clean = self._make_comparison(has_regression=False, tier1_delta=0.0)
+        mock_instance.compare_to_baseline.side_effect = [regressed, clean]
+
+        from src.gold_standard.v2_validator import run_validation
+
+        run_validation(fail_on_regression=True)
+
+        # Two constructions: initial + retry. Both must use min_confidence=0.35
+        # (the run_validation default); retry sets fn_diagnostics=False.
+        assert mock_validator_cls.call_count == 2
+        # First construction (initial run): both kwargs respected
+        first_call_kwargs = mock_validator_cls.call_args_list[0].kwargs
+        assert first_call_kwargs.get("min_confidence") == 0.35
+        # Second construction (retry): explicit fn_diagnostics=False
+        second_call_kwargs = mock_validator_cls.call_args_list[1].kwargs
+        assert second_call_kwargs.get("min_confidence") == 0.35
+        assert second_call_kwargs.get("fn_diagnostics") is False
+
+
 class TestStageTimingSummary:
     """Tests for print_stage_timing_summary (Phase C observability)."""
 

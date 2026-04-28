@@ -19,7 +19,7 @@
      - Run `git checkout -b <branch>` and announce the branch name in one line.
    - **Otherwise:** stay on the current branch and continue.
 
-2. **Pre-commit framework check.** Run `test -x .git/hooks/pre-commit` (the `pre-commit` framework installs an executable there). If missing, run `make hooks-install` and announce. Never symlink `scripts/pre-commit-extraction-guard.sh` into `.git/hooks/pre-commit` directly — it would clobber ruff / ruff-format. The guard is registered as a `local` hook in `.pre-commit-config.yaml` (id `extraction-guard`).
+2. **Pre-commit framework check.** First check `git config --get core.hooksPath`. If set (worktrees in this repo redirect to the primary tree's `.git/hooks/`), verify the redirected path contains an executable `pre-commit`: `test -x "$(git config --get core.hooksPath)/pre-commit"`. If yes, the framework is installed via redirect — proceed without running `make hooks-install` (it would fail with "Cowardly refusing to install hooks with `core.hooksPath` set"). Otherwise, run `test -x .git/hooks/pre-commit`; if missing, run `make hooks-install` and announce. Never symlink `scripts/pre-commit-extraction-guard.sh` into `.git/hooks/pre-commit` directly — it would clobber ruff / ruff-format. The guard is registered as a `local` hook in `.pre-commit-config.yaml` (id `extraction-guard`).
 
 3. **Doc update check.** Review session changes and determine whether docs need updating. Skip if session changes are narrow. Otherwise apply targeted checks:
 
