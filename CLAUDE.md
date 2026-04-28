@@ -14,7 +14,7 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 
 ## Workflow
 
-**PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit-proj` (project-local; renamed from `/commit` to disambiguate from the global skill of the same name): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass. The global `/commit` will also work in a pinch (it now branches + opens a PR), but it does not handle this project's pre-commit framework, fragment-based known-issues, or required-check recital.
+**PR-required.** `main` is protected — direct pushes are rejected server-side (`enforce_admins: true`). Use `/commit-proj` (project-local): it auto-branches off `main`, commits, pushes the branch, opens a PR via `gh pr create`, and sets `gh pr merge --auto --squash`. GitHub merges when all required checks pass. The global `/commit-user` will also work in a pinch (it now branches + opens a PR), but it does not handle this project's pre-commit framework, fragment-based known-issues, or required-check recital.
 
 **Worktree-first.** Run `/commit-proj` (and any HEAD-moving git work) from a `ccw` worktree, not the primary tree — a PreToolUse guard denies `git checkout`/`switch`/`checkout -b` in the primary tree to protect concurrent sessions. Use `EnterWorktree` inside a session or `ccw [branch]` from the shell. See `docs/development/claude-sessions-and-worktrees.md`.
 
@@ -87,7 +87,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 
 ## Hooks
 
-A PreToolUse hook nudges `/simplify` when 3+ files are modified before `/commit-proj` (or `/commit`) — see `.claude/hooks/precommit-simplify-check.sh`.
+A PreToolUse hook nudges `/simplify` when 3+ files are modified before `/commit-proj` (or `/commit-user`) — see `.claude/hooks/precommit-simplify-check.sh`.
 
 ## Compact Instructions
 
