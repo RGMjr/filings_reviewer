@@ -400,4 +400,64 @@ Partially-processed `v2_ingest_batch_filings` rows with `processing_status='runn
 
 Prod / Render: the `--watch` mode on the worker service automatically re-claims batches whose `run_lock_until` has expired — no manual step needed.
 
-Tracked under [known issue #62](../known-issues/legacy-062-local-dev-stuck-batch-recovery-is-manual.md). A `--cleanup-stuck` CLI flag on `onboarding_runner` and a SIGTERM-log-line hint are still open as follow-ups.
+Prefer the scripted path below over hand-crafted UPDATEs.
+
+### Cleaning up stuck batches with `--cleanup-stuck`
+
+`onboarding_runner` ships an admin mode that finds running batches whose
+`run_lock_until` is older than a tunable threshold and marks them
+`status='failed'`. Always run dry-run first to inspect candidates before
+writing.
+
+**Dry-run (default — no writes):**
+
+```bash
+python3 -m src.universe.onboarding_runner --cleanup-stuck
+```
+
+Sample output:
+
+```
+INFO ... cleanup-stuck: 1 candidate batch(es) older than threshold='1 hour':
+INFO ...   batch_id=4f3a... started_at=2026-04-28 09:14:22+00 run_lock_until=2026-04-28 09:29:22+00
+INFO ... cleanup-stuck: matched=1 marked_failed=0 (dry-run)
+```
+
+**Apply (writes the UPDATE):**
+
+```bash
+python3 -m src.universe.onboarding_runner --cleanup-stuck --apply
+```
+
+Each matched row is set to `status='failed'`, `finished_at=NOW()`,
+`run_lock_until=NULL`. Per-filing rows in `v2_ingest_batch_filings` are not
+touched — partial-progress rows must still be inspected by hand if their
+filings had side effects (image assets written, facts persisted).
+
+**Tunable threshold:**
+
+```bash
+python3 -m src.universe.onboarding_runner --cleanup-stuck \
+    --stuck-threshold '30 minutes'
+```
+
+`--stuck-threshold` accepts any Postgres interval string. Default is
+`'1 hour'`.
+
+**Production guard:** `--apply` against a `*.neon.tech` `DATABASE_URL` is
+refused with exit code `2` unless `--allow-prod` is also passed. Dry-run
+mode is always permitted (no writes). On Render this is unnecessary —
+the worker service running `--watch` already re-claims any batch whose
+lock has expired, so production normally needs no manual intervention.
+
+```bash
+# Required for prod writes (only if you really mean it):
+python3 -m src.universe.onboarding_runner --cleanup-stuck --apply --allow-prod
+```
+
+`--cleanup-stuck` is the *abandon* path: it gives up on a stuck batch
+rather than retrying it. If you instead want to retry, leave the row
+alone and start `--watch`; the existing claim semantics
+(`run_lock_until < NOW()`) will pick it back up automatically.
+
+Tracked under [known issue #62](../known-issues/legacy-062-local-dev-stuck-batch-recovery-is-manual.md).
