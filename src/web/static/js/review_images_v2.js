@@ -453,6 +453,9 @@
 
         const btnSubmit = document.getElementById('btn-submit-detected-metrics');
         if (btnSubmit) btnSubmit.addEventListener('click', submitDecisions);
+
+        const btnRejectAll = document.getElementById('btn-reject-all-metrics');
+        if (btnRejectAll) btnRejectAll.addEventListener('click', rejectAllUnreviewed);
     }
 
     function handleRowKeydown(event) {
@@ -732,6 +735,83 @@
             }
         } catch (err) {
             console.error('Failed to submit detected-metric confirmations:', err);
+            showMetricsToast('Network error', 'danger');
+        } finally {
+            state.submitting = false;
+        }
+    }
+
+    /**
+     * Bulk-reject every detected metric that doesn't already have a positive
+     * decision (accept / correct) recorded — server-side or in-progress.
+     * Composes a multi-decision POST to /api/v2/image-metric-confirmations
+     * with rejection_reason='not_present', then calls /image-candidates/<id>/skip
+     * to flip review_status='skipped' so the image leaves the pending queue
+     * (the per-metric pivot leaves the image-level review_status untouched on
+     * its own). Per-metric reject rows preserve the real semantic in DB.
+     */
+    async function rejectAllUnreviewed() {
+        if (state.submitting) return;
+        if (!state.imgId) return;
+
+        const KEEP = new Set(['accept', 'correct']);
+        const targets = state.detectedMetrics.filter(m => {
+            const prior = state.decisions[m.metric_id];
+            return !(prior && KEEP.has(prior.decision));
+        });
+
+        if (targets.length === 0) {
+            showMetricsToast('Nothing to reject — every metric is already accepted or corrected', 'warning');
+            return;
+        }
+
+        const ok = window.confirm(
+            `Reject all ${targets.length} unreviewed metric${targets.length === 1 ? '' : 's'} on this image as 'not present', ` +
+            `and skip the image? Existing Accept/Correct decisions will be kept.`
+        );
+        if (!ok) return;
+
+        const reviewerName = (typeof window.requireReviewerName === 'function')
+            ? window.requireReviewerName()
+            : localStorage.getItem('reviewer_name');
+        if (!reviewerName) return;
+
+        state.submitting = true;
+        try {
+            const payload = {
+                img_id: state.imgId,
+                reviewer_id: reviewerName,
+                decisions: targets.map(m => ({
+                    detected_metric_id: m.metric_id,
+                    decision: 'reject',
+                    rejection_reason: 'not_present',
+                })),
+            };
+            const resp = await fetch('/api/v2/image-metric-confirmations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) {
+                showMetricsToast(data.error || 'Failed to record rejections', 'danger');
+                return;
+            }
+
+            const skipResp = await fetch(
+                `/api/v2/image-candidates/${state.imgId}/skip`,
+                { method: 'POST' }
+            );
+            const skipData = await skipResp.json();
+            if (skipData.status === 'success' && skipData.next_candidate) {
+                window.location.href = skipData.next_candidate.url;
+                return;
+            }
+            // Skip failed or queue empty — rejections are still saved; reload page.
+            showMetricsToast('Rejections saved', 'success');
+            window.location.reload();
+        } catch (err) {
+            console.error('Bulk-reject failed:', err);
             showMetricsToast('Network error', 'danger');
         } finally {
             state.submitting = false;

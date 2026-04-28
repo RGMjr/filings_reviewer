@@ -798,9 +798,15 @@
           </div>
           {% else %}
           <div class="d-flex justify-content-between align-items-center mb-3">
-            <button type="button" id="btn-skip" class="btn btn-outline-secondary">
-              <span class="badge bg-secondary me-1">S</span> Skip whole image
-            </button>
+            <div class="d-flex gap-2">
+              <button type="button" id="btn-skip" class="btn btn-outline-secondary">
+                <span class="badge bg-secondary me-1">S</span> Skip whole image
+              </button>
+              <button type="button" id="btn-reject-all-metrics" class="btn btn-outline-danger"
+                      title="Mark every unreviewed detected metric as 'not present' on this chart and move to the next image.">
+                Reject all (no relevant metrics)
+              </button>
+            </div>
             <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images', image_status=image_filters.status) }}"
                class="btn btn-primary">
               Next Pending &rarr;

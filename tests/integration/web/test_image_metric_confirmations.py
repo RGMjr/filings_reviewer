@@ -232,6 +232,94 @@ class TestImageMetricConfirmationsPost:
         )
         assert resp.status_code == 400
 
+    def test_bulk_reject_multi_decision_round_trip(self, client, db_adapter):
+        """The 'Reject all (no relevant metrics)' button composes a single
+        multi-decision POST with rejection_reason='not_present' for every
+        unreviewed detected metric on the image. Verify the endpoint accepts
+        the bulk shape and persists every row."""
+        _, filing_id = create_test_company_and_filing(
+            db_adapter,
+            cik="0009993202",
+            accession_number="0009993202-24-000001",
+            form_type="8-K",
+        )
+        img_id = str(uuid.uuid4())
+        with db_adapter.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO v2_image_assets (
+                        img_id, doc_id, filename, dom_locator, classification, processed,
+                        detected_metrics
+                    ) VALUES (
+                        %(img_id)s, %(doc_id)s, 'multi.png', '/html/body/img[1]',
+                        'chart', true, %(detected)s::jsonb
+                    )
+                    """,
+                    {
+                        "img_id": img_id,
+                        "doc_id": filing_id,
+                        "detected": (
+                            '[{"metric_id":"cm_revenue_by_cohort","score":0.82},'
+                            ' {"metric_id":"cm_net_revenue_retention","score":0.71},'
+                            ' {"metric_id":"cm_customer_retention_rate","score":0.65}]'
+                        ),
+                    },
+                )
+        try:
+            resp = self._post(
+                client,
+                {
+                    "img_id": img_id,
+                    "reviewer_id": "bulk-rejecter",
+                    "decisions": [
+                        {
+                            "detected_metric_id": "cm_revenue_by_cohort",
+                            "decision": "reject",
+                            "rejection_reason": "not_present",
+                        },
+                        {
+                            "detected_metric_id": "cm_net_revenue_retention",
+                            "decision": "reject",
+                            "rejection_reason": "not_present",
+                        },
+                        {
+                            "detected_metric_id": "cm_customer_retention_rate",
+                            "decision": "reject",
+                            "rejection_reason": "not_present",
+                        },
+                    ],
+                },
+            )
+            assert resp.status_code == 200, resp.get_data(as_text=True)
+            payload = resp.get_json()
+            assert payload["ok"] is True
+            assert payload["upserted"] == 3
+            confirmations = payload["confirmations"]
+            assert len(confirmations) == 3
+            for c in confirmations:
+                assert c["decision"] == "reject"
+                assert c["rejection_reason"] == "not_present"
+                assert c["confirmed_metric_id"] is None
+                assert c["reviewer_id"] == "bulk-rejecter"
+            # No chart facts promoted by reject
+            facts = db_adapter.query(
+                """
+                SELECT canonical_metric_id FROM v2_metric_facts
+                 WHERE doc_id = %(doc_id)s AND source_type = 'chart'
+                """,
+                {"doc_id": filing_id},
+            )
+            assert facts == []
+        finally:
+            with db_adapter.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM v2_image_metric_confirmations WHERE img_id = %s",
+                        (img_id,),
+                    )
+                    cur.execute("DELETE FROM v2_image_assets WHERE img_id = %s", (img_id,))
+
 
 def _count_chart_facts(db_adapter, filing_id, metric_id, img_id):
     rows = db_adapter.query(
