@@ -6,6 +6,7 @@ id: 75
 note: Text-queue variant landed in PR #178; image-queue variant landed in follow-up PR
 pr_refs:
   - 178
+  - 309
 severity: low
 slug: missing-playwright-e2e-for-cross-filing-auto-advance
 source: legacy
