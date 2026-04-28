@@ -1037,8 +1037,8 @@ class V2PersistenceAdapter:
         """
         if chart_only:
             facts = [f for f in facts if f.source_type == SourceType.CHART]
-
-        if not facts:
+            # Don't return early — drain semantics still need the guard + DELETE.
+        elif not facts:
             return 0
 
         # chart_only scopes the guard + DELETE to chart facts so text facts
@@ -1115,6 +1115,7 @@ class V2PersistenceAdapter:
 
         # Delete-then-insert is idempotent and avoids a unique index across
         # nullable expression columns.
+        # chart_only=True with empty inbound is the expected post-pivot drain shape: DELETE existing chart facts; INSERT no new ones.
         cur.execute(f"DELETE FROM v2_metric_facts WHERE {where_scope}", params)
 
         sql = """

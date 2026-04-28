@@ -648,13 +648,13 @@ class TestChartOnlyMode:
         db_adapter: DatabaseAdapter,
         test_filing_id: int,
     ):
-        # Text fact exists; inbound list has no chart facts → nothing happens,
-        # including no DELETE that would spuriously wipe chart state.
+        # Text fact exists; inbound list has no chart facts → text fact survives,
+        # existing (zero) chart facts are drained, count returns 0.
         text_fact = _make_fact(test_filing_id)
         persistence_adapter.persist_facts([text_fact], test_filing_id)
 
         count = persistence_adapter.persist_facts([text_fact], test_filing_id, chart_only=True)
-        assert count == 0  # filtered-out list is empty
+        assert count == 0  # filtered-out list is empty; no chart facts inserted
 
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
@@ -662,6 +662,123 @@ class TestChartOnlyMode:
                 (test_filing_id,),
             )
             assert int(cur.fetchone()["n"]) == 1
+
+    def test_chart_only_drain_reaches_delete_with_empty_inbound(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+        caplog: pytest.LogCaptureFixture,
+    ):
+        """Drain reaches DELETE under chart_only=True with empty inbound facts.
+
+        Regression test for gh-298: previously the early-return fired before the
+        guard + DELETE block, making the drain a no-op post-presence-pivot.
+        """
+        # Seed two chart facts + one decision each.
+        chart_a = _make_fact(test_filing_id, value=100.0, period_year=2024, source_type=SourceType.CHART)
+        chart_b = _make_fact(test_filing_id, value=200.0, period_year=2025, source_type=SourceType.CHART)
+        persistence_adapter.persist_facts([chart_a, chart_b], test_filing_id)
+        _insert_decision(db_adapter, chart_a.fact_id, reviewer_id="alice@example.com")
+        _insert_decision(db_adapter, chart_b.fact_id, reviewer_id="alice@example.com")
+        assert _decision_count(db_adapter, test_filing_id) == 2
+
+        with caplog.at_level(logging.WARNING, logger="src.extraction_v2.persistence"):
+            count = persistence_adapter.persist_facts([], test_filing_id, chart_only=True, force=True)
+
+        assert count == 0
+        # Chart facts and their decisions CASCADEd away.
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+            assert int(cur.fetchone()["n"]) == 0
+        assert _decision_count(db_adapter, test_filing_id) == 0
+        # Warning log emitted with chart_only=True.
+        assert any(
+            "force-reextract purging reviewed filing" in rec.message and "chart_only=True" in rec.message
+            for rec in caplog.records
+        )
+
+    def test_chart_only_drain_guard_fires_without_force(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        """Guard raises ReviewedFilingError under chart_only=True with reviewed filing and force=False.
+
+        Regression test for gh-298: the guard must run even when inbound facts list is empty.
+        """
+        chart_fact = _make_fact(test_filing_id, value=300.0, period_year=2024, source_type=SourceType.CHART)
+        persistence_adapter.persist_facts([chart_fact], test_filing_id)
+        _insert_decision(db_adapter, chart_fact.fact_id, reviewer_id="bob@example.com")
+
+        with pytest.raises(ReviewedFilingError) as excinfo:
+            persistence_adapter.persist_facts([], test_filing_id, chart_only=True)
+
+        assert excinfo.value.filing_id == test_filing_id
+        assert excinfo.value.decision_count == 1
+        # Chart fact + decision must be untouched.
+        assert _decision_count(db_adapter, test_filing_id) == 1
+
+    def test_chart_only_drain_preserves_text_facts_and_decisions(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        """Non-chart facts and their decisions are untouched by a chart_only drain.
+
+        Regression test for gh-298: verifies text-fact isolation under the post-pivot
+        drain shape (empty inbound, chart_only=True, force=True).
+        """
+        # Seed a text fact with a decision + two chart facts with decisions.
+        text_fact = _make_fact(test_filing_id, value=50.0, period_year=2023)
+        persistence_adapter.persist_facts([text_fact], test_filing_id)
+        _insert_decision(db_adapter, text_fact.fact_id, reviewer_id="charlie@example.com")
+
+        chart_a = _make_fact(test_filing_id, value=100.0, period_year=2024, source_type=SourceType.CHART)
+        chart_b = _make_fact(test_filing_id, value=200.0, period_year=2025, source_type=SourceType.CHART)
+        persistence_adapter.persist_facts([chart_a, chart_b], test_filing_id, chart_only=True)
+        _insert_decision(db_adapter, chart_a.fact_id, reviewer_id="alice@example.com")
+        _insert_decision(db_adapter, chart_b.fact_id, reviewer_id="alice@example.com")
+
+        # Drain chart facts with empty inbound.
+        count = persistence_adapter.persist_facts([], test_filing_id, chart_only=True, force=True)
+        assert count == 0
+
+        # Text fact + its decision must still be present.
+        with db_adapter.get_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT fact_id, source_type FROM v2_metric_facts WHERE doc_id = %s",
+                (test_filing_id,),
+            )
+            rows = cur.fetchall()
+        assert len(rows) == 1
+        assert rows[0]["source_type"] == "text"
+        assert str(rows[0]["fact_id"]) == text_fact.fact_id
+        assert _decision_count(db_adapter, test_filing_id) == 1
+
+    def test_chart_only_false_empty_inbound_still_early_returns(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        """chart_only=False with empty facts still early-returns without touching the DB.
+
+        Regression-protects the original behavior: no surprise drain on text facts
+        when caller passes an empty list without chart_only.
+        """
+        text_fact = _make_fact(test_filing_id, value=100.0)
+        persistence_adapter.persist_facts([text_fact], test_filing_id)
+        _insert_decision(db_adapter, text_fact.fact_id, reviewer_id="dave@example.com")
+
+        # Empty facts + chart_only=False (default) → must return 0 without raising.
+        count = persistence_adapter.persist_facts([], test_filing_id)
+        assert count == 0
+        # Text fact + decision untouched.
+        assert _decision_count(db_adapter, test_filing_id) == 1
+        assert _fact_count(db_adapter, test_filing_id) == 1
 
 
 # ---------------------------------------------------------------------------
