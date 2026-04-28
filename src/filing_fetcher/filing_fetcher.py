@@ -28,12 +28,20 @@ class FilingContent:
     """
     Represents downloaded filing content.
 
+    Pipeline contract: only ``html_path`` is load-bearing for downstream
+    extraction. ``IngestionStage`` reads HTML from disk via ``html_path``;
+    ``html_content`` (in-memory) and the ``filings.html_content`` DB column
+    are advisory and ignored by the V2 pipeline. To enrich what the
+    pipeline sees (e.g. appending exhibit HTML), write to the file at
+    ``html_path`` — do not rely on the in-memory or DB copies.
+
     Attributes:
         cik: SEC Central Index Key
         accession_number: SEC accession number
-        html_path: Local path to HTML filing
+        html_path: Local path to HTML filing (pipeline-load-bearing)
         txt_path: Local path to complete text filing
         fetched_at: Timestamp when fetched
+        html_content: In-memory HTML; advisory, not read by pipeline
     """
 
     cik: str
