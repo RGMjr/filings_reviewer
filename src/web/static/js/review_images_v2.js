@@ -67,7 +67,26 @@
         if (event.metaKey || event.ctrlKey || event.altKey) return;
         if (state.submitting) return;
 
+        // Shift+R — reject all (no relevant metrics). Fires regardless of
+        // whether a per-metric row is focused, so this check must come before
+        // the focusedRow early-return below.
+        if (event.shiftKey && (event.key === 'R' || event.key === 'r')) {
+            event.preventDefault();
+            rejectAllUnreviewed();
+            return;
+        }
+
         const key = event.key.toLowerCase();
+
+        // N / P image-level navigation — only fire when no per-metric row is
+        // focused (per-row N uses focusNextUnreviewed instead).
+        if (key === 'n' || key === 'p') {
+            if (state.focusedRow) return;
+            event.preventDefault();
+            if (key === 'n') navigateNext();
+            else navigatePrevious();
+            return;
+        }
 
         switch (key) {
             case 's':
@@ -484,6 +503,9 @@
             event.stopPropagation();
             acceptRow(row);
         } else if (key === 'r') {
+            // Shift+R is handled at the image level (rejectAllUnreviewed).
+            // Let it propagate up rather than opening the per-row reject form.
+            if (event.shiftKey) return;
             event.preventDefault();
             event.stopPropagation();
             openReject(row);
