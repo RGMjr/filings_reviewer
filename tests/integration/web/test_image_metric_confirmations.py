@@ -451,3 +451,117 @@ class TestFactPromotion:
         )
         assert del_resp.status_code == 200, del_resp.get_data(as_text=True)
         assert _count_chart_facts(db_adapter, filing_id, "cm_revenue_by_cohort", seeded_image) == 0
+
+
+class TestNoRelevantMetricsSentinel:
+    """Reject all (no relevant metrics) on an image with zero detected
+    metrics writes a sentinel row with NULL detected_metric_id AND NULL
+    confirmed_metric_id, decision='reject', rejection_reason='no_relevant_metrics'.
+    """
+
+    def _post(self, client, body):
+        return client.post("/api/v2/image-metric-confirmations", json=body)
+
+    def test_sentinel_reject_round_trip(self, client, db_adapter, seeded_image):
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "sentinel-reviewer",
+                "decisions": [
+                    {
+                        "detected_metric_id": None,
+                        "confirmed_metric_id": None,
+                        "decision": "reject",
+                        "rejection_reason": "no_relevant_metrics",
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        payload = resp.get_json()
+        assert payload["ok"] is True
+        assert payload["upserted"] == 1
+        confirmations = payload["confirmations"]
+        assert len(confirmations) == 1
+        c = confirmations[0]
+        assert c["decision"] == "reject"
+        assert c["detected_metric_id"] is None
+        assert c["confirmed_metric_id"] is None
+        assert c["rejection_reason"] == "no_relevant_metrics"
+
+        # Sentinel rows do NOT promote a chart fact
+        filing_id = db_adapter.query(
+            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": seeded_image},
+        )[0]["doc_id"]
+        facts = db_adapter.query(
+            """
+            SELECT 1 FROM v2_metric_facts
+             WHERE doc_id = %(doc_id)s AND source_type = 'chart'
+            """,
+            {"doc_id": filing_id},
+        )
+        assert facts == []
+
+    def test_null_detected_reject_other_reason_rejected(self, client, seeded_image):
+        """Only rejection_reason='no_relevant_metrics' admits NULL
+        detected_metric_id. Other reasons must still bind a metric."""
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "sentinel-reviewer",
+                "decisions": [
+                    {
+                        "detected_metric_id": None,
+                        "decision": "reject",
+                        "rejection_reason": "not_present",
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_count_image_metric_rejections_for_filing(self, client, db_adapter, seeded_image):
+        """db.count_image_metric_rejections_for_filing counts both
+        per-metric rejects and the no-relevant-metrics sentinel."""
+        filing_id = db_adapter.query(
+            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": seeded_image},
+        )[0]["doc_id"]
+
+        assert db_adapter.count_image_metric_rejections_for_filing(filing_id) == 0
+
+        # Sentinel row
+        self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "counter-reviewer-1",
+                "decisions": [
+                    {
+                        "detected_metric_id": None,
+                        "confirmed_metric_id": None,
+                        "decision": "reject",
+                        "rejection_reason": "no_relevant_metrics",
+                    },
+                ],
+            },
+        )
+        # Per-metric reject from another reviewer on the same image
+        self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "counter-reviewer-2",
+                "decisions": [
+                    {
+                        "detected_metric_id": "cm_revenue_by_cohort",
+                        "decision": "reject",
+                        "rejection_reason": "not_present",
+                    },
+                ],
+            },
+        )
+        assert db_adapter.count_image_metric_rejections_for_filing(filing_id) == 2

@@ -159,3 +159,14 @@ specific files by name.
 New issues surfaced during contribution go into a new `docs/known-issues/gh-N-<slug>.md` fragment file, where `N` is the GitHub issue number returned by `gh issue create`. The `/commit-proj` skill step 9 automates this — see the frontmatter template there. Existing `legacy-NNN-*.md` fragments (pre-2026-04-24) are frozen in place; do not rename them, and **do not mint new `legacy-*` filenames** — the validator (`scripts/validate_known_issues_fragments.py`, run by pre-commit and CI) rejects any `legacy-*` filename not listed in `docs/known-issues/.legacy-allowlist.txt`. GitHub issue numbers are server-allocated, so `gh-N` cannot collide. Fragments are the source of truth.
 
 The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run (`.github/workflows/ci.yml` job `known-issues-artifact`). Download the latest rendered rollup from the Actions tab of any `main` build. To regenerate locally for preview: `python3 scripts/regenerate_known_issues.py --output /tmp/KNOWN_ISSUES.md`.
+
+### Setting pr_refs on the fragment you resolve
+
+If your fix-PR resolves a known issue, add the PR number to the fragment's `pr_refs` list **before merging**:
+
+```yaml
+pr_refs:
+  - 287   # integer, not a quoted string
+```
+
+The auto-closer (`scripts/sync_known_issue_status.py`, runs nightly) flips `status: open` → `status: resolved` only when every PR in `pr_refs` is MERGED on GitHub. Without this field the auto-closer is blind to your fix and every closure stays manual. The pre-commit `known-issues-validate` hook emits a `WARNING` (non-blocking) when you stage a fragment that is still `status: open` with an empty or missing `pr_refs` — that warning is your reminder.

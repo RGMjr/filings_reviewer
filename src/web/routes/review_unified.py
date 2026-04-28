@@ -340,7 +340,12 @@ def review_filing(filing_id: int):
         if current_fact:
             current_fact = _enrich_sparse_evidence(db, filing_id, current_fact)
 
-        # Calculate progress
+        # Calculate progress. Green/red badges merge text-fact decisions
+        # with per-metric image rejections so reviewers see one combined
+        # total. Image accepts already promote into v2_metric_facts via
+        # _promote_chart_fact, so the green count picks them up through
+        # all_facts. Image rejects deliberately do not promote a fact row
+        # (CLAUDE.md principle 4), so we count them separately.
         pending_count = sum(1 for f in all_facts if f["review_status"] == "pending_review")
         accepted_count = sum(
             1 for f in all_facts if f["review_status"] in ("accepted", "auto_accepted")
@@ -348,6 +353,7 @@ def review_filing(filing_id: int):
         rejected_count = sum(
             1 for f in all_facts if f["review_status"] in ("rejected", "corrected")
         )
+        rejected_count += db.count_image_metric_rejections_for_filing(filing_id)
 
         # Extract existing decision from current fact
         existing_decision = None
@@ -367,6 +373,21 @@ def review_filing(filing_id: int):
         # filing under review, not the company's latest registration. All URL
         # construction goes through src/web/url_builders.py.
         sec_filing_url = resolve_sec_filing_url(filing)
+
+        # Image-OCR segments (text from full-page-image OCR pipeline). Surfaced
+        # in the text tab so reviewers can see OCR'd prose even when the
+        # extraction pipeline emitted no v2_metric_facts rows for it (e.g.
+        # 8-K page-image decks where Tier 1 patterns don't match the issuer's
+        # KPI vocabulary). See known-issues fragment legacy-089.
+        try:
+            image_ocr_segments = db.get_v2_image_ocr_segments_for_filing(filing_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to load image_ocr segments for filing_id=%s: %s",
+                filing_id,
+                exc,
+            )
+            image_ocr_segments = []
 
         # Current filter state
         current_filters = {
@@ -479,6 +500,7 @@ def review_filing(filing_id: int):
             per_page=per_page,
             total_pages=total_pages,
             sec_filing_url=sec_filing_url,
+            image_ocr_segments=image_ocr_segments,
             # Image tab
             image_candidates=image_candidates,
             all_image_candidates=all_image_candidates,

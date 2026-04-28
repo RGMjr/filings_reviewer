@@ -231,3 +231,46 @@ class TestGetImageStorageFactory:
         first = get_image_storage()
         second = get_image_storage()
         assert first is second
+
+    def test_r2_storage_guard_fires_when_bucket_set_without_allow_writes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: guard must still fire when R2Storage is used without ALLOW_PROD_WRITES.
+
+        This test exists to protect against accidentally disabling the prod-write
+        guard globally (e.g. via an env-var injection in a conftest). The fixture
+        in tests/integration/extraction_v2/conftest.py redirects get_image_storage()
+        to LocalFilesystemStorage — but R2Storage.put_bytes itself must still raise
+        when the guard env var is absent.
+        """
+        pytest.importorskip("moto")
+        import boto3
+
+        original_client = boto3.client
+
+        def patched_client(service, **kwargs):
+            kwargs.pop("endpoint_url", None)
+            kwargs["region_name"] = "us-east-1"
+            return original_client(service, **kwargs)
+
+        monkeypatch.setattr(boto3, "client", patched_client)
+        monkeypatch.delenv("FILINGS_REVIEWER_ALLOW_PROD_WRITES", raising=False)
+
+        import moto
+
+        with moto.mock_aws():
+            original_client(
+                "s3",
+                region_name="us-east-1",
+                aws_access_key_id="test",
+                aws_secret_access_key="test",
+            ).create_bucket(Bucket="guard-regression-bucket")
+
+            storage = R2Storage(
+                bucket="guard-regression-bucket",
+                endpoint="https://example.com",
+                access_key="test",
+                secret_key="test",
+            )
+            with pytest.raises(RuntimeError, match="FILINGS_REVIEWER_ALLOW_PROD_WRITES"):
+                storage.put_bytes("pipeline/test/g001.jpg", b"data")

@@ -41,6 +41,7 @@ def _load_legacy_allowlist(path: Path = LEGACY_ALLOWLIST_PATH) -> frozenset[str]
         line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     )
 
+
 REQUIRED_FIELDS: frozenset[str] = frozenset(
     {
         "id",
@@ -247,6 +248,31 @@ def load_all_fragments(fragments_dir: Path) -> list[Fragment]:
     return fragments
 
 
+def warn_missing_pr_refs(fragments: list[Fragment]) -> None:
+    """Emit a non-blocking warning for open fragments with no pr_refs.
+
+    The auto-closer (``scripts/sync_known_issue_status.py``) only fires when
+    *every* PR listed in ``pr_refs`` is MERGED on GitHub.  It cannot see a
+    fragment whose ``pr_refs`` is absent or empty, so the closure will stay
+    manual.  This warning nudges fix-PR authors to populate the field before
+    they merge.
+
+    This check is **informational only** — it always returns without raising
+    and never causes the validator to exit non-zero.
+    """
+    for fragment in fragments:
+        if fragment.status != "open":
+            continue
+        pr_refs = fragment.frontmatter.get("pr_refs")
+        if pr_refs is None or (isinstance(pr_refs, list) and len(pr_refs) == 0):
+            print(
+                f"WARNING: {fragment.path}: status is 'open' but pr_refs is empty/missing. "
+                "Add 'pr_refs: [<this PR #>]' before merging — "
+                "the auto-closer can't see this fragment otherwise.",
+                file=sys.stderr,
+            )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -277,6 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     exit_code = 0
+    parsed_fragments: list[Fragment] = []
     for path in paths:
         try:
             fragment = parse_fragment(path)
@@ -289,6 +316,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: {path}: {err}", file=sys.stderr)
         if errors:
             exit_code = 1
+        else:
+            parsed_fragments.append(fragment)
+
+    warn_missing_pr_refs(parsed_fragments)
 
     if exit_code == 0:
         print(f"validated {len(paths)} fragment(s): OK")
