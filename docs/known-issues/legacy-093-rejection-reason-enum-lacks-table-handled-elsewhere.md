@@ -6,7 +6,7 @@ id: 93
 severity: low
 slug: rejection-reason-enum-lacks-table-handled-elsewhere
 source: legacy
-status: resolved
+status: archived
 title: v2_image_review_decisions.rejection_reason Enum Lacks "table_handled_elsewhere"
 touches:
   - sql/44_extend_image_rejection_reason_enum.sql

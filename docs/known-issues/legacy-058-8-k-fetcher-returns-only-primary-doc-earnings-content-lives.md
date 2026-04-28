@@ -7,7 +7,7 @@ note: 8-K Exhibit 99.1 fetch; feature add, needs validator run
 severity: medium
 slug: 8-k-fetcher-returns-only-primary-doc-earnings-content-lives
 source: legacy
-status: resolved
+status: archived
 title: 8-K Fetcher Returns Only Primary Doc; Earnings Content Lives in Exhibit 99.1
 touches:
 - src/filing_fetcher/*.py

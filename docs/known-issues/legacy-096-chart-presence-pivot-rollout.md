@@ -16,7 +16,7 @@ pr_refs:
 severity: low
 slug: chart-presence-pivot-rollout
 source: legacy
-status: resolved
+status: archived
 title: Chart-Presence Pivot — Multi-PR Rollout Tracking
 touches: []
 updated: '2026-04-24'

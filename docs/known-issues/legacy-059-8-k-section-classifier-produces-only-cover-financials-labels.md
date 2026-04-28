@@ -7,7 +7,7 @@ note: New classifier patterns; FP risk
 severity: low
 slug: 8-k-section-classifier-produces-only-cover-financials-labels
 source: legacy
-status: resolved
+status: archived
 title: 8-K Section Classifier Produces Only `COVER` / `FINANCIALS` Labels
 touches:
 - src/extraction_v2/classifier*.py

@@ -9,7 +9,7 @@ pr_refs:
 severity: low
 slug: integration-tests-job-has-no-path-filter
 source: legacy
-status: resolved
+status: archived
 title: Integration Tests Job Has No Path Filter
 touches: []
 updated: '2026-04-22'
