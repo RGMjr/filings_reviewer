@@ -5,15 +5,17 @@ estimated: S
 gh_issue: 258
 id: 258
 note: Auto-closer (legacy-084 / PR #177) only fires when pr_refs is populated; many fix-PRs forget to set it
+pr_refs:
+  - 286
 severity: low
 slug: fix-pr-not-setting-pr-refs-on-resolved-fragment
 source: gh
-status: open
+status: resolved
 title: Fix-PR Authors Don't Set pr_refs on the Fragment They Resolve
 touches:
   - .claude/commands/commit-proj.md
   - scripts/validate_known_issues_fragments.py
-updated: '2026-04-27'
+updated: '2026-04-28'
 ---
 
 ### Problem
@@ -44,3 +46,7 @@ Recommend starting with **Option C** as the steady-state nudge, then **Option B*
 - Today's manual closures (#251, #252, #253, etc.) shipped before this fragment was filed; they don't need to be retroactively rewritten.
 - The auto-closer itself is fine — do not modify `scripts/sync_known_issue_status.py` as part of this work.
 - Worker should not expand scope into legacy-84's tool — that work is closed.
+
+### Resolution
+
+PR #286 implemented Option C. `scripts/validate_known_issues_fragments.py` now calls `warn_missing_pr_refs()` after validating each fragment. When a commit stages a known-issue fragment with `status: open` and `pr_refs` missing or empty, the `known-issues-validate` pre-commit hook emits a non-blocking `WARNING` to stderr reminding the author to set `pr_refs` before merging. The warning does not block the commit. Six unit tests cover the four spec cases (open+missing, open+empty list, open+populated, resolved+missing). `docs/development/CONTRIBUTING.md` updated with a "Setting pr_refs on the fragment you resolve" subsection. Option B (`/commit-proj` skill `resolves:` field) was explicitly deferred as out of scope.
