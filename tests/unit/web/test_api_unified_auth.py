@@ -114,6 +114,34 @@ class TestApiUnifiedAuth:
         assert resp.status_code == 404
         mock_db.delete_v2_review_decision.assert_called_once()
 
+    def test_same_origin_referer_bypass_https_under_http_proxy(self, authed_client, mock_db):
+        """
+        HTTPS Referer with HTTP host_url still bypasses auth (Render scenario).
+
+        Browsers send Referer with the user-visible scheme (https://) even when
+        Flask's request.host_url is http:// because TLS is terminated at the
+        proxy. The bypass must compare hosts, not URL prefixes — otherwise
+        same-origin GET AJAX (which omits Origin per the Fetch spec) hits the
+        api-key gate and 401s.
+        """
+        with patch("src.web.routes.api_unified.get_db", return_value=mock_db):
+            resp = authed_client.delete(
+                _ENDPOINT,
+                headers={"Referer": "https://localhost/v2/review/filings"},
+            )
+        assert resp.status_code == 404
+        mock_db.delete_v2_review_decision.assert_called_once()
+
+    def test_cross_origin_referer_does_not_bypass(self, authed_client, mock_db):
+        """A Referer pointing at a different host must not bypass auth."""
+        with patch("src.web.routes.api_unified.get_db", return_value=mock_db):
+            resp = authed_client.delete(
+                _ENDPOINT,
+                headers={"Referer": "https://attacker.example.com/page"},
+            )
+        assert resp.status_code == 401
+        mock_db.delete_v2_review_decision.assert_not_called()
+
     # ------------------------------------------------------------------
     # 500 misconfiguration case
     # ------------------------------------------------------------------
