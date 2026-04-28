@@ -3,7 +3,7 @@ id: 293
 source: gh
 slug: image-card-undo-review-affordance
 title: "Image card: 'Undo review' / re-open affordance"
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: S
@@ -15,6 +15,8 @@ touches:
 discovered: '2026-04-28'
 updated: '2026-04-28'
 gh_issue: 293
+pr_refs:
+  - 302
 note: supersedes deferred Step B of legacy-089 with cleaner scope
 ---
 
@@ -45,3 +47,20 @@ scope.
 - Validation target: `/v2/review/1748` — pressing the button on any of
   the 18 images should return it to the pending queue with the OCR'd
   text visible.
+
+### Resolution
+
+Shipped in PR #302 (merged 2026-04-28). Added an image-card "Re-open
+for review" button that flips `v2_image_assets.review_status='reviewed'`
+back to `'pending'` via `POST /api/v2/image-candidates/<img_id>/reopen`
+(handled by `db.reopen_image_candidate_v2`). Prior decision rows in
+`v2_image_review_decisions` and `v2_image_metric_confirmations` are
+preserved per `project_image_review_decisions_for_ml_training`. The
+button manipulates the image-level `v2_image_assets.review_status`
+surface only — per-metric state is untouched.
+
+Step B of legacy-089 (the *signal* that an image's underlying OCR /
+chart data has changed since the prior decision) is the natural follow-up
+and is tracked via the design doc shipped in PR #319
+(`docs/architecture/image-decision-revalidation-design.md`,
+recommendation: Option C — stale-OCR badge layered over this endpoint).
