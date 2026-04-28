@@ -2326,7 +2326,12 @@ def run_validation(
         baseline_description: Description for new baseline
         min_confidence: Minimum confidence threshold for counting facts
         fn_diagnostics: If True, run FN root cause analysis and print report
-        fail_on_regression: If True, exit(1) when a regression vs baseline is detected
+        fail_on_regression: If True, exit(1) when a regression vs baseline is
+            detected. The first regression triggers a single re-run of the full
+            validation; only a consistent fail across both runs sets the gate
+            (gh-273). This automates the manual re-run-once protocol that was
+            already documented in legacy-111 and project memory
+            (``feedback_reproduce_before_bisect_transient_regression``).
         companies: Optional list of company names to validate (subset run)
         limit: Optional cap on number of companies to validate
         max_workers: Number of parallel workers (default: 4)
@@ -2410,13 +2415,61 @@ def run_validation(
         try:
             comparison = validator.compare_to_baseline(metrics)
             if comparison.has_regression:
+                # Re-run-on-fail retry (gh-273): the Tier-1 presence-recall gate
+                # is zero-tolerance, but LLM responses can vary by 1-2 cells on
+                # cache miss even at temperature=0 (~1pp recall noise on the
+                # ~176-cell corpus). That has tripped the gate twice with no
+                # production code change (PR #87, legacy-111). Discriminate
+                # cache-turnover noise from a real regression by re-running
+                # validation once: a real production regression is stable across
+                # two runs; cache-turnover noise is not.
+                #
+                # Trade-off: a real but flaky regression that intermittently
+                # clears WILL be hidden by this retry. The bet is that real
+                # production code regressions are stable across two runs and
+                # cache-turnover regressions are not.
+                first_delta = comparison.tier1_presence_recall_delta
+                first_delta_str = f"{first_delta:+.1%}" if first_delta is not None else "n/a"
                 print(f"\n⚠ {comparison}")
-                print("\n  COMMIT BLOCKED: V2 gold standard regression detected")
-                print("  To update baseline after intentional changes:")
                 print(
-                    '    python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"'
+                    f"\n  Tier-1 presence-recall regression detected "
+                    f"(delta={first_delta_str}); re-running validation once to "
+                    f"discriminate cache-turnover noise from a real regression "
+                    f"(see gh-273)..."
                 )
-                sys.exit(1)
+
+                # Fresh validator state on retry: a new V2GoldStandardValidator
+                # instance and a fresh validate_all call. The LLM cache lives
+                # outside this process — the second run hits a re-warmed cache,
+                # which is exactly the discrimination signal we want.
+                retry_validator = V2GoldStandardValidator(
+                    min_confidence=min_confidence, fn_diagnostics=False
+                )
+                retry_results = retry_validator.validate_all(max_workers=max_workers)
+                retry_metrics = retry_validator.compute_metrics(retry_results)
+                retry_comparison = retry_validator.compare_to_baseline(retry_metrics)
+                retry_delta = retry_comparison.tier1_presence_recall_delta
+                retry_delta_str = f"{retry_delta:+.1%}" if retry_delta is not None else "n/a"
+
+                if retry_comparison.has_regression:
+                    print(f"\n⚠ {retry_comparison}")
+                    print(
+                        f"\n  CONSISTENT FAIL across two runs: first delta="
+                        f"{first_delta_str}, retry delta={retry_delta_str}."
+                    )
+                    print("  COMMIT BLOCKED: V2 gold standard regression detected")
+                    print("  To update baseline after intentional changes:")
+                    print(
+                        '    python3 -m src.gold_standard.v2_validator --update-baseline --description "Reason"'
+                    )
+                    sys.exit(1)
+                else:
+                    print(
+                        f"\n  Retry cleared the gate: first delta="
+                        f"{first_delta_str}, retry delta={retry_delta_str}. "
+                        f"Suspected cause: LLM cache turnover (gh-273). "
+                        f"Proceeding without regression."
+                    )
             else:
                 delta_f1 = comparison.f1_delta * 100
                 sign = "+" if delta_f1 >= 0 else ""

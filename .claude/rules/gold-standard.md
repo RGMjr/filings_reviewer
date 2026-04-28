@@ -82,6 +82,7 @@ s- `--fail-on-regression` is also **incompatible** with `--companies` or `--limi
 
 - Regression tolerance: 0% by default (zero-tolerance on Tier-1 presence-recall under PR2 — `compare_to_baseline` accepts a `tolerance` arg, but `--fail-on-regression` does not currently expose it).
 - **Gate metric (PR2):** `tier1_presence_recall` from the regenerated `data/gold_standard/v2_baseline.json`. Validator fails if `current.tier1_presence_recall - baseline.tier1_presence_recall < -tolerance`.
+- **Re-run-on-fail retry (gh-273):** when `--fail-on-regression` trips the gate, the validator re-runs the full corpus once and only exits non-zero if the second run also trips. Discriminates LLM cache-turnover noise (~1pp recall drift on cache miss against ~176 Tier-1 cells) from real production regressions. CI runtime doubles only on gate-trip; clean runs stay single-pass. A real but flaky regression that intermittently clears IS hidden by this retry — the bet is that production code regressions are stable across two runs while cache-turnover regressions are not.
 - **Tier-aware policy:** Tier 1 presence-recall regression is the sole blocker; everything else (fact-level deltas, per-company drops, chart presence_f1, Tier-2 presence-recall) is informational.
 - Tier definitions: `config/metric_keywords.yaml` (`tier:` field per metric).
 
