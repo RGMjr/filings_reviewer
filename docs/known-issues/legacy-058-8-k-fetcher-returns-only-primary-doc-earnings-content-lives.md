@@ -4,6 +4,8 @@ discovered: '2026-04-20'
 estimated: S
 id: 58
 note: 8-K Exhibit 99.1 fetch; feature add, needs validator run
+pr_refs:
+  - 251
 severity: medium
 slug: 8-k-fetcher-returns-only-primary-doc-earnings-content-lives
 source: legacy

@@ -33,8 +33,13 @@ Landed with Leg B of the metric-classify tripod:
   this PR closes the loop so the emission now has a valid downstream
   slot.
 
-`scripts/benchmark_vision.py` still has its own frozenset copy; harness-side
-alignment tracked on the harness branch.
+`scripts/benchmark_vision.py` still has its own frozenset copy missing
+`table_handled_elsewhere`. **Out of scope (accepted):** the harness is a dev
+script, not a prod surface — its frozenset is not consumed by the pipeline
+or DB. Earlier wording ("tracked on the harness branch") was misleading;
+no harness branch ever landed and none is planned. If the harness is ever
+extended to bake-off `table_handled_elsewhere` emissions, sync the frozenset
+at that point.
 
 ### Problem
 
