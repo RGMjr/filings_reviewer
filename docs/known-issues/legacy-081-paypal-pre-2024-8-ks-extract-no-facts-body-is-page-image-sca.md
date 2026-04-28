@@ -3,13 +3,16 @@ autonomy: n/a
 discovered: '2026-04-22'
 estimated: —
 id: 81
+note: Pipeline merged in PR #110; remaining work is operator activation (smoke + prod enable + backfill)
+pr_refs:
+  - 110
 severity: medium
 slug: paypal-pre-2024-8-ks-extract-no-facts-body-is-page-image-sca
 source: legacy
 status: open
 title: PayPal Pre-2024 8-Ks Extract No Facts — Body Is Page-Image Scans
 touches: []
-updated: '2026-04-22'
+updated: '2026-04-28'
 ---
 
 ### Problem
@@ -34,9 +37,11 @@ rollback).
 
 ### Next Steps
 
-1. Merge the feature branch with both flags default-off; CI green.
+1. ~~Merge the feature branch with both flags default-off; CI green.~~ — **Done in PR #110** (commit `b517f75`); both flags are default-off on main.
 2. Dev smoke test on one PayPal 8-K; eyeball segments + facts.
 3. Enable `FULL_PAGE_OCR_ENABLED=true` in prod; run
    `scripts/backfill_full_page_ocr.py --confirm --cik 0001633917 --form-type 8-K --filing-date-before 2024-01-01`.
 4. Stability permitting, enable `IMAGE_KEYWORD_PRESCAN_ENABLED=true`
    and re-extract 5 investor-deck-style filings to exercise Path B.
+
+Steps 2–4 are operator-driven; this fragment stays open until the prod backfill verifies the pipeline produces facts on a real PayPal 8-K.

@@ -3,6 +3,8 @@ autonomy: safe
 discovered: '2026-04-23'
 estimated: S
 id: 100
+pr_refs:
+  - 170
 severity: low
 slug: classify-cost-usd-not-plumbed-from-vision-client
 source: legacy

@@ -52,12 +52,13 @@ Three paths, pick at triage time:
 
 1. **Archive decisions + DELETE.** Export the 18 `v2_review_decisions` rows (plus the 30 facts) to `data/audit/chart_fact_decisions_predrain_<ts>.json` for historical reference, then `DELETE FROM v2_metric_facts WHERE source_type='chart'` in a transaction. Reviewer work preserved as JSON, not queryable live.
 2. **Migrate accepts + corrects to `v2_image_metric_confirmations`.** For each chart fact with `source_locator.img_id` not null: derive a `(img_id, detected_metric_id=canonical_metric_id, decision)` row. Rejects have no natural img-level equivalent (the "this value is wrong" signal doesn't map cleanly to "this metric is not present"), so rejects would still be lost. Complex but preserves the most work as live signal.
-3. **Keep deferred.** No action; residual 30 rows are inert. Revisit only if analytics downstream actually needs them gone.
+3. **Keep deferred (current default).** No action; residual 30 rows are inert. **Drain intentionally deferred indefinitely; reviewer decisions preserved.** Revisit only if analytics downstream actually reports impact from the residual rows.
 
 ### Cross-References
 
 - Parent rollout: legacy-096 (chart-presence pivot rollout, resolved).
 - Dissolved root cause: legacy-086 (dedup stage collapse).
 - Dissolved consequence: legacy-035 (pre-2026-04-17 chart-fact backfill).
+- See also legacy-053 — chart OCR dollar budget on the same pipeline post-pivot; both are residual-concern fragments rooted in the chart-presence transition.
 - Reviewed-filing guard: `src/extraction_v2/persistence.py::_persist_facts_in_tx`, `ReviewedFilingError`.
 - Cascade path: `v2_review_decisions.fact_id ON DELETE CASCADE` (sql/05 originally; `chart_only=True` guard in `persist_pipeline_result` refuses when decisions exist).

@@ -4,6 +4,9 @@ discovered: '2026-04-21'
 estimated: S
 id: 69
 note: Pin claude + gh versions; needs validation step
+pr_refs:
+  - 176
+  - 217
 severity: low
 slug: dockerfile-nightly-sweep-installs-claude-gh-unpinned
 source: legacy

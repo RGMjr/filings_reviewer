@@ -3,17 +3,22 @@ autonomy: review
 discovered: '2026-04-23'
 estimated: M
 id: 95
+note: Phase 1 shipped via PRs #199, #243, #247; Phase 2 items reframed as accepted-risk deferrals
+pr_refs:
+  - 199
+  - 243
+  - 247
 severity: high
 slug: migrations-drift-from-prod-no-post-deploy-apply
 source: legacy
-status: partially-resolved
+status: resolved
 title: Schema Migrations Drift From Prod — No Post-Deploy Apply Step
 touches:
   - scripts/apply_migrations.py
   - render.yaml
   - src/web/app.py
   - sql/
-updated: '2026-04-27'
+updated: '2026-04-28'
 ---
 
 ### Problem
@@ -89,8 +94,12 @@ Pick one (or more) of:
 
 **Operator caution before running `--reconcile-checksums` against Neon prod.** During local verification of this PR, `--check-checksums` flagged 1 WARN on `sql/31_drop_v1_review_tables.sql` — the stored hash matched neither legacy nor new because PR #220 (`9ce34b9`, 2026-04-25) made the file idempotent *after* it had been applied. The reconciler correctly refused to silently update the row. The same drift may exist on Neon's ledger. **Run `--check-checksums` against Neon first**; if WARN appears on sql/31, drop the stale ledger row (`DELETE FROM schema_migrations WHERE id = '31_drop_v1_review_tables.sql';`) so the next predeploy re-applies the now-idempotent migration cleanly.
 
-### Remaining (Phase 2)
+### Phase 2 — accepted-risk deferrals (2026-04-28)
 
-- **#2 App-startup migration sentinel** — fail-fast in `create_app` if `MAX(id) FROM schema_migrations` lags the expected head.
-- **#4 CI schema-drift check** — diff applied set against `sql/` directory and fail if any file is unregistered (now redundant given the source-of-truth glob, but worth keeping as a defense-in-depth check that nothing was deleted from disk after application).
-- **#5 Alerting** — Render log alert on `MIGRATION_DRIFT_DETECTED` token from #2.
+The remaining Phase 2 items are explicitly deferred (not forgotten). The practical risk this fragment opened against — prod features silently breaking on any PR that adds a migration — is closed by the Phase 1 pair (`preDeployCommand` blocks deploy on migration failure; the `migration_files()` glob makes registration-drift structurally impossible). The Phase 2 items are defense-in-depth only:
+
+- **#2 App-startup migration sentinel** — _accepted-risk deferral._ Redundant with `preDeployCommand`: if migrations fail, the deploy never cuts over to traffic. The sentinel would only catch the case of a manual restart against a stale DB, which has never been the reported failure mode.
+- **#4 CI schema-drift check** — _accepted-risk deferral._ Redundant with the glob-based source-of-truth in `migration_files()` — a `sql/*.sql` file that exists on disk is automatically registered, so the "added but forgot to register" failure mode is structurally impossible.
+- **#5 Alerting** — _accepted-risk deferral._ Out of proportion to current risk. The remaining failure surface (manual restart against stale DB) does not warrant a dedicated alerting layer; a `MIGRATION_DRIFT_DETECTED` Render log alert can be added in ~10 minutes if the failure mode is ever observed.
+
+If any of these deferrals proves wrong (e.g., a manual-restart incident occurs), file a fresh `gh-*` fragment scoped to the specific failure observed rather than reopening this one.

@@ -3,31 +3,32 @@ autonomy: skip
 discovered: '2026-04-21'
 estimated: M
 id: 53
-note: 'Chart call limit; needs data-driven tuning. Post-#86 chart-presence pivot
-  (2026-04-23), truncation affects presence coverage only (missed detected_metrics
-  signals) — no per-value correctness impact because the pipeline no longer emits
-  per-value chart facts.'
+note: Count cap superseded by dollar budget in PR #131; residual concern is presence-coverage truncation on non-Tier-1 charts post-pivot
+pr_refs:
+  - 131
 severity: low
 slug: chart-call-limit-10-truncates-ocr-on-high-chart-filings
 source: legacy
 status: open
-title: Chart Call Limit (10) Truncates OCR on High-Chart Filings
+title: Chart OCR dollar budget may truncate non-Tier-1 presence signals on high-chart filings
 touches: []
-updated: '2026-04-23'
+updated: '2026-04-28'
 ---
 
-### Problem
+### Original problem (2026-04-21)
 
-`OCRExtractionStage` enforces a hard cap on per-filing chart OCR calls. During the Chewy smoke (`logs/issue_35_prod_smoke3.log`), only 10 of 20 queued chart/table images were OCR'd before:
+`OCRExtractionStage` enforced a hard count cap (`MAX_CHART_CALLS_PER_DOCUMENT=10`) on per-filing chart OCR calls. During the Chewy smoke (`logs/issue_35_prod_smoke3.log`), only 10 of 20 queued chart/table images were OCR'd before logging `Chart call limit (10) reached`. Filings with >10 charts silently lost trailing-image coverage.
 
-```
-WARNING:src.extraction_v2.stages.ocr_extraction:Chart call limit (10) reached
-```
+### Superseded by Wave A3 (PR #131, commit `7b02584`, 2026-04-22)
 
-Filings with lots of charts (Chewy has 16 chart-classified images; Snowflake has 8; on-average-larger S-1s exceed 10 easily) silently lose extraction coverage on the trailing images. The skipped images never get queried, so any Tier 1 cohort/NRR chart in positions 11+ is invisible to the bridge regardless of whether the OCR would have succeeded.
+The count cap was replaced by a per-filing dollar budget (`DEFAULT_CHART_BUDGET_PER_FILING_USD=0.25`) in `src/extraction_v2/stages/ocr_extraction.py:113`. Tier-1 charts bypass the budget entirely; non-Tier-1 charts share the dollar pool. The `Chart call limit (10) reached` warning is no longer emitted.
 
-### Next Steps
+### Residual concern (post-#86 chart-presence pivot)
 
-- Locate the limit in `src/extraction_v2/stages/ocr_extraction.py` (likely a module-level constant or `PipelineConfig` field) and either raise the default, convert to a per-filing override, or expose via CLI flag on `batch_v2_extraction.py`.
-- Re-run the Chewy smoke with the cap raised to quantify the missed-recall impact.
-- Consider prioritization: OCR charts in likely-Tier-1 sections first (MDA, financials) rather than HTML order.
+Post-pivot (2026-04-23, #86), the pipeline no longer emits per-value chart facts — chart processing is purely a presence signal. The dollar budget can still truncate trailing non-Tier-1 charts on filings with many charts, which translates to **missed `detected_metrics` presence signals** rather than missed values. Whether this matters depends on how many high-chart filings have Tier-1-relevant non-Tier-1 metric coverage in positions past the budget.
+
+### Next steps
+
+- Quantify on a high-chart filing (Chewy / Snowflake / Robinhood S-1) how many non-Tier-1 charts the dollar budget skips.
+- If the missed presence signal is non-trivial, raise `DEFAULT_CHART_BUDGET_PER_FILING_USD` or prioritize charts in likely-Tier-2-relevant sections (MDA, financials) first within the non-Tier-1 pool.
+- See also legacy-097 (residual chart facts after presence pivot) — same code area, same pivot context.

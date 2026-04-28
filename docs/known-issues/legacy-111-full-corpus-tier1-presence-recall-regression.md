@@ -3,15 +3,16 @@ autonomy: review
 discovered: '2026-04-27'
 estimated: M
 id: 111
+note: Symptom self-resolved (cache turnover); structural concern split out to gh-273
 severity: high
 slug: full-corpus-tier1-presence-recall-regression
 source: legacy
-status: partially-resolved
+status: resolved
 title: Full-corpus Tier-1 presence-recall regression on clean main blocks --fail-on-regression gate
 touches:
   - data/gold_standard/v2_baseline.json
   - src/extraction_v2/
-updated: '2026-04-27'
+updated: '2026-04-28'
 ---
 
 ### Problem
@@ -82,6 +83,10 @@ Per-metric Tier-1 breakdown (run 1):
 
 This is the same failure mode as resolved issue #87 (commit `08b6269` — "text-recall regression was an env artifact, not a code bug"). The known flaky-cell guidance in `.claude/rules/gold-standard.md` ("TMUS_2025-04-24 and META_2025-04-30 vary by 1 TP between runs") confirms the structural noise floor.
 
-**Why partially-resolved (not resolved):** the immediate symptom has cleared, but the underlying structural risk remains: a zero-tolerance gate combined with stochastic LLM responses on cache miss means any future cache eviction in a Tier-1-relevant prompt can re-trip the gate. A durable fix would either (a) widen `--fail-on-regression` tolerance to ~0.5–1pp on Tier-1 presence-recall, (b) add a re-run-on-fail retry inside `compare_to_baseline`, or (c) pin the cache contents required for full-corpus runs. None of those is in scope for this fragment.
+**Resolution (2026-04-28):** the immediate symptom cleared on re-run and has not re-occurred. The underlying structural risk (zero-tolerance gate + stochastic LLM responses on cache miss) is real but is independent of this incident; it is now tracked separately in **gh-273** (GS gate has no tolerance band for LLM cache-turnover noise), which carries forward the three durable-fix options:
 
-**Operator workaround if it re-occurs:** re-run `python3 -m src.gold_standard.v2_validator --fail-on-regression` once. If a second consecutive run still shows `tier1_presence_recall_delta < 0`, treat as a real regression and bisect; if the second run is clean, it was cache turnover.
+- (a) widen `--fail-on-regression` tolerance to ~0.5–1pp on Tier-1 presence-recall;
+- (b) add a re-run-on-fail retry inside `compare_to_baseline`;
+- (c) pin the cache contents required for full-corpus runs.
+
+**Operator workaround if it re-occurs:** re-run `python3 -m src.gold_standard.v2_validator --fail-on-regression` once. If a second consecutive run still shows `tier1_presence_recall_delta < 0`, treat as a real regression and bisect; if the second run is clean, it was cache turnover. (Also documented in memory `feedback_reproduce_before_bisect_transient_regression`.)

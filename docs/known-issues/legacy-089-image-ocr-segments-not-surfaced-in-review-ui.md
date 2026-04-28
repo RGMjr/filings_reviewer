@@ -63,8 +63,7 @@ directly or pull up individual image-review pages.
 
 ### Cross-references
 
-- #81 — PayPal pre-2024 8-K page-scan coverage (full-page-OCR feature).
-- #82 — Full-page-OCR pipeline integration test missing; this issue
-  adds the UI-surfacing layer to that integration gap.
-- PR #139 — landed the three backfill fixes that made filing 1748
-  ingest cleanly; this issue is the logical follow-up.
+- legacy-081 — PayPal pre-2024 8-K page-scan coverage (full-page-OCR feature).
+- legacy-082 — Full-page-OCR pipeline integration test (now **resolved** via PR #221); this fragment adds the UI-surfacing layer to that integration gap.
+- gh-196 — ML triage feed gaps from `v2_image_metric_confirmations`. Also concerns review-surface completeness for image data; different code path (training-data schema vs UI rendering) but worth coordinating if either is reworked.
+- PR #139 — landed the three backfill fixes that made filing 1748 ingest cleanly; this fragment is the logical follow-up.
