@@ -111,6 +111,7 @@ class SectionClassificationStage:
             r"^ITEM\s*7[\.\:]?\s*MANAGEMENT.{0,5}S?\s*DISCUSSION",
             r"^MANAGEMENT.{0,5}S?\s*DISCUSSION\s*(AND|&)\s*ANALYSIS",
             r"^MD\s*&?\s*A$",
+            r"^RESULTS\s*OF\s*OPERATIONS$",
         ],
         SectionType.BUSINESS: [
             r"^ITEM\s*1[\.\:]?\s*BUSINESS$",
@@ -134,6 +135,20 @@ class SectionClassificationStage:
         SectionType.SIGNATURES: [
             r"^SIGNATURES?$",
             r"^POWER\s*OF\s*ATTORNEY",
+        ],
+        SectionType.KEY_METRICS: [
+            r"^KEY\s*BUSINESS\s*METRICS?$",
+            r"^KEY\s*OPERATING\s*METRICS?$",
+            r"^BUSINESS\s*HIGHLIGHTS?$",
+            r"^OPERATING\s*HIGHLIGHTS?$",
+            r"^Q[1-4]\s*\d{4}\s*HIGHLIGHTS?$",
+        ],
+        SectionType.FINANCIAL_OVERVIEW: [
+            r"^FINANCIAL\s*HIGHLIGHTS?$",
+        ],
+        SectionType.GUIDANCE: [
+            r"^FY\s*\d{4}\s*OUTLOOK$",
+            r"^Q[1-4]\s*\d{4}\s*(OUTLOOK|GUIDANCE)$",
         ],
     }
 

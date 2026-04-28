@@ -6,6 +6,8 @@ Tests section heading detection and classification into semantic sections.
 
 from pathlib import Path
 
+import pytest
+
 from src.extraction_v2.models import SectionType, Segment, SegmentType
 from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, PipelineStage
 from src.extraction_v2.stages.section_classification import (
@@ -949,3 +951,58 @@ class TestPresentationSlideClassification:
 
         assert result.success is True
         assert context.segments[0].section_type == SectionType.MDA
+
+
+class TestEightKHeadingPatterns:
+    """Test 8-K earnings-exhibit heading classification (legacy-059)."""
+
+    @pytest.mark.parametrize(
+        "heading,expected",
+        [
+            ("Financial Highlights", SectionType.FINANCIAL_OVERVIEW),
+            ("Key Business Metrics", SectionType.KEY_METRICS),
+            ("Key Operating Metrics", SectionType.KEY_METRICS),
+            ("Business Highlights", SectionType.KEY_METRICS),
+            ("Operating Highlights", SectionType.KEY_METRICS),
+            ("Q3 2025 Highlights", SectionType.KEY_METRICS),
+            ("Q4 2024 Highlights", SectionType.KEY_METRICS),
+            ("Results of Operations", SectionType.MDA),
+            ("FY 2026 Outlook", SectionType.GUIDANCE),
+            ("FY2026 Outlook", SectionType.GUIDANCE),
+            ("Q1 2026 Outlook", SectionType.GUIDANCE),
+            ("Q2 2025 Guidance", SectionType.GUIDANCE),
+        ],
+    )
+    def test_eight_k_heading_classified(
+        self, heading: str, expected: SectionType
+    ) -> None:
+        stage = SectionClassificationStage()
+        assert stage._detect_section_type(heading) == expected
+
+    def test_financial_highlights_in_body_text_not_classified_as_heading(self) -> None:
+        """Body text containing the phrase should not be treated as a heading."""
+        stage = SectionClassificationStage()
+        long_body = (
+            "We are pleased to present our financial highlights for the quarter, "
+            "which include revenue growth and improved margins across all segments."
+        )
+        seg = Segment(
+            doc_id=1,
+            segment_id="seg-1",
+            segment_type=SegmentType.PARAGRAPH,
+            text=long_body,
+            dom_locator="/html/body/p[3]",
+            sequence=0,
+        )
+        assert stage._is_section_heading(seg) is False
+
+    def test_pattern_precedence_stable(self) -> None:
+        """Precedence lock: 'Financial Highlights' vs 'Q3 2025 Highlights'."""
+        stage = SectionClassificationStage()
+        assert (
+            stage._detect_section_type("Financial Highlights")
+            == SectionType.FINANCIAL_OVERVIEW
+        )
+        assert (
+            stage._detect_section_type("Q3 2025 Highlights") == SectionType.KEY_METRICS
+        )
