@@ -8,7 +8,8 @@ note: 'Residual pre-pivot chart facts (30 rows across 10 filings) remain in
   CASCADE-destroy on DELETE. Low blast radius — new UI does not read them,
   validator bypasses them — but analytics views filtering on source_type=chart
   still see them.'
-pr_refs: []
+pr_refs:
+- 301
 severity: low
 slug: residual-chart-facts-after-presence-pivot
 source: legacy
