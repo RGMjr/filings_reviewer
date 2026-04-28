@@ -91,3 +91,44 @@ class TestUnskipImageCandidateV2:
 
         resp = client.post(f"/api/v2/image-candidates/{IMG_ID}/unskip")
         assert resp.status_code == 400
+
+
+class TestReopenImageCandidateV2:
+    """Per gh-293 — flip legacy review_status='reviewed' back to 'pending'."""
+
+    def test_reopen_success(self, client, monkeypatch):
+        mock_db = MagicMock()
+        _patch_get_db(monkeypatch, mock_db)
+        mock_db.reopen_image_candidate_v2.return_value = True
+
+        resp = client.post(
+            f"/api/v2/image-candidates/{IMG_ID}/reopen",
+            headers={"X-Reviewer-Id": "RGM"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["img_id"] == IMG_ID
+        assert body["review_status"] == "pending"
+        mock_db.reopen_image_candidate_v2.assert_called_once_with(IMG_ID)
+
+    def test_reopen_missing_reviewer_returns_400(self, client, monkeypatch):
+        mock_db = MagicMock()
+        _patch_get_db(monkeypatch, mock_db)
+
+        resp = client.post(f"/api/v2/image-candidates/{IMG_ID}/reopen")
+
+        assert resp.status_code == 400
+        mock_db.reopen_image_candidate_v2.assert_not_called()
+
+    def test_reopen_not_reviewed_returns_404(self, client, monkeypatch):
+        mock_db = MagicMock()
+        _patch_get_db(monkeypatch, mock_db)
+        mock_db.reopen_image_candidate_v2.return_value = False
+
+        resp = client.post(
+            f"/api/v2/image-candidates/{IMG_ID}/reopen",
+            headers={"X-Reviewer-Id": "RGM"},
+        )
+
+        assert resp.status_code == 404

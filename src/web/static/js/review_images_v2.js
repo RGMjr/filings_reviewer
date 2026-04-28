@@ -190,6 +190,46 @@
         }
     }
 
+    async function reopenImage() {
+        if (state.submitting) return;
+
+        const btn = document.getElementById('btn-reopen-image');
+        const imgId = (btn && btn.dataset.imgId) || state.currentImgId;
+        if (!imgId) return;
+
+        const reviewerName = (typeof window.requireReviewerName === 'function')
+            ? window.requireReviewerName()
+            : localStorage.getItem('reviewer_name');
+        if (!reviewerName) return;
+
+        state.submitting = true;
+        try {
+            const qs = state.imageStatus && state.imageStatus !== 'all'
+                ? `?image_status=${encodeURIComponent(state.imageStatus)}`
+                : '';
+            const response = await fetch(
+                `/api/v2/image-candidates/${imgId}/reopen${qs}`,
+                {
+                    method: 'POST',
+                    headers: { 'X-Reviewer-Id': reviewerName },
+                }
+            );
+            const data = await response.json();
+            if (response.ok) {
+                showToast('Image re-opened for review', 'success');
+                window.location.href =
+                    `/v2/review/${state.filingId}?tab=images&image_status=pending`;
+            } else {
+                showToast(data.message || 'Failed to re-open image', 'danger');
+            }
+        } catch (err) {
+            showToast('Network error', 'danger');
+            console.error('Reopen error:', err);
+        } finally {
+            state.submitting = false;
+        }
+    }
+
     function navigateNext() {
         const currentIndex = state.candidates.findIndex(c => c.img_id === state.currentImgId);
         if (currentIndex < state.candidates.length - 1) {
@@ -213,9 +253,11 @@
     function bindButtonEvents() {
         const skipBtn = document.getElementById('btn-skip');
         const undoBtn = document.getElementById('btn-undo');
+        const reopenBtn = document.getElementById('btn-reopen-image');
 
         if (skipBtn) skipBtn.addEventListener('click', submitSkip);
         if (undoBtn) undoBtn.addEventListener('click', undoSkip);
+        if (reopenBtn) reopenBtn.addEventListener('click', reopenImage);
     }
 
     function showToast(message, type = 'info') {
