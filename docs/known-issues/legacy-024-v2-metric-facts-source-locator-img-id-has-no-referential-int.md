@@ -1,19 +1,20 @@
 ---
-autonomy: skip
+autonomy: n/a
 discovered: '2026-04-18'
 estimated: M
 id: 24
-note: 'Scope reduced to historical advisory-fact hygiene after 2026-04-24
-  presence-first pivot: presence rows (v2_text_metric_presence,
-  v2_image_metric_presence) do not rely on source_locator.img_id; orphans live only
-  in legacy advisory v2_metric_facts. Not on the presence-pivot critical path.'
+note: 'Resolved 2026-04-28 as fragment-only closure: dev (Neon prod) and local
+  Docker test DB both report 0 Class (B) orphans against
+  scripts/check_image_referential_integrity.py. Class (B) promoted from
+  warning-only to blocking in the same PR to lock against regression.'
 severity: low
 slug: v2-metric-facts-source-locator-img-id-has-no-referential-int
 source: legacy
-status: open
+status: resolved
 title: '`v2_metric_facts.source_locator.img_id` Has No Referential Integrity'
-touches: []
-updated: '2026-04-24'
+touches:
+  - scripts/check_image_referential_integrity.py
+updated: '2026-04-28'
 ---
 
 ### Problem
@@ -37,3 +38,16 @@ The script now reports three classes and is wired into the integration-tests CI 
 - **Class (C)** — asset rows with `file_path` outside `data/` or missing on disk. Warning-only; tracked under Issue #34.
 
 `tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` locks the Class (A) invariant at unit-test level.
+
+### Resolution (2026-04-28)
+
+Closed as a fragment-only resolution per `project_fragment_only_closure_pattern`. No data migration required.
+
+**Verification.** `scripts/check_image_referential_integrity.py` was rerun after the 2026-04-23 chart-presence pivot (#147), which removed the per-value chart `v2_metric_facts` emission path that historically wrote `source_locator.img_id`-bearing rows. Counts now:
+
+- **Neon prod (`DATABASE_URL` in `.env`)**: 0 Class (B) orphans (down from 9 across 4 docs at the 2026-04-19 baseline). The 4 affected docs (1539, 1545, 1546, 1551) appear to have washed through normal re-extraction or DB churn between 2026-04-19 and 2026-04-28.
+- **Local Docker test DB (`TEST_DATABASE_URL`)**: 0 Class (B) orphans (test DB carries no fact data of its own).
+
+**Lock-in.** Class (B) promoted from warning-only to blocking in `scripts/check_image_referential_integrity.py` so a single regression on any DB the script is pointed at fails CI's integration-tests job. Class (A) blocking semantics and the unit-level invariant in `tests/unit/extraction_v2/test_chart_fact_bridge_invariants.py` are unchanged. Class (C) remains warning-only and continues to track separately under issue #34.
+
+**Why no migration.** The chart-presence pivot eliminated the upstream code path that wrote chart facts with `source_locator.img_id`. Future chart presence flows through `v2_image_metric_presence` and `v2_image_metric_confirmations`, neither of which depends on `source_locator`. With both observed populations already at 0 and no upstream writer remaining, the remaining cleanup options (delete vs. NULL-out vs. promote to FK column) are all no-ops on a no-orphan dataset.

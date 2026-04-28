@@ -11,9 +11,13 @@ in the review UI (`unified_review.html` "Chart Evidence" block):
         fact (chart_fact_bridge.py:134, 185, 244). A non-zero count here is
         a persistence-layer regression and fails CI.
 
-    (B) WARNING: img_id present but does not resolve to any v2_image_assets
-        row. Typically caused by image deletion/dedup migrations. Not a CI
-        blocker today — flip to blocking once baseline reaches zero.
+    (B) BLOCKING: img_id present but does not resolve to any v2_image_assets
+        row. Typically caused by image deletion/dedup migrations. Promoted
+        from warning-only to blocking on 2026-04-28 (legacy-024 closure)
+        after both prod and the local Docker test DB reached 0 orphans —
+        the chart-presence pivot (#147) removed the upstream writer that
+        used to emit chart facts with `source_locator.img_id`, so any new
+        orphan signals a regression.
 
     (C) WARNING: asset row exists but the on-disk file is missing or lives
         outside the project data/ directory. Common with extraction caches
@@ -24,7 +28,6 @@ in the review UI (`unified_review.html` "Chart Evidence" block):
 Scope:
     - Read-only. No schema changes, no writes.
     - Does NOT modify facts, images, or files — diagnosis only.
-    - Promoting img_id to a FK column is a separate workstream (Issue #24).
 
 Usage:
     python3 scripts/check_image_referential_integrity.py              # report
@@ -33,7 +36,7 @@ Usage:
 
 Exit codes:
     0  no blocking violations
-    1  blocking violation (class A) found OR DATABASE_URL unset / other failure
+    1  blocking violation (class A or B) found OR DATABASE_URL unset / other failure
 """
 
 from __future__ import annotations
@@ -96,9 +99,7 @@ ASSET_FILE_PATH_SQL = """
 """
 
 
-def _load_missing_files(
-    db: DatabaseAdapter, data_dir: Path | None
-) -> tuple[int, list[dict]]:
+def _load_missing_files(db: DatabaseAdapter, data_dir: Path | None) -> tuple[int, list[dict]]:
     """Class (C): image rows whose file_path key is invalid or absent in storage.
 
     ``data_dir`` is retained as a parameter for CLI compatibility but is no longer
@@ -187,7 +188,7 @@ def main() -> int:
 
     # (A) — blocking
     null_img_rows = db.query(NULL_IMG_ID_SQL)
-    # (B) — warning
+    # (B) — blocking (promoted 2026-04-28)
     orphan_rows = db.query(ORPHAN_SQL)
     # (C) — warning
     file_checked, file_missing = _load_missing_files(db, data_dir)
@@ -215,20 +216,21 @@ def main() -> int:
     else:
         logger.info("(A) OK: no chart-sourced facts with null img_id.")
 
-    # Class B — warning
+    # Class B — blocking (promoted from warning on 2026-04-28, legacy-024 closure)
     if orphan_rows:
         by_doc = Counter(r["doc_id"] for r in orphan_rows)
         by_source = Counter(r["source_type"] for r in orphan_rows)
-        logger.warning(
-            "(B) WARN: %d fact(s) reference img_id values with no matching asset row "
+        logger.error(
+            "(B) BLOCKING: %d fact(s) reference img_id values with no matching asset row "
             "(across %d doc(s), source_types=%s)",
             len(orphan_rows),
             len(by_doc),
             dict(by_source),
         )
         for doc_id, count in sorted(by_doc.items(), key=lambda x: (-x[1], x[0])):
-            logger.warning("  doc_id=%s: %d fact(s)", doc_id, count)
+            logger.error("  doc_id=%s: %d fact(s)", doc_id, count)
         _print_samples("(B)", orphan_rows, args.sample)
+        exit_code = 1
     else:
         logger.info("(B) OK: no orphaned img_id references.")
 
