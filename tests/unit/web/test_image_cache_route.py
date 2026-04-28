@@ -94,13 +94,38 @@ class TestImageCacheRouteMiss:
         mock_db.get_cached_image.return_value = None
         mock_sec = MagicMock()
         mock_sec.fetch_image.return_value = FAKE_IMAGE
-        with patch("src.web.routes.image_cache.get_db", return_value=mock_db), \
-             patch("src.web.routes.image_cache.SECClient", return_value=mock_sec):
+        with (
+            patch("src.web.routes.image_cache.get_db", return_value=mock_db),
+            patch("src.web.routes.image_cache.SECClient", return_value=mock_sec),
+        ):
             resp = client.get(ROUTE)
         assert resp.status_code == 200
+        # The URL path carries the dashes-stripped 18-digit form, but
+        # SECClient.fetch_image extracts via SEC_ACCESSION_PATTERN which
+        # requires dashes — the route must reinsert them. (Regression
+        # guard for PR #244 / gh-image-cache-proxy-404.)
         mock_sec.fetch_image.assert_called_once_with(
             cik=CIK,
-            accession_number=ACCESSION,
+            accession_number="0001193125-20-311265",
+            filename=FILENAME,
+        )
+
+    def test_passes_through_non_18_digit_accession(self, client, mock_db):
+        """Non-canonical accession path is forwarded as-is so fetch_image's
+        own warning + 404 path still surfaces (no silent reformatting)."""
+        mock_db.get_cached_image.return_value = None
+        mock_sec = MagicMock()
+        mock_sec.fetch_image.return_value = None
+        weird_acc = "not-an-accession"
+        with (
+            patch("src.web.routes.image_cache.get_db", return_value=mock_db),
+            patch("src.web.routes.image_cache.SECClient", return_value=mock_sec),
+        ):
+            resp = client.get(f"/images/cache/{CIK}/{weird_acc}/{FILENAME}")
+        assert resp.status_code == 404
+        mock_sec.fetch_image.assert_called_once_with(
+            cik=CIK,
+            accession_number=weird_acc,
             filename=FILENAME,
         )
 
@@ -108,8 +133,10 @@ class TestImageCacheRouteMiss:
         mock_db.get_cached_image.return_value = None
         mock_sec = MagicMock()
         mock_sec.fetch_image.return_value = None  # SEC fetch failed
-        with patch("src.web.routes.image_cache.get_db", return_value=mock_db), \
-             patch("src.web.routes.image_cache.SECClient", return_value=mock_sec):
+        with (
+            patch("src.web.routes.image_cache.get_db", return_value=mock_db),
+            patch("src.web.routes.image_cache.SECClient", return_value=mock_sec),
+        ):
             resp = client.get(ROUTE)
         assert resp.status_code == 404
 
@@ -117,8 +144,10 @@ class TestImageCacheRouteMiss:
         mock_db.get_cached_image.return_value = None
         mock_sec = MagicMock()
         mock_sec.fetch_image.return_value = b"\x89PNG\r\n"
-        with patch("src.web.routes.image_cache.get_db", return_value=mock_db), \
-             patch("src.web.routes.image_cache.SECClient", return_value=mock_sec):
+        with (
+            patch("src.web.routes.image_cache.get_db", return_value=mock_db),
+            patch("src.web.routes.image_cache.SECClient", return_value=mock_sec),
+        ):
             resp = client.get(f"/images/cache/{CIK}/{ACCESSION}/chart.png")
         assert resp.content_type.startswith("image/png")
 
@@ -127,8 +156,10 @@ class TestImageCacheRouteMiss:
         mock_sec = MagicMock()
         mock_sec.fetch_image.return_value = FAKE_IMAGE
         mock_sec_class = MagicMock(return_value=mock_sec)
-        with patch("src.web.routes.image_cache.get_db", return_value=mock_db), \
-             patch("src.web.routes.image_cache.SECClient", mock_sec_class):
+        with (
+            patch("src.web.routes.image_cache.get_db", return_value=mock_db),
+            patch("src.web.routes.image_cache.SECClient", mock_sec_class),
+        ):
             client.get(ROUTE)
         _, kwargs = mock_sec_class.call_args
         assert kwargs.get("db_adapter") is mock_db
