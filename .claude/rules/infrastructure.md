@@ -103,6 +103,7 @@ Rules for any DB-touching command in this repo:
 | `R2_SECRET_ACCESS_KEY` | With `R2_BUCKET` | R2 API token secret |
 | `R2_ENDPOINT_URL` | With `R2_BUCKET` | R2 S3-compatible endpoint (`https://<account-id>.r2.cloudflarestorage.com`) |
 | `IMAGE_CACHE_DIR` | Dev only (optional) | Override local filesystem image-cache root. Ignored when `R2_BUCKET` is set |
+| `FILING_CACHE_DIR` | Dev only (optional) | Override local filesystem filing-HTML cache root (`<repo>/data/filing_cache/` by default). Ignored when `R2_BUCKET` is set. See **Filing HTML Storage** below. |
 | `METABASE_URL` | Optional | Target of the "Data Explorer" nav link in the Flask UI. Defaults to `https://filings-metabase.onrender.com` when unset. |
 | `ENABLE_METRIC_CLASSIFY` | Optional | Feature gate for the Vision-API metric-classify stage (`src/extraction_v2/stages/image_classify.py`). Default off. When `true`, every chart / table_image runs `VisionClient.analyze_image_for_metric_classification` and the result lands in `v2_image_classifications`. |
 | `VISION_CLASSIFY_PROVIDER` | With `ENABLE_METRIC_CLASSIFY` | Provider for the classify call (default `gemini`). Independent of `VISION_PROVIDER` so classify and OCR can pick different cost-optimal providers. |
@@ -131,6 +132,42 @@ are rejected at every call site.
 `R2Storage.put_bytes` refuses to write unless `FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` is in the process environment. The guard prevents accidental prod R2 mutations from local CLI tools (e.g. `python3 -m src.gold_standard.v2_validator`) when a contributor sources prod `.env` for one-off work. Reads (`get_bytes`, `exists`) remain open so diagnostics still work. `LocalFilesystemStorage` is unguarded — dev writes to `data/image_cache/` are always allowed.
 
 Render services that legitimately write images (`filings-reviewer`, `filings-extraction`, `filings-onboarding-runner`) need `FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` set in their env. Services that don't write images (`filings-nightly-sweep`, `filings-metabase`) should leave it unset.
+
+## Filing HTML Storage
+
+Filing source HTML persists via `src/infra/filing_storage.py` — same pattern as
+image storage, parallel surface. Two backends selected at runtime via
+`R2_BUCKET`:
+
+- **Local filesystem** (default, dev/test): `LocalFilesystemFilingStorage`
+  rooted at `<repo>/data/filing_cache/` (or `FILING_CACHE_DIR` override).
+- **Cloudflare R2** (prod): `R2FilingStorage` shares the bucket with image
+  bytes; key prefix `filings/` separates filing HTML from `pipeline/` (image
+  cache) and `ingestion/` (per-filing image cache).
+
+`filings.html_storage_path` stores opaque storage keys post-gh-300
+(e.g. `filings/<cik>/<accession>/primary.htm`), not absolute paths. Key shape
+is validated by `image_storage.validate_key()` (shared regex) — path-traversal
+sequences and absolute paths are rejected at every call site.
+
+**Reader-side compatibility:** legacy filesystem paths and the `html_content`
+DB-blob fallback both still work. Extraction call sites detect
+`html_storage_path.startswith("filings/")` and download to a tempfile via the
+storage abstraction; otherwise they use the existing disk + DB-blob fallback
+logic. See `scripts/batch_v2_extraction.py` and `scripts/run_v2_extraction.py`
+for the per-row resolution flow.
+
+**Writer-side limitation (deferred):** `src/filing_fetcher/filing_fetcher.py`
+still writes filesystem paths on fetch. Newly fetched filings get migrated to
+R2 keys by re-running `scripts/migrate_filing_html_to_r2.py`. A follow-up
+fragment will refactor the fetcher to write R2 keys directly.
+
+### Prod-write guard
+
+`R2FilingStorage.put_bytes` refuses to write unless
+`FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` is in the process environment, mirroring
+`R2Storage.put_bytes`. Reads (`get_bytes`, `exists`) remain open. The same env
+var gates both image and filing R2 writes.
 
 ## SEC EDGAR Integration
 

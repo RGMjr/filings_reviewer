@@ -203,7 +203,36 @@ def _process_filing_worker(
         from src.infra.db import DatabaseAdapter
 
         # Resolve HTML path
-        if html_path:
+        # gh-300: html_storage_path may be an opaque R2 storage key
+        # (e.g. filings/<cik>/<accession>/primary.htm). Detect and download
+        # to a tempfile before falling through to legacy filesystem logic.
+        _r2_resolved = False
+        if html_path and html_path.startswith("filings/"):
+            try:
+                from src.infra.filing_storage import get_filing_storage
+
+                data = get_filing_storage().get_bytes(html_path)
+                _tmp = tempfile.NamedTemporaryFile(mode="wb", suffix=".htm", delete=False)
+                _tmp.write(data)
+                _tmp.close()
+                _temp_html_path = _tmp.name
+                resolved_path = _Path(_temp_html_path)
+                _r2_resolved = True
+                _logger.info(
+                    f"Filing {filing_id}: read from R2 key {html_path} "
+                    f"({len(data)} bytes) -> {_temp_html_path}"
+                )
+            except Exception as _r2_err:
+                _logger.warning(
+                    f"Filing {filing_id}: R2 read failed for {html_path}: {_r2_err}; "
+                    f"falling through to disk/DB fallback"
+                )
+                # Treat as if html_path was never set so legacy fallback runs.
+                html_path = None
+
+        if _r2_resolved:
+            pass  # resolved_path already set from R2 download
+        elif html_path:
             resolved_path = _Path(html_path)
         else:
             # Try gold standard directory

@@ -111,8 +111,26 @@ def lookup_filing(db: DatabaseAdapter, filing_id: int | None, accession: str | N
 
 
 def resolve_html_path(filing: dict) -> Path:
-    """Resolve HTML file path for a filing."""
+    """Resolve HTML file path for a filing.
+
+    Post-gh-300, ``html_storage_path`` may be either a filesystem path (legacy)
+    or an opaque R2 storage key (e.g. ``filings/<cik>/<accession>/primary.htm``).
+    R2 keys are downloaded to a tempfile that lives until process exit.
+    """
     storage_path = filing.get("html_storage_path")
+
+    # R2 storage key short-circuit (gh-300).
+    if storage_path and storage_path.startswith("filings/"):
+        import tempfile
+
+        from src.infra.filing_storage import get_filing_storage
+
+        data = get_filing_storage().get_bytes(storage_path)
+        tmp = tempfile.NamedTemporaryFile(mode="wb", suffix=".htm", delete=False)
+        tmp.write(data)
+        tmp.close()
+        return Path(tmp.name)
+
     if storage_path:
         path = Path(storage_path)
         if path.exists():
