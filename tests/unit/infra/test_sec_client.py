@@ -1748,3 +1748,69 @@ class TestImageCaching:
         result = client.fetch_image("0001234567", "0001234567-24-000001", "chart.jpg")
 
         assert result == image_bytes
+
+
+class TestGetExhibit991Url:
+    """Test suite for get_exhibit_99_1_url method (legacy-115)."""
+
+    _CIK = "0001234567"
+    _ACCESSION = "0001234567-24-000001"
+    _INDEX_URL = (
+        "https://www.sec.gov/Archives/edgar/data/0001234567/"
+        "000123456724000001/index.json"
+    )
+
+    def _client_for(self, items: list[dict]) -> SECClient:
+        response_data = {"directory": {"item": items}}
+        mock_response = HTTPResponse(
+            status_code=200,
+            content=json.dumps(response_data).encode("utf-8"),
+            headers={},
+            url=self._INDEX_URL,
+            elapsed_seconds=0.1,
+        )
+        mock_client = MockHTTPClient()
+        mock_client.responses[self._INDEX_URL] = mock_response
+        return SECClient(http_client=mock_client)
+
+    def test_returns_pdf_when_only_pdf_listed(self):
+        """Filers who submit exhibit 99.1 as PDF return the .pdf URL (legacy-115)."""
+        client = self._client_for(
+            [
+                {"name": "primary.htm", "size": 100000},
+                {"name": "exhibit99-1.pdf", "size": 200000},
+            ]
+        )
+
+        url = client.get_exhibit_99_1_url(self._CIK, self._ACCESSION)
+
+        assert url is not None
+        assert url.endswith("exhibit99-1.pdf")
+
+    def test_prefers_html_over_pdf_when_both_exist(self):
+        """When both formats are listed, prefer the canonical HTML version."""
+        client = self._client_for(
+            [
+                # PDF listed first to prove preference is not order-driven.
+                {"name": "exhibit99-1.pdf", "size": 200000},
+                {"name": "exhibit99-1.htm", "size": 50000},
+            ]
+        )
+
+        url = client.get_exhibit_99_1_url(self._CIK, self._ACCESSION)
+
+        assert url is not None
+        assert url.endswith("exhibit99-1.htm")
+
+    def test_returns_none_when_no_exhibit_match(self):
+        """No file matches the exhibit-99-1 pattern → returns None."""
+        client = self._client_for(
+            [
+                {"name": "primary.htm", "size": 100000},
+                {"name": "ex10-1.htm", "size": 50000},
+            ]
+        )
+
+        url = client.get_exhibit_99_1_url(self._CIK, self._ACCESSION)
+
+        assert url is None

@@ -340,6 +340,14 @@ class FilingFetcher:
                     exhibit_url = self.sec_client.get_exhibit_99_1_url(
                         cik, accession_number
                     )
+                    if exhibit_url and exhibit_url.lower().endswith(".pdf"):
+                        logger.warning(
+                            "exhibit-99-1-pdf-skipped: cik=%s accession=%s url=%s",
+                            cik,
+                            accession_number,
+                            exhibit_url,
+                        )
+                        exhibit_url = None
                     if exhibit_url:
                         self._rate_limit()
                         logger.debug(f"Fetching exhibit 99.1: {exhibit_url}")
@@ -374,6 +382,14 @@ class FilingFetcher:
                         exhibit_url = self.sec_client.get_exhibit_99_1_url(
                             cik, accession_number
                         )
+                        if exhibit_url and exhibit_url.lower().endswith(".pdf"):
+                            logger.warning(
+                                "exhibit-99-1-pdf-skipped: cik=%s accession=%s url=%s",
+                                cik,
+                                accession_number,
+                                exhibit_url,
+                            )
+                            exhibit_url = None
                         if exhibit_url:
                             self._rate_limit()
                             exhibit_resp = self.session.get(exhibit_url)
