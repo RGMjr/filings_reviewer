@@ -56,3 +56,44 @@ The unified review UI persists filter/sort/tab state client-side via localStorag
 **Tab taxonomy**: the three analytical tabs ("IPO Filings", "Earnings", "Investor Day") are mapped to SQL filters by `src/infra/db.py::TAB_SQL_FILTERS`. Tab keys (`ipo`, `earnings`, `investor_day`) combine `v2_documents.document_type` with `filings.form_type`; adding a tab means adding a row to that dict and updating `VALID_TABS` in `src/web/routes/review_unified.py` plus `VALID_DOC_TYPES` in the template JS.
 
 **Presence-based exception (`cmasb:filings:reviewers`)**: the reviewer filter uses URL *presence* (not value) as the signal, because HTML forms drop unchecked checkboxes — a cleared filter and a fresh visit would otherwise look identical. The reviewer form carries a hidden `<input name="reviewer_id" value="">` and the Clear link emits `?reviewer_id=` explicitly; an empty `reviewer_id=` in the URL means "explicitly cleared" and suppresses the localStorage restore.
+
+## Keyboard Shortcuts
+
+The unified review page (`unified_review.html`) binds shortcuts on both tabs. Cross-tab semantics (next/prev navigation, next-filing) should match — when adding a new button, give it a shortcut from day one and follow the rule below.
+
+**Rule**: image-tab buttons that affect a single detected metric get a single-letter shortcut; bulk/destructive buttons that touch every detected metric on the image at once get a chord (`Shift+key`).
+
+**Text tab** (`unified_review.html:1355–1392`, only active when `active_tab == 'text'`):
+
+| Key       | Action                |
+|-----------|-----------------------|
+| `A`       | Accept fact           |
+| `R`       | Open reject form      |
+| `C`       | Open correct form     |
+| `N` / `→` | Next fact             |
+| `P` / `←` | Previous fact         |
+| `F`       | Next filing           |
+
+**Image tab — image-level** (`static/js/review_images_v2.js`, fires when no per-metric row is focused except where noted):
+
+| Key        | Action                                      |
+|------------|---------------------------------------------|
+| `S`        | Skip image                                  |
+| `U`        | Undo skip                                   |
+| `←` / `→`  | Previous / next image                       |
+| `N` / `P`  | Next / previous image (alias)               |
+| `?` / `H`  | Toggle help overlay                         |
+| `F`        | Next filing                                 |
+| `Shift+R`  | Reject all (no relevant metrics) — chord, fires regardless of row focus |
+
+**Image tab — per-metric row** (when `state.focusedRow` is set):
+
+| Key       | Action                       |
+|-----------|------------------------------|
+| `A`       | Accept row                   |
+| `R`       | Open reject form             |
+| `C`       | Open correct form            |
+| `S`       | Skip row                     |
+| `N`       | Focus next unreviewed row    |
+
+`Shift+R` is intercepted at image-level before the per-row handler runs, so a focused-row `Shift+R` does not also fire `openReject` on that row.
