@@ -1057,9 +1057,21 @@ numbers also appear as explicit data labels on the chart itself.
                     self.MAX_PRESCAN_CALLS_PER_DOCUMENT,
                 )
                 break
-            if asset.classification != ImageClassification.UNKNOWN:
-                continue
-            if not (0.2 <= (asset.relevance_score or 0.0) < 0.3):
+            # Candidates for structural disambiguation:
+            #   1. UNKNOWN images in the ambiguous relevance band [0.2, 0.3)
+            #      (original Path B logic)
+            #   2. CHART images with weak keyword signal (relevance [0.3, 0.5))
+            #      — these were claimed by _is_chart's "large + metric keyword"
+            #      heuristic before A1, but may actually be table-shaped images
+            #      (plan A2: extend prescan to large-but-keyword-weak CHART images)
+            relevance = asset.relevance_score or 0.0
+            is_ambiguous_unknown = (
+                asset.classification == ImageClassification.UNKNOWN and 0.2 <= relevance < 0.3
+            )
+            is_weak_chart = (
+                asset.classification == ImageClassification.CHART and 0.3 <= relevance < 0.5
+            )
+            if not (is_ambiguous_unknown or is_weak_chart):
                 continue
             if not asset.file_path:
                 continue
@@ -1100,9 +1112,27 @@ numbers also appear as explicit data labels on the chart itself.
 
             # Tier-1 signal found: promote the image and synthesize a
             # segment so downstream candidate_generation sees the text.
-            if extraction.contains_chart:
+            #
+            # Disambiguation rule (A2, 2026-04-28):
+            #   contains_table=True,  contains_chart=False → TABLE_IMAGE
+            #   contains_chart=True,  contains_table=False → CHART
+            #   both True → prefer TABLE_IMAGE when chart_hint=="none" (no
+            #     clear chart structural signal); otherwise CHART
+            #   both False → TABLE_IMAGE (keyword match was the signal;
+            #     treat conservatively as table since chart didn't fire)
+            if extraction.contains_table and not extraction.contains_chart:
+                asset.classification = ImageClassification.TABLE_IMAGE
+            elif extraction.contains_chart and not extraction.contains_table:
                 asset.classification = ImageClassification.CHART
+            elif extraction.contains_chart and extraction.contains_table:
+                # Both set: use chart_hint as tiebreaker
+                if extraction.chart_hint == "none":
+                    asset.classification = ImageClassification.TABLE_IMAGE
+                else:
+                    asset.classification = ImageClassification.CHART
             else:
+                # Neither set (both False) — keyword matched but no structural
+                # signal; default to TABLE_IMAGE (conservative)
                 asset.classification = ImageClassification.TABLE_IMAGE
             asset.relevance_score = max(asset.relevance_score or 0.0, 0.6)
             asset.requires_manual_capture = False

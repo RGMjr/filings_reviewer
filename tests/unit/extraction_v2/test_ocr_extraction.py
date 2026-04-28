@@ -1306,13 +1306,19 @@ class MockTextOCRVisionClient:
 
 
 def _make_page_text_extraction(
-    *, text: str, contains_chart: bool = False, chart_hint: str = "none", cost: float = 0.05
+    *,
+    text: str,
+    contains_chart: bool = False,
+    contains_table: bool = False,
+    chart_hint: str = "none",
+    cost: float = 0.05,
 ):
     from src.llm.vision_client import PageTextExtraction
 
     return PageTextExtraction(
         text=text,
         contains_chart=contains_chart,
+        contains_table=contains_table,
         chart_hint=chart_hint,
         cost_usd=cost,
         raw_response="",

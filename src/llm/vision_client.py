@@ -133,6 +133,13 @@ class PageTextExtraction:
     Attributes:
         text: Paragraph / table-cell text in reading order (may be empty).
         contains_chart: True iff a chart/graph is visually present on the page.
+        contains_table: True iff a structured table (rows/columns of data) is
+            visually present on the page, as distinct from a chart or plain prose.
+            Added in A2 (2026-04-28) to support structural CHART/TABLE_IMAGE
+            disambiguation in ``_prescan_ambiguous_images``.
+            Note: adding this field invalidates existing ``analyze_image_for_text``
+            cache entries (cache key includes the prompt, which changed) — this is a
+            one-time vision-call cost on next extraction of any previously-OCR'd image.
         chart_hint: Best-guess chart type; one of the ``ChartType`` values or
             ``"none"`` if no chart present.
         cost_usd: Cost of the underlying vision call (0.0 for cache hits).
@@ -141,6 +148,7 @@ class PageTextExtraction:
 
     text: str
     contains_chart: bool
+    contains_table: bool
     chart_hint: str
     cost_usd: float
     raw_response: str
@@ -148,6 +156,10 @@ class PageTextExtraction:
 
 # Prompt for text-mode OCR of a full page image.
 # The word "JSON" is required by OpenAI's response_format=json_object mode.
+# NOTE (A2, 2026-04-28): added "contains_table" field.  This changes the prompt
+# and therefore invalidates the existing analyze_image_for_text LLM cache —
+# all previously cached responses will be treated as misses on next access.
+# This is a one-time cost; subsequent calls are cached under the new prompt.
 _PAGE_TEXT_PROMPT = """\
 You are extracting content from a single page of a company's SEC filing. \
 The page is supplied as an image.
@@ -159,12 +171,15 @@ percentages, and cell text exactly as shown. Skip page numbers, headers, footers
 watermarks, and legal boilerplate unless that is the entire page.
 2. Whether the page contains a chart or graph (bar, line, pie, area, stacked bar, \
 scatter), as distinct from a text-only page or a table-only page.
-3. If a chart is present, the best-guess chart type.
+3. Whether the page contains a structured table (rows and columns of data with \
+headers), as distinct from a chart or plain prose.
+4. If a chart is present, the best-guess chart type.
 
 Return ONLY a valid JSON object with exactly this schema:
 {
   "text": "...",
   "contains_chart": true|false,
+  "contains_table": true|false,
   "chart_hint": "bar" | "line" | "pie" | "area" | "stacked_bar" | "scatter" | "none"
 }
 
@@ -614,6 +629,7 @@ class VisionClient:
             return PageTextExtraction(
                 text="",
                 contains_chart=False,
+                contains_table=False,
                 chart_hint="none",
                 cost_usd=response.cost_usd,
                 raw_response=response.content,
@@ -621,6 +637,7 @@ class VisionClient:
 
         text = str(parsed.get("text", "") or "")
         contains_chart = bool(parsed.get("contains_chart", False))
+        contains_table = bool(parsed.get("contains_table", False))
         chart_hint_raw = str(parsed.get("chart_hint", "none") or "none").lower()
         chart_hint = chart_hint_raw if chart_hint_raw in _VALID_CHART_HINTS else "none"
 
@@ -630,6 +647,7 @@ class VisionClient:
         return PageTextExtraction(
             text=text,
             contains_chart=contains_chart,
+            contains_table=contains_table,
             chart_hint=chart_hint,
             cost_usd=response.cost_usd,
             raw_response=response.content,
