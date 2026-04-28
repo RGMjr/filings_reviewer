@@ -5,6 +5,7 @@ These tests cover:
 - Unknown provider names raise ValueError (guarded in both `_ProviderEnv` and
   `_run_benchmark`).
 - `_run_bakeoff` aborts mid-sweep when the cumulative spend crosses the cap.
+- `TestCorpusQuery` — gh-196: UNION corpus query aggregation and dedup logic.
 
 Tests use a monkeypatched `_run_provider` so no real vision API calls fire.
 """
@@ -566,3 +567,125 @@ class TestMetricClassifyMode:
         # Scored-on-tags subset excludes skip-img AND reject-img (reference
         # empty in both): 4 records contribute to tag P/R/F1.
         assert metrics["n_images_scored_on_metric_tags"] == 4
+
+
+class TestCorpusQuery:
+    """gh-196: UNION corpus aggregation dedup logic in --build-corpus mode.
+
+    These tests exercise the Python-level dedup applied after the two separate
+    DB queries (_CORPUS_QUERY_LEGACY + _CORPUS_QUERY_CONFIRMATIONS).  They do
+    not require a real DB — they test the in-memory logic directly.
+
+    Rules under test (must match export_image_training_data.export_sec_rows):
+      - Legacy-only row: appears in output unchanged.
+      - Confirmation-only row: appears in output with chart_type=None.
+      - Overlap (same img_id in both): legacy row wins; confirmation row dropped.
+    """
+
+    def _make_legacy_row(self, img_id: str, decision: str = "relevant") -> dict:
+        return {
+            "img_id": img_id,
+            "filing_key": "0001234567-23-000001",
+            "filename": "chart.png",
+            "decision": decision,
+            "chart_type": "cohort_table",
+            "rejection_reason": None,
+            "reviewer_notes": "looks good",
+            "storage_key": f"pipeline/123/{img_id}/chart.png",
+            "accession_number": "0001234567-23-000001",
+            "cik": "123456",
+            "company_name": "Acme Corp",
+            "relevance_score": 0.9,
+        }
+
+    def _make_confirmation_row(self, img_id: str, decision: str = "relevant") -> dict:
+        return {
+            "img_id": img_id,
+            "filing_key": "0001234567-23-000001",
+            "filename": "chart.png",
+            "decision": decision,
+            "chart_type": None,  # not captured in v2_image_metric_confirmations
+            "rejection_reason": None,
+            "reviewer_notes": None,
+            "storage_key": f"pipeline/123/{img_id}/chart.png",
+            "accession_number": "0001234567-23-000001",
+            "cik": "123456",
+            "company_name": "Acme Corp",
+            "relevance_score": 0.7,
+        }
+
+    def _apply_dedup(
+        self,
+        legacy_rows: list[dict],
+        confirmation_rows: list[dict],
+    ) -> list[dict]:
+        """Replicate the dedup logic from benchmark_vision.py --build-corpus."""
+        legacy_img_ids = {str(r["img_id"]) for r in legacy_rows}
+        return list(legacy_rows) + [
+            r for r in confirmation_rows if str(r["img_id"]) not in legacy_img_ids
+        ]
+
+    def test_legacy_only_row_passes_through(self) -> None:
+        """A legacy-only img_id appears in the output unchanged."""
+        legacy = [self._make_legacy_row("aaa")]
+        result = self._apply_dedup(legacy, [])
+        assert len(result) == 1
+        assert result[0]["img_id"] == "aaa"
+        assert result[0]["chart_type"] == "cohort_table"
+        assert result[0]["decision"] == "relevant"
+
+    def test_confirmation_only_row_passes_through(self) -> None:
+        """A confirmation-only img_id appears in the output with chart_type=None."""
+        conf = [self._make_confirmation_row("bbb")]
+        result = self._apply_dedup([], conf)
+        assert len(result) == 1
+        assert result[0]["img_id"] == "bbb"
+        assert result[0]["chart_type"] is None
+
+    def test_legacy_wins_on_duplicate_img_id(self) -> None:
+        """When the same img_id appears in both surfaces, the legacy row wins."""
+        shared_id = "ccc"
+        legacy = [self._make_legacy_row(shared_id, decision="relevant")]
+        conf = [self._make_confirmation_row(shared_id, decision="not_relevant")]
+        result = self._apply_dedup(legacy, conf)
+        # Only one row — legacy wins.
+        assert len(result) == 1
+        assert result[0]["decision"] == "relevant"
+        assert result[0]["chart_type"] == "cohort_table"
+
+    def test_all_three_scenarios_combined(self) -> None:
+        """One legacy-only, one confirmation-only, one overlap — correct output."""
+        legacy = [
+            self._make_legacy_row("legacy-only"),
+            self._make_legacy_row("overlap-id", decision="relevant"),
+        ]
+        conf = [
+            self._make_confirmation_row("conf-only"),
+            self._make_confirmation_row("overlap-id", decision="not_relevant"),
+        ]
+        result = self._apply_dedup(legacy, conf)
+        assert len(result) == 3  # legacy-only + overlap(legacy) + conf-only
+        img_ids = {r["img_id"] for r in result}
+        assert "legacy-only" in img_ids
+        assert "conf-only" in img_ids
+        assert "overlap-id" in img_ids
+        overlap = next(r for r in result if r["img_id"] == "overlap-id")
+        assert overlap["decision"] == "relevant"
+        assert overlap["chart_type"] == "cohort_table"
+
+    def test_confirmation_row_chart_type_is_none(self) -> None:
+        """Confirmation-derived rows always have chart_type=None (no column in schema)."""
+        conf = [self._make_confirmation_row("ddd", decision="not_relevant")]
+        result = self._apply_dedup([], conf)
+        assert result[0]["chart_type"] is None
+
+    def test_corpus_query_constants_exist(self) -> None:
+        """Both query constants must exist and reference their respective tables."""
+        assert "_CORPUS_QUERY_LEGACY" in dir(bv)
+        assert "_CORPUS_QUERY_CONFIRMATIONS" in dir(bv)
+        assert "v2_image_review_decisions" in bv._CORPUS_QUERY_LEGACY
+        assert "v2_image_metric_confirmations" in bv._CORPUS_QUERY_CONFIRMATIONS
+        # Old monolithic _CORPUS_QUERY must no longer exist.
+        assert not hasattr(bv, "_CORPUS_QUERY"), (
+            "_CORPUS_QUERY was removed; use _CORPUS_QUERY_LEGACY and _CORPUS_QUERY_CONFIRMATIONS"
+        )

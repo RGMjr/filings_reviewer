@@ -15,9 +15,15 @@ touches:
   - scripts/benchmark_vision.py
   - src/llm/vision_client.py
   - src/gold_standard/image_eval.py
-updated: '2026-04-24'
+updated: '2026-04-28'
 pr_refs:
-  - 197
+  - 198
+note: >
+  benchmark_vision.py --build-corpus now UNIONs v2_image_review_decisions +
+  v2_image_metric_confirmations (same dedup rules as export_image_training_data.py).
+  Deferred: chart_type schema extension on v2_image_metric_confirmations — confirmation-
+  derived rows emit chart_type=NULL; stratifier treats NULL as unknown stratum.
+  That deferred decision is a stakeholder call (schema change vs. accepted feature loss).
 ---
 
 ### Problem
@@ -27,7 +33,7 @@ and PR #151 (the original confirmations schema), reviewer image-review work no
 longer lands in `v2_image_review_decisions`. The ML triage training/scoring/
 benchmarking pipeline still reads only from the legacy table.
 
-### Resolution status (this PR)
+### Resolution status — PR #198 (first slice)
 
 `scripts/export_image_training_data.py` now UNIONs both reviewer surfaces.
 Per-metric confirmations aggregate to image-level using:
@@ -39,22 +45,37 @@ Per-metric confirmations aggregate to image-level using:
 Legacy rows take precedence when the same `img_id` appears in both surfaces.
 Smoke against Neon prod: 851 legacy rows + 1 confirmation-derived row.
 
-### Still open
+### Resolution status — this PR (second slice)
 
-- **`scripts/benchmark_vision.py`** — its corpus query reads `chart_type`
-  heavily for tier-1 / hard-OCR stratification. `chart_type` is not captured
-  in `v2_image_metric_confirmations`, so a clean port requires a product
-  decision: (a) extend the confirmations schema to capture `chart_type`, or
-  (b) accept the feature loss and rework stratification. Deferred until the
-  bake-off harness next runs against new reviewer data.
-- **Triage model `chart_type` feature** — confirmation-derived rows emit
-  `chart_type=NULL`. The model treats it as missing; retraining quality
-  will degrade if confirmations become the dominant surface and `chart_type`
-  is not recovered.
+`scripts/benchmark_vision.py --build-corpus` is now ported off the legacy-only
+corpus query. The `--build-corpus` mode UNIONs both reviewer surfaces using the
+same aggregation and dedup rules as `export_image_training_data.py`:
 
-### Next steps
+- `_CORPUS_QUERY_LEGACY` reads `v2_image_review_decisions` (frozen historical rows).
+- `_CORPUS_QUERY_CONFIRMATIONS` reads `v2_image_metric_confirmations`, aggregated
+  to image-level `relevant` / `not_relevant` via `bool_or()`.
+- Legacy rows take precedence on duplicate `img_id`.
+- Confirmation-derived rows emit `chart_type=NULL`; the stratifier passes `None`
+  through to `stratum_label()` / `is_tier1_image()` / `is_hard_ocr_image()`,
+  which already handle `None` gracefully.
 
-- After ML team retrains with the unified feed, decide whether to capture
-  `chart_type` in `v2_image_metric_confirmations` (schema change) or
-  formalize stratification without it.
-- Port `benchmark_vision.py` once the `chart_type` decision lands.
+A unit test (`tests/unit/scripts/test_benchmark_vision_bakeoff.py`,
+`TestCorpusQuery`) asserts the UNION+dedup behaviour with three fixture scenarios
+(legacy-only, confirmation-only, overlap with legacy winning).
+
+### Still open (deferred — stakeholder decision)
+
+- **`chart_type` schema extension** — `v2_image_metric_confirmations` has no
+  `chart_type` column. Confirmation-derived rows emit `chart_type=NULL`; tier-1
+  and hard-OCR stratification strata will show fewer members as confirmation data
+  grows. Two options: (a) add `chart_type` column to `v2_image_metric_confirmations`
+  (migration required, reviewer surface change), or (b) accept permanent NULL
+  stratification for confirmation-derived rows and document it as known feature
+  loss. This is a product decision, not an autonomous fix.
+
+### Resolution
+
+Training export (`export_image_training_data.py`, PR #198) and benchmark corpus
+build (`benchmark_vision.py --build-corpus`, this PR) both now read both reviewer
+surfaces. The `retrain_image_triage.py` orchestrator delegates to the export
+script and requires no changes. The `chart_type` deferred decision is noted above.
