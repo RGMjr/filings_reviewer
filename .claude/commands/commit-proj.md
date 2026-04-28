@@ -2,7 +2,7 @@
 
 **Purpose:** Gate code quality before commit (lint, tests, doc-freshness, known-issues triage), then branch + commit + push + open a PR + enable auto-merge. `main` is protected server-side; this skill matches the local flow to the remote contract.
 
-**Renamed from `/commit` to `/commit-proj` to disambiguate from the global `/commit` skill.** The global skill now also branches off main and opens a PR (it learned that pattern from this skill), but it does not handle: the project's `make hooks-install` / `extraction-guard` pre-commit framework, the `docs/known-issues/gh-N-<slug>.md` fragment system with required `gh issue create`, the `legacy-NNN-*` allowlist, or the project's required-checks recital. Use `/commit-proj` here; `/commit` is fine for projects that don't have those.
+**Distinct from the global `/commit-user` skill.** The global skill also branches off main and opens a PR (it learned that pattern from this skill), but it does not handle: the project's `make hooks-install` / `extraction-guard` pre-commit framework, the `docs/known-issues/gh-N-<slug>.md` fragment system with required `gh issue create`, the `legacy-NNN-*` allowlist, or the project's required-checks recital. Use `/commit-proj` here; `/commit-user` is fine for projects that don't have those.
 
 **When to use:** Any time the user asks to commit changes.
 
@@ -147,17 +147,29 @@
 
 16. **Enable auto-merge.** `gh pr merge --auto --squash` (idempotent — no-op if already enabled). `--squash` keeps main's history linear, matching the repo's existing pattern. Never use `--admin`.
 
+    **Verify it actually got set.** Auto-merge enablement has been observed to silently no-op even when the command exits 0. After step 16, run:
+
+    ```
+    gh pr view --json autoMergeRequest,state,mergeStateStatus
+    ```
+
+    - `autoMergeRequest` non-null → set; proceed.
+    - `autoMergeRequest` null AND `mergeStateStatus == UNSTABLE` → step 17's UNSTABLE branch handles it; don't retry here.
+    - `autoMergeRequest` null otherwise → retry `gh pr merge --auto --squash <num>` once. If still null, warn: "Auto-merge did not engage on PR #<n> — verify manually after CI completes."
+
 17. **Conflict guard.** After enabling auto-merge, wait 5 seconds for GitHub to compute merge status, then check:
     ```
-    gh pr view --json mergeable,mergeStateStatus
+    gh pr view --json mergeable,mergeStateStatus,statusCheckRollup
     ```
-    - If `mergeStateStatus` is `DIRTY`: run `gh pr update-branch` (merges `main` into the PR branch). If it exits non-zero (real content conflict), warn: "Branch is DIRTY and update-branch failed — manual conflict resolution required."
-    - Any other status (`BLOCKED`, `CLEAN`, `UNKNOWN`): no action.
+    - `DIRTY`: run `gh pr update-branch` (merges `main` into the PR branch). If it exits non-zero (real content conflict), warn: "Branch is DIRTY and update-branch failed — manual conflict resolution required."
+    - `UNSTABLE`: a non-required check is failing or in-progress and `--auto --squash` will not engage. Inspect `statusCheckRollup` — if every check on the project's required list (Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright)) has `conclusion: SUCCESS`, fall back to `gh pr merge --squash <num>` (without `--auto`). A direct merge is permitted when required checks are green; the UNSTABLE from non-required checks does not block it. If any required check is still pending or failed, do nothing — wait for them.
+    - `BLOCKED` / `CLEAN` / `UNKNOWN`: no action.
 
-18. **Report.** Final one-line summary to the user:
+18. **Report.** Final one-line summary to the user, naming the actual PR head branch (which may differ from the local branch if a follow-up rename happened):
     ```
-    PR #<n> opened/updated: <url>. Auto-merge enabled (squash). Waits on: Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright). Run /ci-fix if checks go red.
+    PR #<n> opened/updated on <headRefName>: <url>. Auto-merge enabled (squash). Waits on: Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright). Run /ci-fix if checks go red.
     ```
+    Get `<headRefName>` from `gh pr view --json headRefName -q .headRefName`.
 
 ---
 
@@ -176,3 +188,4 @@
 - Out-of-scope triage (step 9) is mandatory — never skip it silently.
 - Known-issues entries are always a separate follow-up commit (step 13).
 - If any `gh` or `git push` command fails, report verbatim and stop. No silent retries.
+- **Follow-up agents pushing to an existing PR must fetch `headRefName` via `gh pr view <PR#> --json headRefName`** — do not assume the worktree branch name (`worktree-*`) is the PR branch. Once `/commit-proj` has run and any rename has occurred, the worktree branch and the PR head branch can diverge.

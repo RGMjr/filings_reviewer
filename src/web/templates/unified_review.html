@@ -681,6 +681,7 @@
      data-filing-id="{{ filing.filing_id }}"
      data-img-id="{{ current_image.img_id if current_image else '' }}"
      data-candidates='{{ all_image_candidates | tojson }}'
+     data-image-status="{{ image_filters.status }}"
      data-decision-id="{{ current_image.image_decision_id if current_image and current_image.image_decision_id else '' }}">
 
   {% if not image_candidates or image_candidates|length == 0 %}
@@ -1115,6 +1116,7 @@
 {% block scripts %}
 <script>
 const FILING_ID = {{ filing.filing_id }};
+window.FILING_ID = FILING_ID;
 const FACTS = [
   {% for f in facts %}
   { id: "{{ f.fact_id }}", status: "{{ f.review_status }}" }{% if not loop.last %},{% endif %}
@@ -1166,13 +1168,19 @@ function submitDecision(decision) {
   const reviewerName = requireReviewerName();
   if (!reviewerName) return;
   const reviewTime = Math.round((Date.now() - reviewStartTime) / 1000);
+  const anchorIdx = FACTS.findIndex(f => f.id === CURRENT_FACT_ID);
   const body = {
     fact_id: CURRENT_FACT_ID,
     decision: decision,
     review_time_seconds: reviewTime,
     reviewer_notes: document.getElementById('reviewer-notes')?.value || null,
     reviewer_id: reviewerName,
-    sort: new URLSearchParams(window.location.search).get('sort') || 'confidence_desc',
+    view_filters: {
+      status: "{{ current_filters.status }}",
+      metric: "{{ current_filters.metric }}",
+      sort:   "{{ current_filters.sort }}",
+    },
+    anchor_index: anchorIdx,
   };
 
   if (decision === 'reject') {

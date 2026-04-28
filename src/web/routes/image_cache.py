@@ -55,12 +55,20 @@ def serve_cached_image(cik: str, accession_no: str, filename: str):
     user_agent = os.environ.get("SEC_USER_AGENT", "filings-reviewer info@example.com")
     sec_client = SECClient(user_agent=user_agent, db_adapter=db)
 
-    # fetch_image expects accession_number with dashes; reconstruct from no-dashes form
-    # SEC EDGAR URL pattern: /Archives/edgar/data/{cik}/{accession_no_no_dashes}/{filename}
-    # SECClient.fetch_image accepts accession_number with or without dashes — it strips them internally
+    # SECClient.fetch_image extracts the canonical accession token via
+    # SEC_ACCESSION_PATTERN (\d{10}-\d{2}-\d{6}), which requires dashes — the
+    # URL path here carries the dashes-stripped form, so reinsert them. The
+    # SQL builder in _V2_IMAGE_CANDIDATE_SELECT guarantees 18 digits for
+    # well-formed inputs; anything else is forwarded as-is and will surface a
+    # 404 the same way it did before.
+    if len(accession_no) == 18 and accession_no.isdigit():
+        accession_for_fetch = f"{accession_no[:10]}-{accession_no[10:12]}-{accession_no[12:]}"
+    else:
+        accession_for_fetch = accession_no
+
     image_bytes = sec_client.fetch_image(
         cik=cik,
-        accession_number=accession_no,  # already no-dashes; fetch_image will strip, no-op
+        accession_number=accession_for_fetch,
         filename=filename,
     )
 
