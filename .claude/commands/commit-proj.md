@@ -2,7 +2,7 @@
 
 **Purpose:** Gate code quality before commit (lint, tests, doc-freshness, known-issues triage), then branch + commit + push + open a PR + enable auto-merge. `main` is protected server-side; this skill matches the local flow to the remote contract.
 
-**Renamed from `/commit` to `/commit-proj` to disambiguate from the global `/commit` skill.** The global skill now also branches off main and opens a PR (it learned that pattern from this skill), but it does not handle: the project's `make hooks-install` / `extraction-guard` pre-commit framework, the `docs/known-issues/gh-N-<slug>.md` fragment system with required `gh issue create`, the `legacy-NNN-*` allowlist, or the project's required-checks recital. Use `/commit-proj` here; `/commit` is fine for projects that don't have those.
+**Distinct from the global `/commit-user` skill.** The global skill also branches off main and opens a PR (it learned that pattern from this skill), but it does not handle: the project's `make hooks-install` / `extraction-guard` pre-commit framework, the `docs/known-issues/gh-N-<slug>.md` fragment system with required `gh issue create`, the `legacy-NNN-*` allowlist, or the project's required-checks recital. Use `/commit-proj` here; `/commit-user` is fine for projects that don't have those.
 
 **When to use:** Any time the user asks to commit changes.
 

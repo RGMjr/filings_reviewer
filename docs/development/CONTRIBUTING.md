@@ -37,8 +37,7 @@ Run `/commit-proj` from a `ccw` worktree. HEAD-moving git commands in the primar
 ### Committing via `/commit-proj` (Claude Code)
 
 The project-local `/commit-proj` skill (`.claude/commands/commit-proj.md`) handles the
-full flow in one invocation. (Renamed from `/commit` to disambiguate from the
-global skill of the same name; the global `/commit` will also branch + open a PR
+full flow in one invocation. (The global `/commit-user` will also branch + open a PR
 now, but does not handle this project's pre-commit framework, fragment-based
 known-issues, or required-checks recital.)
 
