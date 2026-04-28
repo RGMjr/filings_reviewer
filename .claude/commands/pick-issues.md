@@ -101,8 +101,8 @@ You are working <gh-N|legacy-N>: <title>.
 4. **Pre-Implementation Gate** (per global CLAUDE.md). Show the completed checklist and get user approval before writing code.
 5. **Tests.** Per project CLAUDE.md testing standards — `pytest -x -q --tb=short`. Don't skip on failures.
 6. **Update fragment status as part of the same PR.** Flip the fragment's `status: open` → `resolved`, `autonomy: n/a`, set `pr_refs: [<this PR #>]` (added after PR creation), and append a `### Resolution` section. This is the project's `project_fragment_only_closure_pattern` applied inline so the auto-closer doesn't need to do bookkeeping later.
-7. **Commit + PR.** Use the **project-local** `/commit` skill (Safe Commit + PR Skill). Per `feedback_commit_skill_name_collision`, the global skill may load instead — if you see "Safe Commit Skill" without a PR step, follow up manually with `gh pr create` + `gh pr merge --auto --squash`.
-8. **Verify auto-merge.** After /commit returns, run `gh pr view --json autoMergeRequest`. If unset, run `gh pr merge <PR#> --auto --squash`. Per `feedback_verify_auto_merge_after_commit`.
+7. **Commit + PR.** Use the **project-local** `/commit-proj` skill (Safe Commit + PR Skill). The global `/commit` skill also branches + opens a PR now, but does not handle the project's pre-commit framework, fragment-system OOS triage, or required-checks recital — prefer `/commit-proj` here.
+8. **Verify auto-merge.** After /commit-proj returns, run `gh pr view --json autoMergeRequest`. If unset, run `gh pr merge <PR#> --auto --squash`. Per `feedback_verify_auto_merge_after_commit`.
 
 ## Out of scope (do NOT expand into)
 <List from fragment's body + any concurrent-worktree footprints from `git worktree list`. Be specific about file paths.>
@@ -111,7 +111,6 @@ You are working <gh-N|legacy-N>: <title>.
 <Pull from MEMORY.md the entries that touch this fragment's `touches:` paths or topic. Always include:>
 - `feedback_verify_issue_status` — verify on origin/main first
 - `feedback_verify_auto_merge_after_commit` — verify auto-merge is set
-- `feedback_commit_skill_name_collision` — global vs project-local /commit
 - `feedback_subagent_midstream_stops` — if you delegate to a subagent and it returns truncated, dispatch a tightly-scoped wrap-up pinned to the existing worktree
 - `project_fragment_only_closure_pattern` — fragment frontmatter flip + Resolution section in the same PR
 
@@ -144,7 +143,7 @@ Print, in this exact order:
    - docs/worker-prompts/PICK_<id2>_<slug2>.md
    - docs/worker-prompts/PICK_<id3>_<slug3>.md
 
-   Dispatch each plan to a separate subagent and run them in parallel. Each subagent should follow its plan end-to-end (worktree, plan-mode, /plan-review, Pre-Implementation Gate, tests, project-local /commit, fragment-status flip, auto-merge verification) and return its PR URL. Report all PR URLs when every subagent has finished.
+   Dispatch each plan to a separate subagent and run them in parallel. Each subagent should follow its plan end-to-end (worktree, plan-mode, /plan-review, Pre-Implementation Gate, tests, project-local /commit-proj, fragment-status flip, auto-merge verification) and return its PR URL. Report all PR URLs when every subagent has finished.
    ```
 
    **Multiple picks with any other strategy** (footprints not verified disjoint — sequential is safer):

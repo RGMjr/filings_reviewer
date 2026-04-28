@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Reminds Claude to run /simplify before /commit when 3+ files are modified.
-# Wired as PreToolUse(Skill) hook in .claude/settings.json; filters for the
-# commit skill by parsing the tool-call JSON payload on stdin.
+# Reminds Claude to run /simplify before /commit-proj (or /commit) when 3+
+# files are modified. Wired as PreToolUse(Skill) hook in .claude/settings.json;
+# filters for either commit skill by parsing the tool-call JSON payload on stdin.
 
 INPUT=$(cat)
 
@@ -11,21 +11,24 @@ else
   SKILL=$(echo "$INPUT" | grep -oE '"skill"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
 fi
 
-[ "${SKILL:-}" = "commit" ] || exit 0
+case "${SKILL:-}" in
+  commit|commit-proj) ;;
+  *) exit 0 ;;
+esac
 
 CHANGED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
 
 if [ "${CHANGED:-0}" -ge 3 ]; then
   cat <<'EOF'
 
-REMINDER: 3+ files changed this session. Before proceeding with /commit,
+REMINDER: 3+ files changed this session. Before proceeding with /commit-proj,
 consider running /simplify to catch:
   - Duplicate helpers or utilities
   - Unnecessary abstractions / scope creep
   - Dead imports, unused code, leftover comments
 
 If you've already simplified (or the changes are isolated / mechanical),
-proceed with /commit as usual.
+proceed with /commit-proj as usual.
 EOF
 fi
 
