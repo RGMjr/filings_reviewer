@@ -272,3 +272,51 @@ GROUP BY f.filing_id, c.company_name;
 - When loading filings, prefer the final S-1/A or F-1/A amendment (most complete disclosure)
 - The `resolve_primary_document_url()` now correctly excludes exhibit files from pattern matching
 - Verify SEC filing URLs resolve correctly before committing filing data
+
+---
+
+## Recovering filings with stale storage paths
+
+A small number of filings (gh-299) carry `html_storage_path` values pointing
+at `/Users/.../OneDrive-CMASB/...` paths that no longer hydrate reliably,
+with NULL `html_content`. Re-extraction of these rows fails with
+`HTML not found on disk and not in DB` (`scripts/batch_v2_extraction.py:256`).
+Use `scripts/migrate_onedrive_html_paths.py` to rewrite the path to the
+worktree-relative form and populate `html_content` from the canonical local
+copy (or re-fetch from SEC if the local file is missing).
+
+### Audit (read-only)
+
+```bash
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM filings WHERE html_storage_path LIKE '/Users/%/OneDrive-CMASB/%';"
+```
+
+### Dry-run
+
+```bash
+python3 scripts/migrate_onedrive_html_paths.py
+```
+
+Reports the rows that would be rewritten without making any changes.
+
+### Apply
+
+```bash
+# Local DB
+DATABASE_URL="$TEST_DATABASE_URL" python3 scripts/migrate_onedrive_html_paths.py --apply
+
+# Prod (Neon) — requires both --allow-prod and FILINGS_REVIEWER_ALLOW_PROD_WRITES=1
+FILINGS_REVIEWER_ALLOW_PROD_WRITES=1 \
+  python3 scripts/migrate_onedrive_html_paths.py --apply --allow-prod
+```
+
+### Verify
+
+```bash
+psql "$DATABASE_URL" -c "SELECT COUNT(*) FROM filings WHERE html_storage_path LIKE '/Users/%/OneDrive-CMASB/%';"
+# Expected: 0
+```
+
+> **Note (gh-300):** This is a tactical fix. gh-300 will replace
+> `html_storage_path` semantics with R2 storage keys, superseding this
+> migration's worktree-relative path format.
