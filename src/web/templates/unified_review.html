@@ -860,6 +860,17 @@
               </button>
             </div>
           </div>
+          {% elif current_image.review_status == 'reviewed' %}
+          <div class="alert alert-success mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <div><strong>Status:</strong> Image reviewed</div>
+              <button type="button" id="btn-reopen-image" class="btn btn-outline-secondary"
+                      data-img-id="{{ current_image.img_id }}"
+                      title="Return this image to the pending queue. Prior decisions are preserved.">
+                Re-open for review
+              </button>
+            </div>
+          </div>
           {% else %}
           <div class="d-flex justify-content-between align-items-center mb-3">
             <div class="d-flex gap-2">
