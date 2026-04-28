@@ -116,7 +116,7 @@
      ```
    - Do NOT stage the fragment yet — it's a separate follow-up commit (step 13).
    - Note: `docs/KNOWN_ISSUES.md` is no longer tracked in git. CI regenerates it as a build artifact. Do not create or stage that file.
-   - Existing `legacy-NNN-*.md` fragments are frozen in place; do not rename or renumber them. All new fragments use the `gh-N-*` naming above.
+   - Existing `legacy-NNN-*.md` fragments are frozen in place; do not rename or renumber them. All new fragments use the `gh-N-*` naming above. The pre-commit + CI validator rejects any new `legacy-*` filename — only filenames listed in `docs/known-issues/.legacy-allowlist.txt` are accepted.
    - Prerequisite: `gh auth status` must return authenticated. In sweeper / CI contexts this is provided by `GITHUB_TOKEN`; for local interactive use, run `gh auth login` first if needed.
 
 10. **Show staged diff.** Run `git diff --cached --stat`.

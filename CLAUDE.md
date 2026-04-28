@@ -28,6 +28,8 @@ See `docs/development/CONTRIBUTING.md` for the full flow.
 
 **Nightly autonomous sweeper:** `filings-nightly-sweep` cron runs 06:00 UTC daily, picks up to 5 eligible issues (autonomy `safe`, status `open` or `partially-resolved`) from `docs/known-issues/` fragment frontmatter, auto-merges on green CI, and writes a morning-review digest to `.claude/sweep-digests/`. Ships paused via `.claude/sweep.pause`. See `docs/operations/nightly-sweep-runbook.md` and the `/sweep` skill for manual runs. The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run (see `.github/workflows/ci.yml` job `known-issues-artifact`).
 
+**Known-issues fragments use `gh-<issue>-<slug>.md`** — server-allocated GitHub issue numbers, no local coordination, no collisions. The validator rejects any new `legacy-*` filename; the frozen set lives in `docs/known-issues/.legacy-allowlist.txt`. See `docs/development/CONTRIBUTING.md` and `.claude/commands/commit.md` step 9.
+
 ## Key Commands
 
 ```bash

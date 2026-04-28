@@ -154,6 +154,6 @@ specific files by name.
 
 ## Known-issues triage
 
-New issues surfaced during contribution go into a new `docs/known-issues/gh-N-<slug>.md` fragment file, where `N` is the GitHub issue number returned by `gh issue create`. The `/commit` skill step 9 automates this — see the frontmatter template there. Existing `legacy-NNN-*.md` fragments (pre-2026-04-24) are frozen in place; do not rename them. Fragments are the source of truth.
+New issues surfaced during contribution go into a new `docs/known-issues/gh-N-<slug>.md` fragment file, where `N` is the GitHub issue number returned by `gh issue create`. The `/commit` skill step 9 automates this — see the frontmatter template there. Existing `legacy-NNN-*.md` fragments (pre-2026-04-24) are frozen in place; do not rename them, and **do not mint new `legacy-*` filenames** — the validator (`scripts/validate_known_issues_fragments.py`, run by pre-commit and CI) rejects any `legacy-*` filename not listed in `docs/known-issues/.legacy-allowlist.txt`. GitHub issue numbers are server-allocated, so `gh-N` cannot collide. Fragments are the source of truth.
 
 The rollup `docs/KNOWN_ISSUES.md` is not tracked in git — CI regenerates it as a build artifact on every run (`.github/workflows/ci.yml` job `known-issues-artifact`). Download the latest rendered rollup from the Actions tab of any `main` build. To regenerate locally for preview: `python3 scripts/regenerate_known_issues.py --output /tmp/KNOWN_ISSUES.md`.
