@@ -624,7 +624,13 @@ class SECClient:
     _EXHIBIT_991_RE = re.compile(r"ex(?:hibit)?[-_]?99[-_.]?1", re.IGNORECASE)
 
     def get_exhibit_99_1_url(self, cik: str, accession_number: str) -> str | None:
-        """Return the EDGAR URL of exhibit 99.1 for an 8-K filing, or None if not found."""
+        """Return the EDGAR URL of exhibit 99.1 for an 8-K filing, or None if not found.
+
+        Prefers ``.htm`` / ``.html`` filenames (the canonical extractable form).
+        Falls back to ``.pdf`` when only a PDF exhibit is listed; callers are
+        expected to log+skip PDF URLs since the extraction pipeline cannot
+        ingest PDF bytes today (see ``FilingFetcher.fetch_filing``).
+        """
         bare = extract_sec_accession_token(accession_number)
         if bare is None:
             return None
@@ -638,14 +644,24 @@ class SECClient:
         except Exception:
             return None
         items = data.get("directory", {}).get("item", [])
+        html_match: str | None = None
+        pdf_match: str | None = None
         for item in items:
             name = item.get("name", "")
-            if name.endswith((".htm", ".html")) and self._EXHIBIT_991_RE.search(name):
-                return (
-                    f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
-                    f"{accession_no_dashes}/{name}"
-                )
-        return None
+            if not self._EXHIBIT_991_RE.search(name):
+                continue
+            lower = name.lower()
+            if html_match is None and lower.endswith((".htm", ".html")):
+                html_match = name
+            elif pdf_match is None and lower.endswith(".pdf"):
+                pdf_match = name
+        chosen = html_match or pdf_match
+        if chosen is None:
+            return None
+        return (
+            f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
+            f"{accession_no_dashes}/{chosen}"
+        )
 
     def get_company_info(self, cik: str) -> dict | None:
         """

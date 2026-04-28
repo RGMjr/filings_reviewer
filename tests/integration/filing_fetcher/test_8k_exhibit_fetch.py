@@ -222,3 +222,49 @@ class TestEightKExhibitFetch:
 
         mock_get.assert_not_called()
         fetcher.sec_client.get_exhibit_99_1_url.assert_not_called()
+
+    def test_pdf_exhibit_logs_warning_and_skips(
+        self,
+        fetcher: FilingFetcher,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """PDF exhibit 99.1 is skipped with a structured warning (legacy-115).
+
+        The warning gives operators a grep target so they can identify
+        affected filings; the fetch then proceeds with primary-only content.
+        """
+        pdf_url = (
+            "https://www.sec.gov/Archives/edgar/data/1642545/"
+            "000164254525000123/exhibit99-1.pdf"
+        )
+        fetcher.sec_client.get_exhibit_99_1_url.return_value = pdf_url
+        md = _make_metadata("8-K")
+        large_primary = (
+            "<html><head><title>8-K</title></head><body>"
+            "<p>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</p>"
+            "<p>FORM 8-K</p>"
+            + "X" * 20000
+            + "</body></html>"
+        )
+
+        with caplog.at_level("WARNING", logger="src.filing_fetcher.filing_fetcher"):
+            with patch.object(
+                fetcher.session, "get", return_value=_mock_response(large_primary)
+            ) as mock_get:
+                content = fetcher.fetch_filing(md, fetch_txt=False)
+
+        # Primary fetched, exhibit fetch skipped.
+        assert mock_get.call_count == 1
+        assert content is not None
+        html = pathlib.Path(content.html_path).read_text(encoding="utf-8")
+        assert _EXHIBIT_SEPARATOR not in html
+
+        # Structured warning emitted with cik/accession/url.
+        skip_records = [
+            r for r in caplog.records if "exhibit-99-1-pdf-skipped" in r.getMessage()
+        ]
+        assert len(skip_records) == 1
+        msg = skip_records[0].getMessage()
+        assert f"cik={_CIK}" in msg
+        assert f"accession={_ACCESSION}" in msg
+        assert f"url={pdf_url}" in msg
