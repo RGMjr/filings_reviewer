@@ -13,6 +13,8 @@ touches:
   - src/web/routes/api_unified.py
   - src/web/templates/unified_review.html
 updated: '2026-04-28'
+pr_refs:
+  - 285
 note: |
   Step A (surface image-OCR segments in the text tab) shipped. Step B
   (invalidate stale image review decisions when fresh ocr_text lands, or
