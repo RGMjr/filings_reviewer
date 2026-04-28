@@ -1134,8 +1134,44 @@ test.describe('Cross-Filing Auto-Advance', () => {
     await expect(page.locator('h4.mb-0')).toContainText('Acme Corp B');
   });
 
-  // Image-queue completion variant deferred — the images tab's init JS fires an
-  // XHR that is not routed by the stub server, causing page.goto to hang on
-  // the `load` event. Tracked as a follow-up to #75; re-enable once the
-  // stub-server XHR catch-all lands.
+  test('image-queue completion navigates to next filing', async ({ page }) => {
+    // Intercept the image-skip API to return no next_candidate (queue exhausted).
+    // submitSkip() in review_images_v2.js then calls navigateAfterQueueEmpty(),
+    // which (since TEXT_PENDING=0 on the fixture) shows a toast and navigates
+    // to NEXT_FILING_URL = /filing-b-images-pending after a 1500ms delay.
+    await page.route('**/api/v2/image-candidates/*/skip*', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            status: 'success',
+            skipped_img_id: 'img-a-last-20',
+            next_candidate: null,
+          }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    // Filing A images tab: one pending image, image_pending=1, text pending=0,
+    // next_filing_url=/filing-b-images-pending.
+    await page.goto('/filing-a-images-last-pending');
+
+    // Verify we're on filing A
+    await expect(page.locator('h4.mb-0')).toContainText('Acme Corp');
+    await expect(page.locator('h4.mb-0')).not.toContainText('Acme Corp B');
+
+    // Skip the last pending image — should trigger auto-advance to next filing
+    await page.locator('#btn-skip').click();
+
+    // Wait for navigation to filing B (JS waits 1500ms toast then navigates to
+    // NEXT_FILING_URL = /filing-b-images-pending).
+    await page.waitForURL('**/filing-b-images-pending', { timeout: 10000 });
+
+    // Assert we landed on filing B
+    expect(page.url()).toContain('/filing-b-images-pending');
+    await expect(page.locator('h4.mb-0')).toContainText('Acme Corp B');
+  });
 });
