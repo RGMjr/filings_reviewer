@@ -418,9 +418,11 @@ def review_filing(filing_id: int):
         )
 
         # Stable partition: pending first (in existing probability-desc order),
-        # then everything else. The same partition runs in
-        # `_get_next_image_candidate_info` so the next-image pointer walks the
-        # same order the thumbnail strip is rendering — keep them aligned.
+        # then everything else. Note: strip ordering uses raw review_status;
+        # post-decision auto-advance in _get_next_image_candidate_info uses the
+        # derived image_review_state, so navigation skips per-metric-decided
+        # images that are still raw-pending. The strip thumbnail indicator shows
+        # the correct derived state (green checkmark / X) alongside this order.
         image_candidates = sorted(
             image_candidates,
             key=lambda c: 0 if c["review_status"] == "pending" else 1,
