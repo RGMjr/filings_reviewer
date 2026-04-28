@@ -18,6 +18,7 @@ touches:
 updated: '2026-04-28'
 pr_refs:
   - 198
+  - 287
 note: >
   benchmark_vision.py --build-corpus now UNIONs v2_image_review_decisions +
   v2_image_metric_confirmations (same dedup rules as export_image_training_data.py).
