@@ -257,7 +257,9 @@ class TestLoadAllFragments:
 class TestLegacyAllowlist:
     """Enforce that new `legacy-*` filenames are rejected; only frozen names pass."""
 
-    def _base_fm(self, *, source: str = "legacy", issue_id: int = 68, slug: str = "frozen-fragment") -> dict:
+    def _base_fm(
+        self, *, source: str = "legacy", issue_id: int = 68, slug: str = "frozen-fragment"
+    ) -> dict:
         fm = {
             "id": issue_id,
             "source": source,
@@ -279,7 +281,8 @@ class TestLegacyAllowlist:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            _mod, "_load_legacy_allowlist",
+            _mod,
+            "_load_legacy_allowlist",
             lambda *a, **kw: frozenset({"legacy-068-frozen-fragment.md"}),
         )
         p = tmp_path / "legacy-068-frozen-fragment.md"
@@ -290,7 +293,8 @@ class TestLegacyAllowlist:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            _mod, "_load_legacy_allowlist",
+            _mod,
+            "_load_legacy_allowlist",
             lambda *a, **kw: frozenset({"legacy-068-frozen-fragment.md"}),
         )
         p = tmp_path / "legacy-999-not-in-list.md"
@@ -302,7 +306,9 @@ class TestLegacyAllowlist:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            _mod, "_load_legacy_allowlist", lambda *a, **kw: frozenset(),
+            _mod,
+            "_load_legacy_allowlist",
+            lambda *a, **kw: frozenset(),
         )
         fm = self._base_fm(source="gh", issue_id=300, slug="my-issue")
         p = tmp_path / "gh-300-my-issue.md"
@@ -311,3 +317,97 @@ class TestLegacyAllowlist:
     def test_missing_allowlist_raises_file_not_found(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError, match="legacy allow-list missing"):
             _REAL_LOAD_ALLOWLIST(tmp_path / "does-not-exist.txt")
+
+
+warn_missing_pr_refs = _mod.warn_missing_pr_refs
+
+
+class TestWarnMissingPrRefs:
+    """warn_missing_pr_refs emits warnings for open fragments with no pr_refs."""
+
+    def _open_fragment(self, tmp_path: Path, *, pr_refs: object = None) -> Fragment:
+        fm: dict = {
+            "id": 99,
+            "source": "gh",
+            "slug": "my-open-issue",
+            "title": "T",
+            "status": "open",
+            "severity": "low",
+            "autonomy": "review",
+            "estimated": "S",
+            "touches": ["scripts/foo.py"],
+            "discovered": "2026-04-28",
+            "updated": "2026-04-28",
+            "gh_issue": 99,
+        }
+        if pr_refs is not None:
+            fm["pr_refs"] = pr_refs
+        return Fragment(frontmatter=fm, body="b", path=tmp_path / "gh-99-my-open-issue.md")
+
+    def _resolved_fragment(self, tmp_path: Path) -> Fragment:
+        fm: dict = {
+            "id": 100,
+            "source": "gh",
+            "slug": "my-resolved-issue",
+            "title": "T",
+            "status": "resolved",
+            "severity": "low",
+            "autonomy": "review",
+            "estimated": "S",
+            "touches": ["scripts/foo.py"],
+            "discovered": "2026-04-28",
+            "updated": "2026-04-28",
+            "gh_issue": 100,
+        }
+        return Fragment(frontmatter=fm, body="b", path=tmp_path / "gh-100-my-resolved-issue.md")
+
+    def test_open_missing_pr_refs_warns(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Fragment with status open and no pr_refs field triggers warning."""
+        fragment = self._open_fragment(tmp_path)  # pr_refs not set at all
+        warn_missing_pr_refs([fragment])
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+        assert "pr_refs" in captured.err
+        assert "auto-closer" in captured.err
+
+    def test_open_empty_pr_refs_warns(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Fragment with status open and pr_refs: [] (empty list) triggers warning."""
+        fragment = self._open_fragment(tmp_path, pr_refs=[])
+        warn_missing_pr_refs([fragment])
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+        assert "pr_refs" in captured.err
+
+    def test_open_with_pr_refs_no_warning(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Fragment with status open and pr_refs: [123] does NOT trigger warning."""
+        fragment = self._open_fragment(tmp_path, pr_refs=[123])
+        warn_missing_pr_refs([fragment])
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
+    def test_resolved_missing_pr_refs_no_warning(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Fragment with status resolved and no pr_refs does NOT trigger warning."""
+        fragment = self._resolved_fragment(tmp_path)
+        warn_missing_pr_refs([fragment])
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
+    def test_does_not_exit_nonzero(self, tmp_path: Path) -> None:
+        """warn_missing_pr_refs always returns None (non-blocking)."""
+        fragment = self._open_fragment(tmp_path)
+        result = warn_missing_pr_refs([fragment])
+        assert result is None
+
+    def test_empty_list_no_warnings(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Empty fragment list produces no output."""
+        warn_missing_pr_refs([])
+        captured = capsys.readouterr()
+        assert captured.err == ""
