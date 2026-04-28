@@ -2182,6 +2182,25 @@ class DatabaseAdapter:
             "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
         }
 
+    def count_image_metric_rejections_for_filing(self, filing_id: int) -> int:
+        """
+        Count v2_image_metric_confirmations rows with decision='reject' that
+        belong to images in this filing. Includes both per-detected-metric
+        rejects and the NULL/NULL "no relevant metrics" sentinel reject.
+
+        Used by the unified review header to merge image-metric rejections
+        into the page-level "N rejected" badge alongside text-fact rejects.
+        """
+        sql = """
+            SELECT COUNT(*) AS n
+              FROM v2_image_metric_confirmations imc
+              JOIN v2_image_assets ia ON ia.img_id = imc.img_id
+             WHERE ia.doc_id = %(filing_id)s
+               AND imc.decision = 'reject'
+        """
+        rows = self.query(sql, {"filing_id": filing_id})
+        return int(rows[0]["n"]) if rows else 0
+
     # =============================================================================
     # V2 Image Metric Confirmation Methods (v2_image_metric_confirmations)
     # =============================================================================

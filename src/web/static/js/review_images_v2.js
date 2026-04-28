@@ -781,6 +781,13 @@
      * to flip review_status='skipped' so the image leaves the pending queue
      * (the per-metric pivot leaves the image-level review_status untouched on
      * its own). Per-metric reject rows preserve the real semantic in DB.
+     *
+     * Zero-detected-metrics case: keyword extraction found no candidate
+     * metrics on this image, so there are no per-metric rows to write.
+     * We still record the reviewer's "no relevant metrics" judgement as a
+     * single sentinel row (detected_metric_id=null, confirmed_metric_id=null,
+     * decision='reject', rejection_reason='no_relevant_metrics'), then skip
+     * the image. This preserves the ML training signal.
      */
     async function rejectAllUnreviewed() {
         if (state.submitting) return;
@@ -792,15 +799,31 @@
             return !(prior && KEEP.has(prior.decision));
         });
 
-        if (targets.length === 0) {
-            showMetricsToast('Nothing to reject — every metric is already accepted or corrected', 'warning');
+        let decisions;
+        let confirmMessage;
+        if (targets.length === 0 && state.detectedMetrics.length === 0) {
+            decisions = [{
+                detected_metric_id: null,
+                confirmed_metric_id: null,
+                decision: 'reject',
+                rejection_reason: 'no_relevant_metrics',
+            }];
+            confirmMessage = 'Mark this image as having no relevant metrics, and skip it?';
+        } else if (targets.length === 0) {
+            showMetricsToast('Already fully decided — every detected metric is accepted or corrected', 'warning');
             return;
+        } else {
+            decisions = targets.map(m => ({
+                detected_metric_id: m.metric_id,
+                decision: 'reject',
+                rejection_reason: 'not_present',
+            }));
+            confirmMessage =
+                `Reject all ${targets.length} unreviewed metric${targets.length === 1 ? '' : 's'} on this image as 'not present', ` +
+                `and skip the image? Existing Accept/Correct decisions will be kept.`;
         }
 
-        const ok = window.confirm(
-            `Reject all ${targets.length} unreviewed metric${targets.length === 1 ? '' : 's'} on this image as 'not present', ` +
-            `and skip the image? Existing Accept/Correct decisions will be kept.`
-        );
+        const ok = window.confirm(confirmMessage);
         if (!ok) return;
 
         const reviewerName = (typeof window.requireReviewerName === 'function')
@@ -813,11 +836,7 @@
             const payload = {
                 img_id: state.imgId,
                 reviewer_id: reviewerName,
-                decisions: targets.map(m => ({
-                    detected_metric_id: m.metric_id,
-                    decision: 'reject',
-                    rejection_reason: 'not_present',
-                })),
+                decisions: decisions,
                 view_filters: { status: state.imageStatus },
             };
             const resp = await fetch('/api/v2/image-metric-confirmations', {
