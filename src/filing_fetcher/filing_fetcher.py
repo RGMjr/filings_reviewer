@@ -113,9 +113,7 @@ class FilingFetcher:
             or "/" in accession_number.replace("-", "")
             or "\\" in accession_number
         ):
-            raise ValueError(
-                "Invalid accession number: contains path traversal characters"
-            )
+            raise ValueError("Invalid accession number: contains path traversal characters")
 
         # Additional validation: CIK should be numeric
         if not cik.isdigit():
@@ -205,16 +203,12 @@ class FilingFetcher:
                     return False, "iXBRL file missing body content"
 
                 # iXBRL format validated - return success early
-                logger.debug(
-                    f"Detected iXBRL format for {cik}/{accession_number}"
-                )
+                logger.debug(f"Detected iXBRL format for {cik}/{accession_number}")
                 return True, None
 
         # Check 4: Detect filing format (SGML vs modern HTML)
         has_document_tag = "<DOCUMENT>" in html
-        has_html_structure = any(
-            tag in html for tag in ["<!DOCTYPE", "<HTML>", "<html>"]
-        )
+        has_html_structure = any(tag in html for tag in ["<!DOCTYPE", "<HTML>", "<html>"])
         has_sgml_structure = "<TEXT>" in html
 
         is_sgml_format = has_document_tag and has_sgml_structure
@@ -259,15 +253,55 @@ class FilingFetcher:
                 "<table",
             ]
 
-            has_filing_elements = (
-                sum(1 for elem in filing_elements if elem in html_lower) >= 2
-            )
+            has_filing_elements = sum(1 for elem in filing_elements if elem in html_lower) >= 2
 
             if not has_filing_elements:
                 return False, "Modern HTML filing missing expected structural elements"
 
         # All checks passed
         return True, None
+
+    def _maybe_append_exhibit_991(
+        self,
+        base_html: str,
+        html_path: Path,
+        cik: str,
+        accession_number: str,
+        validate_combined: bool,
+    ) -> str | None:
+        """Fetch exhibit 99.1 for an 8-K and append it to base_html.
+
+        Returns the combined HTML string (and writes it to html_path), or None
+        if no exhibit URL is found, the URL is a PDF, or validation fails.
+        """
+        exhibit_url = self.sec_client.get_exhibit_99_1_url(cik, accession_number)
+        if exhibit_url and exhibit_url.lower().endswith(".pdf"):
+            logger.warning(
+                "exhibit-99-1-pdf-skipped: cik=%s accession=%s url=%s",
+                cik,
+                accession_number,
+                exhibit_url,
+            )
+            exhibit_url = None
+        if not exhibit_url:
+            return None
+        self._rate_limit()
+        logger.debug(f"Fetching exhibit 99.1: {exhibit_url}")
+        exhibit_resp = self.session.get(exhibit_url)
+        exhibit_resp.raise_for_status()
+        combined = base_html + f"\n{_EXHIBIT_SEPARATOR}\n" + exhibit_resp.text
+        if validate_combined:
+            is_valid, error_msg = self._validate_filing_content(combined, cik, accession_number)
+            if not is_valid:
+                logger.warning(
+                    f"Combined 8-K content invalid for "
+                    f"{cik}/{accession_number}: {error_msg}; "
+                    f"proceeding with primary only"
+                )
+                return None
+        html_path.write_text(combined, encoding="utf-8")
+        logger.info(f"Appended exhibit 99.1 to {html_path} ({len(combined):,} combined bytes)")
+        return combined
 
     def fetch_filing(
         self, filing_metadata: FilingMetadata, fetch_txt: bool = True
@@ -306,9 +340,7 @@ class FilingFetcher:
                 # Resolve primary document URL if it's a directory URL
                 primary_doc_url = filing_metadata.primary_doc_url
                 if primary_doc_url.endswith("/"):
-                    logger.debug(
-                        f"Resolving primary doc URL for {cik}/{accession_number}"
-                    )
+                    logger.debug(f"Resolving primary doc URL for {cik}/{accession_number}")
                     resolved_url = self.sec_client.resolve_primary_document_url(
                         cik, accession_number
                     )
@@ -337,73 +369,29 @@ class FilingFetcher:
                 logger.info(f"Saved HTML to {html_path}")
 
                 if is_8k:
-                    exhibit_url = self.sec_client.get_exhibit_99_1_url(
-                        cik, accession_number
+                    combined = self._maybe_append_exhibit_991(
+                        base_html=response.text,
+                        html_path=html_path,
+                        cik=cik,
+                        accession_number=accession_number,
+                        validate_combined=True,
                     )
-                    if exhibit_url and exhibit_url.lower().endswith(".pdf"):
-                        logger.warning(
-                            "exhibit-99-1-pdf-skipped: cik=%s accession=%s url=%s",
-                            cik,
-                            accession_number,
-                            exhibit_url,
-                        )
-                        exhibit_url = None
-                    if exhibit_url:
-                        self._rate_limit()
-                        logger.debug(f"Fetching exhibit 99.1: {exhibit_url}")
-                        exhibit_resp = self.session.get(exhibit_url)
-                        exhibit_resp.raise_for_status()
-                        combined = (
-                            response.text
-                            + f"\n{_EXHIBIT_SEPARATOR}\n"
-                            + exhibit_resp.text
-                        )
-                        is_valid, error_msg = self._validate_filing_content(
-                            combined, cik, accession_number
-                        )
-                        if not is_valid:
-                            logger.warning(
-                                f"Combined 8-K content invalid for "
-                                f"{cik}/{accession_number}: {error_msg}; "
-                                f"proceeding with primary only"
-                            )
-                        else:
-                            html_path.write_text(combined, encoding="utf-8")
-                            html_text = combined
-                            logger.info(
-                                f"Appended exhibit 99.1 to {html_path} "
-                                f"({len(combined):,} combined bytes)"
-                            )
+                    if combined is not None:
+                        html_text = combined
             else:
                 logger.debug(f"HTML already cached: {html_path}")
                 if is_8k:
                     existing = html_path.read_text(encoding="utf-8")
                     if _EXHIBIT_SEPARATOR not in existing:
-                        exhibit_url = self.sec_client.get_exhibit_99_1_url(
-                            cik, accession_number
+                        combined = self._maybe_append_exhibit_991(
+                            base_html=existing,
+                            html_path=html_path,
+                            cik=cik,
+                            accession_number=accession_number,
+                            validate_combined=False,
                         )
-                        if exhibit_url and exhibit_url.lower().endswith(".pdf"):
-                            logger.warning(
-                                "exhibit-99-1-pdf-skipped: cik=%s accession=%s url=%s",
-                                cik,
-                                accession_number,
-                                exhibit_url,
-                            )
-                            exhibit_url = None
-                        if exhibit_url:
-                            self._rate_limit()
-                            exhibit_resp = self.session.get(exhibit_url)
-                            exhibit_resp.raise_for_status()
-                            combined = (
-                                existing
-                                + f"\n{_EXHIBIT_SEPARATOR}\n"
-                                + exhibit_resp.text
-                            )
-                            html_path.write_text(combined, encoding="utf-8")
+                        if combined is not None:
                             html_text = combined
-                            logger.info(
-                                f"Backfilled exhibit 99.1 into cached {html_path}"
-                            )
 
             # Fetch TXT filing (if requested and URL available)
             # TXT files are optional - don't fail entire fetch if unavailable
@@ -424,14 +412,10 @@ class FilingFetcher:
                         txt_path_str = str(txt_path)
                 except requests.HTTPError as e:
                     # TXT file not available (404) - this is OK, HTML is sufficient
-                    logger.warning(
-                        f"TXT file not available for {cik}/{accession_number}: {e}"
-                    )
+                    logger.warning(f"TXT file not available for {cik}/{accession_number}: {e}")
                 except Exception as e:
                     # Other TXT errors - log but don't fail entire fetch
-                    logger.warning(
-                        f"Error fetching TXT for {cik}/{accession_number}: {e}"
-                    )
+                    logger.warning(f"Error fetching TXT for {cik}/{accession_number}: {e}")
 
             # Create FilingContent result
             content = FilingContent(
@@ -492,8 +476,7 @@ class FilingFetcher:
         except Exception as e:
             # Unexpected errors - log with full traceback for debugging
             error_msg = (
-                f"Unexpected error fetching {cik}/{accession_number}: "
-                f"{type(e).__name__}: {e}"
+                f"Unexpected error fetching {cik}/{accession_number}: {type(e).__name__}: {e}"
             )
             logger.critical(error_msg, exc_info=True)
 
@@ -553,9 +536,7 @@ class FilingFetcher:
             )
             return False
 
-    def _update_database_error(
-        self, cik: str, accession_number: str, error_msg: str
-    ) -> bool:
+    def _update_database_error(self, cik: str, accession_number: str, error_msg: str) -> bool:
         """
         Update database to record fetch error.
 
@@ -588,9 +569,7 @@ class FilingFetcher:
             )
             return False
 
-    def get_filing_content(
-        self, cik: str, accession_number: str
-    ) -> FilingContent | None:
+    def get_filing_content(self, cik: str, accession_number: str) -> FilingContent | None:
         """
         Get cached filing content if it exists.
 
