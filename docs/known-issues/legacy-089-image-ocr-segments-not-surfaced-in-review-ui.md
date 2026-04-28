@@ -6,13 +6,22 @@ id: 89
 severity: medium
 slug: image-ocr-segments-not-surfaced-in-review-ui
 source: legacy
-status: open
+status: partially-resolved
 title: Image-OCR Segments + Re-OCR'd Images Not Surfaced in Review UI
 touches:
   - src/web/routes/review_unified.py
   - src/web/routes/api_unified.py
   - src/web/templates/unified_review.html
-updated: '2026-04-23'
+updated: '2026-04-28'
+pr_refs:
+  - 285
+note: |
+  Step A (surface image-OCR segments in the text tab) shipped. Step B
+  (invalidate stale image review decisions when fresh ocr_text lands, or
+  add an explicit "re-review" affordance) is deferred — preserving the
+  per-(image, metric) decision trail is a known design constraint
+  (project_image_review_decisions_for_ml_training) and the right shape
+  needs its own design pass.
 ---
 
 ### Problem
@@ -67,3 +76,28 @@ directly or pull up individual image-review pages.
 - legacy-082 — Full-page-OCR pipeline integration test (now **resolved** via PR #221); this fragment adds the UI-surfacing layer to that integration gap.
 - gh-196 — ML triage feed gaps from `v2_image_metric_confirmations`. Also concerns review-surface completeness for image data; different code path (training-data schema vs UI rendering) but worth coordinating if either is reworked.
 - PR #139 — landed the three backfill fixes that made filing 1748 ingest cleanly; this fragment is the logical follow-up.
+
+### Resolution (Step A)
+
+Surfaced `v2_segments` rows with `source_type='image_ocr'` in the unified
+review text tab. Each row links to its source image (`source_img_id`) so
+the reviewer can pop into the Images tab via `?tab=images&img_id=…`.
+
+Implementation:
+- `DatabaseAdapter.get_v2_image_ocr_segments_for_filing(filing_id)`
+  returns OCR'd segments joined to `v2_image_assets` (filename + ocr_text).
+- `review_unified.review_filing` loads them and passes `image_ocr_segments`
+  to `unified_review.html`.
+- Template renders an "OCR'd image text" panel at the bottom of the text
+  tab, conditional on at least one row.
+
+No mutation, no new endpoint, no contract change. The reviewed-filing
+guard and per-(image, metric) decision trail are untouched.
+
+Validation target: `/v2/review/1748` (PayPal Q3'23 8-K) — text tab now
+exposes the 18 OCR'd segments alongside the empty fact list. Exercised
+by `tests/unit/web/test_review_v2_routes.py::test_review_filing_passes_image_ocr_segments_to_template`
+and the `test_mock_server_renders_route_without_undefined_vars` Jinja
+contract test.
+
+Step B (stale image-decision invalidation) deferred — see `note` above.

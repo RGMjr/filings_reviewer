@@ -1324,6 +1324,35 @@ class DatabaseAdapter:
             {"doc_id": doc_id, "segment_id": segment_id, "window": window},
         )
 
+    def get_v2_image_ocr_segments_for_filing(self, filing_id: int) -> list[dict]:
+        """
+        Return v2_segments rows synthesized from full-page-image OCR
+        (source_type='image_ocr'), joined to their source v2_image_assets row.
+
+        Used by the unified review text tab to surface OCR'd image text even
+        when the extraction pipeline produced no v2_metric_facts rows from it.
+        Each row links back to its source image via source_img_id so the
+        reviewer can click through to the image queue.
+        """
+        return self.query(
+            """
+            SELECT s.segment_id::text AS segment_id,
+                   s.segment_text,
+                   s.sequence_idx,
+                   s.section_path,
+                   s.section_type,
+                   s.source_img_id::text AS source_img_id,
+                   ia.filename AS image_filename,
+                   ia.ocr_text AS image_ocr_text
+            FROM v2_segments s
+            LEFT JOIN v2_image_assets ia ON ia.img_id = s.source_img_id
+            WHERE s.doc_id = %(filing_id)s
+              AND s.source_type = 'image_ocr'
+            ORDER BY s.sequence_idx
+            """,
+            {"filing_id": filing_id},
+        )
+
     def get_table_context(self, doc_id: int, table_id: str) -> dict | None:
         """
         Return table metadata and a reconstructed HTML table for a V2 table fact.

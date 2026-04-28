@@ -590,6 +590,49 @@
   </div>
 </div>
 
+{# OCR'd image text — surfaces v2_segments rows synthesized from full-page
+   image OCR. Renders even when no facts were extracted, so 8-K page-image
+   decks (e.g. PayPal earnings) are reachable from the text tab. Each row
+   links to its source image in the Images tab. See legacy-089. #}
+{% if image_ocr_segments %}
+<div class="row mt-4">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong style="font-size: 0.9rem;">OCR'd image text</strong>
+        <span class="badge bg-secondary">{{ image_ocr_segments|length }} segments</span>
+      </div>
+      <div class="card-body p-0" style="max-height: 60vh; overflow-y: auto;">
+        <p class="text-muted small px-3 pt-2 mb-2">
+          Text synthesized from full-page-image OCR. Useful when an 8-K is
+          filed as a page-image deck and the extraction pipeline emitted no
+          facts.
+        </p>
+        <ul class="list-group list-group-flush">
+          {% for seg in image_ocr_segments %}
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+              <div class="text-muted small">
+                #{{ seg.sequence_idx }}
+                {% if seg.image_filename %}&middot; {{ seg.image_filename }}{% endif %}
+              </div>
+              {% if seg.source_img_id %}
+              <a class="btn btn-sm btn-outline-secondary"
+                 href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id) }}?tab=images&img_id={{ seg.source_img_id }}">
+                View image
+              </a>
+              {% endif %}
+            </div>
+            <div class="mt-1" style="white-space: pre-wrap; font-size: 0.9rem;">{{ seg.segment_text }}</div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endif %} {# end text tab #}
 
 {# Add Missed Metric Modal -- outside tab conditionals so it's always in the DOM #}

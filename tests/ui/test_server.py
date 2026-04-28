@@ -403,6 +403,7 @@ def _shared_template_vars(
         per_page=100,
         total_pages=1,
         sec_filing_url=None,
+        image_ocr_segments=[],
         # Image tab
         image_candidates=image_candidates,
         all_image_candidates=all_image_candidates,

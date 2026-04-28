@@ -374,6 +374,21 @@ def review_filing(filing_id: int):
         # construction goes through src/web/url_builders.py.
         sec_filing_url = resolve_sec_filing_url(filing)
 
+        # Image-OCR segments (text from full-page-image OCR pipeline). Surfaced
+        # in the text tab so reviewers can see OCR'd prose even when the
+        # extraction pipeline emitted no v2_metric_facts rows for it (e.g.
+        # 8-K page-image decks where Tier 1 patterns don't match the issuer's
+        # KPI vocabulary). See known-issues fragment legacy-089.
+        try:
+            image_ocr_segments = db.get_v2_image_ocr_segments_for_filing(filing_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to load image_ocr segments for filing_id=%s: %s",
+                filing_id,
+                exc,
+            )
+            image_ocr_segments = []
+
         # Current filter state
         current_filters = {
             "status": filter_status,
@@ -485,6 +500,7 @@ def review_filing(filing_id: int):
             per_page=per_page,
             total_pages=total_pages,
             sec_filing_url=sec_filing_url,
+            image_ocr_segments=image_ocr_segments,
             # Image tab
             image_candidates=image_candidates,
             all_image_candidates=all_image_candidates,
