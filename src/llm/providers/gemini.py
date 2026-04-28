@@ -51,6 +51,23 @@ _MODEL_PRICING: dict[str, tuple[float, float]] = {
 }
 _DEFAULT_PRICING = (1.25, 10.00)  # conservative fallback
 
+# Model name substrings that indicate extended-thinking capability (Gemini 2.5 Pro).
+# These models run a thinking phase before emitting output; when max_output_tokens is
+# low (e.g. 400 for metric-classify), the thinking phase can consume the entire budget
+# and leave an empty text response.  We disable thinking for vision calls so the full
+# token budget is available for the actual JSON response.
+_THINKING_MODEL_SUBSTRINGS: tuple[str, ...] = ("gemini-2.5-pro",)
+
+
+def _is_thinking_model(model: str) -> bool:
+    """Return True if ``model`` is a Gemini thinking model (e.g. Gemini 2.5 Pro).
+
+    Uses substring matching so preview suffixes like ``-preview-05-06`` are
+    recognised automatically.
+    """
+    m = model.lower()
+    return any(sub in m for sub in _THINKING_MODEL_SUBSTRINGS)
+
 
 class GeminiVisionProvider(VisionProvider):
     """Vision provider backed by Google Gemini (google-genai SDK).
@@ -100,17 +117,26 @@ class GeminiVisionProvider(VisionProvider):
         ``detail`` is accepted for interface compatibility but has no effect
         (Gemini does not expose a per-request image-quality parameter).
 
-        ``response_format={"type": "json_object"}`` is handled by appending
-        ``"Return ONLY valid JSON."`` to the prompt when the caller requests
-        JSON mode, matching the OpenAI behavior at the prompt level.
+        ``response_format={"type": "json_object"}`` is handled two ways:
+        1. ``response_mime_type="application/json"`` is set in the generation
+           config so the API enforces valid JSON at the protocol level.
+        2. ``"Return ONLY valid JSON."`` is appended to the prompt when
+           "JSON" does not already appear, as a belt-and-suspenders hint.
+
+        For thinking-capable models (Gemini 2.5 Pro), extended thinking is
+        disabled via ``thinking_config`` with ``thinking_budget=0``.  Without
+        this, the thinking phase can silently consume the entire
+        ``max_output_tokens`` budget and leave an empty text response — the
+        root cause of legacy-091.
         """
         # Build the image Part
         b64_data = base64.standard_b64encode(image_bytes).decode("utf-8")
 
+        wants_json = response_format and response_format.get("type") == "json_object"
+
         effective_prompt = prompt
-        if response_format and response_format.get("type") == "json_object":
-            if "JSON" not in prompt:
-                effective_prompt = prompt + "\n\nReturn ONLY valid JSON."
+        if wants_json and "JSON" not in prompt:
+            effective_prompt = prompt + "\n\nReturn ONLY valid JSON."
 
         try:
             import google.genai.types as genai_types  # type: ignore[import-untyped]
@@ -121,10 +147,19 @@ class GeminiVisionProvider(VisionProvider):
             )
             contents = [image_part, effective_prompt]
 
-            generation_config = genai_types.GenerateContentConfig(
-                max_output_tokens=max_tokens,
-                temperature=0.0,
-            )
+            config_kwargs: dict[str, Any] = {
+                "max_output_tokens": max_tokens,
+                "temperature": 0.0,
+            }
+            if wants_json:
+                config_kwargs["response_mime_type"] = "application/json"
+            if _is_thinking_model(self.model):
+                # Disable extended thinking so the full token budget is
+                # available for the JSON response (fixes legacy-091).
+                config_kwargs["thinking_config"] = genai_types.ThinkingConfig(
+                    thinking_budget=0
+                )
+            generation_config = genai_types.GenerateContentConfig(**config_kwargs)
         except ImportError:
             # Older google-genai API (pre-1.0) uses dict-based parts
             contents = _build_legacy_contents(b64_data, mime_type, effective_prompt)
