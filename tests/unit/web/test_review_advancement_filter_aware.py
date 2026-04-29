@@ -232,6 +232,40 @@ def test_get_next_image_candidate_all_filter_does_not_advance_into_reviewed():
     assert out is None
 
 
+def test_get_next_image_candidate_pending_filter_skipped_image_absent():
+    """Regression: after reject-all + skip with status=pending filter, the
+    just-skipped image is absent from the DB query result (review_status changed
+    to 'skipped'). Function must scan from top rather than returning None."""
+    db = MagicMock()
+    # "a" was just skipped — not in the pending-filtered list any more.
+    db.get_image_review_candidates_for_filing_v2.return_value = [
+        _image("b", "pending"),
+        _image("c", "pending"),
+    ]
+    out = _get_next_image_candidate_info(
+        db, filing_id=1, current_img_id="a", view_filters={"status": "pending"}
+    )
+    assert out is not None
+    assert out["img_id"] == "b"
+    assert "image_status=pending" in out["url"]
+
+
+def test_get_next_image_candidate_wraps_to_earlier_pending():
+    """User jumped to a low-relevance image via thumbnail; there are still
+    pending images at earlier (higher-relevance) indices. Advancement wraps."""
+    db = MagicMock()
+    db.get_image_review_candidates_for_filing_v2.return_value = [
+        _image("a", "pending"),  # pending — earlier in relevance order
+        _image("b", "pending"),  # current — being decided now
+        _image("c", image_review_state="relevant"),  # already reviewed
+    ]
+    out = _get_next_image_candidate_info(db, filing_id=1, current_img_id="b")
+    # Forward scan: only "c" is after "b", not pending → forward finds nothing.
+    # Wrap: "a" is before "b" and is pending → returned.
+    assert out is not None
+    assert out["img_id"] == "a"
+
+
 def test_get_next_image_candidate_audit_filter_walks_linearly():
     """Explicit audit filters (reviewed/skipped/auto_rejected) walk linearly
     within the filtered set — no pending-only scan applies."""

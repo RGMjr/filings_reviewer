@@ -1015,6 +1015,17 @@ def _get_next_image_candidate_info(
             break
 
     if current_idx is None:
+        # Image was removed from the filtered set (e.g. just skipped out of
+        # the status=pending view). Scan from the top for the first genuinely
+        # pending image rather than falsely signalling queue-empty.
+        if db_status not in _AUDIT_IMAGE_STATUSES:
+            for c in candidates:
+                if c.get("image_review_state") == "pending":
+                    next_id = str(c["img_id"])
+                    qs = f"img_id={next_id}&tab=images"
+                    if db_status:
+                        qs += f"&image_status={db_status}"
+                    return {"img_id": next_id, "url": f"/v2/review/{filing_id}?{qs}"}
         return None
 
     if db_status in _AUDIT_IMAGE_STATUSES:
@@ -1034,6 +1045,13 @@ def _get_next_image_candidate_info(
             if c.get("image_review_state") == "pending":
                 next_candidate = c
                 break
+        if next_candidate is None:
+            # Wrap: images before current position (e.g. user navigated
+            # directly to a low-relevance thumbnail, skipping earlier ones).
+            for c in candidates[:current_idx]:
+                if c.get("image_review_state") == "pending":
+                    next_candidate = c
+                    break
         if next_candidate is None:
             return None
 
