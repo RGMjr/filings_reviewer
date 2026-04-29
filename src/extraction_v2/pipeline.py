@@ -297,6 +297,37 @@ class PipelineResult:
         )
 
     @property
+    def vision_spend_usd_by_site(self) -> dict[str, float]:
+        """Aggregate vision API spend across all stages, keyed by call-site name.
+
+        Walks ``stage_results[*].metadata['vision_spend_usd_by_site']`` and
+        sums per-site values. Sites with zero spend are still present so
+        downstream consumers can compare across runs without key-existence
+        checks.
+        """
+        sites = [
+            "table_ocr",
+            "chart_ocr_fast",
+            "chart_read_premium",
+            "full_page_ocr",
+            "prescan",
+            "metric_classify",
+        ]
+        total: dict[str, float] = {site: 0.0 for site in sites}
+        for result in self.stage_results:
+            per_site = result.metadata.get("vision_spend_usd_by_site")
+            if not isinstance(per_site, dict):
+                continue
+            for site, spend in per_site.items():
+                total[site] = total.get(site, 0.0) + float(spend or 0.0)
+        return {site: round(spend, 6) for site, spend in total.items()}
+
+    @property
+    def vision_spend_usd_total(self) -> float:
+        """Sum of ``vision_spend_usd_by_site`` across every site."""
+        return round(sum(self.vision_spend_usd_by_site.values()), 6)
+
+    @property
     def stub_stage_warnings(self) -> list[str]:
         """
         Get list of stub/not-implemented warnings from all stages.

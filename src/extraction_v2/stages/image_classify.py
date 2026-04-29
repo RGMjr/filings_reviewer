@@ -67,6 +67,7 @@ class ImageClassifyStage:
 
         records_emitted = 0
         api_errors = 0
+        spend_usd = 0.0
 
         for image in candidates:
             record = self._classify_one(image, client, provider, model)
@@ -75,6 +76,7 @@ class ImageClassifyStage:
                 continue
             context.image_classifications.append(record)
             records_emitted += 1
+            spend_usd += float(record.cost_usd or 0.0)
 
         duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
         return StageResult(
@@ -88,6 +90,7 @@ class ImageClassifyStage:
                 "model": model,
                 "api_errors": api_errors,
                 "prompt_version": self.PROMPT_VERSION,
+                "vision_spend_usd_by_site": {"metric_classify": round(spend_usd, 6)},
             },
         )
 
