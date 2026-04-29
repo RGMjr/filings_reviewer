@@ -63,7 +63,7 @@ def _count_chart_facts_with_null_img_id(db: DatabaseAdapter) -> list[dict]:
     sql = """
         SELECT
             f.fact_id,
-            f.doc_id,
+            f.filing_id,
             f.canonical_metric_id,
             f.source_locator
           FROM v2_metric_facts f
@@ -81,7 +81,7 @@ def _count_orphaned_img_id_refs(db: DatabaseAdapter) -> list[dict]:
     sql = """
         SELECT
             f.fact_id,
-            f.doc_id,
+            f.filing_id,
             f.canonical_metric_id,
             f.source_type,
             f.source_locator->>'img_id' AS img_id
@@ -143,10 +143,10 @@ def _chart_image_vs_fact_rate(db: DatabaseAdapter) -> list[dict]:
              GROUP BY doc_id
         ),
         chart_facts AS (
-            SELECT doc_id, COUNT(*) AS n_chart_facts
+            SELECT filing_id AS doc_id, COUNT(*) AS n_chart_facts
               FROM v2_metric_facts
              WHERE source_type = 'chart'
-             GROUP BY doc_id
+             GROUP BY filing_id
         )
         SELECT
             ci.doc_id,
@@ -180,7 +180,7 @@ def _find_company_filing_facts(
             f.confidence,
             f.review_status
           FROM v2_metric_facts f
-          JOIN filings fi ON fi.filing_id = f.doc_id::bigint
+          JOIN filings fi ON fi.filing_id = f.filing_id
           JOIN companies c ON c.company_id = fi.company_id
          WHERE c.company_name ILIKE %(company)s
            AND f.canonical_metric_id = %(metric)s
@@ -232,7 +232,12 @@ def main() -> int:
     a_rows = _count_chart_facts_with_null_img_id(db)
     logger.info("count: %d", len(a_rows))
     for row in a_rows[: args.sample]:
-        logger.info("  fact_id=%s doc_id=%s metric=%s", row["fact_id"], row["doc_id"], row["canonical_metric_id"])
+        logger.info(
+            "  fact_id=%s filing_id=%s metric=%s",
+            row["fact_id"],
+            row["filing_id"],
+            row["canonical_metric_id"],
+        )
 
     # (B) orphaned img_id refs
     _print_section("(B) orphaned source_locator.img_id (no matching v2_image_assets row)")
@@ -245,9 +250,9 @@ def main() -> int:
         logger.info("  source_type=%s: %d", st, n)
     for row in b_rows[: args.sample]:
         logger.info(
-            "  fact_id=%s doc_id=%s metric=%s source_type=%s img_id=%s",
+            "  fact_id=%s filing_id=%s metric=%s source_type=%s img_id=%s",
             row["fact_id"],
-            row["doc_id"],
+            row["filing_id"],
             row["canonical_metric_id"],
             row["source_type"],
             row["img_id"],

@@ -65,7 +65,7 @@ def get_v2_metric_facts(db: DatabaseAdapter, filing_id: int) -> list:
             mf.review_status
         FROM v2_metric_facts mf
         JOIN metrics m ON mf.canonical_metric_id = m.metric_id
-        WHERE mf.doc_id = %s
+        WHERE mf.filing_id = %s
           AND mf.primary_fact_id IS NULL
         ORDER BY mf.canonical_metric_id, mf.period_end DESC NULLS LAST
     """

@@ -97,7 +97,7 @@ def seeded_image(db_adapter: DatabaseAdapter) -> str:
             )
             cur.execute("DELETE FROM v2_image_assets WHERE img_id = %s", (img_id,))
             cur.execute(
-                "DELETE FROM v2_metric_facts WHERE doc_id = %s AND source_type = 'chart'",
+                "DELETE FROM v2_metric_facts WHERE filing_id = %s AND source_type = 'chart'",
                 (filing_id,),
             )
 
@@ -306,9 +306,9 @@ class TestImageMetricConfirmationsPost:
             facts = db_adapter.query(
                 """
                 SELECT canonical_metric_id FROM v2_metric_facts
-                 WHERE doc_id = %(doc_id)s AND source_type = 'chart'
+                 WHERE filing_id = %(filing_id)s AND source_type = 'chart'
                 """,
-                {"doc_id": filing_id},
+                {"filing_id": filing_id},
             )
             assert facts == []
         finally:
@@ -325,12 +325,12 @@ def _count_chart_facts(db_adapter, filing_id, metric_id, img_id):
     rows = db_adapter.query(
         """
         SELECT 1 FROM v2_metric_facts
-         WHERE doc_id = %(doc_id)s
+         WHERE filing_id = %(filing_id)s
            AND canonical_metric_id = %(metric_id)s
            AND source_type = 'chart'
            AND source_locator ->> 'img_id' = %(img_id)s
         """,
-        {"doc_id": filing_id, "metric_id": metric_id, "img_id": img_id},
+        {"filing_id": filing_id, "metric_id": metric_id, "img_id": img_id},
     )
     return len(rows)
 
@@ -498,9 +498,9 @@ class TestNoRelevantMetricsSentinel:
         facts = db_adapter.query(
             """
             SELECT 1 FROM v2_metric_facts
-             WHERE doc_id = %(doc_id)s AND source_type = 'chart'
+             WHERE filing_id = %(filing_id)s AND source_type = 'chart'
             """,
-            {"doc_id": filing_id},
+            {"filing_id": filing_id},
         )
         assert facts == []
 

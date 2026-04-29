@@ -107,7 +107,7 @@ def _recheck_guards(db: DatabaseAdapter, filing_id: int) -> dict:
     """Re-verify at apply-time that no reviewer work appeared since the audit.
     Path B aborts if any of these counts are non-zero."""
     facts = db.query(
-        "SELECT count(*) AS n FROM v2_metric_facts WHERE doc_id = %(id)s",
+        "SELECT count(*) AS n FROM v2_metric_facts WHERE filing_id = %(id)s",
         {"id": filing_id},
     )
     reviews = db.query(
@@ -115,7 +115,7 @@ def _recheck_guards(db: DatabaseAdapter, filing_id: int) -> dict:
         SELECT count(*) AS n
         FROM v2_review_decisions rd
         JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
-        WHERE mf.doc_id = %(id)s
+        WHERE mf.filing_id = %(id)s
         """,
         {"id": filing_id},
     )

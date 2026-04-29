@@ -315,9 +315,9 @@ class TestTranscriptConverterIntegration:
         assert "<body>" in html
         assert "<section" in html, "Expected at least one <section> element"
         assert "<p>" in html, "Expected at least one <p> element"
-        assert (
-            'class="speaker-turn"' in html or 'class="operator"' in html
-        ), "Expected speaker-turn or operator divs"
+        assert 'class="speaker-turn"' in html or 'class="operator"' in html, (
+            "Expected speaker-turn or operator divs"
+        )
 
     def test_converter_extracts_metadata(self, sample_transcript: str) -> None:
         _, metadata = convert_transcript_to_html(sample_transcript)
@@ -395,9 +395,9 @@ class TestTranscriptPipelineE2E:
     ) -> None:
         """Pipeline must report success=True and a non-None document."""
         result = self._get_result(transcript_results, ticker, date_str)
-        assert (
-            result.success is True
-        ), f"{ticker}_{date_str}: pipeline failed — {result.error_message}"
+        assert result.success is True, (
+            f"{ticker}_{date_str}: pipeline failed — {result.error_message}"
+        )
         assert result.document is not None, f"{ticker}_{date_str}: result.document is None"
 
     @pytest.mark.parametrize("ticker,date_str", ANNOTATED_TRANSCRIPTS)
@@ -410,8 +410,7 @@ class TestTranscriptPipelineE2E:
         """Each transcript must yield at least one extracted metric fact."""
         result = self._get_result(transcript_results, ticker, date_str)
         assert result.fact_count > 0, (
-            f"{ticker}_{date_str}: zero facts extracted. "
-            f"Segments parsed: {len(result.segments)}"
+            f"{ticker}_{date_str}: zero facts extracted. Segments parsed: {len(result.segments)}"
         )
 
     @pytest.mark.parametrize("ticker,date_str", ANNOTATED_TRANSCRIPTS)
@@ -440,22 +439,22 @@ class TestTranscriptPipelineE2E:
         """Every fact must have source_locator and non-empty snippet_html."""
         result = self._get_result(transcript_results, ticker, date_str)
         for fact in result.facts:
-            assert (
-                fact.source_locator is not None
-            ), f"{ticker}_{date_str}: fact {fact.fact_id} missing source_locator"
+            assert fact.source_locator is not None, (
+                f"{ticker}_{date_str}: fact {fact.fact_id} missing source_locator"
+            )
             has_location = (
                 fact.source_locator.dom_locator is not None
                 or fact.source_locator.segment_id is not None
             )
-            assert (
-                has_location
-            ), f"{ticker}_{date_str}: fact {fact.fact_id} has no dom_locator or segment_id"
-            assert (
-                fact.evidence_pack is not None
-            ), f"{ticker}_{date_str}: fact {fact.fact_id} missing evidence_pack"
-            assert (
-                fact.evidence_pack.snippet_html
-            ), f"{ticker}_{date_str}: fact {fact.fact_id} has empty snippet_html"
+            assert has_location, (
+                f"{ticker}_{date_str}: fact {fact.fact_id} has no dom_locator or segment_id"
+            )
+            assert fact.evidence_pack is not None, (
+                f"{ticker}_{date_str}: fact {fact.fact_id} missing evidence_pack"
+            )
+            assert fact.evidence_pack.snippet_html, (
+                f"{ticker}_{date_str}: fact {fact.fact_id} has empty snippet_html"
+            )
 
     @pytest.mark.parametrize("ticker,date_str", ANNOTATED_TRANSCRIPTS)
     def test_image_stages_skipped(
@@ -467,8 +466,7 @@ class TestTranscriptPipelineE2E:
         """Transcript config disables image extraction; no image assets expected."""
         result = self._get_result(transcript_results, ticker, date_str)
         assert len(result.images) == 0, (
-            f"{ticker}_{date_str}: expected 0 image assets for transcript, "
-            f"got {len(result.images)}"
+            f"{ticker}_{date_str}: expected 0 image assets for transcript, got {len(result.images)}"
         )
 
     @pytest.mark.parametrize("ticker,date_str", ANNOTATED_TRANSCRIPTS)
@@ -683,7 +681,7 @@ class TestTranscriptDBSchema:
             with db_adapter.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "DELETE FROM v2_metric_facts WHERE doc_id = %s",
+                        "DELETE FROM v2_metric_facts WHERE filing_id = %s",
                         (test_transcript_filing_id,),
                     )
                     cur.execute(
@@ -774,9 +772,9 @@ class TestTranscriptDBSchema:
                     (test_transcript_filing_id,),
                 )
                 row = cur.fetchone()
-                assert (
-                    row is not None
-                ), f"Filing {test_transcript_filing_id} not found with ticker='CRM'"
+                assert row is not None, (
+                    f"Filing {test_transcript_filing_id} not found with ticker='CRM'"
+                )
 
     def test_document_date_roundtrip(
         self,

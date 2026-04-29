@@ -143,11 +143,10 @@ def create_test_v2_fact(
     """
     Create a V2 metric fact and return fact_id (UUID string).
 
-    Note: doc_id in v2_metric_facts is a BIGINT FK to filings.filing_id.
     Uses cm_customers_period_end as default metric (seeded by 04_seed_metrics_taxonomy.sql).
     """
     params: dict = {
-        "doc_id": filing_id,
+        "filing_id": filing_id,
         "canonical_metric_id": "cm_customers_period_end",
         "value": 10000,
         "value_raw": "10,000",
@@ -177,11 +176,11 @@ def create_test_v2_fact(
     rows = db.query(
         """
         INSERT INTO v2_metric_facts (
-            doc_id, canonical_metric_id, value, value_raw, unit, currency,
+            filing_id, canonical_metric_id, value, value_raw, unit, currency,
             period_type, period_start, period_end, source_type, source_locator,
             evidence_pack, confidence, extraction_method, requires_review, review_status
         ) VALUES (
-            %(doc_id)s, %(canonical_metric_id)s, %(value)s, %(value_raw)s, %(unit)s, %(currency)s,
+            %(filing_id)s, %(canonical_metric_id)s, %(value)s, %(value_raw)s, %(unit)s, %(currency)s,
             %(period_type)s, %(period_start)s, %(period_end)s, %(source_type)s, %(source_locator)s,
             %(evidence_pack)s, %(confidence)s, %(extraction_method)s, %(requires_review)s, %(review_status)s
         )

@@ -401,7 +401,7 @@ Stage 5a `ChartFactBridgeStage` and `MetricPresenceStage` are **rule-based, no L
 
 - PostgreSQL as primary store
 - V2 tables use UUID primary keys; core tables use BIGSERIAL
-- Key indices on `v2_metric_facts(doc_id)`, `(canonical_metric_id)`, `(review_status)`, `(confidence)`
+- Key indices on `v2_metric_facts(filing_id)`, `(canonical_metric_id)`, `(review_status)`, `(confidence)`
 - GIN indices on `evidence_pack` and `source_locator` JSONB columns
 - Identity index on `(canonical_metric_id, period_start, period_end, unit, scope, cohort_def)` for deduplication
 

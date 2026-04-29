@@ -110,11 +110,11 @@ class TestMigrationSafety:
         )
         assert doc_rows, "Failed to insert v2_documents row"
 
-        # Insert V2 fact (doc_id in v2_metric_facts = filing_id, a BIGINT FK to filings)
+        # Insert V2 fact (filing_id in v2_metric_facts is a BIGINT FK to filings)
         fact_rows = db.query(
             """
             INSERT INTO v2_metric_facts (
-                doc_id, canonical_metric_id, value_raw, unit, source_type,
+                filing_id, canonical_metric_id, value_raw, unit, source_type,
                 source_locator, evidence_pack, confidence
             ) VALUES (
                 %(filing_id)s, 'cm_customers_period_end', '5000', 'count', 'text',

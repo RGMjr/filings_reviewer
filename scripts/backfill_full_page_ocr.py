@@ -98,7 +98,7 @@ WITH per_filing AS (
         ) AS segment_char_count,
         (SELECT COUNT(*) FROM v2_review_decisions rd
             JOIN v2_metric_facts mf ON rd.fact_id = mf.fact_id
-         WHERE mf.doc_id = f.filing_id) AS review_decisions
+         WHERE mf.filing_id = f.filing_id) AS review_decisions
     FROM filings f
     JOIN companies c ON c.company_id = f.company_id
     WHERE (%(cik)s::text IS NULL OR f.cik = %(cik)s::text)

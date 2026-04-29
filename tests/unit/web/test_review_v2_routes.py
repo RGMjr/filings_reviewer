@@ -203,7 +203,7 @@ FILING_ROW = {
 
 FACT_ROW = {
     "fact_id": "uuid-1",
-    "doc_id": 1,
+    "filing_id": 1,
     "canonical_metric_id": "cm_customers_period_end",
     "value": 1000.0,
     "value_raw": "1,000",

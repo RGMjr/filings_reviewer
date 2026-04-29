@@ -32,29 +32,29 @@ from src.infra.db import DatabaseAdapter
 
 QUERY = """
 WITH chart_filings AS (
-    SELECT DISTINCT doc_id AS filing_id
+    SELECT DISTINCT filing_id
     FROM v2_metric_facts
     WHERE source_type = 'chart'
 ),
 chart_fact_counts AS (
-    SELECT doc_id AS filing_id, COUNT(*) AS chart_fact_count
+    SELECT filing_id, COUNT(*) AS chart_fact_count
     FROM v2_metric_facts
     WHERE source_type = 'chart'
-    GROUP BY doc_id
+    GROUP BY filing_id
 ),
 chart_fact_decisions AS (
-    SELECT mf.doc_id AS filing_id, COUNT(*) AS chart_fact_decision_count
+    SELECT mf.filing_id, COUNT(*) AS chart_fact_decision_count
     FROM v2_review_decisions rd
     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
     WHERE mf.source_type = 'chart'
-    GROUP BY mf.doc_id
+    GROUP BY mf.filing_id
 ),
 text_fact_decisions AS (
-    SELECT mf.doc_id AS filing_id, COUNT(*) AS text_fact_decision_count
+    SELECT mf.filing_id, COUNT(*) AS text_fact_decision_count
     FROM v2_review_decisions rd
     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
     WHERE mf.source_type <> 'chart'
-    GROUP BY mf.doc_id
+    GROUP BY mf.filing_id
 ),
 chart_images AS (
     SELECT doc_id AS filing_id,

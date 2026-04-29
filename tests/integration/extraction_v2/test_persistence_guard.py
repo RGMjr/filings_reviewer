@@ -98,12 +98,12 @@ def _cleanup(db_adapter: DatabaseAdapter, test_filing_id: int):
                     """
                     DELETE FROM v2_review_decisions
                      WHERE fact_id IN (
-                        SELECT fact_id FROM v2_metric_facts WHERE doc_id = %s
+                        SELECT fact_id FROM v2_metric_facts WHERE filing_id = %s
                      )
                     """,
                     (test_filing_id,),
                 )
-                cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,))
                 # v2_image_review_decisions CASCADEs off v2_image_assets.img_id,
                 # but purge explicitly in case DELETEs run out of order.
                 cur.execute(
@@ -191,7 +191,7 @@ def _decision_count(db_adapter: DatabaseAdapter, filing_id: int) -> int:
                 SELECT COUNT(*) AS n
                   FROM v2_review_decisions rd
                   JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
-                 WHERE mf.doc_id = %s
+                 WHERE mf.filing_id = %s
                 """,
                 (filing_id,),
             )
@@ -569,7 +569,7 @@ class TestChartOnlyMode:
 
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT source_type FROM v2_metric_facts WHERE doc_id = %s",
+                "SELECT source_type FROM v2_metric_facts WHERE filing_id = %s",
                 (test_filing_id,),
             )
             rows = cur.fetchall()
@@ -594,7 +594,7 @@ class TestChartOnlyMode:
 
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT fact_id, source_type FROM v2_metric_facts WHERE doc_id = %s ORDER BY source_type",
+                "SELECT fact_id, source_type FROM v2_metric_facts WHERE filing_id = %s ORDER BY source_type",
                 (test_filing_id,),
             )
             rows = cur.fetchall()
@@ -658,7 +658,7 @@ class TestChartOnlyMode:
 
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE doc_id = %s",
+                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE filing_id = %s",
                 (test_filing_id,),
             )
             assert int(cur.fetchone()["n"]) == 1
@@ -696,7 +696,7 @@ class TestChartOnlyMode:
         # Chart facts and their decisions CASCADEd away.
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,)
+                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,)
             )
             assert int(cur.fetchone()["n"]) == 0
         assert _decision_count(db_adapter, test_filing_id) == 0
@@ -764,7 +764,7 @@ class TestChartOnlyMode:
         # Text fact + its decision must still be present.
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT fact_id, source_type FROM v2_metric_facts WHERE doc_id = %s",
+                "SELECT fact_id, source_type FROM v2_metric_facts WHERE filing_id = %s",
                 (test_filing_id,),
             )
             rows = cur.fetchall()
@@ -851,7 +851,7 @@ def _fact_count(db: DatabaseAdapter, filing_id: int) -> int:
     with db.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE doc_id = %s",
+                "SELECT COUNT(*) AS n FROM v2_metric_facts WHERE filing_id = %s",
                 (filing_id,),
             )
             return int(cur.fetchone()["n"])
