@@ -25,6 +25,8 @@ paths:
 HTML templates in `src/web/templates/`. Base: `base.html`. Unified V2 templates: `unified_filing_list.html`, `unified_review.html`, `unified_stats.html`.
 Static: `src/web/static/js/review_images_v2.js`, `static/css/review.css`.
 
+The Statistics page (`unified_stats.html`, `review_unified.stats` → `/v2/review/stats`) renders text-fact totals / confidence bands / per-company progress (`get_v2_review_stats`) and image per-tier precision + rejection-reason × tier (`get_image_decision_overall_v2` / `get_image_decisions_by_tier_v2` / `get_image_rejection_reasons_by_tier_v2`). The legacy `v2_image_review_decisions`-based panels (avg review time, daily activity, chart-type distribution) were removed when the per-metric pivot landed. The route is intentionally fail-loud: a DB-method regression must surface as a 500, not a flash + redirect (the prior swallow-and-redirect masked five missing methods for months).
+
 ## Reviewer identity invariant
 
 **Every decision-persisting API endpoint MUST (a) forward `reviewer_id` to the DB write and (b) reject missing / blocklisted values via `_require_reviewer_id(data)` in `src/web/routes/api_unified.py`.** The gate returns HTTP 403 with `{"error": "reviewer_name_required"}`. Blocklist: `""`, `"anonymous"`, `"web_reviewer"`, `"test"`, `"test_user"`, anything prefixed `bulk:`. Mirror the same blocklist client-side via `window.requireReviewerName()` (defined in `base.html`) — it returns the valid name or opens the reviewer modal and returns `null`, so callers bail before the fetch. Do NOT fall back to `"anonymous"` / `"web_reviewer"` in payloads; those sentinels only exist in historical data (rewritten to `RGM` on 2026-04-23 per the v2_review_decisions / v2_image_review_decisions cleanup).

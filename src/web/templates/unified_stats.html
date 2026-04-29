@@ -2,12 +2,6 @@
 
 {% block title %}Review Statistics - {{ super() }}{% endblock %}
 
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
-        integrity="sha384-zNy6FEbO50N+Cg5wap8IKA4M/ZnLJgzc6w2NqACZaK0u0FXfOWRRJOnQtpZun8ha"
-        crossorigin="anonymous"></script>
-{% endblock %}
-
 {% block content %}
 <div class="row mb-4">
   <div class="col-12 d-flex justify-content-between align-items-center">
@@ -292,7 +286,6 @@
     {% set overall_stats = image_overall %}
     {% set progress = image_progress %}
     {% set tier_stats = image_tier %}
-    {% set chart_type_stats = image_chart_types %}
     {% set rejection_stats = image_rejections %}
 
     {% if overall_stats is none or overall_stats.total_decisions == 0 %}
@@ -346,9 +339,9 @@
       </div>
     </div>
 
-    {# Progress and Average Review Time Row #}
+    {# Overall Progress Row #}
     <div class="row mb-4">
-      <div class="col-md-8">
+      <div class="col-md-12">
         <div class="card">
           <div class="card-body">
             <h5 class="card-title">Overall Progress</h5>
@@ -390,31 +383,6 @@
                 </div>
               {% endif %}
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="col-md-4">
-        <div class="card">
-          <div class="card-body">
-            <h6 class="card-subtitle mb-2 text-muted">Avg Review Time</h6>
-            {% if overall_stats.avg_review_time_seconds %}
-            <h2 class="mb-0">{{ overall_stats.avg_review_time_seconds|round(0)|int }}s</h2>
-            {% else %}
-            <h2 class="mb-0 text-muted">N/A</h2>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {# Daily Decisions Chart #}
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="card-title">Daily Review Activity (Last 7 Days)</h5>
-            <canvas id="dailyDecisionsChart" style="max-height: 300px;"></canvas>
           </div>
         </div>
       </div>
@@ -465,41 +433,6 @@
             </div>
             {% else %}
             <p class="text-muted">No decision statistics available.</p>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {# Chart Type Distribution Table #}
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="card-title">Chart Type Distribution</h5>
-            {% if chart_type_stats %}
-            <div class="table-responsive">
-              <table class="table table-sm table-hover">
-                <thead>
-                  <tr>
-                    <th>Chart Type</th>
-                    <th>Count</th>
-                    <th>% of Relevant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in chart_type_stats %}
-                  <tr>
-                    <td>{{ chart_type_labels.get(row.chart_type, row.chart_type) }}</td>
-                    <td>{{ row.chart_count }}</td>
-                    <td>{{ row.pct_of_relevant|round(1) }}%</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-            {% else %}
-            <p class="text-muted">No chart type data yet.</p>
             {% endif %}
           </div>
         </div>
@@ -560,59 +493,4 @@
   </div> {# end images-stats tab pane #}
 
 </div> {# end tab-content #}
-{% endblock %}
-
-{% block scripts %}
-{% if image_overall and image_overall.total_decisions > 0 %}
-<script>
-(function() {
-    'use strict';
-
-    const dailyData = {{ image_daily_counts | tojson }};
-
-    const labels = dailyData.map(d => {
-        const date = new Date(d.date);
-        return (date.getMonth() + 1) + '/' + date.getDate();
-    });
-    const counts = dailyData.map(d => d.count);
-
-    const ctx = document.getElementById('dailyDecisionsChart');
-    if (ctx) {
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Decisions',
-                    data: counts,
-                    backgroundColor: 'rgba(13, 110, 253, 0.5)',
-                    borderColor: 'rgba(13, 110, 253, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { stepSize: 1, precision: 0 }
-                    }
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return 'Decisions: ' + context.parsed.y;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-})();
-</script>
-{% endif %}
 {% endblock %}

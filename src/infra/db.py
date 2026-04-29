@@ -2290,6 +2290,130 @@ class DatabaseAdapter:
             "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
         }
 
+    def get_image_decision_overall_v2(self) -> dict:
+        """Aggregate totals over all v2_image_metric_confirmations rows.
+
+        Returns total_decisions, relevant_count (accept|correct|add),
+        not_relevant_count (reject, including sentinel), and percentage breakdowns.
+        """
+        sql = """
+            SELECT
+                COUNT(*) AS total_decisions,
+                COUNT(*) FILTER (WHERE decision IN ('accept', 'correct', 'add')) AS relevant_count,
+                COUNT(*) FILTER (WHERE decision = 'reject') AS not_relevant_count
+            FROM v2_image_metric_confirmations
+        """
+        rows = self.query(sql)
+        if not rows:
+            return {
+                "total_decisions": 0,
+                "relevant_count": 0,
+                "not_relevant_count": 0,
+                "relevant_pct": 0.0,
+                "not_relevant_pct": 0.0,
+            }
+        row = rows[0]
+        total = row["total_decisions"] or 0
+        relevant = row["relevant_count"] or 0
+        not_relevant = row["not_relevant_count"] or 0
+        return {
+            "total_decisions": total,
+            "relevant_count": relevant,
+            "not_relevant_count": not_relevant,
+            "relevant_pct": round(relevant / total * 100, 1) if total > 0 else 0.0,
+            "not_relevant_pct": round(not_relevant / total * 100, 1) if total > 0 else 0.0,
+        }
+
+    def get_image_decisions_by_tier_v2(self) -> list[dict]:
+        """Per-detection-tier precision counts over v2_image_metric_confirmations.
+
+        Excludes sentinel rows (detected_metric_id IS NULL) and 'add' rows.
+        Returns relevant_count, not_relevant_count, total_decisions, precision_pct per tier.
+        """
+        sql = """
+            SELECT
+                CASE
+                    WHEN v.classification = 'presentation' THEN 'presence_seed'
+                    WHEN v.classification = 'chart' AND v.relevance_score >= 0.6
+                        THEN 'tier_1_cohort'
+                    WHEN v.classification IN ('chart', 'table_image')
+                         AND COALESCE(v.width, 0) >= 300
+                         AND COALESCE(v.height, 0) >= 300
+                        THEN 'tier_2_large'
+                    ELSE 'tier_3_all'
+                END AS detection_tier,
+                COUNT(*) FILTER (WHERE imc.decision IN ('accept', 'correct')) AS relevant_count,
+                COUNT(*) FILTER (WHERE imc.decision = 'reject') AS not_relevant_count,
+                COUNT(*) AS total_decisions,
+                CASE
+                    WHEN COUNT(*) FILTER (WHERE imc.decision IN ('accept', 'correct'))
+                       + COUNT(*) FILTER (WHERE imc.decision = 'reject') = 0 THEN 0.0
+                    ELSE ROUND(
+                        100.0
+                        * COUNT(*) FILTER (WHERE imc.decision IN ('accept', 'correct'))
+                        / (
+                            COUNT(*) FILTER (WHERE imc.decision IN ('accept', 'correct'))
+                          + COUNT(*) FILTER (WHERE imc.decision = 'reject')
+                        ),
+                        1
+                    )
+                END AS precision_pct
+            FROM v2_image_metric_confirmations imc
+            JOIN v2_image_assets v ON v.img_id = imc.img_id
+            WHERE imc.detected_metric_id IS NOT NULL
+              AND imc.decision IN ('accept', 'reject', 'correct')
+            GROUP BY detection_tier
+            ORDER BY detection_tier
+        """
+        rows = self.query(sql)
+        return [dict(r) for r in rows]
+
+    def get_image_rejection_reasons_by_tier_v2(self) -> list[dict]:
+        """Per-(detection_tier, rejection_reason) rejection counts.
+
+        Includes the sentinel row (rejection_reason='no_relevant_metrics').
+        Returns rejection_count and pct_of_tier_rejections per row.
+        """
+        sql = """
+            SELECT
+                CASE
+                    WHEN v.classification = 'presentation' THEN 'presence_seed'
+                    WHEN v.classification = 'chart' AND v.relevance_score >= 0.6
+                        THEN 'tier_1_cohort'
+                    WHEN v.classification IN ('chart', 'table_image')
+                         AND COALESCE(v.width, 0) >= 300
+                         AND COALESCE(v.height, 0) >= 300
+                        THEN 'tier_2_large'
+                    ELSE 'tier_3_all'
+                END AS detection_tier,
+                imc.rejection_reason,
+                COUNT(*) AS rejection_count,
+                ROUND(
+                    100.0 * COUNT(*) / SUM(COUNT(*)) OVER (
+                        PARTITION BY
+                            CASE
+                                WHEN v.classification = 'presentation' THEN 'presence_seed'
+                                WHEN v.classification = 'chart' AND v.relevance_score >= 0.6
+                                    THEN 'tier_1_cohort'
+                                WHEN v.classification IN ('chart', 'table_image')
+                                     AND COALESCE(v.width, 0) >= 300
+                                     AND COALESCE(v.height, 0) >= 300
+                                    THEN 'tier_2_large'
+                                ELSE 'tier_3_all'
+                            END
+                    ),
+                    1
+                ) AS pct_of_tier_rejections
+            FROM v2_image_metric_confirmations imc
+            JOIN v2_image_assets v ON v.img_id = imc.img_id
+            WHERE imc.decision = 'reject'
+              AND imc.rejection_reason IS NOT NULL
+            GROUP BY detection_tier, imc.rejection_reason
+            ORDER BY detection_tier, rejection_count DESC
+        """
+        rows = self.query(sql)
+        return [dict(r) for r in rows]
+
     def count_image_metric_rejections_for_filing(self, filing_id: int) -> int:
         """
         Count v2_image_metric_confirmations rows with decision='reject' that

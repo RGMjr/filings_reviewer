@@ -193,17 +193,11 @@ def filing_list():
 def stats():
     """Display aggregate review statistics for both text and image review."""
     db = get_db()
-    try:
-        text_data = db.get_v2_review_stats()
-        image_overall = db.get_image_overall_decision_statistics()
-        image_tier = db.get_image_decision_statistics()
-        image_progress = db.get_image_review_progress()
-        image_chart_types = db.get_image_chart_type_distribution()
-        image_rejections = db.get_image_rejection_reason_stats()
-    except Exception as e:
-        logger.error(f"Error loading unified stats: {e}")
-        flash("Error loading statistics.", "danger")
-        return redirect(url_for("review_unified.filing_list"))
+    text_data = db.get_v2_review_stats()
+    image_overall = db.get_image_decision_overall_v2()
+    image_progress = db.get_image_review_progress_v2()
+    image_tier = db.get_image_decisions_by_tier_v2()
+    image_rejections = db.get_image_rejection_reasons_by_tier_v2()
 
     return render_template(
         "unified_stats.html",
@@ -211,11 +205,9 @@ def stats():
         totals=text_data["totals"],
         confidence_bands=text_data["confidence_bands"],
         image_overall=image_overall,
-        image_tier=image_tier,
         image_progress=image_progress,
-        image_chart_types=image_chart_types,
+        image_tier=image_tier,
         image_rejections=image_rejections,
-        chart_type_labels=IMAGE_CHART_TYPE_LABELS,
         rejection_reason_labels=IMAGE_REJECTION_REASON_LABELS,
     )
 
