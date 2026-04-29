@@ -87,3 +87,15 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
         files: ^(sql/.*\.sql$|scripts/apply_all_migrations\.py$)
+
+      # Pre-commit: verify [text](path.md) links in docs/README.md still
+      # resolve. The README is a navigation table; file moves silently break
+      # links. See feedback_docs_link_check_after_moves (2026-04-27 cleanup
+      # incident: 3 broken links landed on main).
+      - id: docs-readme-links
+        name: docs/README.md broken-link check
+        entry: bash scripts/pre-commit-docs-readme-links.sh
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^docs/.*\.md$
