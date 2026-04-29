@@ -208,10 +208,10 @@ class TestPositiveCohortBalance:
 
 
 class TestNegativeGenericPL:
-    """Generic P&L table must NOT match any of the 5 supported cohort metrics."""
+    """Generic P&L table must NOT match any of the supported cohort metrics."""
 
     def test_no_supported_metric_scores_above_threshold(self) -> None:
-        """Quarterly P&L table: none of the 5 supported metrics should score >= 0.5."""
+        """Quarterly P&L table: none of the supported metrics should score >= 0.5."""
         table = _make_generic_pl_table()
         results = score_ocr_table(table, nearby_text="Quarterly P&L Summary")
 
@@ -242,7 +242,7 @@ class TestOutputStructure:
             assert isinstance(score, float)
 
     def test_all_supported_metrics_present(self) -> None:
-        """All 5 supported metrics must appear in the output (score may be 0.0)."""
+        """All supported metrics must appear in the output (score may be 0.0)."""
         table = _make_cohort_revenue_table()
         results = score_ocr_table(table)
 
@@ -287,7 +287,7 @@ class TestGateBehavior:
     would be filtered by ChartFactBridgeStage's chart_presence_min_score gate."""
 
     def test_below_threshold_candidates_present_in_raw_output(self) -> None:
-        """score_ocr_table returns ALL 5 metrics; the consumer applies the gate.
+        """score_ocr_table returns ALL supported metrics; the consumer applies the gate.
 
         This test asserts that a metric scoring below 0.5 is still present
         in the list returned by score_ocr_table, which is how the caller
@@ -296,7 +296,7 @@ class TestGateBehavior:
         table = _make_generic_pl_table()
         results = score_ocr_table(table)
 
-        # All 5 supported metrics must be present regardless of score
+        # All supported metrics must be present regardless of score
         returned_ids = {metric_id for metric_id, _ in results}
         assert returned_ids == set(_SUPPORTED_METRICS)
 
@@ -307,3 +307,125 @@ class TestGateBehavior:
             f"table, but these were above: "
             f"{[(m, s) for m, s in results if s >= 0.5]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# New Tier-1 metrics — gh-289 Scope B expansion
+# ---------------------------------------------------------------------------
+
+
+def _make_nrr_table() -> Table:
+    """Synthetic NRR trend table with 'Net Revenue Retention' header.
+
+    Layout:
+        Quarter | Net Revenue Retention
+        Q1 2023 | 118%
+        Q2 2023 | 121%
+    """
+    cells = [
+        Cell(row=0, col=0, text="Quarter", is_header=True),
+        Cell(row=0, col=1, text="Net Revenue Retention", is_header=True),
+        Cell(row=1, col=0, text="Q1 2023", is_stub=True),
+        Cell(
+            row=1,
+            col=1,
+            text="118%",
+            header_path=["Net Revenue Retention"],
+            stub_path=["Q1 2023"],
+        ),
+        Cell(row=2, col=0, text="Q2 2023", is_stub=True),
+        Cell(
+            row=2,
+            col=1,
+            text="121%",
+            header_path=["Net Revenue Retention"],
+            stub_path=["Q2 2023"],
+        ),
+    ]
+    return Table(row_count=3, col_count=2, header_rows=1, stub_cols=1, cells=cells)
+
+
+def _make_tenure_table() -> Table:
+    """Synthetic customers-by-tenure table.
+
+    Layout:
+        Tenure / Customer Cohort | Customers at Period End
+        < 1 Year                 | 5,000
+        1-2 Years                | 8,000
+        > 2 Years                | 12,000
+
+    Column headers "Tenure / Customer Cohort" and "Customers at Period End" match
+    the primary patterns for cm_customers_period_end_by_tenure.  The nearby_text
+    "Customers by Tenure Band" adds the title-surface score.
+    """
+    cells = [
+        Cell(row=0, col=0, text="Tenure / Customer Cohort", is_header=True),
+        Cell(row=0, col=1, text="Customers at Period End", is_header=True),
+        Cell(row=1, col=0, text="< 1 Year", is_stub=True),
+        Cell(
+            row=1,
+            col=1,
+            text="5,000",
+            header_path=["Customers at Period End"],
+            stub_path=["< 1 Year"],
+        ),
+        Cell(row=2, col=0, text="1-2 Years", is_stub=True),
+        Cell(
+            row=2,
+            col=1,
+            text="8,000",
+            header_path=["Customers at Period End"],
+            stub_path=["1-2 Years"],
+        ),
+        Cell(row=3, col=0, text="> 2 Years", is_stub=True),
+        Cell(
+            row=3,
+            col=1,
+            text="12,000",
+            header_path=["Customers at Period End"],
+            stub_path=["> 2 Years"],
+        ),
+    ]
+    return Table(row_count=4, col_count=2, header_rows=1, stub_cols=1, cells=cells)
+
+
+class TestNewTier1Metrics:
+    """Positive detection tests for gh-289 Scope B expanded metrics."""
+
+    def test_nrr_table_scores_above_threshold(self) -> None:
+        """Table with 'Net Revenue Retention' header must score cm_net_revenue_retention >= 0.5."""
+        table = _make_nrr_table()
+        results = score_ocr_table(table, nearby_text="Net Revenue Retention by Quarter")
+
+        result_map = dict(results)
+        score = result_map.get("cm_net_revenue_retention", 0.0)
+        assert score >= 0.5, (
+            f"Expected cm_net_revenue_retention >= 0.5 for NRR table, got {score:.3f}"
+        )
+
+    def test_tenure_table_scores_above_threshold(self) -> None:
+        """Table with 'Customers by Tenure' nearby_text must score cm_customers_period_end_by_tenure >= 0.5."""
+        table = _make_tenure_table()
+        results = score_ocr_table(table, nearby_text="Customers by Tenure Band")
+
+        result_map = dict(results)
+        score = result_map.get("cm_customers_period_end_by_tenure", 0.0)
+        assert score >= 0.5, (
+            f"Expected cm_customers_period_end_by_tenure >= 0.5 for tenure table, got {score:.3f}"
+        )
+
+    def test_new_metrics_present_in_output(self) -> None:
+        """All 4 newly added metrics must appear in score_ocr_table output."""
+        table = _make_cohort_revenue_table()
+        results = score_ocr_table(table)
+
+        returned_ids = {metric_id for metric_id, _ in results}
+        for expected in (
+            "cm_customer_retention_rate",
+            "cm_net_revenue_retention",
+            "cm_customers_period_end_by_tenure",
+            "cm_revenue_concentration",
+        ):
+            assert expected in returned_ids, (
+                f"Newly added metric {expected!r} missing from score_ocr_table output"
+            )

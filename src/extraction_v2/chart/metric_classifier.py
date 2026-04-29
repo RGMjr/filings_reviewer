@@ -10,16 +10,72 @@ from src.shared.keyword_config import (
     get_specific_patterns_by_metric,
 )
 
+# ---------------------------------------------------------------------------
+# Supported metrics — expanded to cover Tier-1 chart-friendly metrics (gh-289).
+# Both chart (ChartMetricClassifier) and table (score_ocr_table) classifiers
+# must stay in sync with this tuple.
+# ---------------------------------------------------------------------------
 _SUPPORTED_METRICS = (
+    # Original 5 cohort metrics
     "cm_balance_by_cohort",
     "cm_gross_margin_by_cohort",
     "cm_revenue_by_cohort",
     "cm_transactions_by_cohort",
     "cm_ltv_to_cac_ratio",
+    # Tier-1 expansion (gh-289 Scope B): retention + concentration + tenure
+    "cm_customer_retention_rate",
+    "cm_net_revenue_retention",
+    "cm_customers_period_end_by_tenure",
+    "cm_revenue_concentration",
 )
-_MAX_POSSIBLE_RAW = 8.3
+
+# ---------------------------------------------------------------------------
+# Scoring weight constants — used in _score_metric and to derive the
+# soft denominator (_MAX_POSSIBLE_RAW).  Keeping them explicit prevents the
+# denominator from becoming a magic number that silently drifts out of sync
+# with the weight table.
+# ---------------------------------------------------------------------------
+_W_SPECIFIC_TITLE: float = 3.0  # specific (high-confidence) pattern match on title
+_W_PRIMARY_TITLE: float = 2.0  # primary keyword pattern match on title
+_W_Y_AXIS: float = 1.5  # primary keyword pattern match on y_axis_label
+_W_AXIS_NEARBY: float = 1.0  # primary keyword match on x_axis_label + nearby_text
+_W_ANNOTATIONS: float = 0.8  # annotation hits (capped at this max)
+
+# Soft denominator: sum of maximum achievable raw score across all normal
+# scoring surfaces (excluding metric-specific structural bonuses, which can
+# push a score above this but are always clipped by min(1.0, ...)).
+_MAX_POSSIBLE_RAW: float = (
+    _W_SPECIFIC_TITLE + _W_PRIMARY_TITLE + _W_Y_AXIS + _W_AXIS_NEARBY + _W_ANNOTATIONS
+)  # = 8.3
+
 _COHORT_YEAR_RE = re.compile(r"(?:19|20)\d{2}")
-_COHORT_GATE_EXEMPT = frozenset({"cm_ltv_to_cac_ratio"})
+
+# ---------------------------------------------------------------------------
+# Metrics exempt from the cohort gate.
+#
+# The cohort gate (_cohort_gate) checks for vintage-year series names like
+# "2018", "2019" or "cohort"/"vintage" keywords.  Metrics whose charts do NOT
+# follow that year-series convention must be listed here so they still produce
+# presence signals even when _cohort_gate returns False.
+#
+# Current exempt metrics and why:
+#   cm_ltv_to_cac_ratio            — tenure-bucketed x-axis (e.g. "1 Year", "2 Year")
+#   cm_customer_retention_rate     — period-end bar/line, no vintage series
+#   cm_net_revenue_retention       — period-end bar/line, no vintage series
+#   cm_customers_period_end_by_tenure — elapsed-time buckets ("Year 1", "18-month"),
+#                                      NOT calendar vintage years → cohort gate misses
+#   cm_revenue_concentration       — top-N customer concentration bar chart, no cohort
+# ---------------------------------------------------------------------------
+_COHORT_GATE_EXEMPT = frozenset(
+    {
+        "cm_ltv_to_cac_ratio",
+        "cm_customer_retention_rate",
+        "cm_net_revenue_retention",
+        "cm_customers_period_end_by_tenure",
+        "cm_revenue_concentration",
+    }
+)
+
 _CUSTOMER_TYPE_RE = re.compile(
     r"\b(?:new|existing|returning|blended|all|acquired|prior|repeat)\b[^,.;]{0,40}"
     r"\b(?:consumer|customer|member|subscriber|user|buyer|account|client)s?\b"
@@ -111,6 +167,56 @@ def _metric_gate(metric_id: str, chart: ChartData, nearby_text: str = "") -> boo
             re.search(r"ltv\s*(?::|/|\s+to\s+|\s+vs\.?\s+)\s*cac", combined, re.IGNORECASE)
             or re.search(r"lifetime\s+value.*acquisition\s+cost", combined, re.IGNORECASE)
         )
+    if metric_id == "cm_customer_retention_rate":
+        # Require a retention-rate signal in chart title or y_axis_label.
+        # Exclude revenue-retention variants (NRR/GRR) which belong to
+        # cm_net_revenue_retention / cm_gross_revenue_retention.
+        combined = chart.title + " " + chart.y_axis_label
+        has_retention = bool(
+            re.search(r"\bretention\b", combined, re.IGNORECASE)
+            or re.search(r"\bretained\s+customers?\b", combined, re.IGNORECASE)
+            or re.search(r"\brenewal\s+rate\b", combined, re.IGNORECASE)
+        )
+        if not has_retention:
+            return False
+        # Exclude revenue/dollar retention signals (those belong to NRR/GRR)
+        has_revenue_retention = bool(
+            re.search(r"\b(?:revenue|dollar|net|gross)\s+retention\b", combined, re.IGNORECASE)
+            or re.search(r"\bnrr\b|\bndr\b|\bgrr\b", combined, re.IGNORECASE)
+        )
+        return not has_revenue_retention
+    if metric_id == "cm_net_revenue_retention":
+        combined = chart.title + " " + chart.y_axis_label
+        return bool(
+            re.search(r"\bnrr\b|\bndr\b", combined, re.IGNORECASE)
+            or re.search(r"\bnet\s+(?:revenue|dollar)\s+retention\b", combined, re.IGNORECASE)
+            or re.search(r"\bdollar[- ]?based\s+(?:net\s+)?retention\b", combined, re.IGNORECASE)
+        )
+    if metric_id == "cm_customers_period_end_by_tenure":
+        # Tenure-based charts use elapsed-time axis labels (e.g. "Year 1",
+        # "18-month cohort", "by tenure") — NOT calendar vintage years.
+        combined = chart.title + " " + chart.y_axis_label + " " + chart.x_axis_label
+        return bool(
+            re.search(r"\btenure\b", combined, re.IGNORECASE)
+            or re.search(r"\bcustomers?\s+by\s+(?:age|tenure)\b", combined, re.IGNORECASE)
+            or re.search(r"\btime\s+since\b", combined, re.IGNORECASE)
+        )
+    if metric_id == "cm_revenue_concentration":
+        combined = chart.title + " " + chart.y_axis_label
+        return bool(
+            re.search(r"\brevenue\s+concentration\b", combined, re.IGNORECASE)
+            or re.search(r"\bconcentration\s+risk\b", combined, re.IGNORECASE)
+            or re.search(
+                r"\btop\s*[-\s]?\d+\s+customers?\b[^.;]{0,60}\brevenue\b",
+                combined,
+                re.IGNORECASE,
+            )
+            or re.search(
+                r"\brevenue\b[^.;]{0,60}\btop\s*[-\s]?\d+\s+customers?\b",
+                combined,
+                re.IGNORECASE,
+            )
+        )
     return False
 
 
@@ -134,19 +240,19 @@ def _score_metric(
 
     raw = 0.0
     if specific and _any_match(specific, effective_title):
-        raw += 3.0
+        raw += _W_SPECIFIC_TITLE
     if patterns and _any_match(patterns, effective_title):
-        raw += 2.0
+        raw += _W_PRIMARY_TITLE
     if patterns and _any_match(patterns, chart.y_axis_label):
-        raw += 1.5
+        raw += _W_Y_AXIS
     # Avoid double-counting nearby_text when it's already been promoted to
     # title; compare against x_axis_label + empty when that promotion fired.
     axis_near_text = chart.x_axis_label + " " + ("" if title_fallback_used else nearby_text[:1500])
     if patterns and _any_match(patterns, axis_near_text):
-        raw += 1.0
+        raw += _W_AXIS_NEARBY
     if patterns:
         ann_hits = sum(1 for ann in chart.annotations if _any_match(patterns, ann.text))
-        raw += min(0.8, 0.8 * ann_hits)
+        raw += min(_W_ANNOTATIONS, _W_ANNOTATIONS * ann_hits)
     # Structural bonus: cohort-percentage chart with customer-type series
     # (e.g. FTCH Order Contribution Margin) that lacks title/axes but is
     # structurally a gross-margin-by-cohort chart.

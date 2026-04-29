@@ -6,7 +6,16 @@ from __future__ import annotations
 
 import pytest
 
-from src.extraction_v2.chart.metric_classifier import ChartMetricClassifier
+from src.extraction_v2.chart.metric_classifier import (
+    _COHORT_GATE_EXEMPT,
+    _MAX_POSSIBLE_RAW,
+    _W_ANNOTATIONS,
+    _W_AXIS_NEARBY,
+    _W_PRIMARY_TITLE,
+    _W_SPECIFIC_TITLE,
+    _W_Y_AXIS,
+    ChartMetricClassifier,
+)
 from src.extraction_v2.models import ChartData, ChartSeries, ChartType, DataPoint
 
 
@@ -170,3 +179,188 @@ class TestClassifyBackwardCompat:
         metric_id, score = result
         assert metric_id is None or isinstance(metric_id, str)
         assert isinstance(score, float)
+
+
+# ---------------------------------------------------------------------------
+# Soft-normalization denominator (gh-289 Scope B)
+# ---------------------------------------------------------------------------
+
+
+class TestSoftNormalization:
+    """The _MAX_POSSIBLE_RAW denominator must be derived from weight constants,
+    not hardcoded. This verifies the two are in sync."""
+
+    def test_max_possible_raw_equals_sum_of_weights(self) -> None:
+        expected = (
+            _W_SPECIFIC_TITLE + _W_PRIMARY_TITLE + _W_Y_AXIS + _W_AXIS_NEARBY + _W_ANNOTATIONS
+        )
+        assert _MAX_POSSIBLE_RAW == pytest.approx(expected, abs=1e-9), (
+            f"_MAX_POSSIBLE_RAW ({_MAX_POSSIBLE_RAW}) must equal sum of weight constants "
+            f"({expected}). Update _MAX_POSSIBLE_RAW when changing weight constants."
+        )
+
+    def test_max_possible_raw_value_is_8_3(self) -> None:
+        """Regression guard: 8.3 is the correct sum for current weights."""
+        assert _MAX_POSSIBLE_RAW == pytest.approx(8.3, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# New Tier-1 metrics — gh-289 Scope B expansion
+# ---------------------------------------------------------------------------
+
+
+class TestCustomerRetentionRate:
+    """cm_customer_retention_rate: cohort-gate exempt, fires on retention-rate charts."""
+
+    def test_detects_retention_rate_chart(self, classifier: ChartMetricClassifier) -> None:
+        """A bar chart titled 'Customer Retention Rate' must produce cm_customer_retention_rate."""
+        chart = ChartData(
+            chart_type=ChartType.BAR,
+            title="Customer Retention Rate",
+            y_axis_label="Retention %",
+            series=[ChartSeries(name="Annual Cohort")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_customer_retention_rate" in metric_ids, (
+            f"Expected cm_customer_retention_rate in {metric_ids}"
+        )
+
+    def test_cohort_gate_exempt(self, classifier: ChartMetricClassifier) -> None:
+        """cm_customer_retention_rate must fire even without vintage-year series names."""
+        chart = ChartData(
+            chart_type=ChartType.LINE,
+            title="Annual Customer Retention",
+            y_axis_label="% Retained",
+            series=[ChartSeries(name="All Customers")],  # no vintage year
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_customer_retention_rate" in metric_ids
+
+    def test_does_not_match_revenue_retention(self, classifier: ChartMetricClassifier) -> None:
+        """Revenue retention charts (NRR) must NOT produce cm_customer_retention_rate."""
+        chart = ChartData(
+            chart_type=ChartType.BAR,
+            title="Net Revenue Retention",
+            y_axis_label="NRR %",
+            series=[ChartSeries(name="Annual")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_customer_retention_rate" not in metric_ids
+
+    def test_in_cohort_gate_exempt_set(self) -> None:
+        assert "cm_customer_retention_rate" in _COHORT_GATE_EXEMPT
+
+
+class TestNetRevenueRetention:
+    """cm_net_revenue_retention: cohort-gate exempt, fires on NRR/NDR charts."""
+
+    def test_detects_nrr_acronym_chart(self, classifier: ChartMetricClassifier) -> None:
+        chart = ChartData(
+            chart_type=ChartType.BAR,
+            title="NRR by Quarter",
+            y_axis_label="NRR %",
+            series=[ChartSeries(name="All Customers")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_net_revenue_retention" in metric_ids
+
+    def test_detects_net_revenue_retention_title(self, classifier: ChartMetricClassifier) -> None:
+        chart = ChartData(
+            chart_type=ChartType.LINE,
+            title="Net Revenue Retention Rate",
+            y_axis_label="Percent",
+            series=[ChartSeries(name="Enterprise")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_net_revenue_retention" in metric_ids
+
+    def test_cohort_gate_exempt(self, classifier: ChartMetricClassifier) -> None:
+        """NRR chart without vintage-year series must still be detected."""
+        chart = ChartData(
+            chart_type=ChartType.BAR,
+            title="Net Dollar Retention",
+            y_axis_label="NDR %",
+            series=[ChartSeries(name="SMB"), ChartSeries(name="Enterprise")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_net_revenue_retention" in metric_ids
+
+    def test_in_cohort_gate_exempt_set(self) -> None:
+        assert "cm_net_revenue_retention" in _COHORT_GATE_EXEMPT
+
+
+class TestCustomersByTenure:
+    """cm_customers_period_end_by_tenure: cohort-gate exempt because tenure charts
+    use elapsed-time axis labels (Year 1, Year 2) not calendar vintage years."""
+
+    def test_detects_customers_by_tenure_title(self, classifier: ChartMetricClassifier) -> None:
+        chart = ChartData(
+            chart_type=ChartType.BAR,
+            title="Customers by Tenure",
+            y_axis_label="Number of Customers",
+            series=[ChartSeries(name="Year 1"), ChartSeries(name="Year 2")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_customers_period_end_by_tenure" in metric_ids
+
+    def test_cohort_gate_exempt_elapsed_time_series(
+        self, classifier: ChartMetricClassifier
+    ) -> None:
+        """Elapsed-time series (Year 1 / Year 2) do NOT trigger _cohort_gate because
+        they lack calendar 19xx/20xx years. The metric must still be detected via exempt."""
+        chart = ChartData(
+            chart_type=ChartType.STACKED_BAR,
+            title="Customers by Tenure Band",
+            y_axis_label="Count",
+            series=[
+                ChartSeries(
+                    name="All Customers",
+                    points=[DataPoint(x="Year 1", y=100.0), DataPoint(x="Year 2", y=85.0)],
+                )
+            ],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_customers_period_end_by_tenure" in metric_ids, (
+            "Tenure chart with elapsed-time x-axis must be detected via _COHORT_GATE_EXEMPT"
+        )
+
+    def test_in_cohort_gate_exempt_set(self) -> None:
+        assert "cm_customers_period_end_by_tenure" in _COHORT_GATE_EXEMPT
+
+
+class TestRevenueConcentration:
+    """cm_revenue_concentration: cohort-gate exempt, fires on top-N customer charts."""
+
+    def test_detects_revenue_concentration_title(self, classifier: ChartMetricClassifier) -> None:
+        chart = ChartData(
+            chart_type=ChartType.BAR,
+            title="Revenue Concentration",
+            y_axis_label="% of Total Revenue",
+            series=[ChartSeries(name="Top 10 Customers")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_revenue_concentration" in metric_ids
+
+    def test_does_not_match_generic_revenue_chart(self, classifier: ChartMetricClassifier) -> None:
+        """A generic revenue bar chart without concentration signal must not fire."""
+        chart = ChartData(
+            chart_type=ChartType.BAR,
+            title="Annual Revenue",
+            y_axis_label="USD millions",
+            series=[ChartSeries(name="Revenue")],
+        )
+        result = classifier.classify_all(chart)
+        metric_ids = [m for m, _ in result]
+        assert "cm_revenue_concentration" not in metric_ids
+
+    def test_in_cohort_gate_exempt_set(self) -> None:
+        assert "cm_revenue_concentration" in _COHORT_GATE_EXEMPT
