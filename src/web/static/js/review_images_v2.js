@@ -93,6 +93,18 @@
             return;
         }
 
+        // M — submit decisions and mark image complete. Fires regardless of
+        // per-metric row focus (M is unbound at the per-row level). Triggers
+        // the button click since submitDecisions lives in the per-metric IIFE.
+        if (!event.shiftKey && (event.key === 'm' || event.key === 'M')) {
+            const btn = document.getElementById('btn-submit-and-finalize');
+            if (btn) {
+                event.preventDefault();
+                btn.click();
+            }
+            return;
+        }
+
         const key = event.key.toLowerCase();
 
         // N / P image-level navigation — only fire when no per-metric row is
@@ -512,7 +524,12 @@
         if (btnAddConfirm) btnAddConfirm.addEventListener('click', addMissedMetric);
 
         const btnSubmit = document.getElementById('btn-submit-detected-metrics');
-        if (btnSubmit) btnSubmit.addEventListener('click', submitDecisions);
+        if (btnSubmit) btnSubmit.addEventListener('click', () => submitDecisions(false));
+
+        const btnSubmitFinalize = document.getElementById('btn-submit-and-finalize');
+        if (btnSubmitFinalize) {
+            btnSubmitFinalize.addEventListener('click', () => submitDecisions(true));
+        }
 
         const btnRejectAll = document.getElementById('btn-reject-all-metrics');
         if (btnRejectAll) btnRejectAll.addEventListener('click', rejectAllUnreviewed);
@@ -795,7 +812,7 @@
         if (undoBtn) undoBtn.style.display = 'none';
     }
 
-    async function submitDecisions() {
+    async function submitDecisions(markComplete = false) {
         if (state.submitting) return;
         if (!state.imgId) return;
 
@@ -806,7 +823,7 @@
             if (d.decision === 'skip' && !d.detected_metric_id) return false;
             return true;
         });
-        if (decisions.length === 0) {
+        if (decisions.length === 0 && !markComplete) {
             showMetricsToast('No decisions to submit', 'warning');
             return;
         }
@@ -821,6 +838,7 @@
             img_id: state.imgId,
             reviewer_id: reviewerName,
             decisions,
+            mark_complete: markComplete,
             view_filters: { status: state.imageStatus },
         };
 
@@ -832,7 +850,10 @@
             });
             const data = await resp.json();
             if (resp.ok && data.ok) {
-                showMetricsToast('Decisions saved', 'success');
+                showMetricsToast(
+                    markComplete ? 'Decisions saved — image marked complete' : 'Decisions saved',
+                    'success',
+                );
                 state.decisions = {};
                 state.confirmationIds = {};
                 (data.confirmations || []).forEach(hydrateConfirmation);

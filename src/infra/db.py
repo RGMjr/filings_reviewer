@@ -2285,6 +2285,25 @@ class DatabaseAdapter:
         result = self.query(sql, {"img_id": img_id})
         return len(result) > 0
 
+    def mark_image_reviewed_v2(self, img_id: str) -> bool:
+        """Flip v2_image_assets.review_status='pending' -> 'reviewed'.
+
+        Idempotent: re-clicking is safe (the WHERE clause matches both 'pending'
+        and 'reviewed'). Does NOT override 'skipped' or 'auto_rejected' — the
+        reviewer must unskip first to flip those. Mirrors skip_image_candidate_v2's
+        bare-UPDATE shape; per-transition audit lives in v2_image_metric_confirmations,
+        not on the v2_image_assets row.
+        """
+        sql = """
+            UPDATE v2_image_assets
+            SET review_status = 'reviewed'
+            WHERE img_id = %(img_id)s
+              AND review_status IN ('pending', 'reviewed')
+            RETURNING img_id
+        """
+        result = self.query(sql, {"img_id": img_id})
+        return len(result) > 0
+
     def reopen_image_candidate_v2(self, img_id: str) -> bool:
         """Flip review_status='reviewed' -> 'pending'. Returns True if a row was updated.
 

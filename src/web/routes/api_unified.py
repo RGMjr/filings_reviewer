@@ -628,7 +628,11 @@ def create_image_metric_confirmations():
                  "confirmed_metric_id": "..."},
                 {"detected_metric_id": null, "decision": "add",
                  "confirmed_metric_id": "..."}
-            ]
+            ],
+            "mark_complete": false       (optional — when true, also flips
+                                          v2_image_assets.review_status to
+                                          'reviewed' so the image leaves the
+                                          pending queue)
         }
 
     Returns:
@@ -737,7 +741,11 @@ def create_image_metric_confirmations():
                 }
             )
 
+        mark_complete = bool(data.get("mark_complete", False))
+
         upserted = db.insert_image_metric_confirmations(img_id, validated, reviewer_id)
+        if mark_complete:
+            db.mark_image_reviewed_v2(img_id)
         confirmations = db.get_image_metric_confirmations(img_id)
 
         # Convert datetime objects to ISO strings for JSON serialisation

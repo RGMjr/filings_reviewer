@@ -448,6 +448,56 @@ class TestSkipImageCandidateV2:
         assert clean_db.skip_image_candidate_v2("00000000-0000-0000-0000-000000000000") is False
 
 
+class TestMarkImageReviewedV2:
+    def test_mark_pending_to_reviewed(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "c.jpg")
+
+        assert clean_db.mark_image_reviewed_v2(img_id) is True
+
+        rows = clean_db.query(
+            "SELECT review_status FROM v2_image_assets WHERE img_id = %(id)s",
+            {"id": img_id},
+        )
+        assert rows[0]["review_status"] == "reviewed"
+
+    def test_idempotent_when_already_reviewed(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "c.jpg", review_status="reviewed")
+
+        assert clean_db.mark_image_reviewed_v2(img_id) is True
+        rows = clean_db.query(
+            "SELECT review_status FROM v2_image_assets WHERE img_id = %(id)s",
+            {"id": img_id},
+        )
+        assert rows[0]["review_status"] == "reviewed"
+
+    def test_does_not_clobber_skipped(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "c.jpg", review_status="skipped")
+
+        assert clean_db.mark_image_reviewed_v2(img_id) is False
+        rows = clean_db.query(
+            "SELECT review_status FROM v2_image_assets WHERE img_id = %(id)s",
+            {"id": img_id},
+        )
+        assert rows[0]["review_status"] == "skipped"
+
+    def test_does_not_clobber_auto_rejected(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "c.jpg", review_status="auto_rejected")
+
+        assert clean_db.mark_image_reviewed_v2(img_id) is False
+        rows = clean_db.query(
+            "SELECT review_status FROM v2_image_assets WHERE img_id = %(id)s",
+            {"id": img_id},
+        )
+        assert rows[0]["review_status"] == "auto_rejected"
+
+    def test_missing_img_id_returns_false(self, clean_db):
+        assert clean_db.mark_image_reviewed_v2("00000000-0000-0000-0000-000000000000") is False
+
+
 class TestGetImageReviewProgressV2:
     def test_filing_scoped_counts(self, clean_db):
         _, filing_id = create_test_company_and_filing(clean_db)

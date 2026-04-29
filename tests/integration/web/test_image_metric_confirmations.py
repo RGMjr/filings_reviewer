@@ -565,3 +565,103 @@ class TestNoRelevantMetricsSentinel:
             },
         )
         assert db_adapter.count_image_metric_rejections_for_filing(filing_id) == 2
+
+
+class TestMarkCompleteFlag:
+    """Covers the `mark_complete` field on POST /api/v2/image-metric-confirmations.
+
+    When true, the endpoint flips v2_image_assets.review_status='reviewed'
+    so the badge/count surfaces agree with the per-metric trail. The flag
+    is idempotent and must not clobber 'skipped' / 'auto_rejected'.
+    """
+
+    def _post(self, client, body):
+        return client.post("/api/v2/image-metric-confirmations", json=body)
+
+    def _status(self, db_adapter: DatabaseAdapter, img_id: str) -> str:
+        rows = db_adapter.query(
+            "SELECT review_status FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": img_id},
+        )
+        return rows[0]["review_status"] if rows else ""
+
+    def test_default_false_leaves_status_pending(self, client, db_adapter, seeded_image):
+        """Existing 'Submit decisions' button (mark_complete absent) MUST NOT
+        flip review_status — regression guard for the WIP submit path."""
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "finalize-reviewer",
+                "decisions": [
+                    {"detected_metric_id": "cm_revenue_by_cohort", "decision": "accept"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert self._status(db_adapter, seeded_image) == "pending"
+
+    def test_true_flips_status_to_reviewed(self, client, db_adapter, seeded_image):
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "finalize-reviewer",
+                "decisions": [
+                    {"detected_metric_id": "cm_revenue_by_cohort", "decision": "accept"},
+                ],
+                "mark_complete": True,
+            },
+        )
+        assert resp.status_code == 200
+        assert self._status(db_adapter, seeded_image) == "reviewed"
+
+    def test_empty_decisions_still_finalizes(self, client, db_adapter, seeded_image):
+        """Reviewer who already submitted decisions earlier and now wants to
+        finalize the image without adding new decisions."""
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "finalize-reviewer",
+                "decisions": [],
+                "mark_complete": True,
+            },
+        )
+        assert resp.status_code == 200
+        assert self._status(db_adapter, seeded_image) == "reviewed"
+
+    def test_idempotent_on_second_call(self, client, db_adapter, seeded_image):
+        for _ in range(2):
+            resp = self._post(
+                client,
+                {
+                    "img_id": seeded_image,
+                    "reviewer_id": "finalize-reviewer",
+                    "decisions": [],
+                    "mark_complete": True,
+                },
+            )
+            assert resp.status_code == 200
+        assert self._status(db_adapter, seeded_image) == "reviewed"
+
+    def test_does_not_clobber_skipped(self, client, db_adapter, seeded_image):
+        """An already-skipped image must NOT be flipped to 'reviewed' by the
+        finalize flag — the reviewer must explicitly unskip first."""
+        with db_adapter.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE v2_image_assets SET review_status='skipped' WHERE img_id=%s",
+                    (seeded_image,),
+                )
+        resp = self._post(
+            client,
+            {
+                "img_id": seeded_image,
+                "reviewer_id": "finalize-reviewer",
+                "decisions": [],
+                "mark_complete": True,
+            },
+        )
+        assert resp.status_code == 200
+        assert self._status(db_adapter, seeded_image) == "skipped"
