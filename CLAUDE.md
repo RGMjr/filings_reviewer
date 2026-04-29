@@ -20,6 +20,8 @@ Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, 
 
 **Planning rule.** For any plan touching 3+ files or new deps / config, make worktree setup (`EnterWorktree` or `ccw <branch>`) the first step. The `/commit-proj` skill assumes you're in one.
 
+**Patching an existing PR branch:** do not use `EnterWorktree` — it always creates a new branch at the current HEAD. Instead, from within any worktree: `git fetch origin <branch>`, then `git checkout -b <local> origin/<branch>`, fix, and `git push origin <local>:<remote-branch> --force-with-lease`.
+
 Required status checks: **Lint**, **Unit Tests**, **Vulnerability Scan**, **Integration Tests**, **UI E2E (Playwright)**. Use `/ci-fix` when checks fail; `/merge-check` for a manual pre-merge sweep.
 
 Local guards (`.claude/settings.json`): `git push origin main`, `git push --force*`, and `gh pr merge --admin*` are denied. A PreToolUse hook refuses `git commit` on `main`. Pre-commit framework (`make hooks-install`) runs ruff + the Tier-1 regression / docs-folder guard on every commit.
