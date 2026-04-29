@@ -955,7 +955,7 @@ class TestPeriodHintFromRespectively:
         """Strategy 0 fires before Strategy 2 (text context)."""
         segment = Segment(
             segment_id="s-resp",
-            doc_id="doc-1",
+            filing_id=1,
             text="Revenue for 2020 was high.",
         )
         mock_context.segments = [segment]
@@ -983,7 +983,7 @@ class TestPeriodHintFromRespectively:
         """An empty period_hint does not interfere with normal period inference."""
         segment = Segment(
             segment_id="s-normal",
-            doc_id="doc-1",
+            filing_id=1,
             text="In Q1 2024, we had strong results.",
         )
         mock_context.segments = [segment]

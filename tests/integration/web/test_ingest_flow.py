@@ -428,8 +428,8 @@ def two_seeded_filings(db_adapter: DatabaseAdapter):
         {"fid": filing_id_a},
     )
     db_adapter.execute(
-        "DELETE FROM v2_documents WHERE doc_id = %(doc_id)s::uuid",
-        {"doc_id": doc_id},
+        "DELETE FROM v2_documents WHERE filing_id = %(filing_id)s::uuid",
+        {"filing_id": doc_id},
     )
     db_adapter.execute(
         "DELETE FROM filings WHERE filing_id IN (%(a)s, %(b)s)",

@@ -685,7 +685,7 @@ class TestTranscriptDBSchema:
                         (test_transcript_filing_id,),
                     )
                     cur.execute(
-                        "DELETE FROM v2_segments WHERE doc_id = %s",
+                        "DELETE FROM v2_segments WHERE filing_id = %s",
                         (test_transcript_filing_id,),
                     )
                     cur.execute(

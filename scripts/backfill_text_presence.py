@@ -83,9 +83,8 @@ def _resolve_db_url(allow_prod: bool) -> str:
 
 def _select_filings(db: DatabaseAdapter, args: argparse.Namespace) -> list[dict]:
     """Return filings to process."""
-    # v2_image_assets.doc_id is a BIGINT FK to filings.filing_id (despite the
-    # column name) — see sql/09_v2_schema.sql. v2_metric_facts.filing_id was
-    # renamed in legacy-038.
+    # v2_image_assets.filing_id is a BIGINT FK to filings.filing_id.
+    # Renamed from doc_id in migration 202604291308 (gh-324).
     if args.all_filings:
         sql = """
             SELECT f.filing_id, f.cik, f.accession_number, f.html_storage_path,
@@ -103,7 +102,7 @@ def _select_filings(db: DatabaseAdapter, args: argparse.Namespace) -> list[dict]
               JOIN companies c USING (company_id)
               LEFT JOIN v2_metric_facts mf ON mf.filing_id = f.filing_id
               LEFT JOIN v2_review_decisions rd ON rd.fact_id = mf.fact_id
-              LEFT JOIN v2_image_assets ia ON ia.doc_id = f.filing_id
+              LEFT JOIN v2_image_assets ia ON ia.filing_id = f.filing_id
               LEFT JOIN v2_image_metric_confirmations imc ON imc.img_id = ia.img_id
              WHERE rd.decision_id IS NOT NULL OR imc.id IS NOT NULL
         """

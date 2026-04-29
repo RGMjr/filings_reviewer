@@ -3,16 +3,16 @@ id: 324
 source: gh
 slug: other-v2-tables-bigint-doc-id-mismatch
 title: Other v2 tables share v2_metric_facts' BIGINT-named-doc_id mismatch
-status: open
+status: resolved
 severity: low
-autonomy: skip
+autonomy: n/a
 estimated: M
 touches:
 - sql/*.sql
 - src/extraction_v2/persistence.py
 - src/infra/db.py
 discovered: '2026-04-28'
-updated: '2026-04-28'
+updated: '2026-04-29'
 gh_issue: 324
 note: v2_segments / v2_tables / v2_image_assets / v2_metric_definitions doc_id columns are all filing_ids — same legacy-038 trap class.
 ---
@@ -38,3 +38,11 @@ for any cross-join with `v2_documents.doc_id`.
   sites, integration tests, and scripts.
 - Postgres views in frozen `sql/09`/`sql/38` resolve via attnums — no
   view recreation needed (proven in legacy-038).
+
+### Resolution
+
+Timestamped migration
+`sql/202604291308_rename_doc_id_to_filing_id_on_v2_segments_tables_image_assets_metric_definitions.sql`
+renames `doc_id → filing_id` on all four tables with idempotent
+`information_schema` guards. All callsites in `persistence.py`, `db.py`,
+stages, scripts, and tests updated in the same PR (bundled with gh-323).

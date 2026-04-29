@@ -148,7 +148,7 @@ class TestMetricFact:
     def test_creation(self) -> None:
         """Test basic creation with required fields."""
         fact = MetricFact(
-            doc_id="doc123",
+            document_uuid="doc123",
             canonical_metric_id="net_revenue_retention",
             value=112.0,
             value_raw="112%",
@@ -159,7 +159,7 @@ class TestMetricFact:
             source_type=SourceType.HTML_TABLE,
             confidence=0.95,
         )
-        assert fact.doc_id == "doc123"
+        assert fact.document_uuid == "doc123"
         assert fact.value == 112.0
         assert fact.unit == Unit.PERCENT
         assert fact.confidence == 0.95
@@ -492,7 +492,7 @@ class TestTable:
     def test_creation(self) -> None:
         """Test basic creation."""
         table = Table(
-            doc_id="doc123",
+            filing_id=1,
             segment_id="seg456",
             row_count=5,
             col_count=3,
@@ -541,7 +541,7 @@ class TestSegment:
     def test_creation(self) -> None:
         """Test basic creation."""
         segment = Segment(
-            doc_id="doc123",
+            filing_id=1,
             segment_type=SegmentType.PARAGRAPH,
             text="Our net revenue retention was 112% for fiscal 2023.",
             dom_locator="/html/body/div[3]/p[5]",
@@ -560,7 +560,7 @@ class TestImageAsset:
     def test_creation(self) -> None:
         """Test basic creation."""
         image = ImageAsset(
-            doc_id="doc123",
+            filing_id=1,
             filename="chart1.png",
             dom_locator="/html/body/img[3]",
             nearby_text="Figure 1: Cohort Revenue Analysis",

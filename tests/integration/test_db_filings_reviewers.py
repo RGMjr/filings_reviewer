@@ -26,16 +26,16 @@ def _insert_v2_image(
     rows = db.query(
         """
         INSERT INTO v2_image_assets
-            (doc_id, filename, dom_locator, width, height, nearby_text,
+            (filing_id, filename, dom_locator, width, height, nearby_text,
              classification, relevance_score, review_status, section_type)
         VALUES
-            (%(doc_id)s, %(filename)s, %(dom_locator)s, %(width)s, %(height)s,
+            (%(filing_id)s, %(filename)s, %(dom_locator)s, %(width)s, %(height)s,
              %(nearby_text)s, %(classification)s, %(relevance_score)s,
              %(review_status)s, %(section_type)s)
         RETURNING img_id
         """,
         {
-            "doc_id": filing_id,
+            "filing_id": filing_id,
             "filename": filename,
             "dom_locator": f"body > img[src='{filename}']",
             "width": 600,

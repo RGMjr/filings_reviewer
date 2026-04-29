@@ -67,7 +67,7 @@ def _fact(
 ) -> MetricFact:
     return MetricFact(
         fact_id=fact_id or str(uuid.uuid4()),
-        doc_id="42",
+        document_uuid="42",
         canonical_metric_id=metric_id,
         value=100.0,
         value_raw="100",
@@ -177,7 +177,7 @@ class TestMetricPresenceStage:
     def test_definition_alone_emits_presence_at_floor_score(self) -> None:
         defn = MetricDefinition(
             canonical_metric_id="cm_net_revenue_retention",
-            doc_id="42",
+            filing_id="42",
             definition_text="Net revenue retention measures...",
             definition_segment_id="seg-def",
         )
@@ -196,7 +196,7 @@ class TestMetricPresenceStage:
         fact = _fact("cm_a", confidence=0.95, segment_id="seg-f")
         defn = MetricDefinition(
             canonical_metric_id="cm_a",
-            doc_id="42",
+            filing_id="42",
             definition_text="cm_a is...",
             definition_segment_id="seg-d",
         )
@@ -242,7 +242,7 @@ class TestMetricPresenceStage:
         fact = _fact("cm_a", confidence=0.8, segment_id="seg")
         defn = MetricDefinition(
             canonical_metric_id="cm_b",
-            doc_id="42",
+            filing_id="42",
             definition_text="cm_b is...",
             definition_segment_id="seg-def",
         )

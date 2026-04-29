@@ -101,18 +101,18 @@ def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
                 cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,))
-                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_image_assets WHERE filing_id = %s", (test_filing_id,))
                 cur.execute(
                     """
                     DELETE FROM v2_table_cells
                     WHERE table_id IN (
-                        SELECT table_id FROM v2_tables WHERE doc_id = %s
+                        SELECT table_id FROM v2_tables WHERE filing_id = %s
                     )
                 """,
                     (test_filing_id,),
                 )
-                cur.execute("DELETE FROM v2_tables WHERE doc_id = %s", (test_filing_id,))
-                cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_tables WHERE filing_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_segments WHERE filing_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _cleanup()
@@ -354,7 +354,8 @@ class TestE2EPersistence:
 
                 # Check segments
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s", (test_filing_id,)
+                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE filing_id = %s",
+                    (test_filing_id,),
                 )
                 segment_count = cur.fetchone()["cnt"]
                 assert segment_count == len(result.segments)

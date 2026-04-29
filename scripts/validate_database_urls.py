@@ -79,13 +79,11 @@ def validate_url_format(url: str | None, cik: str | None, accession_number: str 
     # FilingFetcher incidents) and aren't the class of bug this validator
     # gates against (NULL columns + malformed image URLs).
     if _normalise_cik(url_cik) != _normalise_cik(cik):
-        result["warnings"].append(
-            f"CIK mismatch: URL has {url_cik}, DB has {cik}"
-        )
+        result["warnings"].append(f"CIK mismatch: URL has {url_cik}, DB has {cik}")
 
     if accession_number:
         if accession_number.startswith("presentation:"):
-            parts = accession_number[len("presentation:"):].split("/")
+            parts = accession_number[len("presentation:") :].split("/")
             real_accession = parts[1] if len(parts) >= 2 else ""
         else:
             real_accession = accession_number
@@ -103,7 +101,7 @@ def _built_image_url(cik: str | None, accession_number: str | None, filename: st
     norm_cik = _normalise_cik(cik)
     acc = accession_number or ""
     if acc.startswith("presentation:"):
-        parts = acc[len("presentation:"):].split("/")
+        parts = acc[len("presentation:") :].split("/")
         acc = parts[1] if len(parts) >= 2 else ""
     acc_no_dashes = acc.replace("-", "")
     return f"/images/cache/{norm_cik}/{acc_no_dashes}/{filename}"
@@ -169,7 +167,7 @@ def _validate_image_urls(db: DatabaseAdapter, doc_types: list[str]) -> dict:
         SELECT v.img_id, v.filename, c.cik AS company_cik,
                f.accession_number, f.document_type
         FROM v2_image_assets v
-        JOIN filings f ON v.doc_id = f.filing_id
+        JOIN filings f ON v.filing_id = f.filing_id
         JOIN companies c ON f.company_id = c.company_id
         WHERE f.document_type = ANY(%(types)s)
         """,
@@ -275,7 +273,9 @@ def main() -> None:
     if args.fail_on_errors:
         logger.error("VALIDATION FAILED - %d invalid row(s)", total_invalid)
         sys.exit(1)
-    logger.warning("VALIDATION REPORTED %d invalid row(s) (run with --fail-on-errors to exit 1)", total_invalid)
+    logger.warning(
+        "VALIDATION REPORTED %d invalid row(s) (run with --fail-on-errors to exit 1)", total_invalid
+    )
     sys.exit(0)
 
 

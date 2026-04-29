@@ -154,11 +154,8 @@ class DefinitionExtractionStage:
                     metric_id, def_normalized or meth_normalized
                 )
 
-                # Get the doc_id from context
-                doc_id = context.document.doc_id if context.document else ""
-
                 md = MetricDefinition(
-                    doc_id=doc_id,
+                    filing_id=str(context.filing_id) if context.filing_id else "",
                     canonical_metric_id=metric_id,
                     definition_text=def_text,
                     definition_text_normalized=def_normalized,

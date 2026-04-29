@@ -37,17 +37,17 @@ def _insert_v2_image(
     rows = db.query(
         """
         INSERT INTO v2_image_assets
-            (doc_id, filename, dom_locator, width, height, nearby_text,
+            (filing_id, filename, dom_locator, width, height, nearby_text,
              classification, relevance_score, predicted_relevance,
              review_status, section_type)
         VALUES
-            (%(doc_id)s, %(filename)s, %(dom_locator)s, %(width)s, %(height)s,
+            (%(filing_id)s, %(filename)s, %(dom_locator)s, %(width)s, %(height)s,
              %(nearby_text)s, %(classification)s, %(relevance_score)s,
              %(predicted_relevance)s, %(review_status)s, %(section_type)s)
         RETURNING img_id
         """,
         {
-            "doc_id": filing_id,
+            "filing_id": filing_id,
             "filename": filename,
             "dom_locator": f"body > img[src='{filename}']",
             "width": width,
@@ -534,7 +534,7 @@ class TestPersistImagesStableImgId:
         original = self._make_asset("chart1.jpg")
         adapter.persist_images([original], filing_id)
         rows = clean_db.query(
-            "SELECT img_id FROM v2_image_assets WHERE doc_id=%(d)s AND filename=%(f)s",
+            "SELECT img_id FROM v2_image_assets WHERE filing_id=%(d)s AND filename=%(f)s",
             {"d": filing_id, "f": "chart1.jpg"},
         )
         assert len(rows) == 1
@@ -554,7 +554,7 @@ class TestPersistImagesStableImgId:
 
         # Row count unchanged; img_id is still the original; decision survives.
         rows_after = clean_db.query(
-            "SELECT img_id FROM v2_image_assets WHERE doc_id=%(d)s AND filename=%(f)s",
+            "SELECT img_id FROM v2_image_assets WHERE filing_id=%(d)s AND filename=%(f)s",
             {"d": filing_id, "f": "chart1.jpg"},
         )
         assert len(rows_after) == 1
@@ -601,7 +601,7 @@ class TestPersistImagesStableImgId:
         adapter.persist_images([seed], filing_id)
         stable_img_id = str(
             clean_db.query(
-                "SELECT img_id FROM v2_image_assets WHERE doc_id=%(d)s AND filename=%(f)s",
+                "SELECT img_id FROM v2_image_assets WHERE filing_id=%(d)s AND filename=%(f)s",
                 {"d": filing_id, "f": "chart2.jpg"},
             )[0]["img_id"]
         )

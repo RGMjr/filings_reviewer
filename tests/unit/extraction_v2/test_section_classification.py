@@ -121,7 +121,7 @@ class TestSectionHeadingDetection:
         """Test heading detection by uppercase text."""
         stage = SectionClassificationStage()
         segment = Segment(
-            doc_id="1",
+            filing_id=1,
             segment_id="seg-1",
             segment_type=SegmentType.PARAGRAPH,
             text="RISK FACTORS",
@@ -134,7 +134,7 @@ class TestSectionHeadingDetection:
         """Test heading detection by ITEM/PART prefix."""
         stage = SectionClassificationStage()
         segment = Segment(
-            doc_id=1,
+            filing_id=1,
             segment_id="seg-1",
             segment_type=SegmentType.PARAGRAPH,
             text="ITEM 1A. Risk Factors",
@@ -147,7 +147,7 @@ class TestSectionHeadingDetection:
         """Test heading detection by h1 tag in XPath."""
         stage = SectionClassificationStage()
         segment = Segment(
-            doc_id=1,
+            filing_id=1,
             segment_id="seg-1",
             segment_type=SegmentType.PARAGRAPH,
             text="Risk Factors",
@@ -161,7 +161,7 @@ class TestSectionHeadingDetection:
         stage = SectionClassificationStage()
         for tag in ["h2", "h3", "h4", "h5", "h6"]:
             segment = Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Section Heading",
@@ -175,7 +175,7 @@ class TestSectionHeadingDetection:
         stage = SectionClassificationStage()
         long_text = "ITEM 1A. " + "A" * 200
         segment = Segment(
-            doc_id=1,
+            filing_id=1,
             segment_id="seg-1",
             segment_type=SegmentType.PARAGRAPH,
             text=long_text,
@@ -188,7 +188,7 @@ class TestSectionHeadingDetection:
         """Test that regular paragraphs are not headings."""
         stage = SectionClassificationStage()
         segment = Segment(
-            doc_id=1,
+            filing_id=1,
             segment_id="seg-1",
             segment_type=SegmentType.PARAGRAPH,
             text="This is a regular paragraph with mixed case text.",
@@ -347,7 +347,7 @@ class TestProcessMethod:
         # Add segments without any section headings
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Company overview text at the beginning.",
@@ -355,7 +355,7 @@ class TestProcessMethod:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.PARAGRAPH,
                 text="More introductory text in the cover section.",
@@ -384,7 +384,7 @@ class TestProcessMethod:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Cover page text.",
@@ -392,7 +392,7 @@ class TestProcessMethod:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.PARAGRAPH,
                 text="RISK FACTORS",
@@ -400,7 +400,7 @@ class TestProcessMethod:
                 sequence=1,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-3",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Risk factor content here.",
@@ -430,7 +430,7 @@ class TestProcessMethod:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Cover text",
@@ -438,7 +438,7 @@ class TestProcessMethod:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.PARAGRAPH,
                 text="RISK FACTORS",
@@ -446,7 +446,7 @@ class TestProcessMethod:
                 sequence=1,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-3",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Risk content",
@@ -454,7 +454,7 @@ class TestProcessMethod:
                 sequence=2,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-4",
                 segment_type=SegmentType.PARAGRAPH,
                 text="BUSINESS",
@@ -462,7 +462,7 @@ class TestProcessMethod:
                 sequence=3,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-5",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Business content",
@@ -491,7 +491,7 @@ class TestProcessMethod:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="BUSINESS",
@@ -499,7 +499,7 @@ class TestProcessMethod:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Business content",
@@ -525,7 +525,7 @@ class TestProcessMethod:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="RISK FACTORS",
@@ -533,7 +533,7 @@ class TestProcessMethod:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Risk content",
@@ -560,7 +560,7 @@ class TestProcessMethod:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Cover text",
@@ -568,7 +568,7 @@ class TestProcessMethod:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.PARAGRAPH,
                 text="SOME UNKNOWN SECTION",
@@ -576,7 +576,7 @@ class TestProcessMethod:
                 sequence=1,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-3",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Content after unknown heading",
@@ -604,7 +604,7 @@ class TestProcessMethod:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="BUSINESS",
@@ -612,7 +612,7 @@ class TestProcessMethod:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.TABLE,
                 text="Metric [CELL] Value [ROW] Customers [CELL] 100",
@@ -639,7 +639,7 @@ class TestProcessMethod:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Test content",
@@ -668,7 +668,7 @@ class TestEdgeCases:
 
         context.segments = [
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="BUSINESS",
@@ -676,7 +676,7 @@ class TestEdgeCases:
                 sequence=0,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Content 1",
@@ -684,7 +684,7 @@ class TestEdgeCases:
                 sequence=1,
             ),
             Segment(
-                doc_id=1,
+                filing_id=1,
                 segment_id="seg-3",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Content 2",
@@ -705,7 +705,7 @@ class TestEdgeCases:
         """Test that whitespace-only text is not detected as heading."""
         stage = SectionClassificationStage()
         segment = Segment(
-            doc_id=1,
+            filing_id=1,
             segment_id="seg-1",
             segment_type=SegmentType.PARAGRAPH,
             text="    ",
@@ -899,7 +899,7 @@ class TestPresentationSlideClassification:
 
         context.segments = [
             Segment(
-                doc_id="1",
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.HEADING,
                 text="Key Metrics",
@@ -908,7 +908,7 @@ class TestPresentationSlideClassification:
                 sequence=0,
             ),
             Segment(
-                doc_id="1",
+                filing_id=1,
                 segment_id="seg-2",
                 segment_type=SegmentType.TABLE,
                 text="ARR $100M",
@@ -937,7 +937,7 @@ class TestPresentationSlideClassification:
 
         context.segments = [
             Segment(
-                doc_id="1",
+                filing_id=1,
                 segment_id="seg-1",
                 segment_type=SegmentType.PARAGRAPH,
                 text="Key Metrics for our business.",
@@ -973,9 +973,7 @@ class TestEightKHeadingPatterns:
             ("Q2 2025 Guidance", SectionType.GUIDANCE),
         ],
     )
-    def test_eight_k_heading_classified(
-        self, heading: str, expected: SectionType
-    ) -> None:
+    def test_eight_k_heading_classified(self, heading: str, expected: SectionType) -> None:
         stage = SectionClassificationStage()
         assert stage._detect_section_type(heading) == expected
 
@@ -987,7 +985,7 @@ class TestEightKHeadingPatterns:
             "which include revenue growth and improved margins across all segments."
         )
         seg = Segment(
-            doc_id=1,
+            filing_id=1,
             segment_id="seg-1",
             segment_type=SegmentType.PARAGRAPH,
             text=long_body,
@@ -999,10 +997,5 @@ class TestEightKHeadingPatterns:
     def test_pattern_precedence_stable(self) -> None:
         """Precedence lock: 'Financial Highlights' vs 'Q3 2025 Highlights'."""
         stage = SectionClassificationStage()
-        assert (
-            stage._detect_section_type("Financial Highlights")
-            == SectionType.FINANCIAL_OVERVIEW
-        )
-        assert (
-            stage._detect_section_type("Q3 2025 Highlights") == SectionType.KEY_METRICS
-        )
+        assert stage._detect_section_type("Financial Highlights") == SectionType.FINANCIAL_OVERVIEW
+        assert stage._detect_section_type("Q3 2025 Highlights") == SectionType.KEY_METRICS

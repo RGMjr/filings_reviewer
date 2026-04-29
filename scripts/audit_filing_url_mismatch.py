@@ -105,7 +105,7 @@ def _count_downstream(db: DatabaseAdapter, filing_id: int) -> dict:
         SELECT count(*) AS n
         FROM v2_image_review_decisions ird
         JOIN v2_image_assets ia ON ia.img_id = ird.img_id
-        WHERE ia.doc_id = %(id)s
+        WHERE ia.filing_id = %(id)s
         """,
         {"id": filing_id},
     )

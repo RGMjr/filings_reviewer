@@ -317,7 +317,7 @@ class MetricFact:
 
     # Identity
     fact_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    doc_id: str = ""  # Filing ID
+    document_uuid: str = ""  # Document UUID (v2_documents.doc_id; not persisted to DB)
     canonical_metric_id: str = ""  # e.g., "net_revenue_retention"
 
     # Value
@@ -449,7 +449,7 @@ class MetricDefinition:
 
     # Identity
     definition_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    doc_id: str = ""
+    filing_id: str = ""
     canonical_metric_id: str = ""
 
     # Definition text (what the metric means)
@@ -563,7 +563,7 @@ class Table:
 
     # Identity
     table_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    doc_id: str = ""
+    filing_id: str = ""
     segment_id: str = ""
 
     # DOM locator
@@ -631,7 +631,7 @@ class Segment:
 
     # Identity
     segment_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    doc_id: str = ""
+    filing_id: str = ""
 
     # Type and content
     segment_type: SegmentType = SegmentType.PARAGRAPH
@@ -768,7 +768,7 @@ class ImageAsset:
 
     # Identity
     img_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    doc_id: str = ""
+    filing_id: str = ""
     segment_id: str | None = None
 
     # File info

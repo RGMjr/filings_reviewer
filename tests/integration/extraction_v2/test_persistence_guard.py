@@ -110,12 +110,12 @@ def _cleanup(db_adapter: DatabaseAdapter, test_filing_id: int):
                     """
                     DELETE FROM v2_image_review_decisions
                      WHERE img_id IN (
-                        SELECT img_id FROM v2_image_assets WHERE doc_id = %s
+                        SELECT img_id FROM v2_image_assets WHERE filing_id = %s
                      )
                     """,
                     (test_filing_id,),
                 )
-                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_image_assets WHERE filing_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _purge()
@@ -149,7 +149,7 @@ def _make_fact(
         snippet = f"<p>{value}</p>"
     return MetricFact(
         fact_id=str(uuid.uuid4()),
-        doc_id=str(filing_id),
+        document_uuid=str(filing_id),
         canonical_metric_id=metric_id,
         value=value,
         value_raw=str(value),
@@ -355,7 +355,7 @@ def _img_id_for(db_adapter: DatabaseAdapter, filing_id: int, filename: str) -> s
     with db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT img_id FROM v2_image_assets WHERE doc_id = %s AND filename = %s",
+                "SELECT img_id FROM v2_image_assets WHERE filing_id = %s AND filename = %s",
                 (filing_id, filename),
             )
             row = cur.fetchone()
@@ -367,7 +367,7 @@ def _classification_for(db_adapter: DatabaseAdapter, filing_id: int, filename: s
     with db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT classification FROM v2_image_assets WHERE doc_id = %s AND filename = %s",
+                "SELECT classification FROM v2_image_assets WHERE filing_id = %s AND filename = %s",
                 (filing_id, filename),
             )
             row = cur.fetchone()
@@ -966,13 +966,13 @@ def _seed_image_and_confirmation(
             cur.execute(
                 """
                 INSERT INTO v2_image_assets (
-                    img_id, doc_id, filename, dom_locator, classification, processed
+                    img_id, filing_id, filename, dom_locator, classification, processed
                 ) VALUES (
-                    %(img_id)s, %(doc_id)s, 'guard_confirmation_test.png',
+                    %(img_id)s, %(filing_id)s, 'guard_confirmation_test.png',
                     '/html/body/img[1]', 'chart', TRUE
                 )
                 """,
-                {"img_id": img_id, "doc_id": filing_id},
+                {"img_id": img_id, "filing_id": filing_id},
             )
             cur.execute(
                 """

@@ -885,7 +885,7 @@ class IngestionStage:
 
             # Create ImageAsset
             asset = ImageAsset(
-                doc_id=str(filing_id),
+                filing_id=str(filing_id),
                 filename=src,
                 width=width,
                 height=height,
@@ -982,7 +982,7 @@ class IngestionStage:
             # Assign unified sequence numbers
             for idx, (segment, _) in enumerate(all_segments_with_elements):
                 segment.sequence = idx
-                segment.doc_id = str(context.filing_id)  # Ensure doc_id is set
+                segment.filing_id = str(context.filing_id)
 
             # Extract just the segments
             all_segments = [seg for seg, _ in all_segments_with_elements]
