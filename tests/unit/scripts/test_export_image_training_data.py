@@ -256,3 +256,34 @@ def test_sec_rows_handles_null_chart_type_from_confirmations() -> None:
     assert len(result) == 1
     # The transform path coerces None to '' for CSV emission
     assert result[0]["chart_type"] == ""
+
+
+def test_sec_rows_confirmation_carries_reviewer_chart_type_when_backfilled() -> None:
+    """Confirmation rows carry chart_type when reviewer_chart_type is backfilled.
+
+    After migration 202604291500, CONFIRMATIONS_SEC_QUERY reads
+    v2_image_assets.reviewer_chart_type.  Images whose legacy decision was
+    backfilled will have a non-NULL value, which flows through export_sec_rows().
+    """
+    mod = _load_module()
+    confirmation_row = _base_sec_row(
+        img_id="44444444-4444-4444-4444-444444444444",
+        chart_type="cohort_parfait",
+        decision="relevant",
+    )
+    result = mod.export_sec_rows(_make_two_query_mock_db([], [confirmation_row]))
+    assert len(result) == 1
+    assert result[0]["chart_type"] == "cohort_parfait"
+
+
+def test_confirmations_sec_query_reads_reviewer_chart_type() -> None:
+    """CONFIRMATIONS_SEC_QUERY must read v2_image_assets.reviewer_chart_type.
+
+    Asserts the schema change (migration 202604291500) is wired into the query
+    rather than emitting the old NULL::text placeholder for chart_type.
+    """
+    mod = _load_module()
+    assert hasattr(mod, "CONFIRMATIONS_SEC_QUERY")
+    assert "reviewer_chart_type" in mod.CONFIRMATIONS_SEC_QUERY, (
+        "CONFIRMATIONS_SEC_QUERY must read v2_image_assets.reviewer_chart_type"
+    )

@@ -195,10 +195,12 @@ CLASSIFY_RELEVANCE_THRESHOLD: float = 0.5
 #   not_relevant = at least one confirmation, all rejects
 #   excluded     = only skips, or zero confirmations (filtered by HAVING)
 #
-# chart_type is not captured in v2_image_metric_confirmations (no schema column).
-# Confirmation-derived rows emit chart_type=NULL; the stratifier treats None as
-# an unknown stratum rather than a hard failure (conservative minimal path —
-# chart_type schema extension is deferred, gh-196 note).
+# chart_type for confirmation-derived rows is read from
+# v2_image_assets.reviewer_chart_type (migration 202604291500, gh-196
+# Option A1-narrow).  The column is backfilled from legacy
+# v2_image_review_decisions for the ~851 historical rows.  Images that
+# have never had a legacy decision will still emit NULL — the stratifier
+# already handles None gracefully.
 #
 # Legacy rows take precedence when the same img_id appears in both surfaces,
 # matching the authoritative logic in export_image_training_data.export_sec_rows().
@@ -235,7 +237,7 @@ SELECT
              THEN 'relevant'
         ELSE 'not_relevant'
     END                                          AS decision,
-    NULL::text                                   AS chart_type,
+    v.reviewer_chart_type                        AS chart_type,
     (
         SELECT imc2.rejection_reason
           FROM v2_image_metric_confirmations imc2
@@ -256,6 +258,7 @@ JOIN v2_image_assets               v ON v.img_id = imc.img_id
 JOIN filings                       f ON v.filing_id = f.filing_id
 JOIN companies                     c ON f.company_id = c.company_id
 GROUP BY v.img_id, v.filename, v.file_path, v.relevance_score,
+         v.reviewer_chart_type,
          f.accession_number, c.cik, c.company_name
 HAVING bool_or(imc.decision IN ('accept','correct','add','reject'))
 ORDER BY c.company_name, v.img_id
