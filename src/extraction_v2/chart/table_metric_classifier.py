@@ -1,8 +1,11 @@
 """Table-image metric presence scorer.
 
-Scores an OCR-reconstructed Table against the same 5 metrics supported by
+Scores an OCR-reconstructed Table against the same metrics supported by
 ChartMetricClassifier, using header_path / stub_path keyword matching rather
 than chart-axis / series structure.
+
+_SUPPORTED_METRICS must stay in sync with ChartMetricClassifier._SUPPORTED_METRICS
+in src/extraction_v2/chart/metric_classifier.py (expanded in gh-289 Scope B).
 
 Intended call site: ChartFactBridgeStage (after the chart-data branch),
 when image.ocr_table is not None.
@@ -40,14 +43,22 @@ from src.shared.keyword_config import (
     get_specific_patterns_by_metric,
 )
 
-# Exactly the same 5 metrics as ChartMetricClassifier._SUPPORTED_METRICS.
-# Expanding the set is Scope B (calibration).
+# Must stay in sync with ChartMetricClassifier._SUPPORTED_METRICS
+# (src/extraction_v2/chart/metric_classifier.py).
+# No metric_gate equivalent here — keyword patterns + the 0.5 score threshold
+# applied by ChartFactBridgeStage act as the implicit discriminator.
 _SUPPORTED_METRICS: tuple[str, ...] = (
+    # Original 5 cohort metrics
     "cm_balance_by_cohort",
     "cm_gross_margin_by_cohort",
     "cm_revenue_by_cohort",
     "cm_transactions_by_cohort",
     "cm_ltv_to_cac_ratio",
+    # Tier-1 expansion (gh-289 Scope B): retention + concentration + tenure
+    "cm_customer_retention_rate",
+    "cm_net_revenue_retention",
+    "cm_customers_period_end_by_tenure",
+    "cm_revenue_concentration",
 )
 
 # Surface weights — used both for scoring and for computing the soft denominator.
@@ -190,7 +201,7 @@ def score_ocr_table(
 
     Returns:
         List of (metric_id, score) tuples sorted score-descending.
-        All 5 supported metrics are always included (score may be 0.0).
+        All supported metrics are always included (score may be 0.0).
     """
     keywords = get_metric_keywords()
     specific = get_specific_patterns_by_metric()
