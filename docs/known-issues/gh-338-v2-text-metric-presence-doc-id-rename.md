@@ -14,7 +14,8 @@ touches:
 discovered: '2026-04-29'
 updated: '2026-04-29'
 gh_issue: 338
-pr_refs: []
+pr_refs:
+- 348
 note: doc_id is BIGINT FK to filings(filing_id) — same naming smell fixed in gh-324 for four other v2 tables.
 ---
 
