@@ -6,6 +6,7 @@ Provides a clean interface for database operations using psycopg3.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -1799,6 +1800,16 @@ class DatabaseAdapter:
     # V2 Image Review Methods (read/write v2_image_assets + v2_image_review_decisions)
     # =============================================================================
 
+    @staticmethod
+    def _compute_image_content_hash(ocr_text: str | None, chart_data_json: str | None) -> str:
+        """Compute a content hash for stale-decision detection.
+
+        Recipe (locked): sha256((ocr_text or "") + "\\x1f" + (chart_data_json or ""))
+        The unit separator (\\x1f) prevents collisions between the two fields.
+        """
+        payload = (ocr_text or "") + "\x1f" + (chart_data_json or "")
+        return hashlib.sha256(payload.encode()).hexdigest()
+
     _V2_IMAGE_CANDIDATE_SELECT = """
         v.img_id,
         v.filing_id,
@@ -1855,6 +1866,9 @@ class DatabaseAdapter:
         d.reviewer_notes AS decision_notes,
         d.review_time_seconds,
         d.created_at AS decision_created_at,
+        d.decided_against_hash,
+        v.ocr_text AS current_ocr_text,
+        v.chart_data::text AS current_chart_data_json,
         COALESCE(imc_rollup.positive_count, 0) AS positive_count,
         COALESCE(imc_rollup.detected_decided_count, 0) AS detected_decided_count,
         COALESCE(imc_rollup.total_confirmation_count, 0) AS total_confirmation_count,
@@ -1906,6 +1920,27 @@ class DatabaseAdapter:
         if decided >= detected_count and positive == 0:
             return "no_relevant"
         return "pending"
+
+    @staticmethod
+    def _derive_is_stale_vs_decision(row: dict) -> bool:
+        """Return True if the image content has changed since the last decision.
+
+        Compares the stored ``decided_against_hash`` on the most-recent
+        ``v2_image_review_decisions`` row against a freshly-computed hash of
+        the asset's current ``ocr_text`` / ``chart_data``.
+
+        NULL ``decided_against_hash`` → False (grandfather clause for
+        pre-deploy rows — do not flag as stale without a baseline hash).
+        """
+        stored_hash = row.get("decided_against_hash")
+        if not stored_hash:
+            return False
+
+        current_hash = DatabaseAdapter._compute_image_content_hash(
+            row.get("current_ocr_text"),
+            row.get("current_chart_data_json"),
+        )
+        return current_hash != stored_hash
 
     def get_image_review_candidates_for_filing_v2(
         self,
@@ -2010,6 +2045,7 @@ class DatabaseAdapter:
         results = self.query(sql, params)
         for row in results:
             row["image_review_state"] = self._derive_image_review_state(row)
+            row["is_stale_vs_decision"] = self._derive_is_stale_vs_decision(row)
         return results
 
     def get_image_review_candidate_v2(self, img_id: str) -> dict | None:
@@ -2038,6 +2074,7 @@ class DatabaseAdapter:
         if not results:
             return None
         results[0]["image_review_state"] = self._derive_image_review_state(results[0])
+        results[0]["is_stale_vs_decision"] = self._derive_is_stale_vs_decision(results[0])
         return results[0]
 
     def get_next_pending_image_candidate_v2(
@@ -2136,11 +2173,13 @@ class DatabaseAdapter:
         insert_sql = """
             INSERT INTO v2_image_review_decisions (
                 img_id, decision, chart_type, rejection_reason,
-                reviewer_id, reviewer_notes, review_time_seconds
+                reviewer_id, reviewer_notes, review_time_seconds,
+                decided_against_hash
             )
             VALUES (
                 %(img_id)s, %(decision)s, %(chart_type)s, %(rejection_reason)s,
-                %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s
+                %(reviewer_id)s, %(reviewer_notes)s, %(review_time_seconds)s,
+                %(decided_against_hash)s
             )
             RETURNING image_decision_id
         """
@@ -2149,9 +2188,25 @@ class DatabaseAdapter:
             SET review_status = 'reviewed'
             WHERE img_id = %(img_id)s
         """
+        fetch_asset_sql = """
+            SELECT ocr_text,
+                   chart_data::text AS chart_data_json
+            FROM v2_image_assets
+            WHERE img_id = %(img_id)s
+        """
 
         with self.get_connection() as conn:
             with conn.cursor() as cur:
+                cur.execute(fetch_asset_sql, {"img_id": img_id})
+                asset_row = cur.fetchone()
+                if asset_row:
+                    decided_against_hash = self._compute_image_content_hash(
+                        asset_row["ocr_text"],
+                        asset_row["chart_data_json"],
+                    )
+                else:
+                    decided_against_hash = None
+
                 cur.execute(
                     insert_sql,
                     {
@@ -2162,6 +2217,7 @@ class DatabaseAdapter:
                         "reviewer_id": reviewer_id,
                         "reviewer_notes": reviewer_notes,
                         "review_time_seconds": review_time_seconds,
+                        "decided_against_hash": decided_against_hash,
                     },
                 )
                 result = cur.fetchone()
@@ -2344,16 +2400,19 @@ class DatabaseAdapter:
         upsert_sql = """
             INSERT INTO v2_image_metric_confirmations (
                 img_id, detected_metric_id, confirmed_metric_id,
-                decision, rejection_reason, reviewer_id
+                decision, rejection_reason, reviewer_id,
+                decided_against_hash
             ) VALUES (
                 %(img_id)s, %(detected_metric_id)s, %(confirmed_metric_id)s,
-                %(decision)s, %(rejection_reason)s, %(reviewer_id)s
+                %(decision)s, %(rejection_reason)s, %(reviewer_id)s,
+                %(decided_against_hash)s
             )
             ON CONFLICT (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
             DO UPDATE SET
                 decision            = EXCLUDED.decision,
                 confirmed_metric_id = EXCLUDED.confirmed_metric_id,
                 rejection_reason    = EXCLUDED.rejection_reason,
+                decided_against_hash = EXCLUDED.decided_against_hash,
                 updated_at          = now()
         """
 
@@ -2361,13 +2420,20 @@ class DatabaseAdapter:
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+                    """SELECT filing_id,
+                              ocr_text,
+                              chart_data::text AS chart_data_json
+                       FROM v2_image_assets WHERE img_id = %(img_id)s""",
                     {"img_id": img_id},
                 )
                 doc_row = cur.fetchone()
                 if doc_row is None:
                     raise ValueError(f"Image not found: img_id={img_id}")
                 filing_id = doc_row["filing_id"]
+                decided_against_hash = self._compute_image_content_hash(
+                    doc_row["ocr_text"],
+                    doc_row["chart_data_json"],
+                )
 
                 for entry in confirmations:
                     decision = entry["decision"]
@@ -2383,6 +2449,7 @@ class DatabaseAdapter:
                             "decision": decision,
                             "rejection_reason": entry.get("rejection_reason"),
                             "reviewer_id": reviewer_id,
+                            "decided_against_hash": decided_against_hash,
                         },
                     )
                     count += 1

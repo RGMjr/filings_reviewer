@@ -881,6 +881,12 @@
                 Re-open for review <span class="kbd ms-1">Shift+U</span>
               </button>
             </div>
+            {% if current_image.is_stale_vs_decision %}
+            <div class="mt-2 text-warning small">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i>
+              OCR/chart data updated since review — consider re-opening.
+            </div>
+            {% endif %}
           </div>
           {% else %}
           <div class="d-flex justify-content-between align-items-center mb-3">

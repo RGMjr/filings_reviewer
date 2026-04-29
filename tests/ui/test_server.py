@@ -236,6 +236,7 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "predicted_metrics": None,
     "classification_confidence": None,
     "image_review_state": "pending",
+    "is_stale_vs_decision": False,
 }
 
 MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION = {
@@ -268,6 +269,7 @@ MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION = {
     ],
     "classification_confidence": 0.93,
     "image_review_state": "pending",
+    "is_stale_vs_decision": False,
 }
 
 MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
@@ -304,6 +306,7 @@ MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
     "predicted_metrics": None,
     "classification_confidence": None,
     "image_review_state": "pending",
+    "is_stale_vs_decision": False,
 }
 
 MOCK_IMAGE_CANDIDATE_REVIEWED = {
@@ -333,6 +336,7 @@ MOCK_IMAGE_CANDIDATE_REVIEWED = {
     "predicted_metrics": None,
     "classification_confidence": None,
     "image_review_state": "relevant",
+    "is_stale_vs_decision": False,
 }
 
 IMAGE_CHART_TYPES = [
@@ -659,6 +663,7 @@ MOCK_IMAGE_CANDIDATE_A_LAST = {
     "decision_notes": None,
     "image_index": 1,
     "detected_metrics": [],
+    "is_stale_vs_decision": False,
 }
 
 MOCK_IMAGE_CANDIDATE_B_PENDING = {
@@ -684,6 +689,7 @@ MOCK_IMAGE_CANDIDATE_B_PENDING = {
     "decision_notes": None,
     "image_index": 1,
     "detected_metrics": [],
+    "is_stale_vs_decision": False,
 }
 
 

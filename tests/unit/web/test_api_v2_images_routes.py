@@ -4,12 +4,16 @@ Unit tests for V2 image-level skip/unskip routes in api_unified.py.
 The per-metric A/R/C/Add/Skip flow that replaced the legacy
 /api/v2/image-decisions endpoints is covered by the integration tests
 in tests/integration/web/test_image_metric_confirmations.py.
+
+Also covers the pure-Python stale-decision hash logic in DatabaseAdapter
+(_compute_image_content_hash, _derive_is_stale_vs_decision).
 """
 
 from unittest.mock import MagicMock
 
 import pytest
 
+from src.infra.db import DatabaseAdapter
 from src.web.app import create_app
 
 IMG_ID = "11111111-2222-3333-4444-555555555555"
@@ -132,3 +136,93 @@ class TestReopenImageCandidateV2:
         )
 
         assert resp.status_code == 404
+
+
+class TestComputeImageContentHash:
+    """Unit tests for the locked hash recipe (sha256 + unit-separator)."""
+
+    def test_same_inputs_produce_same_hash(self):
+        h1 = DatabaseAdapter._compute_image_content_hash("some ocr text", '{"k": 1}')
+        h2 = DatabaseAdapter._compute_image_content_hash("some ocr text", '{"k": 1}')
+        assert h1 == h2
+
+    def test_different_ocr_text_produces_different_hash(self):
+        h1 = DatabaseAdapter._compute_image_content_hash("old ocr", None)
+        h2 = DatabaseAdapter._compute_image_content_hash("new ocr", None)
+        assert h1 != h2
+
+    def test_different_chart_data_produces_different_hash(self):
+        h1 = DatabaseAdapter._compute_image_content_hash(None, '{"v": 1}')
+        h2 = DatabaseAdapter._compute_image_content_hash(None, '{"v": 2}')
+        assert h1 != h2
+
+    def test_none_inputs_produce_stable_hash(self):
+        # Two calls with all-None inputs must agree (idempotent empty hash).
+        h1 = DatabaseAdapter._compute_image_content_hash(None, None)
+        h2 = DatabaseAdapter._compute_image_content_hash(None, None)
+        assert h1 == h2
+
+    def test_returns_64_char_hex_string(self):
+        h = DatabaseAdapter._compute_image_content_hash("abc", "def")
+        assert len(h) == 64
+        assert all(c in "0123456789abcdef" for c in h)
+
+
+class TestDeriveIsStalVsDecision:
+    """Unit tests for the stale-decision derivation (no DB required)."""
+
+    def _hash_for(self, ocr: str | None, chart: str | None) -> str:
+        return DatabaseAdapter._compute_image_content_hash(ocr, chart)
+
+    def test_null_decided_against_hash_returns_false(self):
+        """Grandfather clause: NULL hash → stale=False."""
+        row: dict = {
+            "decided_against_hash": None,
+            "current_ocr_text": "some text",
+            "current_chart_data_json": None,
+        }
+        assert DatabaseAdapter._derive_is_stale_vs_decision(row) is False
+
+    def test_missing_decided_against_hash_key_returns_false(self):
+        """Missing key is treated the same as NULL (grandfather clause)."""
+        row: dict = {
+            "current_ocr_text": "some text",
+            "current_chart_data_json": None,
+        }
+        assert DatabaseAdapter._derive_is_stale_vs_decision(row) is False
+
+    def test_matching_hash_returns_false(self):
+        """Hash stored at decision time matches current content → not stale."""
+        ocr = "Total payment volume $387.7 billion"
+        chart = None
+        stored_hash = self._hash_for(ocr, chart)
+        row: dict = {
+            "decided_against_hash": stored_hash,
+            "current_ocr_text": ocr,
+            "current_chart_data_json": chart,
+        }
+        assert DatabaseAdapter._derive_is_stale_vs_decision(row) is False
+
+    def test_changed_ocr_text_returns_true(self):
+        """OCR text changed since decision → stale=True."""
+        old_ocr = "old ocr text"
+        new_ocr = "new ocr text — content updated after re-extraction"
+        stored_hash = self._hash_for(old_ocr, None)
+        row: dict = {
+            "decided_against_hash": stored_hash,
+            "current_ocr_text": new_ocr,
+            "current_chart_data_json": None,
+        }
+        assert DatabaseAdapter._derive_is_stale_vs_decision(row) is True
+
+    def test_changed_chart_data_returns_true(self):
+        """Chart data changed since decision → stale=True."""
+        old_chart = '{"v": 1}'
+        new_chart = '{"v": 2, "extra": true}'
+        stored_hash = self._hash_for(None, old_chart)
+        row: dict = {
+            "decided_against_hash": stored_hash,
+            "current_ocr_text": None,
+            "current_chart_data_json": new_chart,
+        }
+        assert DatabaseAdapter._derive_is_stale_vs_decision(row) is True
