@@ -521,19 +521,27 @@ class DatabaseAdapter:
 
     def mark_superseded_filings(self) -> int:
         """
-        Mark non-latest S-1/S-1/A/F-1/F-1/A filings as out of scope.
+        Mark superseded filings as out of scope.
 
-        For each company, keeps only the most recently filed registration
-        statement as is_in_scope_phase1=TRUE. Earlier filings (original S-1
-        and interim amendments) are marked FALSE so they are not fetched,
-        extracted, or surfaced in the review UI.
+        Two scopes, run as separate UPDATEs in a single transaction:
+
+        1. S-1/S-1/A/F-1/F-1/A — registration-statement chain. Per company,
+           keep only the most recently filed; demote earlier originals and
+           interim amendments. (Existing semantics, unchanged.)
+        2. 10-K/10-K/A — annual-report restatement chain. Per
+           (company, fiscal year as ``period_end_date``), keep only the
+           most recently filed; demote earlier originals or amendments
+           for the same fiscal year. Different fiscal years remain in
+           scope so multi-year analytics are preserved. Rows with NULL
+           ``period_end_date`` are conservatively skipped — they cannot
+           be safely paired with an amendment.
 
         All filings are retained in the database for historical reference.
 
         Returns:
-            Number of filings marked out of scope.
+            Total number of filings marked out of scope.
         """
-        sql = """
+        s1f1_sql = """
             UPDATE filings
             SET is_in_scope_phase1 = FALSE
             WHERE form_type IN ('S-1', 'S-1/A', 'F-1', 'F-1/A')
@@ -545,10 +553,28 @@ class DatabaseAdapter:
                   ORDER BY company_id, filing_date DESC NULLS LAST
               )
         """
+        tenk_sql = """
+            UPDATE filings
+            SET is_in_scope_phase1 = FALSE
+            WHERE form_type IN ('10-K', '10-K/A')
+              AND is_in_scope_phase1 = TRUE
+              AND period_end_date IS NOT NULL
+              AND filing_id NOT IN (
+                  SELECT DISTINCT ON (company_id, period_end_date) filing_id
+                  FROM filings
+                  WHERE form_type IN ('10-K', '10-K/A')
+                    AND period_end_date IS NOT NULL
+                  ORDER BY company_id, period_end_date,
+                           filing_date DESC NULLS LAST
+              )
+        """
+        affected = 0
         with self.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql)
-                affected = cur.rowcount
+                cur.execute(s1f1_sql)
+                affected += cur.rowcount
+                cur.execute(tenk_sql)
+                affected += cur.rowcount
                 conn.commit()
         return affected
 

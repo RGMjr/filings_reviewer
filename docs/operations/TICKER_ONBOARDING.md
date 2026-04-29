@@ -250,9 +250,18 @@ Practical notes:
 - A year's worth of 10-Ks is ~5–10k filings (every public US company files
   one annually). `populate` has no `--limit`; plan for ~15 minutes at SEC's
   10 req/s rate limit for metadata + per-CIK SIC lookups.
-- 10-K/A amendments are distinct fiscal-year filings — the
-  `mark_superseded_filings()` logic only scopes to S-1/S-1/A/F-1/F-1/A, so
-  10-K rows are preserved independently.
+- 10-K/A amendments **supersede** the same-fiscal-year 10-K. After
+  `populate`, `UniverseBuilder` calls `mark_superseded_filings()`, which
+  demotes (`is_in_scope_phase1 = FALSE`) any 10-K whose
+  `(company_id, period_end_date)` pair has a later filing — so a FY2022
+  10-K/A filed in 2024 demotes the FY2022 10-K but leaves FY2023's 10-K
+  in scope. Cross-fiscal-year analytics is preserved; per-fiscal-year
+  the latest filed wins (legacy-040). Rows with NULL `period_end_date`
+  are conservatively skipped — the supersession step needs the fiscal
+  period to pair an amendment with its original. `period_end_date` is
+  populated for 10-K / 10-K/A from EDGAR submissions JSON
+  (`SECClient.get_filing_period_of_report`); S-1/F-1 retain their
+  existing per-company "latest filing wins" semantics.
 - The IPO-era SGML SPAC re-check (which fetches `txt_url` to look for
   "BLANK CHECKS [6770]" in the SGML header) is skipped for non-S-1/F-1
   forms — it's a per-filing HTTP call that adds no signal for 10-Ks.
