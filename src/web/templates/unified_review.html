@@ -867,7 +867,7 @@
               <button type="button" id="btn-reopen-image" class="btn btn-outline-secondary"
                       data-img-id="{{ current_image.img_id }}"
                       title="Return this image to the pending queue. Prior decisions are preserved.">
-                Re-open for review
+                Re-open for review <span class="kbd ms-1">Shift+U</span>
               </button>
             </div>
           </div>
@@ -879,7 +879,7 @@
               </button>
               <button type="button" id="btn-reject-all-metrics" class="btn btn-outline-danger"
                       title="Mark every unreviewed detected metric as 'not present' on this chart and move to the next image.">
-                Reject all (no relevant metrics)
+                Reject all (no relevant metrics) <span class="kbd ms-1">X</span>
               </button>
             </div>
             <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images', image_status=image_filters.status) }}"
@@ -951,7 +951,7 @@
                     </div>
                     <button type="button" class="btn btn-link btn-sm btn-undo-metric ms-2"
                             data-action="undo" style="display: none;">
-                      Undo
+                      Undo <span class="kbd ms-1">U</span>
                     </button>
                   </div>
                   <div class="reject-expansion mt-2" style="display: none;">
@@ -1094,19 +1094,38 @@
   {# Keyboard Hints Bar #}
   <div id="keyboard-hints" class="keyboard-hints-bar d-none">
     <div class="container-fluid">
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="d-flex justify-content-between align-items-start">
         <div class="hints-content">
-          <kbd>S</kbd> Skip
-          <span class="mx-1">|</span>
-          <kbd>U</kbd> Undo
-          <span class="mx-1">|</span>
-          <kbd>&larr;&rarr;</kbd> / <kbd>N</kbd>/<kbd>P</kbd> Navigate
-          <span class="mx-1">|</span>
-          <kbd>Shift+R</kbd> Reject all
-          <span class="mx-1">|</span>
-          <kbd>F</kbd> Next filing
-          <span class="mx-1">|</span>
-          <kbd>?</kbd> Help
+          <div>
+            <strong class="me-2">Image:</strong>
+            <kbd>S</kbd> Skip
+            <span class="mx-1">|</span>
+            <kbd>U</kbd> Undo skip
+            <span class="mx-1">|</span>
+            <kbd>X</kbd> Reject all
+            <span class="mx-1">|</span>
+            <kbd>Shift+U</kbd> Re-open
+            <span class="mx-1">|</span>
+            <kbd>&larr;&rarr;</kbd> / <kbd>N</kbd>/<kbd>P</kbd> Navigate
+            <span class="mx-1">|</span>
+            <kbd>F</kbd> Next filing
+            <span class="mx-1">|</span>
+            <kbd>?</kbd> Help
+          </div>
+          <div class="mt-1">
+            <strong class="me-2">On focused metric row:</strong>
+            <kbd>A</kbd> Accept
+            <span class="mx-1">|</span>
+            <kbd>R</kbd> Reject
+            <span class="mx-1">|</span>
+            <kbd>C</kbd> Correct
+            <span class="mx-1">|</span>
+            <kbd>S</kbd> Skip
+            <span class="mx-1">|</span>
+            <kbd>U</kbd> Undo decision
+            <span class="mx-1">|</span>
+            <kbd>N</kbd>/<kbd>P</kbd> Next/prev metric
+          </div>
         </div>
         <button type="button" class="btn-close btn-close-white btn-sm" id="close-hints" aria-label="Close"></button>
       </div>

@@ -61,7 +61,7 @@ The unified review UI persists filter/sort/tab state client-side via localStorag
 
 The unified review page (`unified_review.html`) binds shortcuts on both tabs. Cross-tab semantics (next/prev navigation, next-filing) should match — when adding a new button, give it a shortcut from day one and follow the rule below.
 
-**Rule**: image-tab buttons that affect a single detected metric get a single-letter shortcut; bulk/destructive buttons that touch every detected metric on the image at once get a chord (`Shift+key`).
+**Rule**: every keyboard-actionable image-tab button must carry an on-button `<span class="kbd">` badge so the binding is discoverable without opening the help overlay. Per-row single-metric actions use the unmodified single letter (`A`/`R`/`C`/`S`/`U`/`N`/`P`). Bulk image-level actions use either a single dedicated letter (`X` = reject-all, picked for discoverability) or a `Shift+key` chord (`Shift+U` = re-open). Single-letter image-level bindings must not collide with per-row letters; that's why `X` (and not `R`) is the bulk-reject key.
 
 **Text tab** (`unified_review.html:1355–1392`, only active when `active_tab == 'text'`):
 
@@ -84,16 +84,20 @@ The unified review page (`unified_review.html`) binds shortcuts on both tabs. Cr
 | `N` / `P`  | Next / previous image (alias)               |
 | `?` / `H`  | Toggle help overlay                         |
 | `F`        | Next filing                                 |
-| `Shift+R`  | Reject all (no relevant metrics) — chord, fires regardless of row focus |
+| `X`        | Reject all (no relevant metrics) — fires regardless of row focus, triggers `#btn-reject-all-metrics` click |
+| `Shift+R`  | Reject all (deprecated alias for `X`, kept for muscle memory) |
+| `Shift+U`  | Re-open a fully-reviewed image (only effective when `#btn-reopen-image` is rendered) |
 
 **Image tab — per-metric row** (when `state.focusedRow` is set):
 
-| Key       | Action                       |
-|-----------|------------------------------|
-| `A`       | Accept row                   |
-| `R`       | Open reject form             |
-| `C`       | Open correct form            |
-| `S`       | Skip row                     |
-| `N`       | Focus next unreviewed row    |
+| Key       | Action                                                   |
+|-----------|----------------------------------------------------------|
+| `A`       | Accept row                                               |
+| `R`       | Open reject form                                         |
+| `C`       | Open correct form                                        |
+| `S`       | Skip row                                                 |
+| `U`       | Undo this row's decision (no-op + warning toast if none) |
+| `N`       | Focus next unreviewed row                                |
+| `P`       | Focus previous unreviewed row                            |
 
-`Shift+R` is intercepted at image-level before the per-row handler runs, so a focused-row `Shift+R` does not also fire `openReject` on that row.
+`X` and `Shift+R` are intercepted at image-level before the per-row handler's `R` runs (per-row handler returns early on `event.shiftKey`, and has no `X` case). `Shift+U` is intercepted at image-level for re-open; per-row `U` is the unmodified key only. The per-row handler is registered with `useCapture=true` so it sees keys before image-level handlers; it `stopPropagation`s only for keys it handles, letting unhandled keys (including `X`, `Shift+U`, `F`) reach the image-level handler.
