@@ -12,6 +12,8 @@ touches:
 discovered: '2026-04-29'
 updated: '2026-04-29'
 gh_issue: 333
+pr_refs:
+  - 336
 ---
 
 ### Root cause
