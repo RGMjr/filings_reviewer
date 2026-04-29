@@ -128,6 +128,9 @@ class FilingMetadata:
         primary_doc_url: URL to primary HTML document
         txt_url: URL to complete text filing
         ticker: Stock ticker (if available)
+        period_of_report: Reporting period end date (ISO format) — populated
+            for 10-K / 10-K/A from EDGAR submissions API; None for S-1/F-1
+            (registration statements have no fiscal period).
     """
 
     cik: str
@@ -138,6 +141,7 @@ class FilingMetadata:
     primary_doc_url: str
     txt_url: str | None = None
     ticker: str | None = None
+    period_of_report: str | None = None
 
 
 class SECClient:
@@ -205,6 +209,11 @@ class SECClient:
         self.session.headers.update({"User-Agent": user_agent})
 
         self._last_request_time = 0.0
+
+        # Per-CIK cache of accession -> reportDate, populated lazily on first
+        # period_of_report lookup for a given CIK. Bounded by company count
+        # within a single universe-build run.
+        self._period_of_report_cache: dict[str, dict[str, str | None]] = {}
 
     def _rate_limit(self):
         """Enforce rate limiting between requests."""
@@ -635,10 +644,7 @@ class SECClient:
         if bare is None:
             return None
         accession_no_dashes = bare.replace("-", "")
-        index_url = (
-            f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
-            f"{accession_no_dashes}/index.json"
-        )
+        index_url = f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/index.json"
         try:
             data = self._make_request(index_url)
         except Exception:
@@ -658,10 +664,50 @@ class SECClient:
         chosen = html_match or pdf_match
         if chosen is None:
             return None
-        return (
-            f"{self.BASE_URL}/Archives/edgar/data/{cik}/"
-            f"{accession_no_dashes}/{chosen}"
-        )
+        return f"{self.BASE_URL}/Archives/edgar/data/{cik}/{accession_no_dashes}/{chosen}"
+
+    def get_filing_period_of_report(self, cik: str, accession_number: str) -> str | None:
+        """
+        Look up the reporting-period end date for a single filing.
+
+        Reads `recent.reportDate` from the EDGAR submissions JSON. For 10-K
+        and 10-K/A this is the fiscal-year-end the filing reports on; used
+        by `mark_superseded_filings` to pair an amendment with the original
+        it replaces. Registration statements (S-1/F-1) typically return
+        empty string from EDGAR — callers should treat empty as None.
+
+        Per-CIK results are cached on the SECClient instance so multiple
+        filings for the same company within one universe-build run share
+        a single submissions-JSON fetch.
+
+        Returns:
+            ISO date string (e.g. "2023-12-31"), or None if the accession
+            isn't in the recent-filings array, the field is empty, or the
+            submissions fetch fails.
+        """
+        cik_padded = cik.zfill(10)
+
+        cache = self._period_of_report_cache.get(cik_padded)
+        if cache is None:
+            try:
+                url = self.SUBMISSIONS_URL.format(cik=cik_padded)
+                data = self._make_request(url)
+                recent = data.get("filings", {}).get("recent", {})
+                accessions = recent.get("accessionNumber", [])
+                report_dates = recent.get("reportDate", [])
+                cache = {}
+                for i, acc in enumerate(accessions):
+                    rd = report_dates[i] if i < len(report_dates) else ""
+                    cache[acc] = rd or None
+            except requests.HTTPError as e:
+                logger.warning(f"period_of_report lookup failed for CIK {cik}: HTTP {e}")
+                cache = {}
+            except Exception as e:
+                logger.warning(f"period_of_report lookup failed for CIK {cik}: {e}")
+                cache = {}
+            self._period_of_report_cache[cik_padded] = cache
+
+        return cache.get(accession_number)
 
     def get_company_info(self, cik: str) -> dict | None:
         """

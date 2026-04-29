@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Exported as a module constant so callers (e.g. scripts/onboard_tickers.py)
 # share a single source of truth.
 DEFAULT_FORM_TYPES_S1F1 = ["S-1", "S-1/A", "F-1", "F-1/A"]
+FORM_TYPES_10K = ["10-K", "10-K/A"]
 
 
 class UniverseBuilder:
@@ -263,6 +264,16 @@ class UniverseBuilder:
             spac_method, fti_method, offering_method
         )
 
+        # 10a. Look up period_of_report for 10-K / 10-K/A so the post-load
+        # supersession step can pair an amendment with the original 10-K it
+        # replaces (same company + same fiscal year). S-1/F-1 are
+        # registration statements with no fiscal period; skip the lookup.
+        period_of_report: str | None = None
+        if filing.form_type in FORM_TYPES_10K:
+            period_of_report = self.sec_client.get_filing_period_of_report(
+                filing.cik, filing.accession_number
+            )
+
         # 11. Upsert filing
         self.db.upsert_filing(
             company_id=company_id,
@@ -270,6 +281,7 @@ class UniverseBuilder:
             accession_number=filing.accession_number,
             form_type=filing.form_type,
             filing_date=filing.filing_date,
+            period_end_date=period_of_report,
             sec_html_url=filing.primary_doc_url,
             sec_txt_url=filing.txt_url,
             is_in_scope_phase1=in_scope,

@@ -3,14 +3,14 @@ autonomy: skip
 discovered: '2026-04-19'
 estimated: —
 id: 40
-note: Stakeholder decision (supersession semantics)
+note: Stakeholder confirmed restatement-supersedes-original; 10-K/A demotes same-fiscal-year 10-K via period_end_date partition
 severity: low
 slug: 10-k-a-supersession-semantics-undefined
 source: legacy
-status: open
+status: resolved
 title: 10-K/A Supersession Semantics Undefined
 touches: []
-updated: '2026-04-19'
+updated: '2026-04-28'
 ---
 
 ### Problem
