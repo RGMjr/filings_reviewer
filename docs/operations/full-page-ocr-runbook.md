@@ -168,6 +168,71 @@ GROUP BY f.accession_number, f.filing_date, c.company_name
 ORDER BY f.filing_date DESC;
 ```
 
+### Expected Results (PayPal pre-2024 8-K reference)
+
+Use these thresholds to sanity-check the backfill. The values below are
+reference targets; where marked **[PLACEHOLDER]**, substitute real numbers
+from your dev smoke output before signing off on prod.
+
+#### Filing coverage
+
+| Metric | Expected value |
+|--------|---------------|
+| Filings matched (CIK `0001633917`, `8-K`, `filing_date < 2024-01-01`) | **12** |
+| Filings with `ocr_segments > 0` after backfill | **12** (all should produce segments) |
+| Filings with at least 1 fact | **[PLACEHOLDER — fill from dev smoke]** (expect 0–12; some filings may produce 0 facts if no Tier-1 keywords match the OCR text) |
+
+#### Segment counts per filing
+
+- Typical range: **100–150 `image_ocr` segments per filing** (one segment per OCR'd page, up to the `MAX_FULL_PAGE_OCR_CALLS_PER_DOCUMENT = 30` cap).
+- Minimum acceptable: **50 segments per filing**. Fewer than 50 suggests the full-page-OCR detector did not fire or the filing was skipped.
+- **[PLACEHOLDER]** — fill in the p25/p50/p75 from `scripts/backfill_full_page_ocr.py` JSON run summary after the dev smoke.
+
+#### Sanity-check SQL (run after backfill)
+
+```sql
+-- Assert minimum segment threshold: every PayPal pre-2024 8-K has >= 50 OCR segments.
+-- Any row returned here is a failure.
+SELECT f.accession_number, f.filing_date,
+       COUNT(s.segment_id) AS ocr_segments
+FROM filings f
+LEFT JOIN v2_segments s
+       ON s.filing_id = f.filing_id AND s.source_type = 'image_ocr'
+WHERE f.cik = '0001633917'
+  AND f.form_type = '8-K'
+  AND f.filing_date < '2024-01-01'
+GROUP BY f.accession_number, f.filing_date
+HAVING COUNT(s.segment_id) < 50
+ORDER BY f.filing_date DESC;
+
+-- Assert at least 8 of 12 filings produced >= 1 fact.
+-- Returns the count; expect >= 8.
+SELECT COUNT(*) AS filings_with_facts
+FROM (
+    SELECT f.filing_id
+    FROM filings f
+    JOIN v2_metric_facts mf ON mf.filing_id = f.filing_id
+    WHERE f.cik = '0001633917'
+      AND f.form_type = '8-K'
+      AND f.filing_date < '2024-01-01'
+    GROUP BY f.filing_id
+    HAVING COUNT(*) >= 1
+) sub;
+```
+
+#### Failure modes
+
+| Symptom | Likely cause | Action |
+|---------|-------------|--------|
+| `ocr_segments = 0` for a filing | Full-page-OCR detector did not fire — filing may not meet the 70% page-shaped threshold, or `FULL_PAGE_OCR_ENABLED` was not set | Check `v2_image_assets.classification` distribution; re-run with `--dry-run` and inspect detector output |
+| Segments present but 0 facts across all filings | No Tier-1 keywords matched the OCR text | Expected for some PayPal 8-Ks; surface gaps in next-pass keyword tuning via `config/metric_keywords.yaml` |
+| Segments present but 0 facts on a subset | Keyword gaps on specific filings | Inspect segment text for candidate phrases; file keyword-tuning task |
+| `filing_id` FK error in sanity SQL | Column name mismatch — older DB schema may use `doc_id` | Replace `filing_id` with `doc_id` in the queries above if on a pre-rename schema |
+
+#### Rollback pointer
+
+If the backfill produces unexpected results, see the [Rollback](#rollback) section below.
+
 ## Rollback
 
 The safest rollback is flip the flag off and let ingestion re-run skip
