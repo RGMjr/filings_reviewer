@@ -901,7 +901,6 @@
         });
 
         let decisions;
-        let confirmMessage;
         if (targets.length === 0 && state.detectedMetrics.length === 0) {
             decisions = [{
                 detected_metric_id: null,
@@ -909,7 +908,6 @@
                 decision: 'reject',
                 rejection_reason: 'no_relevant_metrics',
             }];
-            confirmMessage = 'Mark this image as having no relevant metrics, and skip it?';
         } else if (targets.length === 0) {
             showMetricsToast('Already fully decided — every detected metric is accepted or corrected', 'warning');
             return;
@@ -919,13 +917,7 @@
                 decision: 'reject',
                 rejection_reason: 'not_present',
             }));
-            confirmMessage =
-                `Reject all ${targets.length} unreviewed metric${targets.length === 1 ? '' : 's'} on this image as 'not present', ` +
-                `and skip the image? Existing Accept/Correct decisions will be kept.`;
         }
-
-        const ok = window.confirm(confirmMessage);
-        if (!ok) return;
 
         const reviewerName = (typeof window.requireReviewerName === 'function')
             ? window.requireReviewerName()
