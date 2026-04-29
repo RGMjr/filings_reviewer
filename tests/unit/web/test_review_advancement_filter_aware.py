@@ -4,9 +4,10 @@ Covers:
 - _get_next_pending_fact walks the same filtered+sorted list the reviewer is
   looking at, including the anchor_index fallback when the just-decided fact
   drops out of the filter.
-- _get_next_image_candidate_info walks the pending-first partition + relevance
-  ordering of the candidate list, scoped to the active image_status filter,
-  and returns None at the end (no wrap-around).
+- _get_next_image_candidate_info advances to the next image with
+  image_review_state=='pending' (derived per-metric rollup state), ignoring
+  images whose raw review_status is 'pending' but whose per-metric decisions
+  are already complete. Returns None at the end so the cross-tab cascade fires.
 - infer_tab_from_filing maps document_type/form_type back to the analytical
   tab so cross-filing advance can scope to the same view.
 """
@@ -26,8 +27,15 @@ def _fact(fact_id: str, status: str = "pending_review") -> dict:
     return {"fact_id": fact_id, "review_status": status}
 
 
-def _image(img_id: str, status: str = "pending") -> dict:
-    return {"img_id": img_id, "review_status": status}
+def _image(
+    img_id: str,
+    status: str = "pending",
+    image_review_state: str | None = None,
+) -> dict:
+    # Default derived state: raw-pending → pending; anything else → no_relevant.
+    if image_review_state is None:
+        image_review_state = "pending" if status == "pending" else "no_relevant"
+    return {"img_id": img_id, "review_status": status, "image_review_state": image_review_state}
 
 
 # ---------------------------------------------------------------------------
@@ -139,17 +147,19 @@ def test_get_next_pending_fact_invalid_filter_falls_back_to_defaults():
 # ---------------------------------------------------------------------------
 
 
-def test_get_next_image_candidate_walks_pending_first_partition():
-    """Pending images come before everything else, then relevance order is
-    preserved within each partition (matches the rendered thumbnail strip)."""
+def test_get_next_image_candidate_skips_non_pending_derived_state():
+    """Advancement scans for image_review_state=='pending', skipping images
+    whose derived state is not pending even if they appear earlier in the list."""
     db = MagicMock()
     db.get_image_review_candidates_for_filing_v2.return_value = [
-        _image("a", "pending"),
-        _image("b", "reviewed"),
-        _image("c", "pending"),
+        _image("a", "pending"),  # image_review_state="pending"
+        _image(
+            "b", "reviewed"
+        ),  # image_review_state="no_relevant" (default for non-pending status)
+        _image("c", "pending"),  # image_review_state="pending"
     ]
     out = _get_next_image_candidate_info(db, filing_id=1, current_img_id="a")
-    # After partitioning: [a (pending), c (pending), b (reviewed)]; next of a is c.
+    # b is skipped because image_review_state != 'pending'; c is the next pending.
     assert out["img_id"] == "c"
 
 
@@ -186,3 +196,53 @@ def test_get_next_image_candidate_returns_none_at_end_no_wraparound():
     ]
     out = _get_next_image_candidate_info(db, filing_id=1, current_img_id="a")
     assert out is None
+
+
+def test_get_next_image_candidate_returns_none_when_remaining_are_derived_decided():
+    """The core bug: image b is raw review_status='pending' but was fully decided
+    via per-metric confirmations, so its image_review_state='relevant'. The old
+    partition code would have returned b as the next candidate because both a and b
+    sat in the raw-pending partition. The new code scans for image_review_state
+    and correctly returns None, firing the cascade to text / next filing."""
+    db = MagicMock()
+    db.get_image_review_candidates_for_filing_v2.return_value = [
+        _image("a", "pending"),  # image_review_state="pending"
+        _image("b", "pending", image_review_state="relevant"),  # all metrics accepted
+    ]
+    out = _get_next_image_candidate_info(db, filing_id=1, current_img_id="a")
+    assert out is None
+
+
+def test_get_next_image_candidate_all_filter_does_not_advance_into_reviewed():
+    """With image_status='all' (db_status=None), advancement must not fall
+    through into already-reviewed images. 'all' is not a valid db_status, so
+    db_status is None and the pending-only scan applies."""
+    db = MagicMock()
+    db.get_image_review_candidates_for_filing_v2.return_value = [
+        _image("a", "pending"),  # image_review_state="pending"
+        _image("b", "reviewed"),  # image_review_state="no_relevant"
+    ]
+    out = _get_next_image_candidate_info(
+        db, filing_id=1, current_img_id="a", view_filters={"status": "all"}
+    )
+    # db_status is None ("all" not a valid image status) — scan for pending only.
+    db.get_image_review_candidates_for_filing_v2.assert_called_once_with(
+        filing_id=1, status=None, sort_by="relevance", limit=1000
+    )
+    assert out is None
+
+
+def test_get_next_image_candidate_audit_filter_walks_linearly():
+    """Explicit audit filters (reviewed/skipped/auto_rejected) walk linearly
+    within the filtered set — no pending-only scan applies."""
+    db = MagicMock()
+    db.get_image_review_candidates_for_filing_v2.return_value = [
+        _image("a", "reviewed", image_review_state="no_relevant"),
+        _image("b", "reviewed", image_review_state="relevant"),
+    ]
+    out = _get_next_image_candidate_info(
+        db, filing_id=1, current_img_id="a", view_filters={"status": "reviewed"}
+    )
+    assert out is not None
+    assert out["img_id"] == "b"
+    assert "image_status=reviewed" in out["url"]

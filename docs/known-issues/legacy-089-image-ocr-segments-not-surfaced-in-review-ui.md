@@ -22,6 +22,10 @@ note: |
   per-(image, metric) decision trail is a known design constraint
   (project_image_review_decisions_for_ml_training) and the right shape
   needs its own design pass.
+  2026-04-28 — Step B design pass shipped:
+  docs/architecture/image-decision-revalidation-design.md (recommends
+  Option C — stale-OCR badge layered over the existing manual re-open
+  endpoint; awaiting sign-off before implementation).
 ---
 
 ### Problem

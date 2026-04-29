@@ -147,7 +147,9 @@
             if (data.status === 'success') {
                 showToast('Image skipped', 'info');
                 sessionStorage.setItem('lastSkippedImgId', data.skipped_img_id);
-
+                if (typeof data.text_pending_count === 'number') {
+                    window.TEXT_PENDING = data.text_pending_count;
+                }
                 if (data.next_candidate) {
                     window.location.href = data.next_candidate.url;
                 } else {
@@ -776,6 +778,12 @@
                     .forEach(n => n.remove());
                 applyInitialDecisionState();
 
+                // Refresh state.textPending from the server's fresh count so
+                // the cross-tab cascade uses current data, not the page-load value.
+                if (typeof data.text_pending_count === 'number') {
+                    state.textPending = data.text_pending_count;
+                }
+
                 // Advance: prefer the server-computed next_candidate (already
                 // scoped to view_filters). When null, the user is at the end
                 // of the filtered list — fall through to the cross-tab /
@@ -888,9 +896,14 @@
                 { method: 'POST' }
             );
             const skipData = await skipResp.json();
-            if (skipData.status === 'success' && skipData.next_candidate) {
-                window.location.href = skipData.next_candidate.url;
-                return;
+            if (skipData.status === 'success') {
+                if (typeof skipData.text_pending_count === 'number') {
+                    state.textPending = skipData.text_pending_count;
+                }
+                if (skipData.next_candidate) {
+                    window.location.href = skipData.next_candidate.url;
+                    return;
+                }
             }
             // Filtered queue empty — fall through to cross-tab / cross-doc cascade.
             if (state.textPending > 0 && window.FILING_ID) {

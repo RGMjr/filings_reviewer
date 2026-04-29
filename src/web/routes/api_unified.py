@@ -302,12 +302,18 @@ def skip_image_candidate(img_id):
         next_cand = _get_next_image_candidate_info(
             db, filing_id, img_id_str, view_filters=view_filters
         )
+        pending_counts: dict[str, int] = {}
+        try:
+            pending_counts = _get_filing_pending_counts(db, filing_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("pending_counts lookup failed for filing_id=%s: %s", filing_id, exc)
 
         return jsonify(
             {
                 "status": "success",
                 "skipped_img_id": img_id_str,
                 "next_candidate": next_cand,
+                **pending_counts,
             }
         ), 200
 
@@ -749,15 +755,18 @@ def create_image_metric_confirmations():
             data.get("view_filters") if isinstance(data.get("view_filters"), dict) else None
         )
         next_cand: dict[str, Any] | None = None
+        pending_counts: dict[str, int] = {}
         try:
             candidate_row = db.get_image_review_candidate_v2(img_id)
             if candidate_row:
+                filing_id_for_nav = candidate_row["filing_id"]
                 next_cand = _get_next_image_candidate_info(
                     db,
-                    candidate_row["filing_id"],
+                    filing_id_for_nav,
                     img_id,
                     view_filters=view_filters,
                 )
+                pending_counts = _get_filing_pending_counts(db, filing_id_for_nav)
         except Exception as exc:  # noqa: BLE001
             # Advancement is a best-effort UX hint; never block decision write.
             logger.warning("next_candidate lookup failed for img_id=%s: %s", img_id, exc)
@@ -768,6 +777,7 @@ def create_image_metric_confirmations():
                 "upserted": upserted,
                 "confirmations": serialised,
                 "next_candidate": next_cand,
+                **pending_counts,
             }
         ), 200
 
@@ -958,6 +968,9 @@ def _get_next_pending_fact(
 _VALID_IMAGE_STATUSES = ("pending", "reviewed", "skipped", "auto_rejected")
 
 
+_AUDIT_IMAGE_STATUSES = frozenset(("reviewed", "skipped", "auto_rejected"))
+
+
 def _get_next_image_candidate_info(
     db,
     filing_id: int,
@@ -966,14 +979,19 @@ def _get_next_image_candidate_info(
 ) -> dict[str, Any] | None:
     """Return the next image candidate to advance to, scoped to the reviewer's view.
 
-    `view_filters['status']` mirrors `?image_status=` on the review page; when
-    present, advancement walks the same filtered list the user sees in the
-    thumbnail strip (pending-first partition + relevance ordering, matching
-    the partition applied at review_unified.py around the
-    `image_candidates = sorted(...)` block).
+    `view_filters['status']` mirrors `?image_status=` on the review page.
 
-    Returns None when the user is at the end of the current view; the
-    cross-tab / cross-document cascade then fires client-side.
+    For the default review intent ('pending', None, or 'all'), advancement
+    scans forward in relevance order and returns the first candidate whose
+    derived `image_review_state` is 'pending'. This correctly skips images that
+    have been fully decided via per-metric confirmations even though their raw
+    `v2_image_assets.review_status` column remains 'pending' by design.
+
+    For explicit audit filters ('reviewed', 'skipped', 'auto_rejected'),
+    advancement walks linearly within the filtered set.
+
+    Returns None when no suitable next candidate exists; the cross-tab /
+    cross-document cascade then fires client-side.
     """
     view_filters = view_filters or {}
     raw_status = view_filters.get("status")
@@ -988,22 +1006,35 @@ def _get_next_image_candidate_info(
     if not candidates:
         return None
 
-    # Same partition as the rendered thumbnail strip.
-    candidates = sorted(
-        candidates,
-        key=lambda c: 0 if c["review_status"] == "pending" else 1,
-    )
-
     current_idx = None
     for i, c in enumerate(candidates):
         if str(c["img_id"]) == current_img_id:
             current_idx = i
             break
 
-    if current_idx is None or current_idx + 1 >= len(candidates):
+    if current_idx is None:
         return None
 
-    next_candidate = candidates[current_idx + 1]
+    if db_status in _AUDIT_IMAGE_STATUSES:
+        # Audit mode: walk linearly within the explicitly filtered set.
+        next_idx = current_idx + 1
+        if next_idx >= len(candidates):
+            return None
+        next_candidate = candidates[next_idx]
+    else:
+        # Default review mode: advance to the next image that still needs a
+        # decision. `image_review_state` is the derived per-metric rollup field
+        # (see DatabaseAdapter._derive_image_review_state); `review_status` is
+        # the raw column which stays 'pending' through per-metric decisions by
+        # design, so we must not use it here.
+        next_candidate = None
+        for c in candidates[current_idx + 1 :]:
+            if c.get("image_review_state") == "pending":
+                next_candidate = c
+                break
+        if next_candidate is None:
+            return None
+
     next_id = str(next_candidate["img_id"])
     if next_id == current_img_id:
         return None
@@ -1017,3 +1048,19 @@ def _get_next_image_candidate_info(
         "img_id": next_id,
         "url": f"/v2/review/{filing_id}?{qs}",
     }
+
+
+def _get_filing_pending_counts(db, filing_id: int) -> dict[str, int]:
+    """Return current pending counts for a filing (post-decision cascade hints).
+
+    Called after a decision write so the client has fresh numbers without
+    needing an extra round-trip to decide which tab to navigate to next.
+    """
+    text_facts = db.get_v2_facts_for_filing(filing_id, status="pending_review")
+    text_pending = len(text_facts) if text_facts else 0
+
+    all_images = db.get_image_review_candidates_for_filing_v2(
+        filing_id=filing_id, status=None, sort_by="relevance", limit=1000
+    )
+    image_pending = sum(1 for img in all_images if img.get("image_review_state") == "pending")
+    return {"text_pending_count": text_pending, "image_pending_count": image_pending}
