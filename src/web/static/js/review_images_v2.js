@@ -67,12 +67,29 @@
         if (event.metaKey || event.ctrlKey || event.altKey) return;
         if (state.submitting) return;
 
-        // Shift+R — reject all (no relevant metrics). Fires regardless of
-        // whether a per-metric row is focused, so this check must come before
-        // the focusedRow early-return below.
-        if (event.shiftKey && (event.key === 'R' || event.key === 'r')) {
+        // X (or Shift+R deprecated alias) — reject all (no relevant metrics).
+        // Fires regardless of whether a per-metric row is focused, so this
+        // check must come before the focusedRow early-return below. We trigger
+        // the button click rather than calling rejectAllUnreviewed() directly
+        // because that function lives in the per-metric IIFE (module 2) and
+        // isn't visible from this closure. Plain X is the primary,
+        // on-button-labelled binding.
+        const isRejectAllChord =
+            (event.shiftKey && (event.key === 'R' || event.key === 'r')) ||
+            (!event.shiftKey && (event.key === 'x' || event.key === 'X'));
+        if (isRejectAllChord) {
             event.preventDefault();
-            rejectAllUnreviewed();
+            const btn = document.getElementById('btn-reject-all-metrics');
+            if (btn) btn.click();
+            return;
+        }
+
+        // Shift+U — re-open a fully-reviewed image. The button is only
+        // rendered when review_status == 'reviewed' (template branch); when
+        // it's absent, this is a no-op.
+        if (event.shiftKey && (event.key === 'U' || event.key === 'u')) {
+            event.preventDefault();
+            reopenImage();
             return;
         }
 
@@ -531,6 +548,35 @@
             event.preventDefault();
             event.stopPropagation();
             focusNextUnreviewed(row);
+        } else if (key === 'p') {
+            // Shift+P is unbound; let it propagate.
+            if (event.shiftKey) return;
+            event.preventDefault();
+            event.stopPropagation();
+            focusPrevUnreviewed(row);
+        } else if (key === 'u') {
+            // Shift+U is image-level "re-open" — let it propagate to the
+            // image-level handler.
+            if (event.shiftKey) return;
+            // Per-row undo only makes sense if the row already has a decision
+            // (in-progress in state.decisions, or persisted via confirmationIds).
+            const detected = row.dataset.metricId;
+            const addedKey = row.dataset.addedMetric ? addKey(row.dataset.addedMetric) : null;
+            const lookupKey = addedKey || detected;
+            const hasDecision = lookupKey && (state.decisions[lookupKey] || state.confirmationIds[lookupKey]);
+            if (!hasDecision) {
+                showMetricsToast('No decision to undo on this row', 'warning');
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            if (addedKey) {
+                undoRowByKey(addedKey).then(() => row.remove());
+            } else {
+                undoRow(row);
+            }
         }
     }
 
@@ -674,6 +720,23 @@
         input.value = '';
         const panel = document.getElementById('add-missed-detected-expansion');
         if (panel) panel.style.display = 'none';
+    }
+
+    function focusPrevUnreviewed(current) {
+        const rows = Array.from(document.querySelectorAll(`#${CARD_ID} ${ROW_SELECTOR}:not(.added-metric-row)`));
+        if (!rows.length) return;
+        const idx = rows.indexOf(current);
+        // Walk backwards from current, wrapping around to the end.
+        const before = idx >= 0 ? rows.slice(0, idx).reverse() : [];
+        const after = idx >= 0 ? rows.slice(idx + 1).reverse() : rows.slice().reverse();
+        const order = before.concat(after);
+        for (const row of order) {
+            const mid = row.dataset.metricId;
+            if (!state.decisions[mid]) {
+                row.focus();
+                return;
+            }
+        }
     }
 
     function focusNextUnreviewed(current) {
