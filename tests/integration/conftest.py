@@ -15,6 +15,7 @@ import pytest
 from dotenv import load_dotenv
 
 from src.infra.db import DatabaseAdapter
+from src.infra.filing_storage import LocalFilesystemFilingStorage, get_filing_storage
 from src.infra.sec_client import FilingMetadata, MockSECClient
 
 # Make scripts/ importable for migration runner
@@ -669,3 +670,30 @@ def unified_report():
 
     runner = UnifiedComparisonRunner(skip_image_comparison=True)
     return runner.run()
+
+
+# =============================================================================
+# Filing Storage Fixtures
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _patch_filing_fetcher_storage(tmp_path, monkeypatch):
+    """Patch get_filing_storage in the fetcher module to a local tmp dir.
+
+    load_dotenv() above may set R2_BUCKET, which causes get_filing_storage()
+    to return R2FilingStorage — which refuses writes without
+    FILINGS_REVIEWER_ALLOW_PROD_WRITES=1. This fixture ensures all integration
+    tests that call fetch_filing() use a local backend instead.
+
+    The tests/integration/filing_fetcher/conftest.py fixture overrides this
+    for the filing_fetcher subdirectory (same target, inner fixture wins).
+    """
+    get_filing_storage.cache_clear()
+    storage = LocalFilesystemFilingStorage(root=tmp_path / "filing_cache")
+    monkeypatch.setattr(
+        "src.filing_fetcher.filing_fetcher.get_filing_storage",
+        lambda: storage,
+    )
+    yield
+    get_filing_storage.cache_clear()

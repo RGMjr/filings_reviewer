@@ -43,6 +43,9 @@ data/test_chart*.png
 # Persistent image cache (populated by extraction pipeline; honors IMAGE_CACHE_DIR env override)
 data/image_cache/
 
+# Persistent filing HTML cache (populated by FilingFetcher; honors FILING_CACHE_DIR env override)
+data/filing_cache/
+
 # Runtime audit JSONL output (e.g. data/audit/issue_30_applied_*.jsonl)
 data/audit/
 

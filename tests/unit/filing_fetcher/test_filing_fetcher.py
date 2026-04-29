@@ -203,7 +203,9 @@ class TestFetchFiling:
         )
 
         # Mock SEC client to resolve URL
-        fetcher.sec_client.resolve_primary_document_url.return_value = "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+        fetcher.sec_client.resolve_primary_document_url.return_value = (
+            "https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm"
+        )
 
         # Mock HTTP response
         mock_response = Mock()
@@ -322,6 +324,56 @@ class TestFetchFiling:
         assert content is not None
         assert content.txt_path is not None
         assert Path(content.txt_path).exists()
+
+    def test_fetch_filing_r2_upload_on_cache_hit(self, fetcher, filing_storage, valid_filing_html):
+        """Cache-hit: existing local file is uploaded to R2; SEC is not called."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
+        )
+        storage_dir = fetcher._get_storage_dir("0001234567", "0001234567-12-123456")
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        (storage_dir / "primary.htm").write_text(valid_filing_html, encoding="utf-8")
+
+        mock_get = Mock()
+        with patch.object(fetcher.session, "get", mock_get):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        mock_get.assert_not_called()
+        assert content is not None
+        expected_key = "filings/0001234567/0001234567-12-123456/primary.htm"
+        assert content.html_storage_key == expected_key
+        assert filing_storage.exists(expected_key)
+        assert filing_storage.get_bytes(expected_key) == valid_filing_html.encode("utf-8")
+
+    def test_fetch_filing_r2_failure_fail_closed(self, fetcher, filing_storage, valid_filing_html):
+        """R2 put_bytes failure causes fetch_filing to return None (fail-closed)."""
+        metadata = FilingMetadata(
+            cik="0001234567",
+            company_name="Test Corp",
+            form_type="S-1",
+            filing_date="2024-01-15",
+            accession_number="0001234567-12-123456",
+            primary_doc_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456712123456/d123456ds1.htm",
+        )
+
+        mock_response = Mock()
+        mock_response.text = valid_filing_html
+        mock_response.raise_for_status = Mock()
+
+        def exploding_put_bytes(key: str, data: bytes, content_type: str = "text/html") -> None:
+            raise RuntimeError("Simulated R2 outage")
+
+        filing_storage.put_bytes = exploding_put_bytes
+
+        with patch.object(fetcher.session, "get", return_value=mock_response):
+            content = fetcher.fetch_filing(metadata, fetch_txt=False)
+
+        assert content is None
 
 
 class TestFetchBatch:
