@@ -108,7 +108,7 @@ def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
-                cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
                 cur.execute(
                     """
@@ -1073,7 +1073,7 @@ class TestConcurrentExtraction:
             with db_adapter.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
+                        "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE filing_id = %s",
                         (fid,),
                     )
                     assert cur.fetchone()["cnt"] == 1
@@ -1088,6 +1088,6 @@ class TestConcurrentExtraction:
         for fid in filing_ids:
             with db_adapter.get_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (fid,))
+                    cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (fid,))
                     cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (fid,))
                     cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (fid,))

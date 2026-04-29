@@ -777,7 +777,7 @@ class DatabaseAdapter:
             FROM v2_documents d
             JOIN filings f ON d.filing_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
-            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            LEFT JOIN v2_metric_facts mf ON mf.filing_id = d.filing_id
             {where_clause}
             GROUP BY f.filing_id, c.company_name, c.cik, c.ticker, f.accession_number,
                      f.form_type, f.filing_date, d.doc_id, d.document_type, d.status,
@@ -860,14 +860,14 @@ class DatabaseAdapter:
         sql = f"""
             WITH text_progress AS (
                 SELECT
-                    mf.doc_id                                                              AS filing_id,
+                    mf.filing_id,
                     COUNT(mf.fact_id)                                                      AS fact_count,
                     COUNT(CASE WHEN mf.review_status = 'pending_review'             THEN 1 END) AS facts_pending,
                     COUNT(CASE WHEN mf.review_status IN ('accepted', 'auto_accepted') THEN 1 END) AS facts_accepted,
                     COUNT(CASE WHEN mf.review_status = 'auto_accepted'              THEN 1 END) AS facts_auto_accepted,
                     COUNT(CASE WHEN mf.review_status IN ('rejected', 'corrected')   THEN 1 END) AS facts_rejected
                 FROM v2_metric_facts mf
-                GROUP BY mf.doc_id
+                GROUP BY mf.filing_id
             ),
             image_progress AS (
                 SELECT
@@ -886,7 +886,7 @@ class DatabaseAdapter:
                     ARRAY(SELECT DISTINCT r FROM UNNEST(array_agg(reviewer_id)) r
                           WHERE r IS NOT NULL ORDER BY r) AS reviewers
                 FROM (
-                    SELECT mf.doc_id AS filing_id, rd.reviewer_id
+                    SELECT mf.filing_id, rd.reviewer_id
                     FROM v2_review_decisions rd
                     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
                     WHERE rd.reviewer_id IS NOT NULL
@@ -968,10 +968,10 @@ class DatabaseAdapter:
         sql = f"""
             WITH text_progress AS (
                 SELECT
-                    mf.doc_id AS filing_id,
+                    mf.filing_id,
                     COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS facts_pending
                 FROM v2_metric_facts mf
-                GROUP BY mf.doc_id
+                GROUP BY mf.filing_id
             ),
             image_progress AS (
                 SELECT
@@ -988,7 +988,7 @@ class DatabaseAdapter:
                     ARRAY(SELECT DISTINCT r FROM UNNEST(array_agg(reviewer_id)) r
                           WHERE r IS NOT NULL) AS reviewers
                 FROM (
-                    SELECT mf.doc_id AS filing_id, rd.reviewer_id
+                    SELECT mf.filing_id, rd.reviewer_id
                     FROM v2_review_decisions rd
                     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
                     WHERE rd.reviewer_id IS NOT NULL
@@ -1070,13 +1070,13 @@ class DatabaseAdapter:
         sql = f"""
             WITH text_progress AS (
                 SELECT
-                    mf.doc_id AS filing_id,
+                    mf.filing_id,
                     COUNT(mf.fact_id) AS fact_count,
                     COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS facts_pending,
                     COUNT(CASE WHEN mf.review_status IN ('accepted', 'auto_accepted') THEN 1 END) AS facts_accepted,
                     COUNT(CASE WHEN mf.review_status IN ('rejected', 'corrected') THEN 1 END) AS facts_rejected
                 FROM v2_metric_facts mf
-                GROUP BY mf.doc_id
+                GROUP BY mf.filing_id
             ),
             image_progress AS (
                 SELECT
@@ -1095,7 +1095,7 @@ class DatabaseAdapter:
                     ARRAY(SELECT DISTINCT r FROM UNNEST(array_agg(reviewer_id)) r
                           WHERE r IS NOT NULL) AS reviewers
                 FROM (
-                    SELECT mf.doc_id AS filing_id, rd.reviewer_id
+                    SELECT mf.filing_id, rd.reviewer_id
                     FROM v2_review_decisions rd
                     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
                     WHERE rd.reviewer_id IS NOT NULL
@@ -1169,7 +1169,7 @@ class DatabaseAdapter:
             SELECT
                 COUNT(CASE WHEN mf.review_status = 'pending_review' THEN 1 END) AS facts_pending
             FROM v2_metric_facts mf
-            WHERE mf.doc_id = %(filing_id)s
+            WHERE mf.filing_id = %(filing_id)s
         """
         text_row = self.query(sql, {"filing_id": filing_id})
         facts_pending = int(text_row[0]["facts_pending"]) if text_row else 0
@@ -1210,7 +1210,7 @@ class DatabaseAdapter:
         Returns:
             List of fact dicts with LEFT JOINed review decision data.
         """
-        conditions = ["mf.doc_id = %(filing_id)s"]
+        conditions = ["mf.filing_id = %(filing_id)s"]
         params: dict[str, Any] = {"filing_id": filing_id}
 
         if status:
@@ -1235,7 +1235,7 @@ class DatabaseAdapter:
         sql = f"""
             SELECT
                 mf.fact_id,
-                mf.doc_id,
+                mf.filing_id,
                 mf.canonical_metric_id,
                 mf.value,
                 mf.value_raw,
@@ -1287,7 +1287,7 @@ class DatabaseAdapter:
         metric_id: str | None = None,
     ) -> int:
         """Return count of V2 metric facts for a filing, with optional filters."""
-        conditions = ["mf.doc_id = %(filing_id)s"]
+        conditions = ["mf.filing_id = %(filing_id)s"]
         params: dict[str, Any] = {"filing_id": filing_id}
         if status:
             conditions.append("mf.review_status = %(status)s")
@@ -1495,7 +1495,7 @@ class DatabaseAdapter:
         # Get fact_id before deleting
         decision = self.query(
             """
-            SELECT rd.decision_id, rd.fact_id, mf.doc_id AS filing_id
+            SELECT rd.decision_id, rd.fact_id, mf.filing_id
             FROM v2_review_decisions rd
             JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
             WHERE rd.decision_id = %(decision_id)s
@@ -1551,7 +1551,7 @@ class DatabaseAdapter:
         extraction_method='manual' so it bypasses the normal review queue.
 
         Args:
-            filing_id: Filing ID (maps to v2_metric_facts.doc_id).
+            filing_id: Filing ID (maps to v2_metric_facts.filing_id).
             canonical_metric_id: Metric identifier from the metrics table.
             value_raw: Original text representation, e.g. "112%".
             value: Parsed numeric value, or None if not parseable.
@@ -1576,7 +1576,7 @@ class DatabaseAdapter:
         fact_sql = """
             INSERT INTO v2_metric_facts (
                 fact_id,
-                doc_id,
+                filing_id,
                 canonical_metric_id,
                 value,
                 value_raw,
@@ -1683,7 +1683,7 @@ class DatabaseAdapter:
             FROM companies c
             JOIN filings f ON f.company_id = c.company_id
             JOIN v2_documents d ON d.filing_id = f.filing_id
-            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            LEFT JOIN v2_metric_facts mf ON mf.filing_id = d.filing_id
             GROUP BY c.company_id, c.company_name, c.cik, c.ticker
             ORDER BY c.company_name
         """
@@ -1701,7 +1701,7 @@ class DatabaseAdapter:
                 COUNT(CASE WHEN mf.review_status = 'auto_accepted' THEN 1 END)     AS auto_accepted_count
             FROM filings f
             JOIN v2_documents d ON d.filing_id = f.filing_id
-            LEFT JOIN v2_metric_facts mf ON mf.doc_id = d.filing_id
+            LEFT JOIN v2_metric_facts mf ON mf.filing_id = d.filing_id
         """
         totals_rows = self.query(totals_sql)
         totals = dict(totals_rows[0]) if totals_rows else {}
@@ -2358,7 +2358,7 @@ class DatabaseAdapter:
     ) -> None:
         """
         Insert a v2_metric_facts row for a reviewer-accepted chart metric.
-        Idempotent: skips if ANY chart fact already exists for (doc_id, metric_id).
+        Idempotent: skips if ANY chart fact already exists for (filing_id, metric_id).
         The `idx_v2_metric_facts_identity_unique` index does not include
         img_id, so two images disclosing the same metric in the same filing
         collapse to one presence-level fact. Per-image provenance stays in
@@ -2370,7 +2370,7 @@ class DatabaseAdapter:
         cur.execute(
             """
             SELECT fact_id FROM v2_metric_facts
-            WHERE doc_id = %(doc_id)s
+            WHERE filing_id = %(doc_id)s
               AND canonical_metric_id = %(metric_id)s
               AND source_type = 'chart'
             LIMIT 1
@@ -2382,7 +2382,7 @@ class DatabaseAdapter:
         cur.execute(
             """
             INSERT INTO v2_metric_facts (
-                doc_id, canonical_metric_id, value_raw, unit,
+                filing_id, canonical_metric_id, value_raw, unit,
                 source_type, source_locator,
                 confidence, extraction_method, requires_review, review_status,
                 pipeline_version
@@ -2408,7 +2408,7 @@ class DatabaseAdapter:
         metric_id: str | None,
     ) -> None:
         """
-        Delete the chart-sourced v2_metric_facts row for (doc_id, metric_id)
+        Delete the chart-sourced v2_metric_facts row for (filing_id, metric_id)
         only when no accept/correct/add confirmation still references this
         metric from any image in this filing. Mirrors _promote_chart_fact's
         one-fact-per-(filing, metric) semantic. Idempotent.
@@ -2438,7 +2438,7 @@ class DatabaseAdapter:
         cur.execute(
             """
             DELETE FROM v2_metric_facts
-            WHERE doc_id = %(doc_id)s
+            WHERE filing_id = %(doc_id)s
               AND canonical_metric_id = %(metric_id)s
               AND source_type = 'chart'
             """,

@@ -87,7 +87,7 @@ def cleanup_v2_tables(test_db_adapter: DatabaseAdapter, test_filing_id: int):
                     "DELETE FROM v2_metric_definitions WHERE doc_id = %s",
                     (test_filing_id,),
                 )
-                cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
                 cur.execute(
                     """

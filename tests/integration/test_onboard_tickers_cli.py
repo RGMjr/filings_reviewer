@@ -179,7 +179,8 @@ def test_cmd_onboard_include_already_extracted_yes_path(clean_db, tmp_path, cli)
 
     This path executes `count_review_decisions` (real SQL against clean_db),
     which caught a production SQL-type-mismatch bug (v2_documents.doc_id UUID
-    vs v2_metric_facts.doc_id BIGINT) that only fired in prod.
+    vs v2_metric_facts.filing_id BIGINT — column was renamed from doc_id in
+    legacy-038) that only fired in prod.
     """
     _, filing_id, cik, accession = _seed_filing(
         clean_db, cik="0000999003", accession="0000999003-15-000003"
@@ -230,8 +231,7 @@ def test_cmd_onboard_include_already_extracted_yes_path(clean_db, tmp_path, cli)
     assert len(persist_calls) == 1
     _, kwargs = persist_calls[0]
     assert kwargs["force"] is True, (
-        "Already-extracted filing with --yes must reach persist_pipeline_result "
-        "with force=True"
+        "Already-extracted filing with --yes must reach persist_pipeline_result with force=True"
     )
 
 

@@ -272,7 +272,7 @@ class V2PersistenceAdapter:
         """
         Upsert V2 metric facts using identity-based conflict resolution.
 
-        Uses the identity tuple (doc_id, canonical_metric_id, period, unit,
+        Uses the identity tuple (filing_id, canonical_metric_id, period, unit,
         scope, cohort_def, customer_type) for cross-run deduplication.
         Falls back to fact_id-based conflict for backwards compatibility.
 
@@ -983,7 +983,7 @@ class V2PersistenceAdapter:
         """Convert MetricFact to database parameters."""
         return {
             "fact_id": fact.fact_id,
-            "doc_id": filing_id,
+            "filing_id": filing_id,
             "canonical_metric_id": fact.canonical_metric_id,
             "value": fact.value,
             "value_raw": fact.value_raw,
@@ -1045,7 +1045,7 @@ class V2PersistenceAdapter:
         # (and their reviewer decisions) survive the DELETE below, which
         # would otherwise CASCADE through v2_review_decisions.fact_id.
         params: dict[str, Any] = {"filing_id": filing_id}
-        where_scope = "doc_id = %(filing_id)s"
+        where_scope = "filing_id = %(filing_id)s"
         if chart_only:
             params["source_type"] = SourceType.CHART.value
             where_scope += " AND source_type = %(source_type)s"
@@ -1120,7 +1120,7 @@ class V2PersistenceAdapter:
 
         sql = """
             INSERT INTO v2_metric_facts (
-                fact_id, doc_id, canonical_metric_id,
+                fact_id, filing_id, canonical_metric_id,
                 value, value_raw, unit, currency,
                 period_type, period_start, period_end,
                 scope, scope_detail, cohort_def, cohort_type, customer_type,
@@ -1130,7 +1130,7 @@ class V2PersistenceAdapter:
                 cross_source_confirmed, confirming_source_types
             )
             VALUES (
-                %(fact_id)s, %(doc_id)s, %(canonical_metric_id)s,
+                %(fact_id)s, %(filing_id)s, %(canonical_metric_id)s,
                 %(value)s, %(value_raw)s, %(unit)s, %(currency)s,
                 %(period_type)s, %(period_start)s, %(period_end)s,
                 %(scope)s, %(scope_detail)s, %(cohort_def)s, %(cohort_type)s, %(customer_type)s,
@@ -1149,7 +1149,7 @@ class V2PersistenceAdapter:
         seen: dict[tuple, dict] = {}
         for p in params_list:
             key = (
-                p["doc_id"],
+                p["filing_id"],
                 p["canonical_metric_id"],
                 p["period_start"],
                 p["period_end"],

@@ -31,14 +31,14 @@ class TestFactUpsertSQL:
         )
 
     def test_delete_before_insert(self):
-        """DELETE FROM v2_metric_facts scoped by doc_id must precede INSERT (WP-12)."""
+        """DELETE FROM v2_metric_facts scoped by filing_id must precede INSERT (WP-12)."""
         source = self._get_persist_sql()
 
         assert "DELETE FROM v2_metric_facts" in source, (
             "_persist_facts_in_tx must DELETE existing facts before inserting fresh results"
         )
-        assert "doc_id = %(filing_id)s" in source, (
-            "_persist_facts_in_tx DELETE must be scoped by doc_id so cross-filing data is not wiped"
+        assert "filing_id = %(filing_id)s" in source, (
+            "_persist_facts_in_tx DELETE must be scoped by filing_id so cross-filing data is not wiped"
         )
 
         # DELETE should appear before INSERT in the source
@@ -93,7 +93,7 @@ class TestPersistDedup:
         seen: dict[tuple, dict] = {}
         for p in params_list:
             key = (
-                p.get("doc_id"),
+                p.get("filing_id"),
                 p.get("canonical_metric_id"),
                 p.get("period_start"),
                 p.get("period_end"),
@@ -115,7 +115,7 @@ class TestPersistDedup:
         source_type: str = "text",
     ) -> dict:
         return {
-            "doc_id": 1,
+            "filing_id": 1,
             "canonical_metric_id": "cm_average_order_value",
             "period_start": "2024-01-01",
             "period_end": "2024-12-31",
@@ -315,9 +315,7 @@ class TestImagePersistSQL:
         assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
         sql_text = sql_calls[0].args[0]
 
-        assert (
-            "file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path)" in sql_text
-        ), (
+        assert "file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path)" in sql_text, (
             "file_path on ON CONFLICT must COALESCE so a NULL inbound (failed SEC fetch) "
             "does not overwrite an existing R2 storage key (legacy-103)."
         )

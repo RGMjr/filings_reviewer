@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 NULL_IMG_ID_SQL = """
     SELECT
         f.fact_id,
-        f.doc_id,
+        f.filing_id,
         f.canonical_metric_id
       FROM v2_metric_facts f
      WHERE f.source_type = 'chart'
@@ -66,14 +66,14 @@ NULL_IMG_ID_SQL = """
             NOT (f.source_locator ? 'img_id')
             OR (f.source_locator->>'img_id') IS NULL
        )
-     ORDER BY f.doc_id, f.canonical_metric_id, f.fact_id
+     ORDER BY f.filing_id, f.canonical_metric_id, f.fact_id
 """
 
 # (B) — img_id present but no matching asset row.
 ORPHAN_SQL = """
     SELECT
         f.fact_id,
-        f.doc_id,
+        f.filing_id,
         f.canonical_metric_id,
         f.source_type,
         f.source_locator->>'img_id' AS img_id
@@ -84,7 +84,7 @@ ORPHAN_SQL = """
            SELECT 1 FROM v2_image_assets a
             WHERE a.img_id::text = (f.source_locator->>'img_id')
        )
-     ORDER BY f.doc_id, f.canonical_metric_id, f.fact_id
+     ORDER BY f.filing_id, f.canonical_metric_id, f.fact_id
 """
 
 # (C) helper — every asset row with a declared file_path; existence is tested
@@ -96,9 +96,7 @@ ASSET_FILE_PATH_SQL = """
 """
 
 
-def _load_missing_files(
-    db: DatabaseAdapter, data_dir: Path | None
-) -> tuple[int, list[dict]]:
+def _load_missing_files(db: DatabaseAdapter, data_dir: Path | None) -> tuple[int, list[dict]]:
     """Class (C): image rows whose file_path key is invalid or absent in storage.
 
     ``data_dir`` is retained as a parameter for CLI compatibility but is no longer
@@ -207,9 +205,9 @@ def main() -> int:
             "(ChartFactBridgeStage invariant violated)",
             len(null_img_rows),
         )
-        by_doc = Counter(r["doc_id"] for r in null_img_rows)
-        for doc_id, count in sorted(by_doc.items(), key=lambda x: (-x[1], x[0])):
-            logger.error("  doc_id=%s: %d fact(s)", doc_id, count)
+        by_filing = Counter(r["filing_id"] for r in null_img_rows)
+        for filing_id, count in sorted(by_filing.items(), key=lambda x: (-x[1], x[0])):
+            logger.error("  filing_id=%s: %d fact(s)", filing_id, count)
         _print_samples("(A)", null_img_rows, args.sample)
         exit_code = 1
     else:
@@ -217,17 +215,17 @@ def main() -> int:
 
     # Class B — warning
     if orphan_rows:
-        by_doc = Counter(r["doc_id"] for r in orphan_rows)
+        by_filing = Counter(r["filing_id"] for r in orphan_rows)
         by_source = Counter(r["source_type"] for r in orphan_rows)
         logger.warning(
             "(B) WARN: %d fact(s) reference img_id values with no matching asset row "
-            "(across %d doc(s), source_types=%s)",
+            "(across %d filing(s), source_types=%s)",
             len(orphan_rows),
-            len(by_doc),
+            len(by_filing),
             dict(by_source),
         )
-        for doc_id, count in sorted(by_doc.items(), key=lambda x: (-x[1], x[0])):
-            logger.warning("  doc_id=%s: %d fact(s)", doc_id, count)
+        for filing_id, count in sorted(by_filing.items(), key=lambda x: (-x[1], x[0])):
+            logger.warning("  filing_id=%s: %d fact(s)", filing_id, count)
         _print_samples("(B)", orphan_rows, args.sample)
     else:
         logger.info("(B) OK: no orphaned img_id references.")

@@ -7,14 +7,14 @@ note: Column rename + callsite sweep; needs callsite audit
 severity: low
 slug: v2-metric-facts-doc-id-is-misleadingly-named
 source: legacy
-status: open
+status: resolved
 title: '`v2_metric_facts.doc_id` Is Misleadingly Named'
 touches:
 - sql/*.sql
 - src/*/*.py
 - src/web/routes/*.py
 - tests/**/*.py
-updated: '2026-04-19'
+updated: '2026-04-28'
 ---
 
 ### Problem
@@ -52,3 +52,31 @@ broader cleanup window.
 - `sql/09_v2_schema.sql:18` — column definition
 - `scripts/onboard_tickers.py::REVIEW_DECISIONS_SQL` — inline caveat comment
 - commit `c353e83` — the bug that surfaced this
+
+### Resolution
+
+Renamed `v2_metric_facts.doc_id` → `filing_id` via timestamped migration
+`sql/202604282225_rename_v2_metric_facts_doc_id_to_filing_id.sql` (idempotent
+`information_schema` existence guard; index `idx_v2_metric_facts_doc_id`
+also renamed). Postgres views in the frozen `sql/09`/`sql/38` files store
+column references as attnums, so `v_v2_review_decisions`,
+`v_analytics_fact_wide`, and `v_analytics_coverage_matrix` continued to
+work without recreation — `pg_get_viewdef` now displays the new name.
+
+Callsite sweep covered raw SQL referencing `v2_metric_facts.doc_id` /
+`mf.doc_id` / `f.doc_id` in `src/infra/db.py`, `src/extraction_v2/persistence.py`,
+`src/universe/onboarding.py`, `src/web/routes/api_unified.py`,
+`scripts/{audit_residual_chart_facts,backfill_text_presence,backfill_full_page_ocr,
+audit_filing_url_mismatch,repair_filing_url_mismatch,check_image_referential_integrity,
+diagnostic_chart_evidence_coverage,export_for_evaluation,convert_v2_to_gold_standard}.py`,
+and the corresponding integration tests. The stale caveat comment in
+`src/universe/onboarding.py::REVIEW_DECISIONS_SQL` was removed.
+
+**Out of scope (deliberate):** the `MetricFact` dataclass field at
+`src/extraction_v2/models.py:320` is named `doc_id` but its value is the
+`Document.doc_id` UUID (populated from `context.document.doc_id` in
+`stages/fact_construction.py`), and `_fact_to_params` ignores it in favor of
+the `filing_id` parameter. Renaming that field to `filing_id` would be
+semantically wrong; left untouched. Other `doc_id` columns on
+`v2_segments`, `v2_tables`, `v2_image_assets`, and `v2_metric_definitions`
+have the same naming smell but were not in scope for this change.

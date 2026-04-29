@@ -420,11 +420,11 @@ def two_seeded_filings(db_adapter: DatabaseAdapter):
     # Teardown — innermost dependents first.
     db_adapter.execute(
         "DELETE FROM v2_review_decisions WHERE fact_id IN "
-        "(SELECT fact_id FROM v2_metric_facts WHERE doc_id = %(fid)s)",
+        "(SELECT fact_id FROM v2_metric_facts WHERE filing_id = %(fid)s)",
         {"fid": filing_id_a},
     )
     db_adapter.execute(
-        "DELETE FROM v2_metric_facts WHERE doc_id = %(fid)s",
+        "DELETE FROM v2_metric_facts WHERE filing_id = %(fid)s",
         {"fid": filing_id_a},
     )
     db_adapter.execute(

@@ -100,7 +100,7 @@ def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
-                cur.execute("DELETE FROM v2_metric_facts WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
                 cur.execute(
                     """
@@ -361,7 +361,7 @@ class TestE2EPersistence:
 
                 # Check facts
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
+                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 fact_count = cur.fetchone()["cnt"]
@@ -398,7 +398,7 @@ class TestE2EIdempotency:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
+                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 count_after_first = cur.fetchone()["cnt"]
@@ -416,7 +416,7 @@ class TestE2EIdempotency:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE doc_id = %s",
+                    "SELECT COUNT(*) as cnt FROM v2_metric_facts WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 count_after_second = cur.fetchone()["cnt"]

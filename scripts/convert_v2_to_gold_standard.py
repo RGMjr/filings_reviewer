@@ -263,7 +263,7 @@ def get_v2_decisions(db: Any) -> list[dict[str, Any]]:
             c.company_name           AS company
         FROM v2_review_decisions rd
         JOIN v2_metric_facts mf ON rd.fact_id = mf.fact_id
-        JOIN filings f ON mf.doc_id = f.filing_id
+        JOIN filings f ON mf.filing_id = f.filing_id
         JOIN companies c ON f.company_id = c.company_id
         ORDER BY c.company_name, rd.created_at
     """)

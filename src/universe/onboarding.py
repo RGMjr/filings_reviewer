@@ -278,11 +278,8 @@ SELECT COUNT(rd.decision_id) AS decision_count,
        COUNT(DISTINCT rd.reviewer_id) AS reviewer_count
 FROM v2_review_decisions rd
 JOIN v2_metric_facts f ON f.fact_id = rd.fact_id
-WHERE f.doc_id = %(filing_id)s
+WHERE f.filing_id = %(filing_id)s
 """
-# Note: v2_metric_facts.doc_id is BIGINT referencing filings(filing_id) despite
-# the column name; v2_documents.doc_id is a separate UUID PK. Joining
-# v2_metric_facts.doc_id directly to filing_id is correct.
 
 
 def count_review_decisions(db: DatabaseAdapter, filing_id: int) -> tuple[int, int]:
@@ -452,13 +449,13 @@ def detect_universe_gaps(db: DatabaseAdapter, query: ResolvedQuery) -> list[Gap]
 # ---------------------------------------------------------------------------
 
 _BATCH_REVIEW_DECISIONS_SQL = """
-SELECT f.doc_id AS filing_id,
+SELECT f.filing_id,
        COUNT(rd.decision_id)          AS decision_count,
        COUNT(DISTINCT rd.reviewer_id) AS reviewer_count
 FROM v2_metric_facts f
 LEFT JOIN v2_review_decisions rd ON rd.fact_id = f.fact_id
-WHERE f.doc_id = ANY(%(filing_ids)s)
-GROUP BY f.doc_id
+WHERE f.filing_id = ANY(%(filing_ids)s)
+GROUP BY f.filing_id
 """
 
 

@@ -168,7 +168,7 @@ def create_decision():
         logger.info(f"V2 decision {decision_id} for fact {fact_id}: {decision}")
 
         # Find next fact in the reviewer's current filtered view
-        filing_id = fact["doc_id"]
+        filing_id = fact["filing_id"]
         view_filters = (
             data.get("view_filters") if isinstance(data.get("view_filters"), dict) else None
         )

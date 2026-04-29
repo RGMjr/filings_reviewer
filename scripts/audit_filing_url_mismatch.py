@@ -88,7 +88,7 @@ def _count_downstream(db: DatabaseAdapter, filing_id: int) -> dict:
     v2_image_review_decisions that would be destroyed by a CASCADE delete or
     force-reextract of this filing_id."""
     facts = db.query(
-        "SELECT count(*) AS n FROM v2_metric_facts WHERE doc_id = %(id)s",
+        "SELECT count(*) AS n FROM v2_metric_facts WHERE filing_id = %(id)s",
         {"id": filing_id},
     )
     reviews = db.query(
@@ -96,7 +96,7 @@ def _count_downstream(db: DatabaseAdapter, filing_id: int) -> dict:
         SELECT count(*) AS n
         FROM v2_review_decisions rd
         JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
-        WHERE mf.doc_id = %(id)s
+        WHERE mf.filing_id = %(id)s
         """,
         {"id": filing_id},
     )
