@@ -14,6 +14,7 @@ and legacy-046 (recurring "MIGRATION_ORDER stale at NN" issues), legacy-095
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 SQL_DIR = Path(__file__).resolve().parents[2] / "sql"
@@ -33,11 +34,29 @@ KNOWN_SKIPS: frozenset[str] = frozenset(
 )
 
 
-def migration_files(sql_dir: Path = SQL_DIR) -> list[str]:
-    """Return the canonical, alpha-sorted list of schema migrations.
+def _migration_sort_key(name: str) -> str:
+    """Numeric-aware sort key so legacy short prefixes (e.g. ``23_``) sort
+    before timestamp prefixes (e.g. ``202604282225_``).
 
-    Every sql/*.sql filename in `sql_dir` except those in KNOWN_SKIPS.
-    Order is filename-lexicographic — every duplicate-prefix pair has been
-    audited as either independent or correctly ordered under alpha sort.
+    Pure alpha-sort breaks because ``'23_' > '2026...'`` (``'3' > '0'`` at
+    position 1), causing a rename migration timestamped in 2026 to run before
+    legacy migrations 20–47 on a fresh database.  Padding the leading digit-run
+    to 12 characters makes both groups compare correctly.
     """
-    return sorted(p.name for p in sql_dir.glob("*.sql") if p.name not in KNOWN_SKIPS)
+    m = re.match(r"^(\d+)", name)
+    if m:
+        return m.group(1).zfill(12) + name[m.end() :]
+    return name
+
+
+def migration_files(sql_dir: Path = SQL_DIR) -> list[str]:
+    """Return the canonical, numerically-ordered list of schema migrations.
+
+    Every sql/*.sql filename in `sql_dir` except those in KNOWN_SKIPS,
+    ordered by ``_migration_sort_key`` so that short legacy numeric prefixes
+    (``09_``, ``47_``) sort before 12-digit timestamp prefixes (``YYYYMMDDHHMM_``).
+    """
+    return sorted(
+        (p.name for p in sql_dir.glob("*.sql") if p.name not in KNOWN_SKIPS),
+        key=_migration_sort_key,
+    )
