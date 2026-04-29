@@ -13,7 +13,9 @@ touches:
   - tests/integration/filing_fetcher/test_filing_fetcher_db.py
   - tests/unit/filing_fetcher/test_filing_fetcher.py
 discovered: '2026-04-28'
-updated: '2026-04-28'
+updated: '2026-04-29'
+pr_refs:
+  - 329
 gh_issue: 315
 note: 'Fixed: fetcher now uploads to R2 via get_filing_storage().put_bytes() on every successful fetch (fresh and cache-hit), verifies via HEAD, and writes the storage key to html_storage_path. html_path preserved for in-process callers.'
 ---
