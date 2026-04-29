@@ -29,6 +29,36 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _reject_non_select(sql: str) -> None:
+    """Raise ValueError if `sql` is a write that lacks RETURNING.
+
+    `DatabaseAdapter.query` calls `cur.fetchall()` unconditionally; passing a
+    bare INSERT/UPDATE/DELETE produces an opaque
+    `psycopg.ProgrammingError: the last operation didn't produce records`.
+    Catch the misuse here with a message that points at `db.execute`.
+    """
+    # Strip leading whitespace, line comments, and block comments to find the
+    # first SQL token.
+    stripped = sql.lstrip()
+    while True:
+        if stripped.startswith("--"):
+            nl = stripped.find("\n")
+            stripped = stripped[nl + 1 :].lstrip() if nl != -1 else ""
+            continue
+        if stripped.startswith("/*"):
+            end = stripped.find("*/")
+            stripped = stripped[end + 2 :].lstrip() if end != -1 else ""
+            continue
+        break
+    first = stripped.split(None, 1)[0].upper() if stripped else ""
+    if first in ("INSERT", "UPDATE", "DELETE") and "RETURNING" not in sql.upper():
+        raise ValueError(
+            f"db.query is SELECT-only (got {first} without RETURNING). "
+            "Use db.execute(sql, params) for non-fetching writes, or add "
+            "RETURNING to fetch result rows."
+        )
+
+
 # Analytical tab → SQL fragment. Tabs are the UI grouping (IPO vs Earnings vs
 # Investor Day) and combine `v2_documents.document_type` with `filings.form_type`.
 # Keys are validated server-side before use — fragments are string-constant SQL,
@@ -454,7 +484,14 @@ class DatabaseAdapter:
 
         Returns:
             List of result rows as dictionaries
+
+        Raises:
+            ValueError: if `sql` is a non-fetching write (INSERT/UPDATE/DELETE
+                without RETURNING). Use `db.execute()` for those — `query`
+                calls `cur.fetchall()` unconditionally and would otherwise
+                surface as an opaque `psycopg.ProgrammingError`.
         """
+        _reject_non_select(sql)
         result = self.execute(sql, params, fetch=True)
         return result or []
 
