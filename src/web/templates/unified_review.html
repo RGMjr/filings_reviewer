@@ -821,6 +821,8 @@
               </span>
               {% if current_image.review_status == 'reviewed' %}
               <span class="badge bg-success">Reviewed</span>
+              {% elif current_image.review_status == 'skipped' and (current_image.total_confirmation_count or 0) > 0 %}
+              <span class="badge bg-secondary">No relevant metrics</span>
               {% elif current_image.review_status == 'skipped' %}
               <span class="badge bg-secondary">Skipped</span>
               {% else %}
@@ -851,7 +853,16 @@
           {# Image-level skip / unskip: parks the whole image without
              recording any per-metric decision. Per-metric Accept/Reject/
              Correct/Skip/Add live inside the Detected Metrics card below. #}
-          {% if current_image.review_status == 'skipped' %}
+          {% if current_image.review_status == 'skipped' and (current_image.total_confirmation_count or 0) > 0 %}
+          <div class="alert alert-secondary mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <div><strong>Status:</strong> No relevant metrics</div>
+              <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
+                <span class="badge bg-secondary me-1">U</span> Undo
+              </button>
+            </div>
+          </div>
+          {% elif current_image.review_status == 'skipped' %}
           <div class="alert alert-secondary mb-3">
             <div class="d-flex justify-content-between align-items-center">
               <div><strong>Status:</strong> Image skipped</div>
