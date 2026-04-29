@@ -359,11 +359,15 @@ def unskip_image_candidate(img_id):
         filing_id = candidate["filing_id"]
         logger.info(f"Unskipped v2 image {img_id_str}")
 
+        qs = f"img_id={img_id_str}&tab=images"
+        image_status = request.args.get("image_status")
+        if image_status:
+            qs += f"&image_status={image_status}"
         return jsonify(
             {
                 "status": "success",
                 "img_id": img_id_str,
-                "url": f"/v2/review/{filing_id}?img_id={img_id_str}&tab=images",
+                "url": f"/v2/review/{filing_id}?{qs}",
             }
         ), 200
 
@@ -398,6 +402,7 @@ def reopen_image_candidate(img_id):
             400,
         )
 
+    image_status = request.args.get("image_status")
     img_id_str = str(img_id)
     db = get_db()
 
@@ -421,6 +426,7 @@ def reopen_image_candidate(img_id):
             {
                 "img_id": img_id_str,
                 "review_status": "pending",
+                "image_status": image_status,
             }
         ), 200
 

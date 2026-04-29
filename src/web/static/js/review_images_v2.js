@@ -203,8 +203,10 @@
         }
 
         try {
+            const imageStatus = new URLSearchParams(window.location.search).get('image_status');
+            const unskipQs = imageStatus ? `?image_status=${encodeURIComponent(imageStatus)}` : '';
             const response = await fetch(
-                `/api/v2/image-candidates/${imgId}/unskip`,
+                `/api/v2/image-candidates/${imgId}/unskip${unskipQs}`,
                 { method: 'POST' }
             );
             const data = await response.json();
@@ -248,8 +250,11 @@
             const data = await response.json();
             if (response.ok) {
                 showToast('Image re-opened for review', 'success');
+                const resolvedStatus = data.image_status
+                    || new URLSearchParams(window.location.search).get('image_status')
+                    || 'all';
                 window.location.href =
-                    `/v2/review/${state.filingId}?tab=images&image_status=pending`;
+                    `/v2/review/${state.filingId}?tab=images&image_status=${encodeURIComponent(resolvedStatus)}`;
             } else {
                 showToast(data.message || 'Failed to re-open image', 'danger');
             }
