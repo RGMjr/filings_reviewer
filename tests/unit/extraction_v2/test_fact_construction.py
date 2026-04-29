@@ -57,6 +57,7 @@ def _route_image_cache_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     image_cache_dir.cache_clear()
     get_image_storage.cache_clear()
 
+
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -238,7 +239,7 @@ def test_single_bound_value_to_fact(
     assert len(mock_context.facts) == 1
 
     fact = mock_context.facts[0]
-    assert fact.doc_id == "TEST_DOC"
+    assert fact.document_uuid == "TEST_DOC"
     assert fact.canonical_metric_id == "cm_average_order_value"
     assert fact.value == 1000.0
     assert fact.value_raw == "1,000"

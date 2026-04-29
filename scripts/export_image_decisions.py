@@ -121,7 +121,7 @@ def export_decisions(
             conditions.append("d.decision = 'not_relevant'")
 
     if filing_id:
-        conditions.append("v.doc_id = %(filing_id)s")
+        conditions.append("v.filing_id = %(filing_id)s")
         params["filing_id"] = filing_id
 
     if detection_tier:
@@ -141,7 +141,7 @@ def export_decisions(
             d.reviewer_id,
             d.review_time_seconds,
             d.created_at AS decision_created_at,
-            v.doc_id AS filing_id,
+            v.filing_id,
             v.filename AS image_src,
             'https://www.sec.gov/Archives/edgar/data/'
                 || COALESCE(NULLIF(REGEXP_REPLACE(c.cik, '^0+', ''), ''), '0')
@@ -155,7 +155,7 @@ def export_decisions(
             c.company_name
         FROM v2_image_review_decisions d
         JOIN v2_image_assets v ON v.img_id = d.img_id
-        JOIN filings f ON v.doc_id = f.filing_id
+        JOIN filings f ON v.filing_id = f.filing_id
         JOIN companies c ON f.company_id = c.company_id
         {where_clause}
         ORDER BY c.company_name, d.created_at

@@ -70,7 +70,7 @@ def make_segment(
     """Create a test segment."""
     return Segment(
         segment_id=segment_id,
-        doc_id="doc-1",
+        filing_id=1,
         segment_type=segment_type,
         text=text,
         raw_html=f"<p>{text}</p>",
@@ -89,7 +89,7 @@ def make_table(
     """Create a test table with cells."""
     return Table(
         table_id=table_id,
-        doc_id="doc-1",
+        filing_id=1,
         segment_id=segment_id,
         section_type=section_type,
         row_count=len(set(c.row for c in cells)) if cells else 0,

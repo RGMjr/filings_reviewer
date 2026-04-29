@@ -545,13 +545,13 @@ class V2PersistenceAdapter:
 
         sql = """
             INSERT INTO v2_segments (
-                segment_id, doc_id, segment_type, segment_text,
+                segment_id, filing_id, segment_type, segment_text,
                 dom_locator, section_path, section_type, sequence_idx,
                 prev_segment_id, next_segment_id,
                 source_type, source_img_id, created_at
             )
             VALUES (
-                %(segment_id)s, %(doc_id)s, %(segment_type)s, %(segment_text)s,
+                %(segment_id)s, %(filing_id)s, %(segment_type)s, %(segment_text)s,
                 %(dom_locator)s, %(section_path)s, %(section_type)s, %(sequence_idx)s,
                 %(prev_segment_id)s, %(next_segment_id)s,
                 %(source_type)s, %(source_img_id)s, NOW()
@@ -572,7 +572,7 @@ class V2PersistenceAdapter:
         params_list = [
             {
                 "segment_id": segment.segment_id,
-                "doc_id": filing_id,
+                "filing_id": filing_id,
                 "segment_type": segment.segment_type.value,
                 "segment_text": segment.text,
                 "dom_locator": segment.dom_locator,
@@ -601,13 +601,13 @@ class V2PersistenceAdapter:
 
         table_sql = """
             INSERT INTO v2_tables (
-                table_id, doc_id, segment_id, dom_locator,
+                table_id, filing_id, segment_id, dom_locator,
                 section_path, section_type,
                 row_count, col_count, header_rows, stub_cols,
                 raw_html, created_at
             )
             VALUES (
-                %(table_id)s, %(doc_id)s, %(segment_id)s, %(dom_locator)s,
+                %(table_id)s, %(filing_id)s, %(segment_id)s, %(dom_locator)s,
                 %(section_path)s, %(section_type)s,
                 %(row_count)s, %(col_count)s, %(header_rows)s, %(stub_cols)s,
                 %(raw_html)s, NOW()
@@ -649,7 +649,7 @@ class V2PersistenceAdapter:
         table_params_list = [
             {
                 "table_id": table.table_id,
-                "doc_id": filing_id,
+                "filing_id": filing_id,
                 "segment_id": None,  # v2_tables.segment_id FKs to V1 source_segments; not used in V2
                 "dom_locator": table.dom_locator,
                 "section_path": table.section_path or [],
@@ -851,7 +851,7 @@ class V2PersistenceAdapter:
                   FROM v2_image_assets v
                   LEFT JOIN v2_image_review_decisions rd ON rd.img_id = v.img_id
                   LEFT JOIN v2_image_metric_confirmations imc ON imc.img_id = v.img_id
-                 WHERE v.doc_id = %(filing_id)s
+                 WHERE v.filing_id = %(filing_id)s
                    AND v.filename = ANY(%(filenames)s)
                    AND (rd.img_id IS NOT NULL OR imc.img_id IS NOT NULL)
                 """,
@@ -888,7 +888,7 @@ class V2PersistenceAdapter:
                     hidden_transitions,
                 )
 
-        # Upsert on (doc_id, filename), NOT on img_id: ImageAsset.img_id is a
+        # Upsert on (filing_id, filename), NOT on img_id: ImageAsset.img_id is a
         # fresh random UUID per extraction run, so keying on img_id would
         # insert a new row every time and orphan decisions in
         # v2_image_review_decisions (which FK to img_id). The UNIQUE constraint
@@ -897,7 +897,7 @@ class V2PersistenceAdapter:
         # existing value on conflict.
         sql = """
             INSERT INTO v2_image_assets (
-                img_id, doc_id, filename, file_path,
+                img_id, filing_id, filename, file_path,
                 width, height, dom_locator, nearby_text,
                 section_path, section_type,
                 classification, relevance_score,
@@ -906,7 +906,7 @@ class V2PersistenceAdapter:
                 detected_keywords, detected_metrics, created_at
             )
             VALUES (
-                %(img_id)s, %(doc_id)s, %(filename)s, %(file_path)s,
+                %(img_id)s, %(filing_id)s, %(filename)s, %(file_path)s,
                 %(width)s, %(height)s, %(dom_locator)s, %(nearby_text)s,
                 %(section_path)s, %(section_type)s,
                 %(classification)s, %(relevance_score)s,
@@ -914,7 +914,7 @@ class V2PersistenceAdapter:
                 %(processed)s, %(confidence)s, %(requires_manual)s,
                 %(detected_keywords)s, %(detected_metrics)s, NOW()
             )
-            ON CONFLICT (doc_id, filename) DO UPDATE SET
+            ON CONFLICT (filing_id, filename) DO UPDATE SET
                 file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path),
                 width = EXCLUDED.width,
                 height = EXCLUDED.height,
@@ -939,7 +939,7 @@ class V2PersistenceAdapter:
         params_list = [
             {
                 "img_id": image.img_id,
-                "doc_id": filing_id,
+                "filing_id": filing_id,
                 "filename": image.filename,
                 "file_path": image.file_path,
                 "width": image.width,
@@ -1090,7 +1090,7 @@ class V2PersistenceAdapter:
                    COUNT(DISTINCT imc.reviewer_id) AS reviewer_count
               FROM v2_image_metric_confirmations imc
               JOIN v2_image_assets ia ON ia.img_id = imc.img_id
-             WHERE ia.doc_id = %(filing_id)s
+             WHERE ia.filing_id = %(filing_id)s
             """,
             {"filing_id": filing_id},
         )
@@ -1202,20 +1202,20 @@ class V2PersistenceAdapter:
 
         sql = """
             INSERT INTO v2_metric_definitions (
-                definition_id, doc_id, canonical_metric_id,
+                definition_id, filing_id, canonical_metric_id,
                 definition_text, definition_text_normalized,
                 methodology_text, methodology_text_normalized,
                 definition_segment_id, methodology_segment_id,
                 alignment_flag, created_at
             )
             VALUES (
-                %(definition_id)s, %(doc_id)s, %(canonical_metric_id)s,
+                %(definition_id)s, %(filing_id)s, %(canonical_metric_id)s,
                 %(definition_text)s, %(definition_text_normalized)s,
                 %(methodology_text)s, %(methodology_text_normalized)s,
                 %(definition_segment_id)s, %(methodology_segment_id)s,
                 %(alignment_flag)s, NOW()
             )
-            ON CONFLICT (doc_id, canonical_metric_id) DO UPDATE SET
+            ON CONFLICT (filing_id, canonical_metric_id) DO UPDATE SET
                 definition_text = EXCLUDED.definition_text,
                 definition_text_normalized = EXCLUDED.definition_text_normalized,
                 methodology_text = EXCLUDED.methodology_text,
@@ -1228,7 +1228,7 @@ class V2PersistenceAdapter:
         params_list = [
             {
                 "definition_id": defn.definition_id,
-                "doc_id": filing_id,
+                "filing_id": filing_id,
                 "canonical_metric_id": defn.canonical_metric_id,
                 "definition_text": defn.definition_text,
                 "definition_text_normalized": defn.definition_text_normalized,

@@ -46,7 +46,7 @@ def get_image_candidates(db: DatabaseAdapter, limit: int | None = None) -> list[
     sql = """
         SELECT DISTINCT v.filename AS image_src, f.cik, f.accession_number
         FROM v2_image_assets v
-        JOIN filings f ON v.doc_id = f.filing_id
+        JOIN filings f ON v.filing_id = f.filing_id
         WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
           AND v.filename IS NOT NULL AND v.filename != ''
         ORDER BY f.cik, f.accession_number, v.filename
@@ -128,7 +128,9 @@ def main() -> None:
 
         # Fetch from SEC EDGAR — SECClient auto-stores in image_cache on success
         logger.info(f"[{i}/{len(candidates)}] Fetching: {cik}/{accession_number}/{filename}")
-        result = sec_client.fetch_image(cik=cik, accession_number=accession_number, filename=filename)
+        result = sec_client.fetch_image(
+            cik=cik, accession_number=accession_number, filename=filename
+        )
 
         if result is not None:
             fetched += 1
@@ -142,7 +144,9 @@ def main() -> None:
     logger.info(f"  Fetched:  {fetched}")
     logger.info(f"  Skipped:  {skipped} (already cached)")
     logger.info(f"  Failed:   {failed}")
-    logger.info(f"  Cache total: {stats['count']} images ({stats['total_bytes'] / 1024 / 1024:.1f} MB)")
+    logger.info(
+        f"  Cache total: {stats['count']} images ({stats['total_bytes'] / 1024 / 1024:.1f} MB)"
+    )
     logger.info("=" * 60)
 
 

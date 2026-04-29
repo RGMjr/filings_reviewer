@@ -220,7 +220,7 @@ SELECT
     v.relevance_score                            AS relevance_score
 FROM v2_image_review_decisions d
 JOIN v2_image_assets           v ON v.img_id = d.img_id
-JOIN filings                   f ON v.doc_id = f.filing_id
+JOIN filings                   f ON v.filing_id = f.filing_id
 JOIN companies                 c ON f.company_id = c.company_id
 ORDER BY d.created_at
 """
@@ -253,7 +253,7 @@ SELECT
     v.relevance_score                            AS relevance_score
 FROM v2_image_metric_confirmations imc
 JOIN v2_image_assets               v ON v.img_id = imc.img_id
-JOIN filings                       f ON v.doc_id = f.filing_id
+JOIN filings                       f ON v.filing_id = f.filing_id
 JOIN companies                     c ON f.company_id = c.company_id
 GROUP BY v.img_id, v.filename, v.file_path, v.relevance_score,
          f.accession_number, c.cik, c.company_name

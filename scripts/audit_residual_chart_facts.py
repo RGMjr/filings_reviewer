@@ -57,7 +57,7 @@ text_fact_decisions AS (
     GROUP BY mf.filing_id
 ),
 chart_images AS (
-    SELECT doc_id AS filing_id,
+    SELECT filing_id,
            COUNT(*) AS chart_image_count,
            COUNT(*) FILTER (WHERE detected_metrics IS NOT NULL
                             AND jsonb_typeof(detected_metrics) = 'array'
@@ -65,15 +65,15 @@ chart_images AS (
                AS chart_images_with_detected_metrics
     FROM v2_image_assets
     WHERE classification = 'chart'
-    GROUP BY doc_id
+    GROUP BY filing_id
 ),
 image_confirmations AS (
-    SELECT ia.doc_id AS filing_id,
+    SELECT ia.filing_id,
            COUNT(DISTINCT (imc.img_id, COALESCE(imc.detected_metric_id, imc.confirmed_metric_id, ''), imc.reviewer_id))
                AS image_metric_confirmation_count
     FROM v2_image_metric_confirmations imc
     JOIN v2_image_assets ia ON ia.img_id = imc.img_id
-    GROUP BY ia.doc_id
+    GROUP BY ia.filing_id
 )
 SELECT
     f.filing_id,

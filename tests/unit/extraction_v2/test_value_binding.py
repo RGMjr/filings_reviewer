@@ -111,12 +111,8 @@ def simple_table() -> Table:
             header_path=["Metric"],
             stub_path=[],
         ),
-        Cell(
-            row=2, col=1, text="50,000", header_path=["2023"], stub_path=["Customers"]
-        ),
-        Cell(
-            row=2, col=2, text="45,000", header_path=["2022"], stub_path=["Customers"]
-        ),
+        Cell(row=2, col=1, text="50,000", header_path=["2023"], stub_path=["Customers"]),
+        Cell(row=2, col=2, text="45,000", header_path=["2022"], stub_path=["Customers"]),
     ]
 
     table = Table(
@@ -142,9 +138,7 @@ def percentage_table() -> Table:
     cells = [
         # Header row
         Cell(row=0, col=0, text="KPI", is_header=True, header_path=[], stub_path=[]),
-        Cell(
-            row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]
-        ),
+        Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
         # Data row
         Cell(
             row=1,
@@ -184,7 +178,7 @@ def text_segment() -> Segment:
     """Create a text segment for proximity testing."""
     return Segment(
         segment_id="seg-1",
-        doc_id="doc-1",
+        filing_id=1,
         segment_type=SegmentType.PARAGRAPH,
         text="Our total revenue for the year was $1.5 billion, representing a 25% increase.",
         section_type=SectionType.MDA,
@@ -231,13 +225,9 @@ class TestTableBindingHeaderPath:
         cells = [
             # Header row 1
             Cell(row=0, col=0, text="", is_header=True, header_path=[], stub_path=[]),
-            Cell(
-                row=0, col=1, text="FY 2023", is_header=True, header_path=[], stub_path=[]
-            ),
+            Cell(row=0, col=1, text="FY 2023", is_header=True, header_path=[], stub_path=[]),
             # Header row 2
-            Cell(
-                row=1, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]
-            ),
+            Cell(row=1, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(
                 row=1,
                 col=1,
@@ -255,9 +245,7 @@ class TestTableBindingHeaderPath:
                 header_path=["Metric"],
                 stub_path=[],
             ),
-            Cell(
-                row=2, col=1, text="$100M", header_path=["FY 2023", "Q4"], stub_path=["ARR"]
-            ),
+            Cell(row=2, col=1, text="$100M", header_path=["FY 2023", "Q4"], stub_path=["ARR"]),
         ]
 
         table = Table(
@@ -416,7 +404,9 @@ class TestTableBindingStubPath:
             Cell(row=0, col=2, text="Value", is_header=True, header_path=[], stub_path=[]),
             # Data
             Cell(row=1, col=0, text="Growth", is_stub=True, header_path=["Category"], stub_path=[]),
-            Cell(row=1, col=1, text="ARR", is_stub=True, header_path=["Metric"], stub_path=["Growth"]),
+            Cell(
+                row=1, col=1, text="ARR", is_stub=True, header_path=["Metric"], stub_path=["Growth"]
+            ),
             Cell(row=1, col=2, text="$50M", header_path=["Value"], stub_path=["Growth", "ARR"]),
         ]
 
@@ -510,9 +500,7 @@ class TestTextBinding:
         # Should find $1.5 billion and 25%
         assert len(context.bound_values) >= 1
 
-    def test_value_in_same_sentence(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_value_in_same_sentence(self, stage: ValueBindingStage) -> None:
         """Values in the same sentence as keyword are preferred."""
         segment = Segment(
             segment_id="seg-sentence",
@@ -804,9 +792,7 @@ class TestNumberParsing:
         text = "January 31, 2019"
         results = stage._find_numbers_in_proximity(text, 0, 7, 100)
         raw_values = [raw for _, _, _, raw in results]
-        assert "201" not in raw_values, (
-            f"Year '2019' was split into fragments: {raw_values}"
-        )
+        assert "201" not in raw_values, f"Year '2019' was split into fragments: {raw_values}"
         # Should find "31" and "2019" as whole numbers
         values = [v for _, v, _, _ in results]
         assert 2019 in values
@@ -832,32 +818,22 @@ class TestConfidenceScoring:
 
     def test_exact_match_bonus(self, stage: ValueBindingStage) -> None:
         """Exact match in path adds confidence bonus."""
-        with_exact = stage._compute_table_confidence(
-            "revenue", ["Revenue", "2023"], [], Unit.COUNT
-        )
-        without_exact = stage._compute_table_confidence(
-            "rev", ["Revenue", "2023"], [], Unit.COUNT
-        )
+        with_exact = stage._compute_table_confidence("revenue", ["Revenue", "2023"], [], Unit.COUNT)
+        without_exact = stage._compute_table_confidence("rev", ["Revenue", "2023"], [], Unit.COUNT)
 
         assert with_exact > without_exact
 
     def test_unit_presence_bonus(self, stage: ValueBindingStage) -> None:
         """Having explicit unit adds confidence bonus."""
-        with_unit = stage._compute_table_confidence(
-            "metric", [], [], Unit.CURRENCY
-        )
-        without_unit = stage._compute_table_confidence(
-            "metric", [], [], Unit.COUNT
-        )
+        with_unit = stage._compute_table_confidence("metric", [], [], Unit.CURRENCY)
+        without_unit = stage._compute_table_confidence("metric", [], [], Unit.COUNT)
 
         assert with_unit > without_unit
 
     def test_confidence_capped_at_one(self, stage: ValueBindingStage) -> None:
         """Confidence never exceeds 1.0."""
         # Maximum bonuses
-        conf = stage._compute_table_confidence(
-            "revenue", ["Revenue"], ["Revenue"], Unit.CURRENCY
-        )
+        conf = stage._compute_table_confidence("revenue", ["Revenue"], ["Revenue"], Unit.CURRENCY)
         assert conf <= 1.0
 
     def test_confidence_capped_at_zero(self, stage: ValueBindingStage) -> None:
@@ -1013,9 +989,7 @@ class TestEdgeCases:
         assert result.success
         assert len(context.bound_values) == 0
 
-    def test_missing_segment_logs_warning(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_missing_segment_logs_warning(self, stage: ValueBindingStage) -> None:
         """Missing segment is handled gracefully."""
         candidate = MetricCandidate(
             candidate_id="cand-missing-seg",
@@ -1049,16 +1023,23 @@ class TestEdgeCases:
         assert result.success
         assert len(context.bound_values) == 0
 
-    def test_multiple_metrics_same_row(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_multiple_metrics_same_row(self, stage: ValueBindingStage) -> None:
         """Multiple metrics in same table row are handled correctly."""
         cells = [
             Cell(row=0, col=0, text="Metric A", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Metric B", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=2, text="Value", is_header=True, header_path=[], stub_path=[]),
-            Cell(row=1, col=0, text="Revenue", is_stub=True, header_path=["Metric A"], stub_path=[]),
-            Cell(row=1, col=1, text="Growth", is_stub=True, header_path=["Metric B"], stub_path=["Revenue"]),
+            Cell(
+                row=1, col=0, text="Revenue", is_stub=True, header_path=["Metric A"], stub_path=[]
+            ),
+            Cell(
+                row=1,
+                col=1,
+                text="Growth",
+                is_stub=True,
+                header_path=["Metric B"],
+                stub_path=["Revenue"],
+            ),
             Cell(row=1, col=2, text="25%", header_path=["Value"], stub_path=["Revenue", "Growth"]),
         ]
 
@@ -1214,7 +1195,9 @@ class TestEdgeCases:
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
             Cell(row=1, col=0, text="Test", is_stub=True, header_path=["Metric"], stub_path=[]),
-            Cell(row=1, col=1, text="N/A", header_path=["Value"], stub_path=["Test"]),  # Not a number
+            Cell(
+                row=1, col=1, text="N/A", header_path=["Value"], stub_path=["Test"]
+            ),  # Not a number
         ]
 
         table = Table(
@@ -1247,9 +1230,7 @@ class TestEdgeCases:
         assert result.success
         assert len(context.bound_values) == 0  # No parseable value
 
-    def test_parse_number_returns_none_for_invalid(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_parse_number_returns_none_for_invalid(self, stage: ValueBindingStage) -> None:
         """_parse_number returns None for non-numeric text."""
         assert stage._parse_number("not a number") is None
         assert stage._parse_number("") is None
@@ -1319,17 +1300,28 @@ class TestUnitFiltering:
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
             Cell(
-                row=1, col=0, text="Paid Customers",
-                is_stub=True, header_path=["Metric"], stub_path=[],
+                row=1,
+                col=0,
+                text="Paid Customers",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
             ),
             Cell(
-                row=1, col=1, text="$14.8M",
-                header_path=["Value"], stub_path=["Paid Customers"],
+                row=1,
+                col=1,
+                text="$14.8M",
+                header_path=["Value"],
+                stub_path=["Paid Customers"],
             ),
         ]
         table = Table(
             table_id="unit-filter-table",
-            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
         )
         table._grid = [[None] * 2 for _ in range(2)]
         for cell in cells:
@@ -1341,7 +1333,9 @@ class TestUnitFiltering:
             match_text="Paid Customers",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-table", cell_row=1, cell_col=0,
+                table_id="unit-filter-table",
+                cell_row=1,
+                cell_col=0,
             ),
         )
 
@@ -1357,17 +1351,28 @@ class TestUnitFiltering:
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Growth", is_header=True, header_path=[], stub_path=[]),
             Cell(
-                row=1, col=0, text="Customers",
-                is_stub=True, header_path=["Metric"], stub_path=[],
+                row=1,
+                col=0,
+                text="Customers",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
             ),
             Cell(
-                row=1, col=1, text="152%",
-                header_path=["Growth"], stub_path=["Customers"],
+                row=1,
+                col=1,
+                text="152%",
+                header_path=["Growth"],
+                stub_path=["Customers"],
             ),
         ]
         table = Table(
             table_id="unit-filter-pct",
-            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
         )
         table._grid = [[None] * 2 for _ in range(2)]
         for cell in cells:
@@ -1379,7 +1384,9 @@ class TestUnitFiltering:
             match_text="Customers",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-pct", cell_row=1, cell_col=0,
+                table_id="unit-filter-pct",
+                cell_row=1,
+                cell_col=0,
             ),
         )
 
@@ -1395,17 +1402,28 @@ class TestUnitFiltering:
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Total", is_header=True, header_path=[], stub_path=[]),
             Cell(
-                row=1, col=0, text="Customers",
-                is_stub=True, header_path=["Metric"], stub_path=[],
+                row=1,
+                col=0,
+                text="Customers",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
             ),
             Cell(
-                row=1, col=1, text="50,000",
-                header_path=["Total"], stub_path=["Customers"],
+                row=1,
+                col=1,
+                text="50,000",
+                header_path=["Total"],
+                stub_path=["Customers"],
             ),
         ]
         table = Table(
             table_id="unit-filter-count",
-            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
         )
         table._grid = [[None] * 2 for _ in range(2)]
         for cell in cells:
@@ -1417,7 +1435,9 @@ class TestUnitFiltering:
             match_text="Customers",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-count", cell_row=1, cell_col=0,
+                table_id="unit-filter-count",
+                cell_row=1,
+                cell_col=0,
             ),
         )
 
@@ -1467,17 +1487,28 @@ class TestUnitFiltering:
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
             Cell(
-                row=1, col=0, text="ARR",
-                is_stub=True, header_path=["Metric"], stub_path=[],
+                row=1,
+                col=0,
+                text="ARR",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
             ),
             Cell(
-                row=1, col=1, text="500",
-                header_path=["Value"], stub_path=["ARR"],
+                row=1,
+                col=1,
+                text="500",
+                header_path=["Value"],
+                stub_path=["ARR"],
             ),
         ]
         table = Table(
             table_id="unit-filter-curr",
-            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
         )
         table._grid = [[None] * 2 for _ in range(2)]
         for cell in cells:
@@ -1489,7 +1520,9 @@ class TestUnitFiltering:
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-curr", cell_row=1, cell_col=0,
+                table_id="unit-filter-curr",
+                cell_row=1,
+                cell_col=0,
             ),
         )
 
@@ -1505,17 +1538,28 @@ class TestUnitFiltering:
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
             Cell(
-                row=1, col=0, text="ARR",
-                is_stub=True, header_path=["Metric"], stub_path=[],
+                row=1,
+                col=0,
+                text="ARR",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
             ),
             Cell(
-                row=1, col=1, text="$500M",
-                header_path=["Value"], stub_path=["ARR"],
+                row=1,
+                col=1,
+                text="$500M",
+                header_path=["Value"],
+                stub_path=["ARR"],
             ),
         ]
         table = Table(
             table_id="unit-filter-curr-ok",
-            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
         )
         table._grid = [[None] * 2 for _ in range(2)]
         for cell in cells:
@@ -1527,7 +1571,9 @@ class TestUnitFiltering:
             match_text="ARR",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-curr-ok", cell_row=1, cell_col=0,
+                table_id="unit-filter-curr-ok",
+                cell_row=1,
+                cell_col=0,
             ),
         )
 
@@ -1539,25 +1585,34 @@ class TestUnitFiltering:
         assert context.bound_values[0].value == 500_000_000
         assert context.bound_values[0].unit == Unit.CURRENCY
 
-    def test_unconstrained_metric_accepts_all_units(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_unconstrained_metric_accepts_all_units(self, stage: ValueBindingStage) -> None:
         """Unconstrained metric (cm_revenue_by_cohort) accepts any unit."""
         cells = [
             Cell(row=0, col=0, text="Metric", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=1, text="Value", is_header=True, header_path=[], stub_path=[]),
             Cell(
-                row=1, col=0, text="Revenue by Cohort",
-                is_stub=True, header_path=["Metric"], stub_path=[],
+                row=1,
+                col=0,
+                text="Revenue by Cohort",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
             ),
             Cell(
-                row=1, col=1, text="$500M",
-                header_path=["Value"], stub_path=["Revenue by Cohort"],
+                row=1,
+                col=1,
+                text="$500M",
+                header_path=["Value"],
+                stub_path=["Revenue by Cohort"],
             ),
         ]
         table = Table(
             table_id="unit-filter-uncons",
-            row_count=2, col_count=2, header_rows=1, stub_cols=1, cells=cells,
+            row_count=2,
+            col_count=2,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
         )
         table._grid = [[None] * 2 for _ in range(2)]
         for cell in cells:
@@ -1569,7 +1624,9 @@ class TestUnitFiltering:
             match_text="Revenue by Cohort",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-uncons", cell_row=1, cell_col=0,
+                table_id="unit-filter-uncons",
+                cell_row=1,
+                cell_col=0,
             ),
         )
 
@@ -1586,21 +1643,35 @@ class TestUnitFiltering:
             Cell(row=0, col=1, text="2023", is_header=True, header_path=[], stub_path=[]),
             Cell(row=0, col=2, text="2022", is_header=True, header_path=[], stub_path=[]),
             Cell(
-                row=1, col=0, text="Customers",
-                is_stub=True, header_path=["Metric"], stub_path=[],
+                row=1,
+                col=0,
+                text="Customers",
+                is_stub=True,
+                header_path=["Metric"],
+                stub_path=[],
             ),
             Cell(
-                row=1, col=1, text="$14.8M",
-                header_path=["2023"], stub_path=["Customers"],
+                row=1,
+                col=1,
+                text="$14.8M",
+                header_path=["2023"],
+                stub_path=["Customers"],
             ),
             Cell(
-                row=1, col=2, text="152%",
-                header_path=["2022"], stub_path=["Customers"],
+                row=1,
+                col=2,
+                text="152%",
+                header_path=["2022"],
+                stub_path=["Customers"],
             ),
         ]
         table = Table(
             table_id="unit-filter-meta",
-            row_count=2, col_count=3, header_rows=1, stub_cols=1, cells=cells,
+            row_count=2,
+            col_count=3,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
         )
         table._grid = [[None] * 3 for _ in range(2)]
         for cell in cells:
@@ -1612,7 +1683,9 @@ class TestUnitFiltering:
             match_text="Customers",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-meta", cell_row=1, cell_col=0,
+                table_id="unit-filter-meta",
+                cell_row=1,
+                cell_col=0,
             ),
         )
 
@@ -1627,14 +1700,20 @@ class TestUnitFiltering:
         """Strategy 5 (value in candidate cell) also applies unit filtering."""
         cells = [
             Cell(
-                row=0, col=0,
+                row=0,
+                col=0,
                 text="Customers: $14.8M",
-                header_path=[], stub_path=[],
+                header_path=[],
+                stub_path=[],
             ),
         ]
         table = Table(
             table_id="unit-filter-s5",
-            row_count=1, col_count=1, header_rows=0, stub_cols=0, cells=cells,
+            row_count=1,
+            col_count=1,
+            header_rows=0,
+            stub_cols=0,
+            cells=cells,
         )
         table._grid = [[cells[0]]]
 
@@ -1644,7 +1723,9 @@ class TestUnitFiltering:
             match_text="Customers",
             source_type=SourceType.HTML_TABLE,
             source_locator=SourceLocator(
-                table_id="unit-filter-s5", cell_row=0, cell_col=0,
+                table_id="unit-filter-s5",
+                cell_row=0,
+                cell_col=0,
             ),
         )
 
@@ -1817,13 +1898,15 @@ class TestWiderProximityMetrics:
 
     def test_wider_proximity_metrics_frozenset_contents(self) -> None:
         """_WIDER_PROXIMITY_METRICS contains exactly the expected metric IDs."""
-        expected = frozenset({
-            "cm_balance_by_cohort",
-            "cm_gross_margin_by_cohort",
-            "cm_ltv_to_cac_ratio",
-            "cm_ltv_to_cac_ratio_by_cohort",
-            "cm_cac_payback_period",
-        })
+        expected = frozenset(
+            {
+                "cm_balance_by_cohort",
+                "cm_gross_margin_by_cohort",
+                "cm_ltv_to_cac_ratio",
+                "cm_ltv_to_cac_ratio_by_cohort",
+                "cm_cac_payback_period",
+            }
+        )
         assert _WIDER_PROXIMITY_METRICS == expected
 
 
@@ -1887,9 +1970,7 @@ class TestTranscriptBindingFeatures:
         assert len(context_sec.bound_values) == 0
 
         # Transcript context (250 char proximity) — should find value
-        context_tx = TranscriptPipelineContext(
-            segments=[segment], candidates=[candidate]
-        )
+        context_tx = TranscriptPipelineContext(segments=[segment], candidates=[candidate])
         stage.process(context_tx)  # type: ignore
         assert len(context_tx.bound_values) >= 1
 
@@ -1913,9 +1994,7 @@ class TestTranscriptBindingFeatures:
             ),
         )
 
-        context = TranscriptPipelineContext(
-            segments=[segment], candidates=[candidate]
-        )
+        context = TranscriptPipelineContext(segments=[segment], candidates=[candidate])
         result = stage.process(context)  # type: ignore
         assert result.success
         assert len(context.bound_values) >= 1
@@ -1946,9 +2025,7 @@ class TestTranscriptBindingFeatures:
             ),
         )
 
-        context = TranscriptPipelineContext(
-            segments=[segment], candidates=[candidate]
-        )
+        context = TranscriptPipelineContext(segments=[segment], candidates=[candidate])
         stage.process(context)  # type: ignore
         assert len(context.bound_values) >= 1
 
@@ -1993,9 +2070,7 @@ class TestTranscriptBindingFeatures:
             ),
         )
 
-        context = TranscriptPipelineContext(
-            segments=[segment], candidates=[candidate]
-        )
+        context = TranscriptPipelineContext(segments=[segment], candidates=[candidate])
         stage.process(context)  # type: ignore
         assert len(context.bound_values) >= 1
         # "150 million" should parse to 150,000,000
@@ -2027,7 +2102,9 @@ class TestTranscriptBindingFeatures:
         if context.bound_values:
             bv = context.bound_values[0]
             # Should NOT have adjacent sentence bonus in SEC mode
-            assert bv.binding_confidence <= stage.TEXT_BINDING_BASE + stage.UNIT_PRESENCE_BONUS + 0.01
+            assert (
+                bv.binding_confidence <= stage.TEXT_BINDING_BASE + stage.UNIT_PRESENCE_BONUS + 0.01
+            )
 
 
 # ============================================================================
@@ -2072,7 +2149,9 @@ class TestAmbiguityPenaltyPostFilter:
         assert bv.value == pytest.approx(4_100_000_000, rel=0.01)
         assert bv.unit == Unit.CURRENCY
         # No ambiguity penalty — only one compatible value survived
-        expected_conf = stage.TEXT_BINDING_BASE + stage.UNIT_PRESENCE_BONUS + stage.SAME_SENTENCE_BONUS
+        expected_conf = (
+            stage.TEXT_BINDING_BASE + stage.UNIT_PRESENCE_BONUS + stage.SAME_SENTENCE_BONUS
+        )
         assert bv.binding_confidence == pytest.approx(expected_conf, abs=0.01)
 
     def test_ambiguity_penalty_when_multiple_compatible_survive(self) -> None:
@@ -2249,7 +2328,9 @@ class TestWordNumberTimeUnitParsing:
             text, kw_start, kw_end, stage.proximity_window, metric_id="cm_customers_period_end"
         )
         values = [r[1] for r in results]
-        assert 6.0 not in values, f"word-number '6' should not bind to non-time metric; values={values}"
+        assert 6.0 not in values, (
+            f"word-number '6' should not bind to non-time metric; values={values}"
+        )
 
     def test_time_unit_pattern_without_metric_id(self) -> None:
         """No metric_id passed → no time-unit parsing (preserves existing behavior)."""
@@ -3241,9 +3322,7 @@ class TestProseCellBinding:
 
     def test_ltv_cac_prose_cell_rejects_currency(self, stage: ValueBindingStage) -> None:
         """Currency values are rejected for LTV/CAC ratio metric."""
-        cell_text = (
-            "LTV/CAC ratio for 2015, 2016 cohorts was $100, $200, respectively"
-        )
+        cell_text = "LTV/CAC ratio for 2015, 2016 cohorts was $100, $200, respectively"
         cell = self._make_prose_cell(cell_text)
         table = self._make_prose_table("ff-ltv-2", cell)
         candidate = MetricCandidate(
@@ -3371,15 +3450,11 @@ class TestRespectivelyPatternBinding:
         for bv in results:
             assert bv.binding_type == "respectively_pattern"
 
-    def test_bind_prose_cell_fallback_to_respectively(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_prose_cell_fallback_to_respectively(self, stage: ValueBindingStage) -> None:
         """When normal proximity binding fails, respectively fallback fires."""
         # Normal proximity window is 100 chars. The values are 150+ chars from the keyword.
         long_preamble = "X " * 60  # ~120 chars
-        text = (
-            f"LTV/CAC ratio {long_preamble}for 2020, 2021 and 2022 was 1.1, 1.2 and 1.3, respectively"
-        )
+        text = f"LTV/CAC ratio {long_preamble}for 2020, 2021 and 2022 was 1.1, 1.2 and 1.3, respectively"
         table = _make_prose_table("ff-prose-2", text)
         candidate = MetricCandidate(
             candidate_id="cand-ff-2",
@@ -3403,9 +3478,7 @@ class TestRespectivelyPatternBinding:
             assert bv.binding_type == "respectively_pattern"
             assert bv.period_hint in {"2020", "2021", "2022"}
 
-    def test_bind_prose_cell_no_respectively_unchanged(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_bind_prose_cell_no_respectively_unchanged(self, stage: ValueBindingStage) -> None:
         """Prose cell without 'respectively' is unaffected by the new fallback."""
         text = "LTV/CAC ratio for 2022 was 1.55"
         table = _make_prose_table("ff-prose-3", text)
@@ -3487,9 +3560,7 @@ class TestProseRespectivelyPriority:
         values = sorted(bv.value for bv in results)
         assert values == pytest.approx([1.42, 1.53, 1.77], rel=1e-3)
 
-    def test_cohort_sentence_populates_cohort_hint(
-        self, stage: ValueBindingStage
-    ) -> None:
+    def test_cohort_sentence_populates_cohort_hint(self, stage: ValueBindingStage) -> None:
         """Cohort-intent sentence sets cohort_hint and leaves period_hint empty."""
         cell = Cell(row=0, col=0, text=self.FARFETCH_TEXT, header_path=[], stub_path=[])
         candidate = MetricCandidate(
@@ -3976,9 +4047,7 @@ class TestStubFinancialLineItemGuard:
         context = MockPipelineContext(tables=[table], candidates=[candidate])
         stage.process(context)  # type: ignore
 
-        assert len(context.bound_values) == 0, (
-            "Adjusted EBITDA Margin stub row must be suppressed"
-        )
+        assert len(context.bound_values) == 0, "Adjusted EBITDA Margin stub row must be suppressed"
 
     def test_accounts_payable_suppressed(self) -> None:
         """Row with stub 'Accounts payable, provisions and other liabilities' is not bound."""
@@ -3993,9 +4062,7 @@ class TestStubFinancialLineItemGuard:
         context = MockPipelineContext(tables=[table], candidates=[candidate])
         stage.process(context)  # type: ignore
 
-        assert len(context.bound_values) == 0, (
-            "Accounts payable stub row must be suppressed"
-        )
+        assert len(context.bound_values) == 0, "Accounts payable stub row must be suppressed"
 
     def test_allow_list_not_suppressed(self) -> None:
         """cm_gross_margin_by_cohort with stub containing 'margin' is NOT suppressed."""

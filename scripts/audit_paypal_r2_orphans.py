@@ -68,7 +68,7 @@ ROW_QUERY = """
         a.filename,
         a.file_path
       FROM v2_image_assets a
-      JOIN filings f ON f.filing_id = a.doc_id
+      JOIN filings f ON f.filing_id = a.filing_id
      WHERE f.filing_id = ANY(%(filing_ids)s)
      ORDER BY f.filing_id, a.filename
 """

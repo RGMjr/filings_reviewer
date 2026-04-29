@@ -3,13 +3,13 @@ id: 323
 source: gh
 slug: metricfact-doc-id-field-semantic-confusion
 title: MetricFact.doc_id dataclass field is semantically confused
-status: open
+status: resolved
 severity: low
-autonomy: skip
+autonomy: n/a
 estimated: —
 touches: []
 discovered: '2026-04-28'
-updated: '2026-04-28'
+updated: '2026-04-29'
 gh_issue: 323
 note: Field named doc_id but holds Document UUID; never read, never persisted — misleading comment too.
 ---
@@ -31,3 +31,9 @@ Surfaced while resolving legacy-038.
   actually hold the filing_id; update the misleading `# Filing ID` comment.
 - Sweep `fact.doc_id` and `MetricFact(doc_id=...)` callers (only test
   fixtures and `fact_construction.py:229` populate it).
+
+### Resolution
+
+`MetricFact.doc_id` renamed to `document_uuid` with comment `# Document UUID
+(v2_documents.doc_id; not persisted to DB)`. All callers in `fact_construction.py`
+and test fixtures updated. Bundled with gh-324 rename PR.

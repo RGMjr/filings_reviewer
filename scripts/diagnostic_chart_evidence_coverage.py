@@ -103,7 +103,7 @@ def _check_missing_image_files(db: DatabaseAdapter) -> tuple[int, int, list[dict
     """
     rows = db.query(
         """
-        SELECT img_id, doc_id, filename, file_path
+        SELECT img_id, filing_id, filename, file_path
           FROM v2_image_assets
          WHERE file_path IS NOT NULL
         """
@@ -137,23 +137,23 @@ def _chart_image_vs_fact_rate(db: DatabaseAdapter) -> list[dict]:
     """Class (E): filings with chart-class images but zero chart-sourced facts."""
     sql = """
         WITH chart_imgs AS (
-            SELECT doc_id, COUNT(*) AS n_chart_imgs
+            SELECT filing_id, COUNT(*) AS n_chart_imgs
               FROM v2_image_assets
              WHERE classification = 'chart'
-             GROUP BY doc_id
+             GROUP BY filing_id
         ),
         chart_facts AS (
-            SELECT filing_id AS doc_id, COUNT(*) AS n_chart_facts
+            SELECT filing_id, COUNT(*) AS n_chart_facts
               FROM v2_metric_facts
              WHERE source_type = 'chart'
              GROUP BY filing_id
         )
         SELECT
-            ci.doc_id,
+            ci.filing_id,
             ci.n_chart_imgs,
             COALESCE(cf.n_chart_facts, 0) AS n_chart_facts
           FROM chart_imgs ci
-          LEFT JOIN chart_facts cf USING (doc_id)
+          LEFT JOIN chart_facts cf USING (filing_id)
          WHERE COALESCE(cf.n_chart_facts, 0) = 0
          ORDER BY ci.n_chart_imgs DESC
     """
@@ -264,9 +264,9 @@ def main() -> int:
     logger.info("checked=%d missing=%d", c_checked, c_missing_count)
     for row in c_missing_rows[: args.sample]:
         logger.info(
-            "  img_id=%s doc_id=%s filename=%s path=%s",
+            "  img_id=%s filing_id=%s filename=%s path=%s",
             row["img_id"],
-            row["doc_id"],
+            row["filing_id"],
             row["filename"],
             row["file_path"],
         )
@@ -298,8 +298,8 @@ def main() -> int:
     logger.info("affected filings: %d", len(e_rows))
     for row in e_rows[: args.sample]:
         logger.info(
-            "  doc_id=%s n_chart_imgs=%d n_chart_facts=%d",
-            row["doc_id"],
+            "  filing_id=%s n_chart_imgs=%d n_chart_facts=%d",
+            row["filing_id"],
             row["n_chart_imgs"],
             row["n_chart_facts"],
         )

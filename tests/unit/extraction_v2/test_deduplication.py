@@ -64,7 +64,7 @@ def make_fact(
     """Create a MetricFact for testing."""
     return MetricFact(
         fact_id=fact_id,
-        doc_id="doc-1",
+        document_uuid="doc-1",
         canonical_metric_id=metric_id,
         value=value,
         value_raw=str(value) if value else "",

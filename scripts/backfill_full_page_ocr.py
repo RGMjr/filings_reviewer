@@ -90,10 +90,10 @@ WITH per_filing AS (
         f.form_type,
         f.filing_date,
         f.accession_number,
-        (SELECT COUNT(*) FROM v2_image_assets i WHERE i.doc_id = f.filing_id) AS image_count,
+        (SELECT COUNT(*) FROM v2_image_assets i WHERE i.filing_id = f.filing_id) AS image_count,
         COALESCE(
             (SELECT SUM(LENGTH(COALESCE(segment_text, '')))::bigint
-             FROM v2_segments s WHERE s.doc_id = f.filing_id),
+             FROM v2_segments s WHERE s.filing_id = f.filing_id),
             0
         ) AS segment_char_count,
         (SELECT COUNT(*) FROM v2_review_decisions rd

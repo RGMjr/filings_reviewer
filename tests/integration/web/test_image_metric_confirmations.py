@@ -75,16 +75,16 @@ def seeded_image(db_adapter: DatabaseAdapter) -> str:
             cur.execute(
                 """
                 INSERT INTO v2_image_assets (
-                    img_id, doc_id, filename, dom_locator, classification, processed,
+                    img_id, filing_id, filename, dom_locator, classification, processed,
                     detected_metrics
                 ) VALUES (
-                    %(img_id)s, %(doc_id)s, 'chart_test.png', '/html/body/img[1]',
+                    %(img_id)s, %(filing_id)s, 'chart_test.png', '/html/body/img[1]',
                     'chart', true, %(detected)s::jsonb
                 )
                 """,
                 {
                     "img_id": img_id,
-                    "doc_id": filing_id,
+                    "filing_id": filing_id,
                     "detected": '[{"metric_id":"cm_revenue_by_cohort","score":0.92}]',
                 },
             )
@@ -249,16 +249,16 @@ class TestImageMetricConfirmationsPost:
                 cur.execute(
                     """
                     INSERT INTO v2_image_assets (
-                        img_id, doc_id, filename, dom_locator, classification, processed,
+                        img_id, filing_id, filename, dom_locator, classification, processed,
                         detected_metrics
                     ) VALUES (
-                        %(img_id)s, %(doc_id)s, 'multi.png', '/html/body/img[1]',
+                        %(img_id)s, %(filing_id)s, 'multi.png', '/html/body/img[1]',
                         'chart', true, %(detected)s::jsonb
                     )
                     """,
                     {
                         "img_id": img_id,
-                        "doc_id": filing_id,
+                        "filing_id": filing_id,
                         "detected": (
                             '[{"metric_id":"cm_revenue_by_cohort","score":0.82},'
                             ' {"metric_id":"cm_net_revenue_retention","score":0.71},'
@@ -341,9 +341,9 @@ class TestFactPromotion:
 
     def test_accept_promotes_fact(self, client, db_adapter, seeded_image):
         filing_id = db_adapter.query(
-            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
             {"img_id": seeded_image},
-        )[0]["doc_id"]
+        )[0]["filing_id"]
         resp = self._post(
             client,
             {
@@ -359,9 +359,9 @@ class TestFactPromotion:
 
     def test_reject_does_not_promote_fact(self, client, db_adapter, seeded_image):
         filing_id = db_adapter.query(
-            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
             {"img_id": seeded_image},
-        )[0]["doc_id"]
+        )[0]["filing_id"]
         resp = self._post(
             client,
             {
@@ -381,9 +381,9 @@ class TestFactPromotion:
 
     def test_correct_rolls_back_and_promotes_new(self, client, db_adapter, seeded_image):
         filing_id = db_adapter.query(
-            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
             {"img_id": seeded_image},
-        )[0]["doc_id"]
+        )[0]["filing_id"]
         # First accept the detected metric
         self._post(
             client,
@@ -421,9 +421,9 @@ class TestFactPromotion:
 
     def test_delete_confirmation_rolls_back_fact(self, client, db_adapter, seeded_image):
         filing_id = db_adapter.query(
-            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
             {"img_id": seeded_image},
-        )[0]["doc_id"]
+        )[0]["filing_id"]
         # Accept
         post_resp = self._post(
             client,
@@ -492,9 +492,9 @@ class TestNoRelevantMetricsSentinel:
 
         # Sentinel rows do NOT promote a chart fact
         filing_id = db_adapter.query(
-            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
             {"img_id": seeded_image},
-        )[0]["doc_id"]
+        )[0]["filing_id"]
         facts = db_adapter.query(
             """
             SELECT 1 FROM v2_metric_facts
@@ -527,9 +527,9 @@ class TestNoRelevantMetricsSentinel:
         """db.count_image_metric_rejections_for_filing counts both
         per-metric rejects and the no-relevant-metrics sentinel."""
         filing_id = db_adapter.query(
-            "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
             {"img_id": seeded_image},
-        )[0]["doc_id"]
+        )[0]["filing_id"]
 
         assert db_adapter.count_image_metric_rejections_for_filing(filing_id) == 0
 

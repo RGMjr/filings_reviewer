@@ -160,7 +160,12 @@ class TestDefinitionSegmentFound:
 
     def test_methodology_segment_captured(self, stage):
         para = _seg("s1", 1, SegmentType.PARAGRAPH, "ARR was $10M.")
-        meth = _seg("s2", 2, SegmentType.METHODOLOGY, "Calculated by summing monthly recurring revenue times 12.")
+        meth = _seg(
+            "s2",
+            2,
+            SegmentType.METHODOLOGY,
+            "Calculated by summing monthly recurring revenue times 12.",
+        )
         ctx = MockPipelineContext(
             facts=[_fact("cm_average_order_value")],
             segments=[para, meth],
@@ -221,19 +226,16 @@ class TestDefinitionSegmentFound:
         stage.process(ctx)
         assert len(ctx.definitions) == 1
 
-    def test_doc_id_comes_from_context_document(self, stage):
-        doc = Document()
-        doc.doc_id = "test-doc-uuid-123"
+    def test_filing_id_comes_from_context(self, stage):
         para = _seg("s1", 1, SegmentType.PARAGRAPH, "Metric mention.")
         defn = _seg("s2", 2, SegmentType.DEFINITION, "A definition.")
         ctx = MockPipelineContext(
-            document=doc,
             facts=[_fact("cm_customers_period_end")],
             segments=[para, defn],
             candidates=[_candidate("c1", "cm_customers_period_end", "s1")],
         )
         stage.process(ctx)
-        assert ctx.definitions[0].doc_id == "test-doc-uuid-123"
+        assert ctx.definitions[0].filing_id == str(ctx.filing_id)
 
 
 # ============================================================================

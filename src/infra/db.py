@@ -934,14 +934,14 @@ class DatabaseAdapter:
             ),
             image_progress AS (
                 SELECT
-                    v.doc_id                                                               AS filing_id,
+                    v.filing_id,
                     COUNT(v.img_id)                                                         AS image_count,
                     COUNT(CASE WHEN v.review_status = 'pending'    THEN 1 END)              AS images_pending,
                     COUNT(CASE WHEN v.review_status = 'reviewed'   THEN 1 END)              AS images_reviewed
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
-                GROUP BY v.doc_id
+                GROUP BY v.filing_id
             ),
             reviewer_progress AS (
                 SELECT
@@ -954,7 +954,7 @@ class DatabaseAdapter:
                     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
                     WHERE rd.reviewer_id IS NOT NULL
                     UNION ALL
-                    SELECT va.doc_id AS filing_id, ird.reviewer_id
+                    SELECT va.filing_id, ird.reviewer_id
                     FROM v2_image_review_decisions ird
                     JOIN v2_image_assets va ON va.img_id = ird.img_id
                     WHERE ird.reviewer_id IS NOT NULL
@@ -1038,12 +1038,12 @@ class DatabaseAdapter:
             ),
             image_progress AS (
                 SELECT
-                    v.doc_id AS filing_id,
+                    v.filing_id,
                     COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
-                GROUP BY v.doc_id
+                GROUP BY v.filing_id
             ),
             reviewer_progress AS (
                 SELECT
@@ -1056,7 +1056,7 @@ class DatabaseAdapter:
                     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
                     WHERE rd.reviewer_id IS NOT NULL
                     UNION ALL
-                    SELECT va.doc_id AS filing_id, ird.reviewer_id
+                    SELECT va.filing_id, ird.reviewer_id
                     FROM v2_image_review_decisions ird
                     JOIN v2_image_assets va ON va.img_id = ird.img_id
                     WHERE ird.reviewer_id IS NOT NULL
@@ -1143,14 +1143,14 @@ class DatabaseAdapter:
             ),
             image_progress AS (
                 SELECT
-                    v.doc_id AS filing_id,
+                    v.filing_id,
                     COUNT(v.img_id) AS image_count,
                     COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending,
                     COUNT(CASE WHEN v.review_status = 'reviewed' THEN 1 END) AS images_reviewed
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
-                GROUP BY v.doc_id
+                GROUP BY v.filing_id
             ),
             reviewer_progress AS (
                 SELECT
@@ -1163,7 +1163,7 @@ class DatabaseAdapter:
                     JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
                     WHERE rd.reviewer_id IS NOT NULL
                     UNION ALL
-                    SELECT va.doc_id AS filing_id, ird.reviewer_id
+                    SELECT va.filing_id, ird.reviewer_id
                     FROM v2_image_review_decisions ird
                     JOIN v2_image_assets va ON va.img_id = ird.img_id
                     WHERE ird.reviewer_id IS NOT NULL
@@ -1241,7 +1241,7 @@ class DatabaseAdapter:
             SELECT
                 COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending
             FROM v2_image_assets v
-            WHERE v.doc_id = %(filing_id)s
+            WHERE v.filing_id = %(filing_id)s
               AND v.classification NOT IN ('decorative', 'logo', 'signature')
               AND v.filename IS NOT NULL AND v.filename != ''
         """
@@ -1363,7 +1363,7 @@ class DatabaseAdapter:
         result = self.query(sql, params)
         return result[0]["cnt"] if result else 0
 
-    def get_segment_context(self, doc_id: int, segment_id: str, window: int = 2) -> list[dict]:
+    def get_segment_context(self, filing_id: int, segment_id: str, window: int = 2) -> list[dict]:
         """
         Return the target segment plus up to `window` neighbors on each side,
         ordered by sequence_idx. Used to show surrounding paragraph context
@@ -1374,17 +1374,17 @@ class DatabaseAdapter:
             WITH target AS (
                 SELECT sequence_idx
                 FROM v2_segments
-                WHERE segment_id = %(segment_id)s AND doc_id = %(doc_id)s
+                WHERE segment_id = %(segment_id)s AND filing_id = %(filing_id)s
             )
             SELECT s.segment_id::text, s.segment_type, s.segment_text,
                    s.section_path, s.section_type, s.sequence_idx
             FROM v2_segments s, target t
-            WHERE s.doc_id = %(doc_id)s
+            WHERE s.filing_id = %(filing_id)s
               AND s.sequence_idx BETWEEN t.sequence_idx - %(window)s
                                      AND t.sequence_idx + %(window)s
             ORDER BY s.sequence_idx
             """,
-            {"doc_id": doc_id, "segment_id": segment_id, "window": window},
+            {"filing_id": filing_id, "segment_id": segment_id, "window": window},
         )
 
     def get_v2_image_ocr_segments_for_filing(self, filing_id: int) -> list[dict]:
@@ -1409,14 +1409,14 @@ class DatabaseAdapter:
                    ia.ocr_text AS image_ocr_text
             FROM v2_segments s
             LEFT JOIN v2_image_assets ia ON ia.img_id = s.source_img_id
-            WHERE s.doc_id = %(filing_id)s
+            WHERE s.filing_id = %(filing_id)s
               AND s.source_type = 'image_ocr'
             ORDER BY s.sequence_idx
             """,
             {"filing_id": filing_id},
         )
 
-    def get_table_context(self, doc_id: int, table_id: str) -> dict | None:
+    def get_table_context(self, filing_id: int, table_id: str) -> dict | None:
         """
         Return table metadata and a reconstructed HTML table for a V2 table fact.
         Used to show the full table in the review UI when evidence_pack
@@ -1429,10 +1429,10 @@ class DatabaseAdapter:
             """
             SELECT table_id::text, section_path, section_type, row_count, col_count
             FROM v2_tables
-            WHERE table_id = %(table_id)s AND doc_id = %(doc_id)s
+            WHERE table_id = %(table_id)s AND filing_id = %(filing_id)s
             LIMIT 1
             """,
-            {"doc_id": doc_id, "table_id": table_id},
+            {"filing_id": filing_id, "table_id": table_id},
         )
         if not meta_rows:
             return None
@@ -1801,7 +1801,7 @@ class DatabaseAdapter:
 
     _V2_IMAGE_CANDIDATE_SELECT = """
         v.img_id,
-        v.doc_id AS filing_id,
+        v.filing_id,
         f.company_id,
         v.filename,
         v.filename AS image_src,
@@ -1963,18 +1963,18 @@ class DatabaseAdapter:
         else:  # position
             order_by = "v.img_id ASC"
 
-        # Dedup by (doc_id, filename): repeated extraction runs produce fresh
+        # Dedup by (filing_id, filename): repeated extraction runs produce fresh
         # img_id UUIDs for the same file, so v2_image_assets can hold multiple
         # rows per physical image. Keep the most recent row per filename —
         # prefer rows that already have a review decision so reviewer work
         # is not hidden behind a newer un-reviewed duplicate.
         sql = f"""
             WITH deduped_img AS (
-                SELECT DISTINCT ON (doc_id, filename) img_id
+                SELECT DISTINCT ON (filing_id, filename) img_id
                 FROM v2_image_assets
-                WHERE doc_id = %(filing_id)s
+                WHERE filing_id = %(filing_id)s
                 ORDER BY
-                    doc_id,
+                    filing_id,
                     filename,
                     EXISTS (
                         SELECT 1 FROM v2_image_review_decisions rd
@@ -1987,7 +1987,7 @@ class DatabaseAdapter:
                 ic.predicted_metrics,
                 ic.confidence        AS classification_confidence
             FROM v2_image_assets v
-            JOIN filings f ON v.doc_id = f.filing_id
+            JOIN filings f ON v.filing_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
             LEFT JOIN LATERAL (
@@ -1998,7 +1998,7 @@ class DatabaseAdapter:
                 LIMIT 1
             ) ic ON true
             {self._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN}
-            WHERE v.doc_id = %(filing_id)s
+            WHERE v.filing_id = %(filing_id)s
               AND v.img_id IN (SELECT img_id FROM deduped_img)
               AND v.classification NOT IN ('decorative', 'logo', 'signature')
               AND v.filename IS NOT NULL
@@ -2021,7 +2021,7 @@ class DatabaseAdapter:
                 ic.predicted_metrics,
                 ic.confidence        AS classification_confidence
             FROM v2_image_assets v
-            JOIN filings f ON v.doc_id = f.filing_id
+            JOIN filings f ON v.filing_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
             LEFT JOIN LATERAL (
@@ -2074,14 +2074,14 @@ class DatabaseAdapter:
             """
             params["current_img_id"] = current_img_id
 
-        # Dedup by (doc_id, filename) — see get_image_review_candidates_for_filing_v2.
+        # Dedup by (filing_id, filename) — see get_image_review_candidates_for_filing_v2.
         sql = f"""
             WITH deduped_img AS (
-                SELECT DISTINCT ON (doc_id, filename) img_id
+                SELECT DISTINCT ON (filing_id, filename) img_id
                 FROM v2_image_assets
-                WHERE doc_id = %(filing_id)s
+                WHERE filing_id = %(filing_id)s
                 ORDER BY
-                    doc_id,
+                    filing_id,
                     filename,
                     EXISTS (
                         SELECT 1 FROM v2_image_review_decisions rd
@@ -2091,11 +2091,11 @@ class DatabaseAdapter:
             )
             SELECT {self._V2_IMAGE_CANDIDATE_SELECT}
             FROM v2_image_assets v
-            JOIN filings f ON v.doc_id = f.filing_id
+            JOIN filings f ON v.filing_id = f.filing_id
             JOIN companies c ON f.company_id = c.company_id
             LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
             {self._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN}
-            WHERE v.doc_id = %(filing_id)s
+            WHERE v.filing_id = %(filing_id)s
               AND v.img_id IN (SELECT img_id FROM deduped_img)
               AND v.review_status = ANY(%(status_list)s)
               AND v.classification NOT IN ('decorative', 'logo', 'signature')
@@ -2251,7 +2251,7 @@ class DatabaseAdapter:
         otherwise they are across all filings. Only non-decorative images are counted
         (matches queue semantics used by the UI).
         """
-        filter_clause = "AND v.doc_id = %(filing_id)s" if filing_id is not None else ""
+        filter_clause = "AND v.filing_id = %(filing_id)s" if filing_id is not None else ""
         params: dict[str, Any] = {}
         if filing_id is not None:
             params["filing_id"] = filing_id
@@ -2303,7 +2303,7 @@ class DatabaseAdapter:
             SELECT COUNT(*) AS n
               FROM v2_image_metric_confirmations imc
               JOIN v2_image_assets ia ON ia.img_id = imc.img_id
-             WHERE ia.doc_id = %(filing_id)s
+             WHERE ia.filing_id = %(filing_id)s
                AND imc.decision = 'reject'
         """
         rows = self.query(sql, {"filing_id": filing_id})
@@ -2361,13 +2361,13 @@ class DatabaseAdapter:
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+                    "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
                     {"img_id": img_id},
                 )
                 doc_row = cur.fetchone()
                 if doc_row is None:
                     raise ValueError(f"Image not found: img_id={img_id}")
-                doc_id = doc_row["doc_id"]
+                filing_id = doc_row["filing_id"]
 
                 for entry in confirmations:
                     decision = entry["decision"]
@@ -2389,19 +2389,19 @@ class DatabaseAdapter:
 
                     if decision == "accept":
                         self._promote_chart_fact(
-                            cur, doc_id, img_id, detected_metric_id, reviewer_id
+                            cur, filing_id, img_id, detected_metric_id, reviewer_id
                         )
                     elif decision == "correct":
-                        self._demote_chart_fact(cur, doc_id, img_id, detected_metric_id)
+                        self._demote_chart_fact(cur, filing_id, img_id, detected_metric_id)
                         self._promote_chart_fact(
-                            cur, doc_id, img_id, confirmed_metric_id, reviewer_id
+                            cur, filing_id, img_id, confirmed_metric_id, reviewer_id
                         )
                     elif decision == "add":
                         self._promote_chart_fact(
-                            cur, doc_id, img_id, confirmed_metric_id, reviewer_id
+                            cur, filing_id, img_id, confirmed_metric_id, reviewer_id
                         )
                     elif decision in ("reject", "skip"):
-                        self._demote_chart_fact(cur, doc_id, img_id, detected_metric_id)
+                        self._demote_chart_fact(cur, filing_id, img_id, detected_metric_id)
 
         logger.debug(
             "Upserted %d image metric confirmations: img_id=%s reviewer_id=%s",
@@ -2414,7 +2414,7 @@ class DatabaseAdapter:
     def _promote_chart_fact(
         self,
         cur,
-        doc_id: int,
+        filing_id: int,
         img_id: str,
         metric_id: str | None,
         reviewer_id: str,
@@ -2433,12 +2433,12 @@ class DatabaseAdapter:
         cur.execute(
             """
             SELECT fact_id FROM v2_metric_facts
-            WHERE filing_id = %(doc_id)s
+            WHERE filing_id = %(filing_id)s
               AND canonical_metric_id = %(metric_id)s
               AND source_type = 'chart'
             LIMIT 1
             """,
-            {"doc_id": doc_id, "metric_id": metric_id},
+            {"filing_id": filing_id, "metric_id": metric_id},
         )
         if cur.fetchone() is not None:
             return
@@ -2450,14 +2450,14 @@ class DatabaseAdapter:
                 confidence, extraction_method, requires_review, review_status,
                 pipeline_version
             ) VALUES (
-                %(doc_id)s, %(metric_id)s, '', 'other',
+                %(filing_id)s, %(metric_id)s, '', 'other',
                 'chart', %(source_locator)s::jsonb,
                 1.0, 'manual', FALSE, 'accepted',
                 '2.0.0'
             )
             """,
             {
-                "doc_id": doc_id,
+                "filing_id": filing_id,
                 "metric_id": metric_id,
                 "source_locator": json.dumps({"img_id": img_id}),
             },
@@ -2466,7 +2466,7 @@ class DatabaseAdapter:
     def _demote_chart_fact(
         self,
         cur,
-        doc_id: int,
+        filing_id: int,
         img_id: str,
         metric_id: str | None,
     ) -> None:
@@ -2486,7 +2486,7 @@ class DatabaseAdapter:
             SELECT 1
               FROM v2_image_metric_confirmations imc
               JOIN v2_image_assets ia ON ia.img_id = imc.img_id
-             WHERE ia.doc_id = %(doc_id)s
+             WHERE ia.filing_id = %(filing_id)s
                AND (
                    (imc.decision = 'accept'  AND imc.detected_metric_id  = %(metric_id)s) OR
                    (imc.decision = 'correct' AND imc.confirmed_metric_id = %(metric_id)s) OR
@@ -2494,18 +2494,18 @@ class DatabaseAdapter:
                )
              LIMIT 1
             """,
-            {"doc_id": doc_id, "metric_id": metric_id},
+            {"filing_id": filing_id, "metric_id": metric_id},
         )
         if cur.fetchone() is not None:
             return
         cur.execute(
             """
             DELETE FROM v2_metric_facts
-            WHERE filing_id = %(doc_id)s
+            WHERE filing_id = %(filing_id)s
               AND canonical_metric_id = %(metric_id)s
               AND source_type = 'chart'
             """,
-            {"doc_id": doc_id, "metric_id": metric_id},
+            {"filing_id": filing_id, "metric_id": metric_id},
         )
 
     def delete_image_metric_confirmation(
@@ -2540,14 +2540,14 @@ class DatabaseAdapter:
                     return None
 
                 cur.execute(
-                    "SELECT doc_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+                    "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
                     {"img_id": row["img_id"]},
                 )
                 doc_row = cur.fetchone()
                 if doc_row is not None:
-                    doc_id = doc_row["doc_id"]
+                    filing_id = doc_row["filing_id"]
                     metric_id = row["confirmed_metric_id"] or row["detected_metric_id"]
-                    self._demote_chart_fact(cur, doc_id, row["img_id"], metric_id)
+                    self._demote_chart_fact(cur, filing_id, row["img_id"], metric_id)
 
         logger.debug(
             "Deleted image metric confirmation %s (reviewer=%s, decision=%s)",

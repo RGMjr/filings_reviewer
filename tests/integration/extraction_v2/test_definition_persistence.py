@@ -84,26 +84,26 @@ def cleanup_v2_tables(test_db_adapter: DatabaseAdapter, test_filing_id: int):
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
                 cur.execute(
-                    "DELETE FROM v2_metric_definitions WHERE doc_id = %s",
+                    "DELETE FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,))
-                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_image_assets WHERE filing_id = %s", (test_filing_id,))
                 cur.execute(
                     """
                     DELETE FROM v2_table_cells
                     WHERE table_id IN (
-                        SELECT table_id FROM v2_tables WHERE doc_id = %s
+                        SELECT table_id FROM v2_tables WHERE filing_id = %s
                     )
                 """,
                     (test_filing_id,),
                 )
-                cur.execute("DELETE FROM v2_tables WHERE doc_id = %s", (test_filing_id,))
-                cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_tables WHERE filing_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_segments WHERE filing_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _cleanup()
-    # Create v2_documents row required by FK on v2_metric_definitions.doc_id
+    # Create v2_documents row required by FK on v2_metric_definitions.filing_id
     with test_db_adapter.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -126,7 +126,7 @@ def make_definition(
     """Build a MetricDefinition with sensible defaults."""
     defaults: dict[str, object] = {
         "definition_id": str(uuid.uuid4()),
-        "doc_id": str(uuid.uuid4()),
+        "filing_id": str(uuid.uuid4()),
         "canonical_metric_id": metric_id,
         "definition_text": "Customers who placed at least one order in the period.",
         "definition_text_normalized": "Customers who placed at least one order in the period.",
@@ -155,7 +155,7 @@ class TestDefinitionPersistence:
         with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT * FROM v2_metric_definitions WHERE doc_id = %s",
+                    "SELECT * FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 row = cur.fetchone()
@@ -185,7 +185,7 @@ class TestDefinitionPersistence:
         with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
+                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 result = cur.fetchone()
@@ -205,7 +205,7 @@ class TestDefinitionPersistence:
         with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
+                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 result = cur.fetchone()
@@ -227,7 +227,7 @@ class TestDefinitionPersistence:
         with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
+                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 assert cur.fetchone()["cnt"] == 1
@@ -244,7 +244,7 @@ class TestDefinitionPersistence:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT COUNT(*) AS cnt, MAX(definition_text_normalized) AS norm_text "
-                    "FROM v2_metric_definitions WHERE doc_id = %s",
+                    "FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 row = cur.fetchone()
@@ -275,7 +275,7 @@ class TestDefinitionPersistence:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT canonical_metric_id, alignment_flag "
-                    "FROM v2_metric_definitions WHERE doc_id = %s",
+                    "FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 rows = {r["canonical_metric_id"]: r["alignment_flag"] for r in cur.fetchall()}
@@ -354,7 +354,7 @@ class TestDefinitionPipelineResultIntegration:
         with test_db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE doc_id = %s",
+                    "SELECT COUNT(*) AS cnt FROM v2_metric_definitions WHERE filing_id = %s",
                     (test_filing_id,),
                 )
                 row = cur.fetchone()

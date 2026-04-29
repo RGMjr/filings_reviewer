@@ -82,13 +82,13 @@ verification SQL.
 
 ## Image Asset Identity
 
-`v2_image_assets` is unique on `(doc_id, filename)`; `img_id` is stable across re-extractions because `_persist_images_in_tx` upserts via `ON CONFLICT (doc_id, filename) DO UPDATE` and preserves the existing `img_id` on conflict. `persist_pipeline_result` uses the old→stable img_id map returned by `_persist_images_in_tx` to rewrite in-memory fact `source_locator.img_id` values before fact persistence, keeping metric-fact provenance consistent with the canonical DB row.
+`v2_image_assets` is unique on `(filing_id, filename)`; `img_id` is stable across re-extractions because `_persist_images_in_tx` upserts via `ON CONFLICT (filing_id, filename) DO UPDATE` and preserves the existing `img_id` on conflict. `persist_pipeline_result` uses the old→stable img_id map returned by `_persist_images_in_tx` to rewrite in-memory fact `source_locator.img_id` values before fact persistence, keeping metric-fact provenance consistent with the canonical DB row.
 
 **`file_path` survives a NULL inbound (legacy-103, 2026-04-27):** the upsert clause is `file_path = COALESCE(EXCLUDED.file_path, v2_image_assets.file_path)`, so a force-reextract whose SEC fetch failed (transient outage, malformed URL) preserves the existing R2 storage key. Every other column still refreshes — only `file_path` is sticky against NULL.
 
 **Synthetic accession URL construction (legacy-104, 2026-04-27):** filings ingested via `ingest_presentations.py` / `ingest_transcripts.py` carry synthetic `accession_number` values (`presentation:<cik>/<acc>/<file>`, `transcript:<...>`). EDGAR-URL construction sites (`SECClient.fetch_image`, `_get_image_cache_path`, `resolve_primary_document_url`, `get_filing_by_accession`, `_search_filings_array`, and `web/url_builders.build_image_cache_url`) all run `extract_sec_accession_token` from `src/infra/validation.py` to recover the embedded SEC token before building the URL. New URL-construction sites must do the same — `normalize_sec_accession` deliberately preserves the synthetic prefix for row-identity callers and is the wrong primitive for URLs.
 
-**Detected-metrics invariant (chart-presence pivot, #86):** Every `v2_image_assets` row persists `detected_metrics` (JSONB, default `[]`) alongside the existing `chart_data`, `img_id`, and `file_path`. `ChartFactBridgeStage` populates `image.detected_metrics` from `ChartMetricClassifier.classify_all(...)`; `_persist_images_in_tx` round-trips the JSONB through the `ON CONFLICT (doc_id, filename) DO UPDATE` upsert so re-extraction overwrites cleanly. `scripts/check_image_referential_integrity.py` still runs in CI but is now trivially green (no chart facts → no `img_id` refs to validate); orphaned-asset and missing-on-disk checks still fire. The review UI's Detected-metrics card (`src/web/templates/unified_review.html`, `src/web/static/js/review_images_v2.js`) surfaces each detected entry for reviewer accept / reject / correct / add via `POST /api/v2/image-metric-confirmations`. As of #86 + 2026-04-28, `ChartFactBridgeStage` scores both `chart_data` (chart path, via `ChartMetricClassifier`) and `ocr_table` (TABLE_IMAGE path, via `score_ocr_table` in `src/extraction_v2/chart/table_metric_classifier.py`). Both write into the same `v2_image_assets.detected_metrics` JSONB column — the review UI's `dataset.detectedMetrics` reader is source-agnostic.
+**Detected-metrics invariant (chart-presence pivot, #86):** Every `v2_image_assets` row persists `detected_metrics` (JSONB, default `[]`) alongside the existing `chart_data`, `img_id`, and `file_path`. `ChartFactBridgeStage` populates `image.detected_metrics` from `ChartMetricClassifier.classify_all(...)`; `_persist_images_in_tx` round-trips the JSONB through the `ON CONFLICT (filing_id, filename) DO UPDATE` upsert so re-extraction overwrites cleanly. `scripts/check_image_referential_integrity.py` still runs in CI but is now trivially green (no chart facts → no `img_id` refs to validate); orphaned-asset and missing-on-disk checks still fire. The review UI's Detected-metrics card (`src/web/templates/unified_review.html`, `src/web/static/js/review_images_v2.js`) surfaces each detected entry for reviewer accept / reject / correct / add via `POST /api/v2/image-metric-confirmations`. As of #86 + 2026-04-28, `ChartFactBridgeStage` scores both `chart_data` (chart path, via `ChartMetricClassifier`) and `ocr_table` (TABLE_IMAGE path, via `score_ocr_table` in `src/extraction_v2/chart/table_metric_classifier.py`). Both write into the same `v2_image_assets.detected_metrics` JSONB column — the review UI's `dataset.detectedMetrics` reader is source-agnostic.
 
 ## Reviewed-Filing Guard
 
@@ -121,7 +121,7 @@ a backup.
 an existing `v2_image_review_decisions` row would be re-classified from a
 visible class (`chart` / `table_image` / `unknown`) into a hidden class
 (`decorative` / `logo` / `signature`). The asset row is preserved by
-`ON CONFLICT (doc_id, filename)`, so the decision survives — but the review
+`ON CONFLICT (filing_id, filename)`, so the decision survives — but the review
 UI's `classification NOT IN ('decorative','logo','signature')` filter would
 make it invisible. `force=True` proceeds and logs
 `force-reextract hiding reviewed images: filing_id=X hidden_image_count=N filenames=[…]`.
@@ -132,7 +132,7 @@ already-hidden image, are not blocked.
 
 `persist_facts` and `persist_pipeline_result` accept `chart_only=True` to
 scope the DELETE-then-INSERT to `source_type='chart'` only. Inbound
-facts are filtered to chart facts; the DELETE is `WHERE doc_id=%s AND
+facts are filtered to chart facts; the DELETE is `WHERE filing_id=%s AND
 source_type='chart'`; the reviewed-filing guard counts decisions on
 chart facts only. Text facts and their reviewer decisions are untouched.
 

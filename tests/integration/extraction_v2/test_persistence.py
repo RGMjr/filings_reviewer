@@ -109,18 +109,18 @@ def cleanup_v2_tables(db_adapter: DatabaseAdapter, test_filing_id: int):
             with conn.cursor() as cur:
                 # Delete in order respecting foreign keys
                 cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (test_filing_id,))
-                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_image_assets WHERE filing_id = %s", (test_filing_id,))
                 cur.execute(
                     """
                     DELETE FROM v2_table_cells
                     WHERE table_id IN (
-                        SELECT table_id FROM v2_tables WHERE doc_id = %s
+                        SELECT table_id FROM v2_tables WHERE filing_id = %s
                     )
                 """,
                     (test_filing_id,),
                 )
-                cur.execute("DELETE FROM v2_tables WHERE doc_id = %s", (test_filing_id,))
-                cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_tables WHERE filing_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_segments WHERE filing_id = %s", (test_filing_id,))
                 cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (test_filing_id,))
 
     _cleanup()
@@ -244,7 +244,7 @@ class TestSegmentPersistence:
         segments = [
             Segment(
                 segment_id=str(uuid.uuid4()),
-                doc_id=str(test_filing_id),
+                filing_id=str(test_filing_id),
                 segment_type=SegmentType.PARAGRAPH,
                 text=f"Segment {i} text content",
                 dom_locator=f"/html/body/p[{i}]",
@@ -261,7 +261,8 @@ class TestSegmentPersistence:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s", (test_filing_id,)
+                    "SELECT COUNT(*) as cnt FROM v2_segments WHERE filing_id = %s",
+                    (test_filing_id,),
                 )
                 result = cur.fetchone()
                 assert result["cnt"] == 5
@@ -298,7 +299,7 @@ class TestSegmentPersistence:
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT segment_text, sequence_idx
-                       FROM v2_segments WHERE doc_id = %s
+                       FROM v2_segments WHERE filing_id = %s
                        ORDER BY sequence_idx""",
                     (test_filing_id,),
                 )
@@ -320,7 +321,7 @@ class TestTablePersistence:
         """Test inserting table with cells."""
         table = Table(
             table_id=str(uuid.uuid4()),
-            doc_id=str(test_filing_id),
+            filing_id=str(test_filing_id),
             dom_locator="/html/body/table[1]",
             row_count=3,
             col_count=2,
@@ -427,7 +428,7 @@ class TestFactPersistence:
         """Test inserting fact with full provenance."""
         fact = MetricFact(
             fact_id=str(uuid.uuid4()),
-            doc_id=str(test_filing_id),
+            document_uuid=str(test_filing_id),
             canonical_metric_id="cm_new_customers_acquired",  # Use valid metric ID
             value=1000000.0,
             value_raw="$1.0M",
@@ -640,7 +641,7 @@ class TestImagePersistence:
         """Test inserting basic image asset."""
         image = ImageAsset(
             img_id=str(uuid.uuid4()),
-            doc_id=str(test_filing_id),
+            filing_id=str(test_filing_id),
             filename="chart1.png",
             file_path="/data/images/chart1.png",
             width=800,
@@ -752,7 +753,7 @@ class TestImageFilePathPreservation:
                     """
                     SELECT file_path, classification, nearby_text
                       FROM v2_image_assets
-                     WHERE doc_id = %s AND filename = %s
+                     WHERE filing_id = %s AND filename = %s
                     """,
                     (test_filing_id, "legacy103.png"),
                 )
@@ -796,7 +797,7 @@ class TestImageFilePathPreservation:
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT file_path FROM v2_image_assets WHERE doc_id = %s AND filename = %s",
+                    "SELECT file_path FROM v2_image_assets WHERE filing_id = %s AND filename = %s",
                     (test_filing_id, "legacy103_overwrite.png"),
                 )
                 result = cur.fetchone()
@@ -1079,7 +1080,7 @@ class TestConcurrentExtraction:
                     assert cur.fetchone()["cnt"] == 1
 
                     cur.execute(
-                        "SELECT COUNT(*) as cnt FROM v2_segments WHERE doc_id = %s",
+                        "SELECT COUNT(*) as cnt FROM v2_segments WHERE filing_id = %s",
                         (fid,),
                     )
                     assert cur.fetchone()["cnt"] == 3
@@ -1089,5 +1090,5 @@ class TestConcurrentExtraction:
             with db_adapter.get_connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("DELETE FROM v2_metric_facts WHERE filing_id = %s", (fid,))
-                    cur.execute("DELETE FROM v2_segments WHERE doc_id = %s", (fid,))
+                    cur.execute("DELETE FROM v2_segments WHERE filing_id = %s", (fid,))
                     cur.execute("DELETE FROM v2_documents WHERE filing_id = %s", (fid,))

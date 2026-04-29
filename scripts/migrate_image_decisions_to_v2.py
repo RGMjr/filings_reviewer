@@ -10,7 +10,7 @@ equivalents introduced in Phase B of the V1 deprecation plan:
   3. `image_review_decisions`                      → `v2_image_review_decisions`
 
 Join key: `(image_review_candidates.filing_id, image_review_candidates.image_src)`
-      ==  `(v2_image_assets.doc_id,            v2_image_assets.filename)`.
+      ==  `(v2_image_assets.filing_id,         v2_image_assets.filename)`.
 A composite key is required because bare filenames (e.g. `mdaa2.jpg`) collide
 across filings.
 
@@ -47,7 +47,7 @@ def preview_counts(db: DatabaseAdapter) -> dict:
         SELECT COUNT(*) AS n
         FROM image_review_candidates c
         JOIN v2_image_assets v
-            ON v.doc_id = c.filing_id AND v.filename = c.image_src
+            ON v.filing_id = c.filing_id AND v.filename = c.image_src
         WHERE c.review_status != 'pending' OR c.predicted_relevance IS NOT NULL
         """
     )[0]["n"]
@@ -59,7 +59,7 @@ def preview_counts(db: DatabaseAdapter) -> dict:
         JOIN image_review_candidates c
             ON c.image_candidate_id = d.image_candidate_id
         JOIN v2_image_assets v
-            ON v.doc_id = c.filing_id AND v.filename = c.image_src
+            ON v.filing_id = c.filing_id AND v.filename = c.image_src
         LEFT JOIN v2_image_review_decisions vd
             ON vd.img_id = v.img_id
         WHERE vd.image_decision_id IS NULL
@@ -71,7 +71,7 @@ def preview_counts(db: DatabaseAdapter) -> dict:
         SELECT COUNT(*) AS n
         FROM image_review_candidates c
         LEFT JOIN v2_image_assets v
-            ON v.doc_id = c.filing_id AND v.filename = c.image_src
+            ON v.filing_id = c.filing_id AND v.filename = c.image_src
         WHERE v.img_id IS NULL
         """
     )[0]["n"]
@@ -83,7 +83,7 @@ def preview_counts(db: DatabaseAdapter) -> dict:
         JOIN image_review_candidates c
             ON c.image_candidate_id = d.image_candidate_id
         LEFT JOIN v2_image_assets v
-            ON v.doc_id = c.filing_id AND v.filename = c.image_src
+            ON v.filing_id = c.filing_id AND v.filename = c.image_src
         WHERE v.img_id IS NULL
         """
     )[0]["n"]
@@ -103,7 +103,7 @@ def log_unmatched_samples(db: DatabaseAdapter, limit: int = 10) -> None:
         SELECT c.filing_id, c.image_src, c.review_status
         FROM image_review_candidates c
         LEFT JOIN v2_image_assets v
-            ON v.doc_id = c.filing_id AND v.filename = c.image_src
+            ON v.filing_id = c.filing_id AND v.filename = c.image_src
         WHERE v.img_id IS NULL
         ORDER BY c.filing_id, c.image_candidate_id
         LIMIT %(limit)s
@@ -113,8 +113,12 @@ def log_unmatched_samples(db: DatabaseAdapter, limit: int = 10) -> None:
     if sample_cands:
         logger.info("  Sample unmatched V1 candidates (first %d):", len(sample_cands))
         for row in sample_cands:
-            logger.info("    filing_id=%s image_src=%s status=%s",
-                        row["filing_id"], row["image_src"], row["review_status"])
+            logger.info(
+                "    filing_id=%s image_src=%s status=%s",
+                row["filing_id"],
+                row["image_src"],
+                row["review_status"],
+            )
 
     sample_decs = db.query(
         """
@@ -122,7 +126,7 @@ def log_unmatched_samples(db: DatabaseAdapter, limit: int = 10) -> None:
         FROM image_review_decisions d
         JOIN image_review_candidates c ON c.image_candidate_id = d.image_candidate_id
         LEFT JOIN v2_image_assets v
-            ON v.doc_id = c.filing_id AND v.filename = c.image_src
+            ON v.filing_id = c.filing_id AND v.filename = c.image_src
         WHERE v.img_id IS NULL
         ORDER BY c.filing_id, d.image_decision_id
         LIMIT %(limit)s
@@ -132,9 +136,13 @@ def log_unmatched_samples(db: DatabaseAdapter, limit: int = 10) -> None:
     if sample_decs:
         logger.info("  Sample orphan V1 decisions (first %d):", len(sample_decs))
         for row in sample_decs:
-            logger.info("    decision_id=%s filing_id=%s image_src=%s decision=%s",
-                        row["image_decision_id"], row["filing_id"],
-                        row["image_src"], row["decision"])
+            logger.info(
+                "    decision_id=%s filing_id=%s image_src=%s decision=%s",
+                row["image_decision_id"],
+                row["filing_id"],
+                row["image_src"],
+                row["decision"],
+            )
 
 
 def copy_review_status_and_relevance(db: DatabaseAdapter) -> int:
@@ -145,7 +153,7 @@ def copy_review_status_and_relevance(db: DatabaseAdapter) -> int:
         SET review_status       = c.review_status,
             predicted_relevance = c.predicted_relevance
         FROM image_review_candidates c
-        WHERE v.doc_id   = c.filing_id
+        WHERE v.filing_id = c.filing_id
           AND v.filename = c.image_src
           AND (
                 v.review_status       IS DISTINCT FROM c.review_status
@@ -172,7 +180,7 @@ def copy_decisions(db: DatabaseAdapter) -> int:
         JOIN image_review_candidates c
             ON c.image_candidate_id = d.image_candidate_id
         JOIN v2_image_assets v
-            ON v.doc_id = c.filing_id AND v.filename = c.image_src
+            ON v.filing_id = c.filing_id AND v.filename = c.image_src
         ON CONFLICT (img_id) DO NOTHING
         RETURNING image_decision_id
         """
@@ -182,8 +190,9 @@ def copy_decisions(db: DatabaseAdapter) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Report what would change without writing")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Report what would change without writing"
+    )
     parser.add_argument("--database-url", type=str)
     args = parser.parse_args()
 
@@ -225,8 +234,9 @@ def main() -> None:
         return
 
     status_updated = copy_review_status_and_relevance(db)
-    logger.info("Updated review_status/predicted_relevance on %d v2_image_assets rows",
-                status_updated)
+    logger.info(
+        "Updated review_status/predicted_relevance on %d v2_image_assets rows", status_updated
+    )
 
     decisions_inserted = copy_decisions(db)
     logger.info("Inserted %d v2_image_review_decisions rows", decisions_inserted)

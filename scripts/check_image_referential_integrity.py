@@ -93,7 +93,7 @@ ORPHAN_SQL = """
 # (C) helper — every asset row with a declared file_path; existence is tested
 # in Python because the DB has no visibility into the local filesystem.
 ASSET_FILE_PATH_SQL = """
-    SELECT img_id, doc_id, filename, file_path, classification
+    SELECT img_id, filing_id, filename, file_path, classification
       FROM v2_image_assets
      WHERE file_path IS NOT NULL
 """

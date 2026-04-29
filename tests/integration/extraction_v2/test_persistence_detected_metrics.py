@@ -3,7 +3,7 @@ Integration test: round-trip ImageAsset.detected_metrics through Postgres.
 
 Verifies that `V2PersistenceAdapter._persist_images_in_tx` serializes and
 persists ``detected_metrics`` to the ``v2_image_assets.detected_metrics``
-JSONB column, and that re-extraction via ON CONFLICT (doc_id, filename)
+JSONB column, and that re-extraction via ON CONFLICT (filing_id, filename)
 overwrites the column with the latest values.
 
 Requires ``TEST_DATABASE_URL``; skips otherwise.
@@ -81,23 +81,23 @@ def cleanup_image_rows(db_adapter: DatabaseAdapter, test_filing_id: int):
     def _cleanup():
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM v2_image_assets WHERE doc_id = %s", (test_filing_id,))
+                cur.execute("DELETE FROM v2_image_assets WHERE filing_id = %s", (test_filing_id,))
 
     _cleanup()
     yield
     _cleanup()
 
 
-def _read_detected_metrics(db: DatabaseAdapter, doc_id: int, filename: str):
+def _read_detected_metrics(db: DatabaseAdapter, filing_id: int, filename: str):
     with db.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT detected_metrics
                   FROM v2_image_assets
-                 WHERE doc_id = %s AND filename = %s
+                 WHERE filing_id = %s AND filename = %s
                 """,
-                (doc_id, filename),
+                (filing_id, filename),
             )
             row = cur.fetchone()
             if row is None:

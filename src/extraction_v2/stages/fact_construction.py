@@ -226,7 +226,7 @@ class FactConstructionStage:
 
         # Build the fact
         fact = MetricFact(
-            doc_id=context.document.doc_id if context.document else "",
+            document_uuid=context.document.doc_id if context.document else "",
             canonical_metric_id=metric_id,
             value=bv.value,
             value_raw=bv.value_raw,

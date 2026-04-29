@@ -70,7 +70,7 @@ def _synthesize_ocr_segment(
     """
     next_sequence = max((s.sequence for s in context.segments), default=-1) + 1
     return Segment(
-        doc_id=str(context.filing_id) if context.filing_id else "",
+        filing_id=str(context.filing_id) if context.filing_id else "",
         segment_type=SegmentType.PARAGRAPH,
         text=ocr_text,
         dom_locator=f"image:{image.img_id}",
