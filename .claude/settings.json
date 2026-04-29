@@ -48,6 +48,10 @@
           {
             "type": "command",
             "command": "bash -c 'cmd=\"${CLAUDE_TOOL_INPUT_command:-$1}\"; case \"$cmd\" in *\"git commit\"*) br=$(git -C \"$CLAUDE_PROJECT_DIR\" branch --show-current 2>/dev/null); if [ \"$br\" = \"main\" ] || [ \"$br\" = \"master\" ]; then echo \"BLOCKED: refusing to commit on $br. Use /commit-proj (auto-branches) or git checkout -b <branch> first.\" >&2; exit 2; fi ;; esac' _ \"$CLAUDE_TOOL_INPUT_command\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff-format-scope-guard.sh\" \"$CLAUDE_TOOL_INPUT_command\""
           }
         ]
       },
