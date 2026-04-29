@@ -3,9 +3,11 @@ id: 294
 source: gh
 slug: image-tab-keyboard-shortcut-audit
 title: "Image tab: keyboard-shortcut audit + parity with text tab"
-status: open
+status: resolved
 severity: low
-autonomy: skip
+autonomy: n/a
+pr_refs:
+  - 297
 estimated: S
 touches:
   - src/web/templates/unified_review.html
@@ -38,3 +40,12 @@ between tabs lose muscle memory.
   on the same key.
 - Document the final mapping in `.claude/rules/web.md` so future buttons
   are added with shortcuts from day one.
+
+### Resolution
+
+Shipped in PR #297 (merged 2026-04-28):
+
+- Added `Shift+R` chord for "Reject all (no relevant metrics)" — chord guards against accidental bulk rejection.
+- Added `N` / `P` image-level navigation aliases (parity with text tab's next/prev). Guarded so per-row `N` (focusNextUnreviewed) still wins when a row is focused.
+- Updated help bar in `unified_review.html`: dropped stale `Y` / `1-7` / "Not Relevant" entries; surfaced `N/P` and `Shift+R`.
+- Documented canonical shortcut mapping + single-letter vs chord policy in `.claude/rules/web.md`.
