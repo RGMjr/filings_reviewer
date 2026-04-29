@@ -16,6 +16,7 @@ from pathlib import Path
 
 import requests
 
+from src.infra.filing_storage import get_filing_storage
 from src.infra.sec_client import FilingMetadata, SECClient
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,11 @@ class FilingContent:
     pipeline sees (e.g. appending exhibit HTML), write to the file at
     ``html_path`` — do not rely on the in-memory or DB copies.
 
+    ``html_storage_key`` (post-gh-315) is the opaque R2 storage key written
+    to ``filings.html_storage_path``. It is always set on a successful fetch.
+    ``html_path`` (filesystem path) is preserved for in-process callers that
+    pass it directly to ``process_filing(html_path=...)``.
+
     Attributes:
         cik: SEC Central Index Key
         accession_number: SEC accession number
@@ -42,6 +48,7 @@ class FilingContent:
         txt_path: Local path to complete text filing
         fetched_at: Timestamp when fetched
         html_content: In-memory HTML; advisory, not read by pipeline
+        html_storage_key: Opaque R2 storage key persisted to filings.html_storage_path
     """
 
     cik: str
@@ -50,6 +57,7 @@ class FilingContent:
     txt_path: str | None = None
     fetched_at: datetime | None = None
     html_content: str | None = None
+    html_storage_key: str | None = None
 
 
 class FilingFetcher:
@@ -425,6 +433,21 @@ class FilingFetcher:
                     # Other TXT errors - log but don't fail entire fetch
                     logger.warning(f"Error fetching TXT for {cik}/{accession_number}: {e}")
 
+            # Upload HTML bytes to R2 (or local filing_cache in dev) so that
+            # filings.html_storage_path holds an opaque storage key rather than
+            # a filesystem path. Key shape matches scripts/migrate_filing_html_to_r2.py.
+            html_storage_key = f"filings/{cik}/{accession_number}/primary.htm"
+            html_bytes = html_path.read_bytes()
+            storage = get_filing_storage()
+            storage.put_bytes(html_storage_key, html_bytes, content_type="text/html")
+            if not storage.exists(html_storage_key):
+                raise RuntimeError(
+                    f"R2 HEAD-verify failed after put_bytes for key {html_storage_key}"
+                )
+            logger.info(
+                f"Uploaded HTML to storage key {html_storage_key} ({len(html_bytes):,} bytes)"
+            )
+
             # Create FilingContent result
             content = FilingContent(
                 cik=cik,
@@ -433,6 +456,7 @@ class FilingFetcher:
                 txt_path=txt_path_str,
                 fetched_at=datetime.now(),
                 html_content=html_text,
+                html_storage_key=html_storage_key,
             )
 
             # Update database if available
@@ -514,7 +538,7 @@ class FilingFetcher:
             query = """
                 UPDATE filings
                 SET
-                    html_storage_path = %(html_path)s,
+                    html_storage_path = %(html_storage_key)s,
                     txt_storage_path = %(txt_path)s,
                     html_fetched_at = %(fetched_at)s,
                     html_fetch_error = NULL,
@@ -527,7 +551,7 @@ class FilingFetcher:
             self.db.execute(
                 query,
                 {
-                    "html_path": content.html_path,
+                    "html_storage_key": content.html_storage_key,
                     "txt_path": content.txt_path,
                     "fetched_at": content.fetched_at,
                     "accession": content.accession_number,

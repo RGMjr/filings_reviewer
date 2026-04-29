@@ -325,13 +325,13 @@ class TestGetUnfetchedFilings:
 class TestUpdateDatabase:
     """Tests for FilingFetcher._update_database()."""
 
-    def test_update_database_sets_html_path(
+    def test_update_database_sets_storage_key(
         self,
         db_adapter: DatabaseAdapter,
         fetcher: FilingFetcher,
         test_company_id: int,
     ):
-        """_update_database() sets html_storage_path, txt_storage_path, html_fetched_at."""
+        """_update_database() writes the R2 storage key to html_storage_path."""
         filing_id = _insert_filing(
             db_adapter,
             test_company_id,
@@ -345,6 +345,7 @@ class TestUpdateDatabase:
             html_path="/data/filings/8888888884/primary.htm",
             txt_path="/data/filings/8888888884/complete.txt",
             fetched_at=datetime(2024, 3, 15, 12, 0, 0),
+            html_storage_key="filings/8888888884/8888888884-24-000100/primary.htm",
         )
 
         result = fetcher._update_database(content, error=None)
@@ -363,7 +364,7 @@ class TestUpdateDatabase:
                 )
                 row = cur.fetchone()
 
-        assert row["html_storage_path"] == "/data/filings/8888888884/primary.htm"
+        assert row["html_storage_path"] == "filings/8888888884/8888888884-24-000100/primary.htm"
         assert row["txt_storage_path"] == "/data/filings/8888888884/complete.txt"
         assert row["html_fetched_at"] is not None
         assert row["processing_status"] == "fetched"
@@ -389,6 +390,7 @@ class TestUpdateDatabase:
             html_path="/data/filings/idempotent/primary.htm",
             txt_path=None,
             fetched_at=datetime(2024, 4, 1, 9, 30, 0),
+            html_storage_key="filings/8888888884/8888888884-24-000101/primary.htm",
         )
 
         first_result = fetcher._update_database(content, error=None)
@@ -405,7 +407,7 @@ class TestUpdateDatabase:
                 )
                 row = cur.fetchone()
 
-        assert row["html_storage_path"] == "/data/filings/idempotent/primary.htm"
+        assert row["html_storage_path"] == "filings/8888888884/8888888884-24-000101/primary.htm"
         assert row["processing_status"] == "fetched"
 
     def test_update_database_clears_previous_error(
@@ -428,6 +430,7 @@ class TestUpdateDatabase:
             accession_number="8888888884-24-000102",
             html_path="/data/filings/retry/primary.htm",
             fetched_at=datetime(2024, 5, 1, 11, 0, 0),
+            html_storage_key="filings/8888888884/8888888884-24-000102/primary.htm",
         )
 
         fetcher._update_database(content, error=None)
@@ -463,6 +466,7 @@ class TestUpdateDatabase:
             accession_number="8888888884-24-000103",
             html_path="/data/filings/resolved/primary.htm",
             fetched_at=datetime(2024, 6, 1),
+            html_storage_key="filings/8888888884/8888888884-24-000103/primary.htm",
         )
         resolved_url = "https://www.sec.gov/Archives/edgar/data/8888888884/resolved.htm"
 
