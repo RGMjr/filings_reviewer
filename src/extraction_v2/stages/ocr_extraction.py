@@ -152,6 +152,20 @@ class OCRExtractionStage:
         self._parse_failed_count = 0
         # A3: per-filing cumulative chart vision spend (USD).
         self._chart_vision_spend: float = 0.0
+        # Per-site vision spend (USD), keyed by call-site name. Sites are
+        # disjoint: chart_read_premium and chart_ocr_fast both fire inside
+        # process_chart but bucketed separately for cost-experiment analysis.
+        self._vision_spend_by_site: dict[str, float] = self._zero_spend_by_site()
+
+    @staticmethod
+    def _zero_spend_by_site() -> dict[str, float]:
+        return {
+            "table_ocr": 0.0,
+            "chart_ocr_fast": 0.0,
+            "chart_read_premium": 0.0,
+            "full_page_ocr": 0.0,
+            "prescan": 0.0,
+        }
 
     @property
     def vision_client(self) -> Any:
@@ -404,6 +418,7 @@ class OCRExtractionStage:
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )
+            self._vision_spend_by_site["table_ocr"] += float(getattr(response, "cost_usd", 0.0))
 
             # Parse JSON response; attempt a best-effort repair before giving up
             ocr_data = self._parse_chart_json(response.content)
@@ -791,7 +806,9 @@ numbers also appear as explicit data labels on the chart itself.
                         max_tokens=1500,
                         response_format={"type": "json_object"},
                     )
-                    call_cost += float(getattr(ocr_response, "cost_usd", 0.0))
+                    ocr_call_cost = float(getattr(ocr_response, "cost_usd", 0.0))
+                    call_cost += ocr_call_cost
+                    self._vision_spend_by_site["chart_ocr_fast"] += ocr_call_cost
                     try:
                         parsed_ocr = json.loads(ocr_response.content)
                         ocr_text_blob = str(parsed_ocr.get("text", "") or "")
@@ -817,7 +834,9 @@ numbers also appear as explicit data labels on the chart itself.
                 max_tokens=2000,
                 response_format={"type": "json_object"},
             )
-            call_cost += float(getattr(response, "cost_usd", 0.0))
+            chart_read_cost = float(getattr(response, "cost_usd", 0.0))
+            call_cost += chart_read_cost
+            self._vision_spend_by_site["chart_read_premium"] += chart_read_cost
 
             # Parse JSON response; attempt a best-effort repair before giving up
             chart_response = self._parse_chart_json(response.content)
@@ -1008,6 +1027,7 @@ numbers also appear as explicit data labels on the chart itself.
             asset.requires_manual_capture = True
             return False
 
+        self._vision_spend_by_site["full_page_ocr"] += float(getattr(extraction, "cost_usd", 0.0))
         asset.ocr_text = extraction.text or ""
         asset.processed = True
 
@@ -1095,6 +1115,7 @@ numbers also appear as explicit data labels on the chart itself.
                 logger.warning("pre-scan: vision call failed for %s: %s", asset.img_id, e)
                 continue
 
+            self._vision_spend_by_site["prescan"] += float(getattr(extraction, "cost_usd", 0.0))
             self._prescan_call_count += 1
             self._api_call_count += 1
 
@@ -1179,6 +1200,7 @@ numbers also appear as explicit data labels on the chart itself.
         self._prescan_call_count = 0
         self._parse_failed_count = 0
         self._chart_vision_spend = 0.0
+        self._vision_spend_by_site = self._zero_spend_by_site()
 
         # A3: per-filing chart-spend ceiling. Read env each call so tests
         # and operators can tune at runtime without reconstructing the stage.
@@ -1387,6 +1409,9 @@ numbers also appear as explicit data labels on the chart itself.
                     "skipped_by_budget_cap": skipped_by_budget_cap,
                     "parse_failed": self._parse_failed_count,
                     "chart_data_none_after_processing": chart_data_none_after_processing,
+                    "vision_spend_usd_by_site": {
+                        site: round(spend, 6) for site, spend in self._vision_spend_by_site.items()
+                    },
                 },
             )
 
