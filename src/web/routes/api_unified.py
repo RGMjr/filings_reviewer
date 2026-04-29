@@ -182,14 +182,12 @@ def create_decision():
             anchor_index=anchor_index,
         )
 
-        pending_counts = _get_filing_pending_counts(db, filing_id)
         return jsonify(
             {
                 "status": "success",
                 "decision_id": decision_id,
                 "fact_id": fact_id,
                 "next_fact": next_fact,
-                **pending_counts,
             }
         ), 201
 
@@ -250,6 +248,220 @@ def undo_decision(decision_id: str):
     except Exception as e:
         logger.error(f"Error undoing V2 decision {decision_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Internal server error"}), 500
+
+
+# =============================================================================
+# Image Bulk Actions (must be before any <uuid:img_id> routes)
+# =============================================================================
+
+
+@api_unified_bp.route("/image-candidates/bulk-reject", methods=["POST"])
+def bulk_reject_image_candidates():
+    """
+    Bulk "Reject all (no relevant metrics)" across multiple images.
+
+    For each image:
+    - If it has keyword-detected metrics: rejects all unreviewed detected metrics
+      (skipping any already accepted/corrected) with rejection_reason='not_present',
+      then skips the image.
+    - If it has no detected metrics: writes the sentinel no_relevant_metrics rejection
+      row, then skips.
+
+    Request body: {image_ids: [...str], reviewer_id: str, image_status: str|null}
+    Response: {ok: true, processed: int, results: [...], next_candidate, ...pending_counts}
+    """
+    db = get_db()
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 400
+
+    data = request.get_json() or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    image_ids = data.get("image_ids")
+    if not image_ids or not isinstance(image_ids, list):
+        return jsonify({"error": "image_ids must be a non-empty list"}), 400
+    if len(image_ids) > 50:
+        return jsonify({"error": "bulk-reject limited to 50 images per request"}), 400
+
+    image_status = data.get("image_status") or None
+    view_filters = {"status": image_status} if image_status else None
+
+    results = []
+    last_filing_id = None
+    last_img_id = None
+
+    for raw_id in image_ids:
+        try:
+            img_id = str(_uuid.UUID(str(raw_id)))
+        except (ValueError, AttributeError):
+            results.append({"img_id": raw_id, "status": "error", "reason": "invalid uuid"})
+            continue
+
+        try:
+            candidate = db.get_image_review_candidate_v2(img_id)
+            if not candidate:
+                results.append({"img_id": img_id, "status": "error", "reason": "not found"})
+                continue
+
+            detected = candidate.get("detected_metrics") or []
+
+            if not detected:
+                decisions = [
+                    {
+                        "detected_metric_id": None,
+                        "confirmed_metric_id": None,
+                        "decision": "reject",
+                        "rejection_reason": "no_relevant_metrics",
+                    }
+                ]
+            else:
+                existing = db.get_image_metric_confirmations(img_id)
+                kept = {
+                    c["detected_metric_id"]
+                    for c in existing
+                    if c["decision"] in ("accept", "correct")
+                }
+                targets = [m for m in detected if m.get("metric_id") not in kept]
+                if not targets:
+                    results.append(
+                        {"img_id": img_id, "status": "skipped", "reason": "already fully decided"}
+                    )
+                    continue
+                decisions = [
+                    {
+                        "detected_metric_id": m["metric_id"],
+                        "confirmed_metric_id": None,
+                        "decision": "reject",
+                        "rejection_reason": "not_present",
+                    }
+                    for m in targets
+                ]
+
+            db.insert_image_metric_confirmations(img_id, decisions, reviewer_id)
+            db.skip_image_candidate_v2(img_id)
+
+            last_filing_id = candidate["filing_id"]
+            last_img_id = img_id
+            results.append({"img_id": img_id, "status": "rejected"})
+
+        except Exception as exc:
+            logger.error("bulk-reject error for img_id=%s: %s", img_id, exc, exc_info=True)
+            results.append({"img_id": img_id, "status": "error", "reason": "internal error"})
+
+    next_cand = None
+    pending_counts: dict[str, Any] = {}
+    if last_filing_id and last_img_id:
+        try:
+            next_cand = _get_next_image_candidate_info(
+                db, last_filing_id, last_img_id, view_filters=view_filters
+            )
+            pending_counts = _get_filing_pending_counts(db, last_filing_id)
+        except Exception as exc:
+            logger.warning("bulk-reject next_candidate lookup failed: %s", exc)
+
+    return jsonify(
+        {
+            "ok": True,
+            "processed": len(results),
+            "results": results,
+            "next_candidate": next_cand,
+            **pending_counts,
+        }
+    ), 200
+
+
+@api_unified_bp.route("/image-candidates/bulk-undo", methods=["POST"])
+def bulk_undo_image_candidates():
+    """
+    Bulk undo — reverts the most recent reviewer action on each selected image:
+    - If skipped: unskip (return to pending).
+    - Otherwise: delete all per-metric confirmations for this reviewer on this image
+      (rolling back any promoted chart facts).
+
+    Request body: {image_ids: [...str], reviewer_id: str, image_status: str|null}
+    Response: {ok: true, processed: int, results: [...], next_candidate, ...pending_counts}
+    """
+    db = get_db()
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 400
+
+    data = request.get_json() or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    image_ids = data.get("image_ids")
+    if not image_ids or not isinstance(image_ids, list):
+        return jsonify({"error": "image_ids must be a non-empty list"}), 400
+    if len(image_ids) > 50:
+        return jsonify({"error": "bulk-undo limited to 50 images per request"}), 400
+
+    image_status = data.get("image_status") or None
+    view_filters = {"status": image_status} if image_status else None
+
+    results = []
+    last_filing_id = None
+    last_img_id = None
+
+    for raw_id in image_ids:
+        try:
+            img_id = str(_uuid.UUID(str(raw_id)))
+        except (ValueError, AttributeError):
+            results.append({"img_id": raw_id, "status": "error", "reason": "invalid uuid"})
+            continue
+
+        try:
+            candidate = db.get_image_review_candidate_v2(img_id)
+            if not candidate:
+                results.append({"img_id": img_id, "status": "error", "reason": "not found"})
+                continue
+
+            if candidate.get("review_status") == "skipped":
+                db.unskip_image_candidate_v2(img_id)
+                results.append({"img_id": img_id, "status": "unskipped"})
+            else:
+                confirmations = db.get_image_metric_confirmations(img_id)
+                mine = [c for c in confirmations if c.get("reviewer_id") == reviewer_id]
+                deleted = 0
+                for conf in mine:
+                    result = db.delete_image_metric_confirmation(
+                        conf["confirmation_id"], reviewer_id
+                    )
+                    if result is not None:
+                        deleted += 1
+                results.append(
+                    {"img_id": img_id, "status": "undone", "deleted_confirmations": deleted}
+                )
+
+            last_filing_id = candidate["filing_id"]
+            last_img_id = img_id
+
+        except Exception as exc:
+            logger.error("bulk-undo error for img_id=%s: %s", img_id, exc, exc_info=True)
+            results.append({"img_id": img_id, "status": "error", "reason": "internal error"})
+
+    next_cand = None
+    pending_counts: dict[str, Any] = {}
+    if last_filing_id and last_img_id:
+        try:
+            next_cand = _get_next_image_candidate_info(
+                db, last_filing_id, last_img_id, view_filters=view_filters
+            )
+            pending_counts = _get_filing_pending_counts(db, last_filing_id)
+        except Exception as exc:
+            logger.warning("bulk-undo next_candidate lookup failed: %s", exc)
+
+    return jsonify(
+        {
+            "ok": True,
+            "processed": len(results),
+            "results": results,
+            "next_candidate": next_cand,
+            **pending_counts,
+        }
+    ), 200
 
 
 # =============================================================================
