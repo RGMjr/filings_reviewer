@@ -760,7 +760,7 @@ class V2PersistenceAdapter:
         cur.executemany(
             """
             INSERT INTO v2_text_metric_presence (
-                doc_id,
+                filing_id,
                 canonical_metric_id,
                 score,
                 detected_at_stage,
@@ -771,7 +771,7 @@ class V2PersistenceAdapter:
                 created_at,
                 updated_at
             ) VALUES (
-                %(doc_id)s,
+                %(filing_id)s,
                 %(canonical_metric_id)s,
                 %(score)s,
                 %(detected_at_stage)s,
@@ -782,7 +782,7 @@ class V2PersistenceAdapter:
                 NOW(),
                 NOW()
             )
-            ON CONFLICT (doc_id, canonical_metric_id) DO UPDATE SET
+            ON CONFLICT (filing_id, canonical_metric_id) DO UPDATE SET
                 score = EXCLUDED.score,
                 detected_at_stage = EXCLUDED.detected_at_stage,
                 evidence_segment_ids = EXCLUDED.evidence_segment_ids,
@@ -793,7 +793,7 @@ class V2PersistenceAdapter:
             """,
             [
                 {
-                    "doc_id": filing_id,
+                    "filing_id": filing_id,
                     "canonical_metric_id": p.canonical_metric_id,
                     "score": p.score,
                     "detected_at_stage": p.detected_at_stage,

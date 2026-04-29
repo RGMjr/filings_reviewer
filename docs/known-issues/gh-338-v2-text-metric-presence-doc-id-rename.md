@@ -3,9 +3,9 @@ id: 338
 source: gh
 slug: v2-text-metric-presence-doc-id-rename
 title: v2_text_metric_presence.doc_id should be renamed to filing_id
-status: open
+status: resolved
 severity: low
-autonomy: skip
+autonomy: n/a
 estimated: S
 touches:
 - sql/*.sql
@@ -14,6 +14,8 @@ touches:
 discovered: '2026-04-29'
 updated: '2026-04-29'
 gh_issue: 338
+pr_refs:
+- 348
 note: doc_id is BIGINT FK to filings(filing_id) — same naming smell fixed in gh-324 for four other v2 tables.
 ---
 
@@ -33,3 +35,14 @@ uuid = bigint" bug class for any future cross-join with `v2_documents.doc_id`.
 - Sweep callsites in `src/extraction_v2/persistence.py`
   (`_persist_text_metric_presence_in_tx`), tests
   (`test_presence_persistence.py`), and any scripts querying the table directly.
+
+### Resolution
+
+Resolved by migration `sql/202604291517_rename_doc_id_to_filing_id_on_v2_text_metric_presence.sql`
+(idempotency-guarded via `information_schema`; renames index
+`idx_v2_text_metric_presence_doc` → `idx_v2_text_metric_presence_filing`).
+
+Callsites updated:
+- `src/extraction_v2/persistence.py` — INSERT column, value placeholder, ON CONFLICT key, dict key in `_persist_text_metric_presence_in_tx`
+- `tests/integration/extraction_v2/test_presence_persistence.py` — DELETE/SELECT SQL and `_read_presences` function parameter
+- `tests/integration/extraction_v2/test_persistence_guard.py` — `_presence_count` SELECT, `_purge_presence` DELETE, and upsert-key comment

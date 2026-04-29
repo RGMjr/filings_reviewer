@@ -2,7 +2,7 @@
 Integration test: round-trip MetricPresence through v2_text_metric_presence.
 
 Verifies _persist_presence_in_tx writes rows via the pipeline-result path,
-re-runs are idempotent (UPSERT on (doc_id, canonical_metric_id)), and the
+re-runs are idempotent (UPSERT on (filing_id, canonical_metric_id)), and the
 upsert never touches v2_metric_facts or v2_review_decisions. The
 presence_only=True mode is exercised in test_persistence_guard.py alongside
 the existing fact/image guard suite.
@@ -79,7 +79,7 @@ def _cleanup(db_adapter: DatabaseAdapter, test_filing_id: int):
         with db_adapter.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "DELETE FROM v2_text_metric_presence WHERE doc_id = %s",
+                    "DELETE FROM v2_text_metric_presence WHERE filing_id = %s",
                     (test_filing_id,),
                 )
 
@@ -118,7 +118,7 @@ def _make_pipeline_result(presences: list[MetricPresence]) -> PipelineResult:
     )
 
 
-def _read_presences(db: DatabaseAdapter, doc_id: int) -> list[dict]:
+def _read_presences(db: DatabaseAdapter, filing_id: int) -> list[dict]:
     with db.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -127,10 +127,10 @@ def _read_presences(db: DatabaseAdapter, doc_id: int) -> list[dict]:
                        evidence_segment_ids, advisory_value_count, advisory_fact_ids,
                        pipeline_version
                   FROM v2_text_metric_presence
-                 WHERE doc_id = %s
+                 WHERE filing_id = %s
                  ORDER BY canonical_metric_id
                 """,
-                (doc_id,),
+                (filing_id,),
             )
             return [dict(row) for row in cur.fetchall()]
 
