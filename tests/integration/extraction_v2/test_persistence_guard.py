@@ -841,7 +841,7 @@ def _presence_count(db: DatabaseAdapter, filing_id: int) -> int:
     with db.get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT COUNT(*) AS n FROM v2_text_metric_presence WHERE doc_id = %s",
+                "SELECT COUNT(*) AS n FROM v2_text_metric_presence WHERE filing_id = %s",
                 (filing_id,),
             )
             return int(cur.fetchone()["n"])
@@ -866,13 +866,13 @@ class TestPresenceOnlyMode:
     def _purge_presence(self, db_adapter: DatabaseAdapter, test_filing_id: int):
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM v2_text_metric_presence WHERE doc_id = %s",
+                "DELETE FROM v2_text_metric_presence WHERE filing_id = %s",
                 (test_filing_id,),
             )
         yield
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM v2_text_metric_presence WHERE doc_id = %s",
+                "DELETE FROM v2_text_metric_presence WHERE filing_id = %s",
                 (test_filing_id,),
             )
 
@@ -926,7 +926,7 @@ class TestPresenceOnlyMode:
         r1 = persistence_adapter.persist_pipeline_result(result, test_filing_id, presence_only=True)
         assert r1.success and r1.presences_upserted == 1
 
-        # Re-run with updated score — upsert on (doc_id, metric_id).
+        # Re-run with updated score — upsert on (filing_id, canonical_metric_id).
         p2 = MetricPresence(
             canonical_metric_id="cm_a", score=0.8, detected_at_stage="fact_construction"
         )
@@ -937,7 +937,7 @@ class TestPresenceOnlyMode:
 
         with db_adapter.get_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT score FROM v2_text_metric_presence WHERE doc_id = %s",
+                "SELECT score FROM v2_text_metric_presence WHERE filing_id = %s",
                 (test_filing_id,),
             )
             assert cur.fetchone()["score"] == 0.8
