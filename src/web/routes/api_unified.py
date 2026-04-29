@@ -182,12 +182,15 @@ def create_decision():
             anchor_index=anchor_index,
         )
 
+        pending_counts = _get_filing_pending_counts(db, filing_id)
+
         return jsonify(
             {
                 "status": "success",
                 "decision_id": decision_id,
                 "fact_id": fact_id,
                 "next_fact": next_fact,
+                **pending_counts,
             }
         ), 201
 
