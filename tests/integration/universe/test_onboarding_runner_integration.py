@@ -444,3 +444,104 @@ class TestCleanupStuckBatches:
             db, threshold="1 hour", apply=True, allow_prod=True, db_url=prod_url
         )
         assert result["marked_failed"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Populate cancellation: cancel fires mid-build_universe, runner finalizes properly
+# ---------------------------------------------------------------------------
+
+_POPULATE_CRITERIA = {"year": "2024", "form_type": "s1f1"}
+
+
+def _insert_populate_batch(db: DatabaseAdapter, *, status: str = "queued") -> str:
+    """Insert a populate-kind batch and return batch_id (str)."""
+    rows = db.query(
+        """
+        INSERT INTO v2_ingest_batches
+            (kind, reviewer_id, criteria, resolved_query, limits, total_filings, status)
+        VALUES
+            (%(kind)s, %(reviewer_id)s, %(criteria)s, %(resolved_query)s, %(limits)s,
+             %(total_filings)s, %(status)s)
+        RETURNING batch_id::text
+        """,
+        {
+            "kind": "populate",
+            "reviewer_id": "test_runner",
+            "criteria": json.dumps(_POPULATE_CRITERIA),
+            "resolved_query": json.dumps({}),
+            "limits": json.dumps(_LIMITS),
+            "total_filings": 0,
+            "status": status,
+        },
+    )
+    return rows[0]["batch_id"]
+
+
+class TestPopulateCancellation:
+    def test_populate_cancelled_mid_run_finalizes_finished_at(
+        self, clean_batch_db: DatabaseAdapter
+    ) -> None:
+        """Cancel fired mid-build_universe: status stays 'cancelled', finished_at is set."""
+        db = clean_batch_db
+        batch_id = _insert_populate_batch(db)
+        batch_row = claim_batch(db, uuid.UUID(batch_id))
+        assert batch_row is not None
+
+        def fake_build_universe(
+            self_inner: Any,
+            start_date: str,
+            end_date: str,
+            form_types: list[str] | None = None,
+            limit: int | None = None,
+            progress_cb: Any = None,
+        ) -> int:
+            # Simulate the /cancel API flipping status mid-run.
+            db.execute(
+                "UPDATE v2_ingest_batches SET status='cancelled' WHERE batch_id=%s",
+                [batch_id],
+            )
+            return 0
+
+        with patch(
+            "src.universe.onboarding_runner.UniverseBuilder.build_universe",
+            autospec=True,
+            side_effect=fake_build_universe,
+        ):
+            run_one(db, batch_row)
+
+        batch = _get_batch(db, batch_id)
+        assert batch is not None
+        # _BATCH_COMPLETE_SQL no-ops (WHERE status='running' fails); _FINALIZE_CANCEL_SQL sets finished_at.
+        assert batch["status"] == "cancelled"
+        assert batch["finished_at"] is not None
+
+    def test_populate_natural_completion_marks_complete(
+        self, clean_batch_db: DatabaseAdapter
+    ) -> None:
+        """No cancel: build_universe completes normally, status flips to 'complete'."""
+        db = clean_batch_db
+        batch_id = _insert_populate_batch(db)
+        batch_row = claim_batch(db, uuid.UUID(batch_id))
+        assert batch_row is not None
+
+        def fake_build_universe(
+            self_inner: Any,
+            start_date: str,
+            end_date: str,
+            form_types: list[str] | None = None,
+            limit: int | None = None,
+            progress_cb: Any = None,
+        ) -> int:
+            return 0  # does not flip status
+
+        with patch(
+            "src.universe.onboarding_runner.UniverseBuilder.build_universe",
+            autospec=True,
+            side_effect=fake_build_universe,
+        ):
+            run_one(db, batch_row)
+
+        batch = _get_batch(db, batch_id)
+        assert batch is not None
+        assert batch["status"] == "complete"
+        assert batch["finished_at"] is not None
