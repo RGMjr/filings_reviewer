@@ -63,25 +63,49 @@ Drop the candidate if:
 - Any open PR's `files[].path` matches any of the fragment's `touches:` globs
 - Any worktree branch name contains the fragment's id (e.g. `fix/legacy-84-...` for legacy-84)
 
-### 4. Rank and present
+### 4. Staleness pre-check
+
+The most common stale-fragment failure mode: the underlying fix landed in an unrelated PR without `pr_refs` being updated, so the auto-closer never linked them. Catch this before drafting a worker prompt — it's cheap and would have prevented dispatching workers against gh-328 / gh-294 (both already-fixed when picked, 2026-04-29).
+
+For each remaining candidate:
+
+```bash
+# Parse `updated:` (or fall back to `discovered:`) from frontmatter.
+# For each path/glob in `touches:`, check origin/main commits since that date:
+git log --oneline origin/main --since="<updated_or_discovered_date>" -- <path>
+```
+
+Mark the candidate **⚠ possibly stale** if any commit landed on `origin/main` for any `touches:` path after the fragment's `updated:` (or `discovered:`) date. Capture the most-recent commit hash + subject per touched path for context.
+
+Special cases:
+- `touches: []` (empty list) → mark **⚠ unverifiable** (no footprint to check). Surface to the user; they'll need to verify manually.
+- `updated:` and `discovered:` both unparseable or missing → mark **⚠ unverifiable**.
+- A single matching commit that itself only edits the fragment file (e.g. a recent frontmatter touch-up) → ignore, not a real signal.
+
+**A stale or unverifiable candidate is NOT auto-dropped.** Surface it in the ranked list with the flag and the staleness commits, and require explicit user override before drafting. The default offer is **a fragment-only closure PR** (per `project_fragment_only_closure_pattern`) — produce a worker prompt that *only* verifies the fix on origin/main and flips the fragment frontmatter, with no code changes scoped in.
+
+When the user overrides the stale flag and asks to brief it as a normal fix, the worker prompt's step 1 ("Verify the issue is still relevant") becomes load-bearing — note this explicitly in the dispatch summary so the worker doesn't skim past it.
+
+### 5. Rank and present
 
 Score each remaining candidate:
 - **severity**: `critical` × 4, `high` × 3, `medium` × 2, `low` × 1
 - **age**: days since `discovered` ÷ 7 (capped at +5)
 - **estimated** (inverted impact-per-effort): `XS` +3, `S` +2, `M` +1, `L` 0, `XL` −1
 - **recall_gap_bonus** (for `tier1-recall-gap`): +5 if Tier-1 metric named
+- **stale_penalty**: −10 if flagged stale in step 4 (still shown, but ranked below clean candidates)
 
-Sort descending. Show the user the top `count + 2` candidates as a numbered list with `id`, `title`, score, `severity`, `estimated`, age. Ask:
+Sort descending. Show the user the top `count + 2` candidates as a numbered list with `id`, `title`, score, `severity`, `estimated`, age, **and any staleness flag with its most-recent commit hash**. Ask:
 
-> "Top candidates ranked. Pick `count` to brief, or redirect: `1,3,5` / `1` / `skip 2 use 6`."
+> "Top candidates ranked. Pick `count` to brief, or redirect: `1,3,5` / `1` / `skip 2 use 6`. Stale-flagged candidates default to a fragment-only closure prompt — say `fix N` to override and brief as a normal fix."
 
 Wait for explicit confirmation. Default to top `count` if the user replies "go" or similar.
 
-### 5. Parallel-safety check (only for `strategy: parallel-safe`)
+### 6. Parallel-safety check (only for `strategy: parallel-safe`)
 
 For the chosen set, verify pairwise that no two fragments share any path in `touches:`. If any pair collides, ask the user to break the tie. Don't auto-resolve — the human knows the priority.
 
-### 6. Draft the worker prompt(s)
+### 7. Draft the worker prompt(s)
 
 For each chosen fragment, generate a prompt with this skeleton (fill in the fragment-specific bits):
 
@@ -124,11 +148,11 @@ Save each prompt to `docs/worker-prompts/PICK_<id>_<slug>.md` (skip the write if
 Drafted: docs/worker-prompts/PICK_legacy-101_<slug>.md  →  ready to dispatch
 ```
 
-### 7. Final summary
+### 8. Final summary
 
 Print, in this exact order:
 
-1. **One-line-per-pick draft confirmation** (already produced in step 6).
+1. **One-line-per-pick draft confirmation** (already produced in step 7).
 2. **A single fenced code block** containing a copy-paste-ready dispatch prompt for a fresh Claude Code session. Format depends on the number of picks AND the strategy:
 
    **Single pick (count == 1):**
@@ -166,4 +190,5 @@ The dispatch block is the **only thing the user needs to copy** — do not bury 
 - Never auto-resolve a tie in `parallel-safe` mode — surface the conflict and ask.
 - Never write a worker prompt that omits the fragment-status-flip step (rule 2 of the original spec). The auto-closer's blind spot is unset `pr_refs`; the prompt fixes both halves at once.
 - Never pick a fragment whose `pr_refs` are all `MERGED` — the nightly auto-closer (`scripts/sync_known_issue_status.py`) will handle it. Re-running the work would duplicate.
+- Never auto-drop a stale-flagged candidate from step 4 — surface and let the user decide. The default offer is a fragment-only closure PR; the user must say `fix N` to brief it as a normal code change.
 - The command writes prompt files but does **not** dispatch them. Dispatching is a separate decision the user makes.
