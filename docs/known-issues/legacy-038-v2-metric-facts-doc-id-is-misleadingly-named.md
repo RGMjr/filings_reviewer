@@ -4,6 +4,8 @@ discovered: '2026-04-19'
 estimated: M
 id: 38
 note: Column rename + callsite sweep; needs callsite audit
+pr_refs:
+- 326
 severity: low
 slug: v2-metric-facts-doc-id-is-misleadingly-named
 source: legacy
