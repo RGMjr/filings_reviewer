@@ -3,15 +3,14 @@ id: 320
 source: gh
 slug: stale-image-pending-text-cascade
 title: Stale IMAGE_PENDING in text-decision cascade may skip image-tab navigation
-status: open
+status: resolved
 severity: low
-autonomy: skip
+autonomy: n/a
 estimated: —
 touches: ["src/web/templates/unified_review.html", "src/web/routes/api_unified.py"]
 discovered: 2026-04-28
-updated: 2026-04-28
+updated: 2026-04-29
 gh_issue: 320
-note: add image_pending_count to POST /api/v2/decisions response; refresh IMAGE_PENDING in submitDecision JS before cascade
 ---
 
 ### Problem

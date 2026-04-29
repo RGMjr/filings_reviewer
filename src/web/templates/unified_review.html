@@ -1200,7 +1200,7 @@ const FACTS = [
   {% endfor %}
 ];
 const CURRENT_FACT_ID = {% if current_fact %}"{{ current_fact.fact_id }}"{% else %}null{% endif %};
-const IMAGE_PENDING = {{ image_pending|tojson }};
+let IMAGE_PENDING = {{ image_pending|tojson }};
 const NEXT_FILING_URL = {{ next_filing_url|tojson }};
 window.NEXT_FILING_URL = NEXT_FILING_URL;
 // Exposed for the images-tab IIFE so it can mirror the text-tab's
@@ -1298,6 +1298,7 @@ function submitDecision(decision) {
       window.location.href = nextUrl.toString();
     } else if (data.status === 'success') {
       // No more pending facts in this filing
+      if (typeof data.image_pending_count === 'number') IMAGE_PENDING = data.image_pending_count;
       if (IMAGE_PENDING > 0) {
         window.location.href = `/v2/review/${FILING_ID}?tab=images`;
       } else {
