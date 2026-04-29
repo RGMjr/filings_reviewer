@@ -598,13 +598,20 @@ class TestCorpusQuery:
             "relevance_score": 0.9,
         }
 
-    def _make_confirmation_row(self, img_id: str, decision: str = "relevant") -> dict:
+    def _make_confirmation_row(
+        self,
+        img_id: str,
+        decision: str = "relevant",
+        chart_type: str | None = None,
+    ) -> dict:
         return {
             "img_id": img_id,
             "filing_key": "0001234567-23-000001",
             "filename": "chart.png",
             "decision": decision,
-            "chart_type": None,  # not captured in v2_image_metric_confirmations
+            # chart_type comes from v2_image_assets.reviewer_chart_type
+            # (migration 202604291500); NULL when the asset has no backfilled value.
+            "chart_type": chart_type,
             "rejection_reason": None,
             "reviewer_notes": None,
             "storage_key": f"pipeline/123/{img_id}/chart.png",
@@ -673,11 +680,38 @@ class TestCorpusQuery:
         assert overlap["decision"] == "relevant"
         assert overlap["chart_type"] == "cohort_table"
 
-    def test_confirmation_row_chart_type_is_none(self) -> None:
-        """Confirmation-derived rows always have chart_type=None (no column in schema)."""
-        conf = [self._make_confirmation_row("ddd", decision="not_relevant")]
+    def test_confirmation_row_chart_type_null_when_no_backfill(self) -> None:
+        """Confirmation rows for images with no legacy decision have chart_type=None."""
+        conf = [self._make_confirmation_row("ddd", decision="not_relevant", chart_type=None)]
         result = self._apply_dedup([], conf)
         assert result[0]["chart_type"] is None
+
+    def test_confirmation_row_chart_type_populated_from_reviewer_chart_type(self) -> None:
+        """Confirmation rows carry chart_type when reviewer_chart_type is backfilled.
+
+        After migration 202604291500, _CORPUS_QUERY_CONFIRMATIONS reads
+        v2_image_assets.reviewer_chart_type instead of emitting NULL::text.
+        Images whose legacy decision was backfilled will have a non-NULL value.
+        """
+        conf = [self._make_confirmation_row("eee", decision="relevant", chart_type="cohort_table")]
+        result = self._apply_dedup([], conf)
+        assert result[0]["chart_type"] == "cohort_table"
+
+    def test_confirmation_row_chart_type_all_valid_values(self) -> None:
+        """All 7 reviewer chart_type values are valid on confirmation-derived rows."""
+        valid_values = [
+            "cohort_table",
+            "cohort_parfait",
+            "line_chart",
+            "bar_chart",
+            "stacked_bar",
+            "other_chart",
+            "mixed",
+        ]
+        for i, ct in enumerate(valid_values):
+            conf = [self._make_confirmation_row(f"img-{i}", chart_type=ct)]
+            result = self._apply_dedup([], conf)
+            assert result[0]["chart_type"] == ct
 
     def test_corpus_query_constants_exist(self) -> None:
         """Both query constants must exist and reference their respective tables."""
@@ -689,3 +723,18 @@ class TestCorpusQuery:
         assert not hasattr(bv, "_CORPUS_QUERY"), (
             "_CORPUS_QUERY was removed; use _CORPUS_QUERY_LEGACY and _CORPUS_QUERY_CONFIRMATIONS"
         )
+
+    def test_corpus_query_confirmations_reads_reviewer_chart_type(self) -> None:
+        """_CORPUS_QUERY_CONFIRMATIONS must read from v2_image_assets.reviewer_chart_type.
+
+        Asserts the schema change (migration 202604291500) is wired into the query
+        rather than emitting the old NULL::text placeholder.
+        """
+        assert "reviewer_chart_type" in bv._CORPUS_QUERY_CONFIRMATIONS, (
+            "_CORPUS_QUERY_CONFIRMATIONS must read v2_image_assets.reviewer_chart_type"
+        )
+        assert "NULL::text" not in bv._CORPUS_QUERY_CONFIRMATIONS or (
+            # NULL::text is only allowed for reviewer_notes, not chart_type
+            bv._CORPUS_QUERY_CONFIRMATIONS.count("NULL::text") == 1
+            and "reviewer_notes" in bv._CORPUS_QUERY_CONFIRMATIONS
+        ), "_CORPUS_QUERY_CONFIRMATIONS must not emit NULL::text for chart_type"

@@ -167,3 +167,5 @@ The original analysis chose B partly on the premise that chart_type signal could
 ---
 
 **Revised user action requested:** approve the flip to A1-narrow, and reopen #196 (or open a fresh issue) with the implementation sketch above. If you'd rather defer the entire question and let `benchmark_vision.py` continue using only the legacy table for now (acceptable until confirmation count meaningfully grows), say so and I'll redraft once more.
+
+Implemented in PR #347 (Option A1-narrow): `reviewer_chart_type` column added to `v2_image_assets` via migration `202604291500_add_reviewer_chart_type_to_v2_image_assets.sql`; `CONFIRMATIONS_SEC_QUERY` and `_CORPUS_QUERY_CONFIRMATIONS` updated to read the new column.

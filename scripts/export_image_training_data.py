@@ -116,8 +116,10 @@ LEGACY_SEC_QUERY = f"""
 #   relevant     — any confirmation in {accept, correct, add}
 #   not_relevant — at least one confirmation, all rejects (no accept/correct/add)
 #   excluded     — only skips, or zero confirmations (filtered by HAVING)
-# `chart_type` is not captured in v2_image_metric_confirmations and is
-# emitted as NULL — downstream training treats it as a missing feature.
+# `chart_type` is read from v2_image_assets.reviewer_chart_type (nullable;
+# backfilled from legacy v2_image_review_decisions in migration 202604291500).
+# Confirmation-derived rows that have never had a legacy decision will still
+# emit NULL — downstream training treats it as a missing feature.
 # `rejection_reason` is taken from any reject confirmation deterministically
 # (earliest by created_at).
 CONFIRMATIONS_SEC_QUERY = f"""
@@ -128,7 +130,7 @@ CONFIRMATIONS_SEC_QUERY = f"""
                  THEN 'relevant'
             ELSE 'not_relevant'
         END                                          AS decision,
-        NULL::text                                   AS chart_type,
+        v.reviewer_chart_type                        AS chart_type,
         (
             SELECT imc2.rejection_reason
               FROM v2_image_metric_confirmations imc2
@@ -154,6 +156,7 @@ CONFIRMATIONS_SEC_QUERY = f"""
     JOIN companies c ON f.company_id = c.company_id
     GROUP BY v.img_id, v.filename, v.width, v.height, v.nearby_text,
              v.classification, v.section_type, v.relevance_score,
+             v.reviewer_chart_type,
              f.accession_number, c.company_name, c.cik
     HAVING bool_or(imc.decision IN ('accept','correct','add','reject'))
     ORDER BY c.company_name, v.img_id
