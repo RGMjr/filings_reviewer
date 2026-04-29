@@ -641,3 +641,95 @@ class TestPersistImagesStableImgId:
         assert fact.source_locator.img_id == stable_img_id
         # In-memory image was remapped too (defensive).
         assert refreshed.img_id == stable_img_id
+
+
+class TestStalOcrBadgeHashRoundtrip:
+    """Integration coverage for the decided_against_hash write-then-read path.
+
+    Verifies that:
+    1. Inserting a decision writes a non-NULL decided_against_hash.
+    2. When content is unchanged, is_stale_vs_decision is False.
+    3. When ocr_text changes after the decision, is_stale_vs_decision is True.
+    4. When decided_against_hash is NULL (pre-deploy row), stale is False
+       (grandfather clause).
+    """
+
+    def test_insert_decision_writes_hash(self, clean_db: DatabaseAdapter):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(
+            clean_db,
+            filing_id,
+            "chart.jpg",
+            nearby_text="cohort retention data here",
+        )
+
+        clean_db.insert_image_review_decision_v2(
+            img_id=img_id,
+            decision="relevant",
+            chart_type="cohort_table",
+        )
+
+        rows = clean_db.query(
+            "SELECT decided_against_hash FROM v2_image_review_decisions WHERE img_id = %(img_id)s",
+            {"img_id": img_id},
+        )
+        assert rows, "Decision row should exist after insert"
+        stored_hash = rows[0]["decided_against_hash"]
+        # Hash must be a non-empty 64-char hex string.
+        assert stored_hash is not None
+        assert len(stored_hash) == 64
+
+    def test_content_unchanged_is_not_stale(self, clean_db: DatabaseAdapter):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+
+        clean_db.insert_image_review_decision_v2(
+            img_id=img_id,
+            decision="relevant",
+            chart_type="bar_chart",
+        )
+
+        row = clean_db.get_image_review_candidate_v2(img_id)
+        assert row is not None
+        assert row["is_stale_vs_decision"] is False
+
+    def test_ocr_text_change_flips_stale_true(self, clean_db: DatabaseAdapter):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+
+        clean_db.insert_image_review_decision_v2(
+            img_id=img_id,
+            decision="relevant",
+            chart_type="bar_chart",
+        )
+
+        # Simulate re-extraction writing fresh OCR text.
+        clean_db.execute(
+            "UPDATE v2_image_assets SET ocr_text = %(t)s WHERE img_id = %(id)s",
+            {"t": "completely different ocr output after re-extraction", "id": img_id},
+        )
+
+        row = clean_db.get_image_review_candidate_v2(img_id)
+        assert row is not None
+        assert row["is_stale_vs_decision"] is True
+
+    def test_null_hash_is_not_stale_grandfather_clause(self, clean_db: DatabaseAdapter):
+        """Pre-deploy decision rows with NULL decided_against_hash must not be
+        flagged as stale — the grandfather clause protects existing decisions."""
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+
+        # Insert a legacy decision row with no hash (simulates pre-deploy state).
+        clean_db.execute(
+            """
+            INSERT INTO v2_image_review_decisions
+                (img_id, decision, chart_type, reviewer_id, decided_against_hash)
+            VALUES
+                (%(img_id)s, 'relevant', 'bar_chart', 'RGM', NULL)
+            """,
+            {"img_id": img_id},
+        )
+
+        row = clean_db.get_image_review_candidate_v2(img_id)
+        assert row is not None
+        assert row["is_stale_vs_decision"] is False

@@ -6,15 +6,16 @@ id: 89
 severity: medium
 slug: image-ocr-segments-not-surfaced-in-review-ui
 source: legacy
-status: partially-resolved
+status: resolved
 title: Image-OCR Segments + Re-OCR'd Images Not Surfaced in Review UI
 touches:
   - src/web/routes/review_unified.py
   - src/web/routes/api_unified.py
   - src/web/templates/unified_review.html
-updated: '2026-04-28'
+updated: '2026-04-29'
 pr_refs:
   - 285
+  - 349
 note: |
   Step A (surface image-OCR segments in the text tab) shipped. Step B
   (invalidate stale image review decisions when fresh ocr_text lands, or
@@ -105,3 +106,16 @@ and the `test_mock_server_renders_route_without_undefined_vars` Jinja
 contract test.
 
 Step B (stale image-decision invalidation) deferred — see `note` above.
+
+### Resolution (Step B)
+
+Implemented a display-only stale-OCR badge layered over the existing manual re-open button.
+The hash recipe is SHA-256 of `(ocr_text or "") + "|" + json.dumps(chart_data or {})`,
+stored as `decided_against_hash` on both `v2_image_review_decisions` and
+`v2_image_metric_confirmations` at decision-write time. On each page load,
+`derive_is_stale_vs_decision` compares the current image hash to the stored hash and
+sets `is_stale_vs_decision` on the candidate dict; the badge renders in
+`unified_review.html` near the re-open button when `True`. NULL hashes
+(decisions made before this change) are grandfathered as not-stale so existing
+review work is not disrupted. The decision trail and ML training signal are
+fully preserved — no decisions are deleted or mutated.
