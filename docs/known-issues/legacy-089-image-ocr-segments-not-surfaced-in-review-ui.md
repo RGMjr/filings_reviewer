@@ -15,6 +15,7 @@ touches:
 updated: '2026-04-29'
 pr_refs:
   - 285
+  - 349
 note: |
   Step A (surface image-OCR segments in the text tab) shipped. Step B
   (invalidate stale image review decisions when fresh ocr_text lands, or
