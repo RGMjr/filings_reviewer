@@ -834,7 +834,14 @@
               {% if current_image.review_status == 'reviewed' %}
               <span class="badge bg-success">Reviewed</span>
               {% elif current_image.review_status == 'skipped' %}
+              {# Disambiguate: 'skipped' + per-metric confirmations means the reviewer
+                 hit "Reject all (no relevant metrics)" — surface that intent rather
+                 than collapsing it into a plain "Skipped" badge. See .claude/rules/web.md. #}
+              {% if current_image_confirmations|length > 0 %}
+              <span class="badge bg-secondary">No relevant metrics</span>
+              {% else %}
               <span class="badge bg-secondary">Skipped</span>
+              {% endif %}
               {% else %}
               <span class="badge bg-warning text-dark">Pending</span>
               {% endif %}
@@ -866,7 +873,13 @@
           {% if current_image.review_status == 'skipped' %}
           <div class="alert alert-secondary mb-3">
             <div class="d-flex justify-content-between align-items-center">
+              {% if current_image_confirmations|length > 0 %}
+              <div><strong>Status:</strong> No relevant metrics — verified by reviewer
+                <small class="text-muted ms-1">({{ current_image_confirmations|length }} per-metric decision{{ '' if current_image_confirmations|length == 1 else 's' }} recorded)</small>
+              </div>
+              {% else %}
               <div><strong>Status:</strong> Image skipped</div>
+              {% endif %}
               <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
                 <span class="badge bg-secondary me-1">U</span> Undo
               </button>
