@@ -9,6 +9,7 @@ circuit-breaker logic, timeout handling, and transient retry using mocks
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -28,7 +29,15 @@ assert spec is not None and spec.loader is not None, f"Could not locate {_BATCH_
 batch_v2_extraction = importlib.util.module_from_spec(spec)
 # Register module so patch() can find it by dotted name
 sys.modules["batch_v2_extraction"] = batch_v2_extraction
+# exec_module runs load_dotenv() inside the script which may set env vars (e.g.
+# VISION_ROUTING_MODE) from a local .env file.  Save and restore so we don't
+# contaminate later tests that assume a clean environment.
+_prior_routing_mode = os.environ.get("VISION_ROUTING_MODE")
 spec.loader.exec_module(batch_v2_extraction)  # type: ignore[union-attr]
+if _prior_routing_mode is None:
+    os.environ.pop("VISION_ROUTING_MODE", None)
+else:
+    os.environ["VISION_ROUTING_MODE"] = _prior_routing_mode
 
 BatchConfig = batch_v2_extraction.BatchConfig
 BatchStats = batch_v2_extraction.BatchStats
