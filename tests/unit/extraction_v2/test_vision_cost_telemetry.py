@@ -544,3 +544,118 @@ class TestPipelineResultRollup:
         ):
             assert spend[site] == 0.0
         assert result.vision_spend_usd_total == 0.0
+
+
+class TestChartFallbackEscalationsRollup:
+    def _make_result(self, stage_results: list[StageResult]) -> PipelineResult:
+        return PipelineResult(
+            document=Document(),
+            facts=[],
+            tables=[],
+            images=[],
+            segments=[],
+            stage_results=stage_results,
+            total_duration_ms=1,
+            success=True,
+        )
+
+    def test_rollup_sums_escalations_across_stages(self) -> None:
+        result = self._make_result(
+            [
+                StageResult(
+                    stage=PipelineStage.OCR_CHART_EXTRACTION,
+                    success=True,
+                    duration_ms=1,
+                    items_processed=0,
+                    items_output=0,
+                    metadata={"chart_fallback_escalations": 3},
+                ),
+                StageResult(
+                    stage=PipelineStage.IMAGE_CLASSIFY,
+                    success=True,
+                    duration_ms=1,
+                    items_processed=0,
+                    items_output=0,
+                    metadata={},
+                ),
+            ]
+        )
+
+        assert result.chart_fallback_escalations == 3
+
+    def test_rollup_returns_zero_when_no_stage_emits_metadata(self) -> None:
+        result = self._make_result(
+            [
+                StageResult(
+                    stage=PipelineStage.SECTION_CLASSIFICATION,
+                    success=True,
+                    duration_ms=1,
+                    items_processed=0,
+                    items_output=0,
+                )
+            ]
+        )
+
+        assert result.chart_fallback_escalations == 0
+
+    def test_rollup_ignores_non_int_metadata_values(self) -> None:
+        result = self._make_result(
+            [
+                StageResult(
+                    stage=PipelineStage.OCR_CHART_EXTRACTION,
+                    success=True,
+                    duration_ms=1,
+                    items_processed=0,
+                    items_output=0,
+                    metadata={"chart_fallback_escalations": "oops"},  # type: ignore[dict-item]
+                ),
+            ]
+        )
+
+        assert result.chart_fallback_escalations == 0
+
+
+class TestVisionSpendLogLine:
+    """End-to-end coverage of the structured `vision_spend` log line emitted
+    by V2Pipeline.process(). This is the production observability hook —
+    Render log search keys on `vision_spend filing_id=` to recover per-filing
+    spend distributions.
+    """
+
+    def test_log_line_emitted_on_successful_pipeline(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from src.extraction_v2.pipeline import V2Pipeline
+
+        html_file = tmp_path / "test_filing.html"
+        html_file.write_text("<html><body><p>Test content</p></body></html>")
+
+        with caplog.at_level("INFO", logger="src.extraction_v2.pipeline"):
+            pipeline = V2Pipeline()
+            result = pipeline.process(html_file, filing_id=42)
+
+        assert result.success is True
+
+        spend_lines = [r for r in caplog.records if r.getMessage().startswith("vision_spend ")]
+        assert len(spend_lines) == 1, (
+            f"Expected exactly one vision_spend log line, got {len(spend_lines)}"
+        )
+
+        msg = spend_lines[0].getMessage()
+        assert "filing_id=42" in msg
+        assert "total_usd=" in msg
+        assert "by_site=" in msg
+        assert "chart_fallback_escalations=" in msg
+        assert "duration_ms=" in msg
+
+        # by_site must be valid JSON with all six expected keys
+        by_site_str = msg.split("by_site=", 1)[1].split(" chart_fallback_escalations=", 1)[0]
+        parsed = json.loads(by_site_str)
+        assert set(parsed.keys()) == {
+            "table_ocr",
+            "chart_ocr_fast",
+            "chart_read_premium",
+            "full_page_ocr",
+            "prescan",
+            "metric_classify",
+        }
