@@ -60,9 +60,9 @@
   }
 
   /**
-   * Update a <select>'s options in place from a `[{value, label, count}]` list.
-   * Selected options stay enabled even when count == 0 so the user can
-   * deselect them. Zero-count, unselected options are hidden.
+   * Update a <select>'s options in place from a `[{value, label, total, pending}]` list.
+   * Selected options stay interactive even at zero so the user can deselect.
+   * Zero-total, unselected options are hidden. Label format: "{label} ({pending}/{total})".
    */
   function applyCounts(selectEl, items, valueKey, labelTemplate) {
     var byValue = {};
@@ -75,16 +75,19 @@
       var opt = options[i];
       var item = byValue[opt.value];
       if (!item) {
-        opt.setAttribute("data-count", "0");
-        opt.text = labelTemplate(opt.value, 0);
+        opt.setAttribute("data-pending", "0");
+        opt.setAttribute("data-total", "0");
+        opt.text = labelTemplate(opt.value, 0, 0);
         opt.hidden = !opt.selected;
         opt.disabled = !opt.selected;
         continue;
       }
-      var count = parseInt(item.count, 10) || 0;
-      opt.setAttribute("data-count", String(count));
-      opt.text = labelTemplate(item, count);
-      opt.hidden = count === 0 && !opt.selected;
+      var total = parseInt(item.total, 10) || 0;
+      var pending = parseInt(item.pending, 10) || 0;
+      opt.setAttribute("data-pending", String(pending));
+      opt.setAttribute("data-total", String(total));
+      opt.text = labelTemplate(item, pending, total);
+      opt.hidden = total === 0 && !opt.selected;
       opt.disabled = false;
     }
   }
@@ -92,10 +95,10 @@
   /**
    * Update form-type checkbox row counts + disabled state.
    *
-   * Per UX choice: zero-count unchecked checkboxes are disabled+greyed
-   * (not hidden) so the small fixed set of form-types stays visually
-   * stable. Checked checkboxes always stay enabled so the user can
-   * uncheck them.
+   * Zero-total unchecked checkboxes are disabled+greyed (not hidden) so the
+   * small fixed set of form-types stays visually stable. Checked checkboxes
+   * always stay enabled so the user can uncheck them. Label format:
+   * "{label} ({pending}/{total})".
    */
   function applyFormTypeCounts(items) {
     var byKey = {};
@@ -105,14 +108,24 @@
     for (var j = 0; j < formTypeEls.length; j++) {
       var input = formTypeEls[j];
       var item = byKey[input.value];
-      var count = item ? parseInt(item.count, 10) || 0 : 0;
+      var total = item ? parseInt(item.total, 10) || 0 : 0;
+      var pending = item ? parseInt(item.pending, 10) || 0 : 0;
       var label = input.parentNode.querySelector("label.form-check-label");
-      var baseLabel = item ? item.label : (label ? label.textContent.replace(/\s*\(\d+\)\s*$/, "") : input.value);
-      input.setAttribute("data-count", String(count));
-      if (label) {
-        label.textContent = baseLabel + " (" + count + ")";
+      var baseLabel;
+      if (item) {
+        baseLabel = item.label;
+      } else if (label) {
+        // Strip a trailing "(N)" or "(N/M)" suffix to recover the label
+        baseLabel = label.textContent.replace(/\s*\(\d+(\/\d+)?\)\s*$/, "");
+      } else {
+        baseLabel = input.value;
       }
-      var shouldDisable = count === 0 && !input.checked;
+      input.setAttribute("data-pending", String(pending));
+      input.setAttribute("data-total", String(total));
+      if (label) {
+        label.textContent = baseLabel + " (" + pending + "/" + total + ")";
+      }
+      var shouldDisable = total === 0 && !input.checked;
       input.disabled = shouldDisable;
       if (label) {
         if (shouldDisable) {
@@ -139,15 +152,15 @@
         return r.json();
       })
       .then(function (data) {
-        applyCounts(yearEl, data.years || [], "year", function (item, count) {
+        applyCounts(yearEl, data.years || [], "year", function (item, pending, total) {
           var year = typeof item === "object" ? item.year : item;
-          return year + " (" + count + ")";
+          return year + " (" + pending + "/" + total + ")";
         });
-        applyCounts(industriesEl, data.industries || [], "key", function (item, count) {
+        applyCounts(industriesEl, data.industries || [], "key", function (item, pending, total) {
           if (typeof item !== "object") {
             return String(item);
           }
-          return item.label + " (" + count + ")";
+          return item.label + " (" + pending + "/" + total + ")";
         });
         applyFormTypeCounts(data.form_types || []);
       })

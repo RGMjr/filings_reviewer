@@ -155,21 +155,22 @@ def test_ingest_form_loads_facet_cascade_js(client):
     assert "ingest_form_facets.js" in body
 
 
-def test_ingest_form_form_types_show_counts_and_disable_zero(client):
-    """Form-type checkboxes carry data-count, show "(N)" in the label, and the
-    disabled+text-muted style applies when count==0 and the option isn't
-    pre-checked. With the DB unavailable in tests _form_type_options() falls
-    back to count=0 for every bundle, so all three should be disabled."""
+def test_ingest_form_form_types_show_pending_total_and_disable_zero(client):
+    """Form-type checkboxes carry data-pending + data-total, show "(P/T)"
+    in the label, and the disabled+text-muted style applies when total==0
+    and the option isn't pre-checked. With the DB unavailable in tests
+    _form_type_options() falls back to total=pending=0 for every bundle,
+    so 10k and 8k (unchecked) must be marked disabled; s1f1 stays checked
+    by default and remains enabled."""
     resp = client.get("/ingest/")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    # Every form-type checkbox carries data-count="0" in the test environment
-    assert 'data-count="0"' in body
-    # The "(0)" suffix appears in at least one form-type label
-    assert "(0)" in body
-    # In the test environment all three bundles default to count=0 with no
-    # pre-selection (the form_state defaults to selected=['s1f1']), so 10k
-    # and 8k must be marked disabled.
+    # Every form-type checkbox carries data-pending and data-total in the test environment
+    assert 'data-pending="0"' in body
+    assert 'data-total="0"' in body
+    # The "(0/0)" suffix appears in at least one form-type label
+    assert "(0/0)" in body
+    # All three bundles default to pending=total=0 with no pre-selection beyond s1f1
     assert 'id="ft_10k"' in body
     assert 'id="ft_8k"' in body
     # Find the input for ft_10k and confirm it's disabled
@@ -255,27 +256,32 @@ def test_parse_form_criteria_single_year_multi_select(app):
 
 def test_filter_options_endpoint_no_filters_returns_three_axes(client):
     """GET /api/v2/ingest/filter-options without query params returns all-time
-    counts on all three axes, derived from the mocked DB rows."""
+    counts on all three axes (total + pending), derived from the mocked DB rows."""
     from src.universe.onboarding import FormTypeCount, IndustryCount, YearCount
 
     with (
         patch(
             "src.web.routes.api_ingest.query_universe_year_counts",
-            return_value=[YearCount(year=2018, count=412), YearCount(year=2017, count=380)],
+            return_value=[
+                YearCount(year=2018, total=412, pending=10),
+                YearCount(year=2017, total=380, pending=380),
+            ],
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_industry_counts",
             return_value=[
-                IndustryCount(key="biotech", label="Biotech", count=28),
-                IndustryCount(key="commercial_banking", label="Commercial Banking", count=12),
+                IndustryCount(key="biotech", label="Biotech", total=28, pending=3),
+                IndustryCount(
+                    key="commercial_banking", label="Commercial Banking", total=12, pending=12
+                ),
             ],
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
             return_value=[
-                FormTypeCount(key="s1f1", label="S-1 / F-1 (IPO filings)", count=467),
-                FormTypeCount(key="10k", label="10-K (Annual reports)", count=0),
-                FormTypeCount(key="8k", label="8-K (Current reports)", count=0),
+                FormTypeCount(key="s1f1", label="S-1 / F-1 (IPO filings)", total=467, pending=5),
+                FormTypeCount(key="10k", label="10-K (Annual reports)", total=0, pending=0),
+                FormTypeCount(key="8k", label="8-K (Current reports)", total=0, pending=0),
             ],
         ),
     ):
@@ -283,17 +289,17 @@ def test_filter_options_endpoint_no_filters_returns_three_axes(client):
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["years"] == [
-        {"year": 2018, "count": 412},
-        {"year": 2017, "count": 380},
+        {"year": 2018, "total": 412, "pending": 10},
+        {"year": 2017, "total": 380, "pending": 380},
     ]
     assert data["industries"] == [
-        {"key": "biotech", "label": "Biotech", "count": 28},
-        {"key": "commercial_banking", "label": "Commercial Banking", "count": 12},
+        {"key": "biotech", "label": "Biotech", "total": 28, "pending": 3},
+        {"key": "commercial_banking", "label": "Commercial Banking", "total": 12, "pending": 12},
     ]
     assert data["form_types"] == [
-        {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)", "count": 467},
-        {"key": "10k", "label": "10-K (Annual reports)", "count": 0},
-        {"key": "8k", "label": "8-K (Current reports)", "count": 0},
+        {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)", "total": 467, "pending": 5},
+        {"key": "10k", "label": "10-K (Annual reports)", "total": 0, "pending": 0},
+        {"key": "8k", "label": "8-K (Current reports)", "total": 0, "pending": 0},
     ]
 
 
@@ -305,12 +311,12 @@ def test_filter_options_endpoint_year_param_passes_through(client):
 
     def fake_industry_counts(db, industry_map, *, years=None, form_types=None):
         captured["years"] = years
-        return [IndustryCount(key="biotech", label="Biotech", count=5)]
+        return [IndustryCount(key="biotech", label="Biotech", total=5, pending=2)]
 
     with (
         patch(
             "src.web.routes.api_ingest.query_universe_year_counts",
-            return_value=[YearCount(year=2016, count=10)],
+            return_value=[YearCount(year=2016, total=10, pending=10)],
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_industry_counts",
@@ -335,7 +341,7 @@ def test_filter_options_endpoint_industry_param_resolves_to_sic(client):
 
     def fake_year_counts(db, *, sic_codes=None, form_types=None):
         captured["sic_codes"] = sic_codes
-        return [YearCount(year=2018, count=3)]
+        return [YearCount(year=2018, total=3, pending=3)]
 
     with (
         patch(
@@ -344,7 +350,7 @@ def test_filter_options_endpoint_industry_param_resolves_to_sic(client):
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_industry_counts",
-            return_value=[IndustryCount(key="biotech", label="Biotech", count=3)],
+            return_value=[IndustryCount(key="biotech", label="Biotech", total=3, pending=3)],
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
@@ -397,11 +403,11 @@ def test_filter_options_endpoint_form_type_param_resolves_bundle(client):
 
     def fake_year_counts(db, *, sic_codes=None, form_types=None):
         year_captured["form_types"] = form_types
-        return [YearCount(year=2015, count=467)]
+        return [YearCount(year=2015, total=467, pending=5)]
 
     def fake_industry_counts(db, industry_map, *, years=None, form_types=None):
         industry_captured["form_types"] = form_types
-        return [IndustryCount(key="biotech", label="Biotech", count=5)]
+        return [IndustryCount(key="biotech", label="Biotech", total=5, pending=2)]
 
     with (
         patch(
@@ -432,7 +438,7 @@ def test_filter_options_endpoint_multiple_form_types_union(client):
 
     def fake_year_counts(db, *, sic_codes=None, form_types=None):
         year_captured["form_types"] = form_types
-        return [YearCount(year=2015, count=10)]
+        return [YearCount(year=2015, total=10, pending=2)]
 
     with (
         patch(
@@ -441,7 +447,7 @@ def test_filter_options_endpoint_multiple_form_types_union(client):
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_industry_counts",
-            return_value=[IndustryCount(key="biotech", label="Biotech", count=1)],
+            return_value=[IndustryCount(key="biotech", label="Biotech", total=1, pending=0)],
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",

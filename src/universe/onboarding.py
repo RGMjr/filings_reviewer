@@ -817,20 +817,25 @@ def onboard(
 
 @dataclass(frozen=True)
 class YearCount:
-    """A year present in `filings` and the count of rows that fall in it."""
+    """A year present in `filings`, with the universe total and the count of
+    those rows still pending extraction (no row in v2_documents).
+    """
 
     year: int
-    count: int
+    total: int  # total filings in the universe slice (was `count` pre-Phase-2d)
+    pending: int = 0  # subset with no v2_documents row → un-extracted
 
 
 @dataclass(frozen=True)
 class IndustryCount:
-    """A YAML industry entry and the count of filings whose company SIC code
-    is in that industry's sic_codes list."""
+    """A YAML industry entry with the universe total and pending-extraction
+    count of filings whose company SIC code is in that industry's sic_codes
+    list."""
 
     key: str  # canonical industry name from YAML (e.g. "biotech")
     label: str  # humanised (e.g. "Biotech") — same shape as `_industry_options()`
-    count: int
+    total: int  # total filings in the universe slice
+    pending: int = 0  # subset un-extracted (no v2_documents row)
 
 
 def _industry_label(key: str) -> str:
@@ -840,15 +845,19 @@ def _industry_label(key: str) -> str:
 
 _YEAR_COUNTS_SQL = """
 SELECT EXTRACT(YEAR FROM f.filing_date)::int AS yr,
-       COUNT(*)::int AS cnt
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE v.doc_id IS NULL)::int AS pending
 FROM filings f
 JOIN companies c ON c.company_id = f.company_id
+LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
 WHERE 1=1
 """
 
 _YEAR_COUNTS_INDUSTRY_GATE = "  AND c.industry_code = ANY(%(sic_codes)s)\n"
 
 _YEAR_COUNTS_FORM_TYPE_GATE = "  AND f.form_type = ANY(%(form_types)s)\n"
+
+_YEAR_COUNTS_PHASE1_GATE = "  AND f.is_in_scope_phase1 = TRUE\n"
 
 _YEAR_COUNTS_TAIL = """GROUP BY yr
 ORDER BY yr DESC
@@ -861,7 +870,11 @@ def query_universe_year_counts(
     sic_codes: list[str] | None = None,
     form_types: list[str] | None = None,
 ) -> list[YearCount]:
-    """Return distinct years in `filings` with their row count, DESC.
+    """Return distinct years in `filings` with universe total + pending counts.
+
+    Each row carries:
+        total   — filings in the slice (was the only count pre-Phase-2d).
+        pending — subset with no `v2_documents` row (i.e. un-extracted).
 
     Optional ``sic_codes`` restricts to filings whose
     ``companies.industry_code`` IS IN the list. ``form_types`` is a list of
@@ -869,9 +882,14 @@ def query_universe_year_counts(
     is responsible for resolving bundle keys via ``FORM_TYPE_BUNDLES``.
     None or empty for either means no filter on that axis.
 
-    Years with count==0 are not returned (they wouldn't have a row in
-    ``filings`` anyway).
+    The Phase-1 in-scope gate (``is_in_scope_phase1 = TRUE``) is applied
+    when ``form_types`` intersects ``S1F1_FORMS`` — same rule as
+    ``_build_discovery_sql`` — so facet counts agree with what Preview
+    would actually surface for that slice.
+
+    Years with no rows are not returned.
     """
+    include_phase1 = bool(form_types and (S1F1_FORMS & set(form_types)))
     sql = _YEAR_COUNTS_SQL
     params: dict[str, Any] = {}
     if sic_codes:
@@ -880,15 +898,20 @@ def query_universe_year_counts(
     if form_types:
         sql += _YEAR_COUNTS_FORM_TYPE_GATE
         params["form_types"] = list(form_types)
+    if include_phase1:
+        sql += _YEAR_COUNTS_PHASE1_GATE
     sql += _YEAR_COUNTS_TAIL
     rows = db.query(sql, params)
-    return [YearCount(year=int(r["yr"]), count=int(r["cnt"])) for r in rows]
+    return [
+        YearCount(year=int(r["yr"]), total=int(r["total"]), pending=int(r["pending"])) for r in rows
+    ]
 
 
 _INDUSTRY_COUNTS_SQL_TEMPLATE = """
 SELECT industry_sic.industry_key,
        industry_sic.industry_label,
-       COUNT(f.filing_id)::int AS cnt
+       COUNT(f.filing_id)::int AS total,
+       COUNT(f.filing_id) FILTER (WHERE f.filing_id IS NOT NULL AND v.doc_id IS NULL)::int AS pending
 FROM unnest(
     %(keys)s::text[],
     %(labels)s::text[],
@@ -897,6 +920,7 @@ FROM unnest(
 LEFT JOIN companies c ON c.industry_code = industry_sic.sic
 LEFT JOIN filings  f ON f.company_id = c.company_id
     {filing_join_extra}
+LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
 GROUP BY industry_sic.industry_key, industry_sic.industry_label
 ORDER BY industry_sic.industry_label
 """
@@ -909,11 +933,16 @@ def query_universe_industry_counts(
     years: list[int] | None = None,
     form_types: list[str] | None = None,
 ) -> list[IndustryCount]:
-    """For every industry in *industry_map*, return its filing count.
+    """For every industry in *industry_map*, return its filing total + pending.
+
+    Each row carries:
+        total   — filings in the slice (was `count` pre-Phase-2d).
+        pending — subset with no `v2_documents` row (i.e. un-extracted).
 
     Implementation: a single SQL query joins filings → companies → an inline
     relation built from ``unnest()`` of three parallel arrays
-    ``(industry_key, industry_label, sic)`` derived from the YAML.
+    ``(industry_key, industry_label, sic)`` derived from the YAML, with a
+    LEFT JOIN to ``v2_documents`` so the COUNT FILTER can compute pending.
 
     SIC-code overlap across industries is handled cleanly: a filing whose
     ``companies.industry_code`` matches multiple industries contributes one
@@ -921,10 +950,15 @@ def query_universe_industry_counts(
 
     Optional ``years`` and ``form_types`` restrict to filings matching those
     criteria. ``form_types`` is a list of canonical form-type strings (the
-    caller resolves bundle keys via ``FORM_TYPE_BUNDLES``). Both filters
-    apply on the LEFT JOIN to filings, not in WHERE, so industries with
-    zero matching filings are still returned (count=0). The endpoint /
-    template decides whether to display zero-count entries.
+    caller resolves bundle keys via ``FORM_TYPE_BUNDLES``). Filters apply
+    on the LEFT JOIN to filings, not in WHERE, so industries with zero
+    matching filings are still returned (total=0, pending=0). The endpoint
+    / template decides whether to display zero-total entries.
+
+    The Phase-1 in-scope gate (``is_in_scope_phase1 = TRUE``) is applied
+    when ``form_types`` intersects ``S1F1_FORMS`` — same rule as
+    ``_build_discovery_sql`` — so facet counts agree with what Preview
+    would actually surface.
 
     Sorted alphabetically by ``label``.
     """
@@ -945,11 +979,15 @@ def query_universe_industry_counts(
     if not keys:
         return []
 
+    include_phase1 = bool(form_types and (S1F1_FORMS & set(form_types)))
+
     extra_clauses = []
     if years:
         extra_clauses.append("AND EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)")
     if form_types:
         extra_clauses.append("AND f.form_type = ANY(%(form_types)s)")
+    if include_phase1:
+        extra_clauses.append("AND f.is_in_scope_phase1 = TRUE")
     filing_join_extra = "\n    ".join(extra_clauses)
 
     sql = _INDUSTRY_COUNTS_SQL_TEMPLATE.format(filing_join_extra=filing_join_extra)
@@ -964,7 +1002,8 @@ def query_universe_industry_counts(
         IndustryCount(
             key=str(r["industry_key"]),
             label=str(r["industry_label"]),
-            count=int(r["cnt"]),
+            total=int(r["total"]),
+            pending=int(r["pending"]),
         )
         for r in rows
     ]
@@ -977,28 +1016,40 @@ def query_universe_industry_counts(
 
 @dataclass(frozen=True)
 class FormTypeCount:
-    """A FORM_TYPE_BUNDLES entry and the count of filings whose form_type
-    is in the bundle's list of canonical form types."""
+    """A FORM_TYPE_BUNDLES entry with the universe total and pending-extraction
+    count of filings whose form_type is in the bundle's list of canonical
+    form types."""
 
     key: str  # bundle key from FORM_TYPE_BUNDLES (e.g. "s1f1", "10k", "8k")
     label: str  # human label (e.g. "S-1 / F-1 (IPO filings)")
-    count: int
+    total: int
+    pending: int = 0
 
 
 _FORM_TYPE_COUNTS_SQL_TEMPLATE = """
 SELECT bundle.bundle_key,
        bundle.bundle_label,
        COUNT(f.filing_id) FILTER (
-           WHERE f.filing_id IS NOT NULL {company_filter_clause}
-       )::int AS cnt
+           WHERE f.filing_id IS NOT NULL
+             {company_filter_clause}
+             AND (NOT bundle.requires_phase1 OR f.is_in_scope_phase1 = TRUE)
+       )::int AS total,
+       COUNT(f.filing_id) FILTER (
+           WHERE f.filing_id IS NOT NULL
+             AND v.doc_id IS NULL
+             {company_filter_clause}
+             AND (NOT bundle.requires_phase1 OR f.is_in_scope_phase1 = TRUE)
+       )::int AS pending
 FROM unnest(
     %(keys)s::text[],
     %(labels)s::text[],
-    %(form_types)s::text[]
-) AS bundle(bundle_key, bundle_label, form_type)
+    %(form_types)s::text[],
+    %(requires_phase1)s::bool[]
+) AS bundle(bundle_key, bundle_label, form_type, requires_phase1)
 LEFT JOIN filings f ON f.form_type = bundle.form_type
     {year_clause}
 LEFT JOIN companies c ON c.company_id = f.company_id
+LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
 GROUP BY bundle.bundle_key, bundle.bundle_label
 """
 
@@ -1010,19 +1061,23 @@ def query_universe_form_type_counts(
     years: list[int] | None = None,
     sic_codes: list[str] | None = None,
 ) -> list[FormTypeCount]:
-    """Return [{key, label, count}] for every form-type bundle.
+    """Return [{key, label, total, pending}] for every form-type bundle.
 
     *bundles* maps bundle_key → (label, [canonical_form_types]). When None,
     defaults to the visible-form-row bundles (s1f1, 10k, 8k) — the same
     set rendered in the discovery form's checkbox row. Each filing whose
     ``form_type`` matches any of the bundle's canonical types contributes
-    +1 to that bundle's count. A filing's ``form_type`` matches at most
-    one bundle in our YAML (S-1 → s1f1, 10-K → 10k, etc.), so no DISTINCT
-    is needed.
+    +1 to that bundle's total; the pending count is the subset with no
+    ``v2_documents`` row.
+
+    The Phase-1 in-scope gate is applied **per bundle**: bundles whose
+    canonical form types intersect ``S1F1_FORMS`` (i.e. s1f1) only count
+    filings where ``is_in_scope_phase1 = TRUE``. 10-K / 8-K bundles bypass
+    the gate. Mirrors ``_build_discovery_sql``'s ``include_phase1`` rule.
 
     Optional ``years`` restricts by filing year; optional ``sic_codes``
     restricts by company SIC. Filters apply on the LEFT JOIN so bundles
-    with zero matches still appear (count=0).
+    with zero matches still appear (total=0, pending=0).
 
     Sorted by bundle key for stable output (s1f1 → 10k → 8k).
     """
@@ -1038,15 +1093,18 @@ def query_universe_form_type_counts(
     keys: list[str] = []
     labels: list[str] = []
     form_types_flat: list[str] = []
+    requires_phase1: list[bool] = []
     label_by_key: dict[str, str] = {}
     bundle_order: list[str] = []
     for bundle_key, (label, form_types_list) in bundles.items():
         label_by_key[bundle_key] = label
         bundle_order.append(bundle_key)
+        gate = bool(S1F1_FORMS & set(form_types_list))
         for ft in form_types_list:
             keys.append(bundle_key)
             labels.append(label)
             form_types_flat.append(ft)
+            requires_phase1.append(gate)
 
     if not keys:
         return []
@@ -1062,6 +1120,7 @@ def query_universe_form_type_counts(
         "keys": keys,
         "labels": labels,
         "form_types": form_types_flat,
+        "requires_phase1": requires_phase1,
     }
     if years:
         params["years"] = [int(y) for y in years]
@@ -1069,7 +1128,13 @@ def query_universe_form_type_counts(
         params["sic_codes"] = list(sic_codes)
 
     rows = db.query(sql, params)
-    by_key = {str(r["bundle_key"]): int(r["cnt"]) for r in rows}
+    by_key = {str(r["bundle_key"]): (int(r["total"]), int(r["pending"])) for r in rows}
     return [
-        FormTypeCount(key=k, label=label_by_key[k], count=by_key.get(k, 0)) for k in bundle_order
+        FormTypeCount(
+            key=k,
+            label=label_by_key[k],
+            total=by_key.get(k, (0, 0))[0],
+            pending=by_key.get(k, (0, 0))[1],
+        )
+        for k in bundle_order
     ]
