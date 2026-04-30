@@ -350,31 +350,49 @@ it_services_consulting, homebuilding) plus aliases (`bio`, `pharma`,
 SEC's published list. To add a new industry, append to the YAML and run
 `pytest tests/unit/universe/test_onboarding.py::test_load_industry_map_includes_new_industries`.
 
-### Year ↔ industry ↔ form-type facet cascade (Phase 2b–2c, 2026-04-30)
+### Year ↔ industry ↔ form-type facet cascade (Phase 2b–2d, 2026-04-30)
 
 The discovery form (the lower section under the Build-universe panel) is
 **facet-driven across three axes**: Industries (multi-select listbox),
 Year (multi-select listbox), and Form Types (checkbox row). All three
-are populated from the actual contents of `filings`, with row counts
-shown next to each option. Each axis count equals the number of filings
-matching the OTHER two axes' selections (standard facet UX — each axis
-ignores its own selection so the user always sees the full set of
-choices for that axis):
+are populated from the actual contents of `filings`. Each option label
+reads **`(pending/total)`** — `pending` is the count of filings in the
+slice that haven't yet been extracted (no `v2_documents` row); `total`
+is the universe count for that slice. Each axis's counts reflect the
+OTHER two axes' selections (standard facet UX — each axis ignores its
+own selection so the user always sees the full set of choices for that
+axis):
 
 - Selecting year(s) narrows industries + form-types.
 - Selecting industries narrows years + form-types.
 - Selecting form-type(s) narrows years + industries.
 - Form-type checkboxes: multiple selections are OR-ed, so `IPO` + `10-K`
   shows year/industry counts for filings in either bundle.
-- Selected options that drop to zero count stay visible (greyed `(0)`)
+- Selected options that drop to total=0 stay visible (greyed `(0/0)`)
   so the user can deselect them. For Year and Industry listboxes,
-  unselected zero-count options are hidden; for Form-type checkboxes,
-  unselected zero-count options stay visible-but-disabled (the row only
-  has 3 entries, hiding would be jarring).
+  unselected zero-total options are hidden; for Form-type checkboxes,
+  unselected zero-total options stay visible-but-disabled (the row only
+  has 3 entries, hiding would be jarring). A slice with `pending=0` and
+  `total>0` (fully extracted) stays enabled.
+
+**Phase-1 in-scope gate alignment** (Phase 2d): the facet counts apply
+the same Phase-1 gate that `_build_discovery_sql` does — when the
+selection includes any S-1/F-1 form type, only `is_in_scope_phase1=TRUE`
+filings are counted. This means the facet number always matches what
+Preview will show. SPACs, post-combination de-SPACs, secondary-only
+offerings, investment vehicles, and resource-extraction companies are
+excluded from the count when the user is looking at IPO filings. 10-K
+and 8-K bundles bypass the gate (those filings are out-of-scope-phase1
+by design). For form-type counts the gate is applied per-bundle: the
+s1f1 row applies the gate, 10k/8k rows don't.
+
+Reviewed-status detail (extracted-with-reviews vs. extracted-without)
+still lives on the Preview page; the form folds both into the
+"extracted" portion of the total (i.e. `total - pending`).
 
 Backed by `GET /api/v2/ingest/filter-options?year=...&industry=...&form_type=...`
-→ `{years: [...], industries: [...], form_types: [...]}`. Helpers in
-`src/universe/onboarding.py`: `query_universe_year_counts`,
+→ `{years: [{year, total, pending}], industries: [{key, label, total, pending}], form_types: [...]}`.
+Helpers in `src/universe/onboarding.py`: `query_universe_year_counts`,
 `query_universe_industry_counts`, `query_universe_form_type_counts`.
 Cascade JS: `src/web/static/js/ingest_form_facets.js`.
 

@@ -58,26 +58,53 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 # ---------------------------------------------------------------------------
 
 
-def _industry_options() -> list[dict[str, Any]]:
-    """Return industry options annotated with universe filing counts.
+def _resolve_form_type_keys(form_type_keys: list[str]) -> list[str]:
+    """Resolve a list of bundle keys (e.g. ['s1f1', '10k']) to their flat
+    canonical form-type strings via FORM_TYPE_BUNDLES, deduped."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for key in form_type_keys:
+        for ft in FORM_TYPE_BUNDLES.get(key, []):
+            if ft not in seen:
+                out.append(ft)
+                seen.add(ft)
+    return out
 
-    Industries with no filings in the universe (count == 0) are still
+
+def _industry_options(form_types: list[str] | None = None) -> list[dict[str, Any]]:
+    """Return industry options annotated with universe total + pending counts.
+
+    *form_types* is a list of canonical form-type strings (already resolved
+    via ``FORM_TYPE_BUNDLES``); when None, falls back to the form's default
+    selection (s1f1 canonical types) so server-side render aligns with what
+    the JS cascade fetches on first user interaction.
+
+    Industries with no filings in the universe (total == 0) are still
     returned so the JS facet cascade can show them as disabled rather than
     making them disappear when years narrow the result. The template
-    decides whether to hide zero-count rows on initial render.
+    decides whether to hide zero-total rows on initial render.
     """
+    if form_types is None:
+        form_types = list(FORM_TYPE_BUNDLES["s1f1"])
     try:
         ind_map = load_industry_map()
-        rows = query_universe_industry_counts(get_db(), ind_map)
-        return [{"key": r.key, "label": r.label, "count": r.count} for r in rows]
+        rows = query_universe_industry_counts(get_db(), ind_map, form_types=form_types)
+        return [
+            {"key": r.key, "label": r.label, "total": r.total, "pending": r.pending} for r in rows
+        ]
     except Exception:  # noqa: BLE001
         logger.warning("Failed to load industry options with counts", exc_info=True)
-        # Fall back to YAML-only list with count=0 so the form still renders.
+        # Fall back to YAML-only list with total=pending=0 so the form still renders.
         try:
             ind_map = load_industry_map()
             return sorted(
                 [
-                    {"key": k, "label": k.replace("_", " ").title(), "count": 0}
+                    {
+                        "key": k,
+                        "label": k.replace("_", " ").title(),
+                        "total": 0,
+                        "pending": 0,
+                    }
                     for k in ind_map["industries"]
                 ],
                 key=lambda x: x["label"],
@@ -86,11 +113,18 @@ def _industry_options() -> list[dict[str, Any]]:
             return []
 
 
-def _year_options() -> list[dict[str, int]]:
-    """Return [{year, count}] for every year present in `filings`, DESC."""
+def _year_options(form_types: list[str] | None = None) -> list[dict[str, int]]:
+    """Return [{year, total, pending}] for every year present in `filings`, DESC.
+
+    *form_types* aligns SSR counts with the form's default checkbox state
+    (defaults to s1f1 canonical types) so the first JS cascade fetch
+    doesn't visibly recompute the numbers.
+    """
+    if form_types is None:
+        form_types = list(FORM_TYPE_BUNDLES["s1f1"])
     try:
-        rows = query_universe_year_counts(get_db())
-        return [{"year": r.year, "count": r.count} for r in rows]
+        rows = query_universe_year_counts(get_db(), form_types=form_types)
+        return [{"year": r.year, "total": r.total, "pending": r.pending} for r in rows]
     except Exception:  # noqa: BLE001
         logger.warning("Failed to load year options with counts", exc_info=True)
         return []
@@ -98,7 +132,7 @@ def _year_options() -> list[dict[str, int]]:
 
 # Static labels for the form-type checkbox row. Counts are added dynamically
 # by `_form_type_options()`; the static fallback (DB unavailable in tests)
-# preserves the legacy labels with count=0.
+# preserves the legacy labels with total=pending=0.
 _FORM_TYPE_STATIC_LABELS: dict[str, str] = {
     "s1f1": "S-1 / F-1 (IPO filings)",
     "10k": "10-K (Annual reports)",
@@ -107,19 +141,26 @@ _FORM_TYPE_STATIC_LABELS: dict[str, str] = {
 
 
 def _form_type_options() -> list[dict[str, Any]]:
-    """Return [{key, label, count}] for the form-type checkbox row.
+    """Return [{key, label, total, pending}] for the form-type checkbox row.
 
-    Counts come from ``query_universe_form_type_counts`` (no axis filter
-    on initial render — JS facet cascade refreshes them as the user
-    selects years/industries). Falls back to count=0 when the DB is
-    unavailable so the form still renders during tests.
+    Counts come from ``query_universe_form_type_counts`` (no year/industry
+    filter on initial render — JS facet cascade refreshes them as the user
+    selects years/industries). The Phase-1 gate is applied per bundle
+    inside the SQL: s1f1 only counts in-scope filings; 10k/8k count all.
+    Falls back to total=pending=0 when the DB is unavailable so the form
+    still renders during tests.
     """
     try:
         rows = query_universe_form_type_counts(get_db())
-        return [{"key": r.key, "label": r.label, "count": r.count} for r in rows]
+        return [
+            {"key": r.key, "label": r.label, "total": r.total, "pending": r.pending} for r in rows
+        ]
     except Exception:  # noqa: BLE001
         logger.warning("Failed to load form-type options with counts", exc_info=True)
-        return [{"key": k, "label": v, "count": 0} for k, v in _FORM_TYPE_STATIC_LABELS.items()]
+        return [
+            {"key": k, "label": v, "total": 0, "pending": 0}
+            for k, v in _FORM_TYPE_STATIC_LABELS.items()
+        ]
 
 
 def _parse_form_criteria() -> dict[str, Any]:
@@ -194,15 +235,23 @@ def _volume_band_message(band: VolumeBand, total: int) -> str:
 def _render_ingest_form(form_state: dict[str, Any] | None = None, status: int = 200):
     """Render the criteria form. When *form_state* is given, the template
     repopulates fields so a validation error doesn't wipe user input.
+
+    SSR Phase-1 alignment: pass the form's currently-selected (or default)
+    form_types into ``_year_options`` / ``_industry_options`` so initial
+    counts mirror what the JS cascade will fetch on first user interaction.
+    Without this, the first checkbox/listbox click would visibly
+    re-compute every count.
     """
     state = form_state or {}
     reviewer_name = state.get("_reviewer_name") or request.cookies.get("ingest_reviewer", "")
+    selected_bundle_keys = state.get("form_types") or ["s1f1"]
+    selected_form_types = _resolve_form_type_keys(selected_bundle_keys)
     return (
         render_template(
             "ingest_form.html",
             reviewer_name=reviewer_name,
-            industries=_industry_options(),
-            years_available=_year_options(),
+            industries=_industry_options(form_types=selected_form_types),
+            years_available=_year_options(form_types=selected_form_types),
             form_types_available=_form_type_options(),
             form_state=state,
         ),
@@ -333,36 +382,18 @@ def ingest_start():
             "Add more criteria to narrow the scope.",
             "danger",
         )
-        return (
-            render_template(
-                "ingest_form.html",
-                reviewer_name=reviewer_name,
-                industries=_industry_options(),
-                form_types_available=[
-                    {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)"},
-                    {"key": "10k", "label": "10-K (Annual reports)"},
-                    {"key": "8k", "label": "8-K (Current reports)"},
-                ],
-            ),
-            400,
+        return _render_ingest_form(
+            form_state={"_reviewer_name": reviewer_name},
+            status=400,
         )
     if band == VolumeBand.HARD_WARN and not hard_warn_ack:
         flash(
             "Large batch acknowledgement required. Please check the confirmation box.",
             "danger",
         )
-        return (
-            render_template(
-                "ingest_form.html",
-                reviewer_name=reviewer_name,
-                industries=_industry_options(),
-                form_types_available=[
-                    {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)"},
-                    {"key": "10k", "label": "10-K (Annual reports)"},
-                    {"key": "8k", "label": "8-K (Current reports)"},
-                ],
-            ),
-            400,
+        return _render_ingest_form(
+            form_state={"_reviewer_name": reviewer_name},
+            status=400,
         )
 
     # Determine per-filing bucket and reextract flag.

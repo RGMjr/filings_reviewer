@@ -276,12 +276,14 @@ def filter_options():
         return jsonify({"status": "error", "message": "Database error"}), 500
 
     payload = {
-        "years": [{"year": yc.year, "count": yc.count} for yc in year_rows],
+        "years": [{"year": yc.year, "total": yc.total, "pending": yc.pending} for yc in year_rows],
         "industries": [
-            {"key": ic.key, "label": ic.label, "count": ic.count} for ic in industry_rows
+            {"key": ic.key, "label": ic.label, "total": ic.total, "pending": ic.pending}
+            for ic in industry_rows
         ],
         "form_types": [
-            {"key": ftc.key, "label": ftc.label, "count": ftc.count} for ftc in form_type_rows
+            {"key": ftc.key, "label": ftc.label, "total": ftc.total, "pending": ftc.pending}
+            for ftc in form_type_rows
         ],
     }
     return jsonify(payload), 200

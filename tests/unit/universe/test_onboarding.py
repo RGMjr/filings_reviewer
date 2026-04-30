@@ -597,17 +597,25 @@ def test_load_industry_map_resolves_new_aliases(alias: str, target: str) -> None
 def test_query_universe_year_counts_returns_dataclass_list() -> None:
     db = _FakeDB(
         rows=[
-            {"yr": 2018, "cnt": 412},
-            {"yr": 2017, "cnt": 380},
-            {"yr": 2016, "cnt": 215},
+            {"yr": 2018, "total": 412, "pending": 10},
+            {"yr": 2017, "total": 380, "pending": 380},
+            {"yr": 2016, "total": 215, "pending": 215},
         ]
     )
     out = query_universe_year_counts(db)
     assert out == [
-        YearCount(year=2018, count=412),
-        YearCount(year=2017, count=380),
-        YearCount(year=2016, count=215),
+        YearCount(year=2018, total=412, pending=10),
+        YearCount(year=2017, total=380, pending=380),
+        YearCount(year=2016, total=215, pending=215),
     ]
+
+
+def test_query_universe_year_counts_includes_pending_filter_clause() -> None:
+    """The SQL must compute pending via FILTER (WHERE v.doc_id IS NULL)."""
+    db = _FakeDB(rows=[])
+    query_universe_year_counts(db)
+    assert "v.doc_id IS NULL" in db.last_sql
+    assert "LEFT JOIN v2_documents v" in db.last_sql
 
 
 def test_query_universe_year_counts_empty_universe_returns_empty_list() -> None:
@@ -623,10 +631,30 @@ def test_query_universe_year_counts_no_industry_filter_omits_clause() -> None:
 
 
 def test_query_universe_year_counts_with_industry_filter_includes_clause() -> None:
-    db = _FakeDB(rows=[{"yr": 2018, "cnt": 1}])
+    db = _FakeDB(rows=[{"yr": 2018, "total": 1, "pending": 0}])
     query_universe_year_counts(db, sic_codes=["6020", "6021"])
     assert "industry_code" in db.last_sql
     assert db.last_params["sic_codes"] == ["6020", "6021"]
+
+
+def test_query_universe_year_counts_phase1_gate_applied_for_s1f1() -> None:
+    """When form_types includes any S-1/F-1 type, the Phase-1 gate is added."""
+    db = _FakeDB(rows=[])
+    query_universe_year_counts(db, form_types=["S-1", "S-1/A"])
+    assert "f.is_in_scope_phase1 = TRUE" in db.last_sql
+
+
+def test_query_universe_year_counts_phase1_gate_skipped_for_10k_only() -> None:
+    """A 10-K-only selection bypasses the Phase-1 gate (matches discovery SQL)."""
+    db = _FakeDB(rows=[])
+    query_universe_year_counts(db, form_types=["10-K", "10-K/A"])
+    assert "is_in_scope_phase1" not in db.last_sql
+
+
+def test_query_universe_year_counts_phase1_gate_skipped_when_no_form_types() -> None:
+    db = _FakeDB(rows=[])
+    query_universe_year_counts(db)
+    assert "is_in_scope_phase1" not in db.last_sql
 
 
 # ---------------------------------------------------------------------------
@@ -645,23 +673,48 @@ def test_query_universe_industry_counts_builds_unnest_arrays() -> None:
     }
     db = _FakeDB(
         rows=[
-            {"industry_key": "biotech", "industry_label": "Biotech", "cnt": 28},
+            {"industry_key": "biotech", "industry_label": "Biotech", "total": 28, "pending": 3},
             {
                 "industry_key": "commercial_banking",
                 "industry_label": "Commercial Banking",
-                "cnt": 12,
+                "total": 12,
+                "pending": 12,
             },
         ]
     )
     out = query_universe_industry_counts(db, industry_map)
     assert out == [
-        IndustryCount(key="biotech", label="Biotech", count=28),
-        IndustryCount(key="commercial_banking", label="Commercial Banking", count=12),
+        IndustryCount(key="biotech", label="Biotech", total=28, pending=3),
+        IndustryCount(key="commercial_banking", label="Commercial Banking", total=12, pending=12),
     ]
     # The arrays passed to unnest carry one row per (industry, sic) tuple
     assert db.last_params["keys"] == ["biotech", "biotech", "commercial_banking"]
     assert db.last_params["labels"] == ["Biotech", "Biotech", "Commercial Banking"]
     assert db.last_params["sics"] == ["2836", "8731", "6020"]
+
+
+def test_query_universe_industry_counts_includes_pending_filter() -> None:
+    """The SQL must LEFT JOIN v2_documents and FILTER for pending."""
+    industry_map = {"industries": {"biotech": {"sic_codes": ["2836"]}}, "aliases": {}}
+    db = _FakeDB(rows=[])
+    query_universe_industry_counts(db, industry_map)
+    assert "LEFT JOIN v2_documents v" in db.last_sql
+    assert "v.doc_id IS NULL" in db.last_sql
+
+
+def test_query_universe_industry_counts_phase1_gate_for_s1f1() -> None:
+    """form_types intersecting S-1/F-1 → Phase-1 gate goes on the filings JOIN."""
+    industry_map = {"industries": {"biotech": {"sic_codes": ["2836"]}}, "aliases": {}}
+    db = _FakeDB(rows=[])
+    query_universe_industry_counts(db, industry_map, form_types=["S-1"])
+    assert "f.is_in_scope_phase1 = TRUE" in db.last_sql
+
+
+def test_query_universe_industry_counts_phase1_gate_skipped_for_10k_only() -> None:
+    industry_map = {"industries": {"biotech": {"sic_codes": ["2836"]}}, "aliases": {}}
+    db = _FakeDB(rows=[])
+    query_universe_industry_counts(db, industry_map, form_types=["10-K"])
+    assert "is_in_scope_phase1" not in db.last_sql
 
 
 def test_query_universe_industry_counts_with_year_filter_includes_clause() -> None:
@@ -700,7 +753,7 @@ def test_query_universe_industry_counts_empty_yaml_returns_empty_list() -> None:
 
 
 def test_query_universe_year_counts_with_form_types_filter() -> None:
-    db = _FakeDB(rows=[{"yr": 2018, "cnt": 1}])
+    db = _FakeDB(rows=[{"yr": 2018, "total": 1, "pending": 0}])
     query_universe_year_counts(db, form_types=["S-1", "S-1/A"])
     assert "f.form_type = ANY(%(form_types)s)" in db.last_sql
     assert db.last_params["form_types"] == ["S-1", "S-1/A"]
@@ -751,28 +804,71 @@ def test_query_universe_form_type_counts_default_bundles() -> None:
     """Without explicit bundles, returns counts for s1f1 / 10k / 8k in that order."""
     db = _FakeDB(
         rows=[
-            {"bundle_key": "s1f1", "bundle_label": "S-1 / F-1 (IPO filings)", "cnt": 467},
-            {"bundle_key": "10k", "bundle_label": "10-K (Annual reports)", "cnt": 0},
-            {"bundle_key": "8k", "bundle_label": "8-K (Current reports)", "cnt": 0},
+            {
+                "bundle_key": "s1f1",
+                "bundle_label": "S-1 / F-1 (IPO filings)",
+                "total": 467,
+                "pending": 5,
+            },
+            {
+                "bundle_key": "10k",
+                "bundle_label": "10-K (Annual reports)",
+                "total": 0,
+                "pending": 0,
+            },
+            {
+                "bundle_key": "8k",
+                "bundle_label": "8-K (Current reports)",
+                "total": 0,
+                "pending": 0,
+            },
         ]
     )
     out = query_universe_form_type_counts(db)
     keys = [c.key for c in out]
     assert keys == ["s1f1", "10k", "8k"]
     by_key = {c.key: c for c in out}
-    assert by_key["s1f1"].count == 467
-    assert by_key["10k"].count == 0
-    assert by_key["8k"].count == 0
+    assert by_key["s1f1"].total == 467
+    assert by_key["s1f1"].pending == 5
+    assert by_key["10k"].total == 0
+    assert by_key["8k"].total == 0
 
 
 def test_query_universe_form_type_counts_zero_count_bundles_preserved() -> None:
-    """A bundle with no matching filings still appears in the result with count=0."""
-    db = _FakeDB(rows=[{"bundle_key": "s1f1", "bundle_label": "S-1 / F-1 (IPO filings)", "cnt": 5}])
+    """A bundle with no matching filings still appears in the result with total=0."""
+    db = _FakeDB(
+        rows=[
+            {
+                "bundle_key": "s1f1",
+                "bundle_label": "S-1 / F-1 (IPO filings)",
+                "total": 5,
+                "pending": 5,
+            }
+        ]
+    )
     out = query_universe_form_type_counts(db)
-    by_key = {c.key: c.count for c in out}
+    by_key = {c.key: c.total for c in out}
     assert by_key["s1f1"] == 5
     assert by_key["10k"] == 0
     assert by_key["8k"] == 0
+
+
+def test_query_universe_form_type_counts_per_bundle_phase1_gate() -> None:
+    """The unnest VALUES list passes a `requires_phase1` boolean per bundle:
+    True for s1f1, False for 10k/8k. The SQL applies the gate via a CASE
+    inside the COUNT FILTER (`NOT bundle.requires_phase1 OR is_in_scope_phase1`).
+    """
+    db = _FakeDB(rows=[])
+    query_universe_form_type_counts(db)
+    assert "requires_phase1" in db.last_sql
+    assert "is_in_scope_phase1" in db.last_sql
+    # The Python-side flag list must align: s1f1=True, 10k=False, 8k=False
+    flags = db.last_params["requires_phase1"]
+    keys = db.last_params["keys"]
+    by_key = {keys[i]: flags[i] for i in range(len(keys))}
+    assert by_key["s1f1"] is True
+    assert by_key["10k"] is False
+    assert by_key["8k"] is False
 
 
 def test_query_universe_form_type_counts_with_year_filter() -> None:
@@ -797,9 +893,19 @@ def test_query_universe_form_type_counts_no_filters_omits_clauses() -> None:
 
 
 def test_query_universe_form_type_counts_returns_dataclass_instances() -> None:
-    db = _FakeDB(rows=[{"bundle_key": "s1f1", "bundle_label": "S-1 / F-1 (IPO filings)", "cnt": 3}])
+    db = _FakeDB(
+        rows=[
+            {
+                "bundle_key": "s1f1",
+                "bundle_label": "S-1 / F-1 (IPO filings)",
+                "total": 3,
+                "pending": 1,
+            }
+        ]
+    )
     out = query_universe_form_type_counts(db)
     assert all(isinstance(c, FormTypeCount) for c in out)
     assert out[0].key == "s1f1"
     assert out[0].label == "S-1 / F-1 (IPO filings)"
-    assert out[0].count == 3
+    assert out[0].total == 3
+    assert out[0].pending == 1

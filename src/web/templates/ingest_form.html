@@ -79,12 +79,13 @@
           <select id="industries" name="industries" class="form-select" multiple size="8">
             {% for ind in industries %}
             <option value="{{ ind.key }}"
-                    data-count="{{ ind.count }}"
+                    data-pending="{{ ind.pending }}"
+                    data-total="{{ ind.total }}"
                     {% if ind.key in selected_industries %}selected{% endif %}
-                    {% if ind.count == 0 and ind.key not in selected_industries %}hidden{% endif %}>{{ ind.label }} ({{ ind.count }})</option>
+                    {% if ind.total == 0 and ind.key not in selected_industries %}hidden{% endif %}>{{ ind.label }} ({{ ind.pending }}/{{ ind.total }})</option>
             {% endfor %}
           </select>
-          <div class="form-text">Hold Ctrl / Cmd to select multiple. List narrows to industries with rows in the selected year(s).</div>
+          <div class="form-text">Hold Ctrl / Cmd to select multiple. Counts shown as <em>pending/total</em> — pending = un-extracted filings in the slice. List narrows to industries with rows in the selected year(s).</div>
         </div>
 
         <div class="col-md-6">
@@ -106,9 +107,9 @@
             for (var i = 0; i < options.length; i++) {
               var opt = options[i];
               var match = opt.textContent.toLowerCase().indexOf(term) !== -1;
-              // Preserve the facet-cascade `hidden` when count==0; only hide when search excludes
+              // Preserve the facet-cascade `hidden` when total==0; only hide when search excludes
               if (term === '') {
-                opt.hidden = (parseInt(opt.getAttribute('data-count') || '0', 10) === 0 && !opt.selected);
+                opt.hidden = (parseInt(opt.getAttribute('data-total') || '0', 10) === 0 && !opt.selected);
               } else {
                 opt.hidden = !match;
               }
@@ -124,13 +125,14 @@
         <select id="year" name="year" class="form-select" multiple size="6">
           {% for yr in years_available %}
           <option value="{{ yr.year }}"
-                  data-count="{{ yr.count }}"
-                  {% if yr.year in selected_years %}selected{% endif %}>{{ yr.year }} ({{ yr.count }})</option>
+                  data-pending="{{ yr.pending }}"
+                  data-total="{{ yr.total }}"
+                  {% if yr.year in selected_years %}selected{% endif %}>{{ yr.year }} ({{ yr.pending }}/{{ yr.total }})</option>
           {% endfor %}
           {# Render any selected years that aren't in years_available (defensive — covers stale form_state and DB-unavailable test conditions) #}
           {% for sy in selected_years %}
             {% if sy not in _year_keys %}
-            <option value="{{ sy }}" data-count="0" selected>{{ sy }} (0)</option>
+            <option value="{{ sy }}" data-pending="0" data-total="0" selected>{{ sy }} (0/0)</option>
             {% endif %}
           {% endfor %}
         </select>
@@ -142,16 +144,18 @@
         <label class="form-label fw-semibold">Form Types</label>
         <div>
           {% for ft in form_types_available %}
-          {% set ft_count = ft.get('count', 0) %}
+          {% set ft_pending = ft.get('pending', 0) %}
+          {% set ft_total = ft.get('total', 0) %}
           {% set ft_checked = ft.key in selected_form_types %}
-          {% set ft_disabled = ft_count == 0 and not ft_checked %}
+          {% set ft_disabled = ft_total == 0 and not ft_checked %}
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox"
                    id="ft_{{ ft.key }}" name="form_types" value="{{ ft.key }}"
-                   data-count="{{ ft_count }}"
+                   data-pending="{{ ft_pending }}"
+                   data-total="{{ ft_total }}"
                    {% if ft_checked %}checked{% endif %}
                    {% if ft_disabled %}disabled{% endif %}>
-            <label class="form-check-label{% if ft_disabled %} text-muted{% endif %}" for="ft_{{ ft.key }}">{{ ft.label }} ({{ ft_count }})</label>
+            <label class="form-check-label{% if ft_disabled %} text-muted{% endif %}" for="ft_{{ ft.key }}">{{ ft.label }} ({{ ft_pending }}/{{ ft_total }})</label>
           </div>
           {% endfor %}
         </div>
