@@ -145,31 +145,44 @@
     - Otherwise: `gh pr create --fill` (auto-title from commit subject, auto-body from commit body + PR template). Capture the URL.
     - On `gh` failure (auth, rate-limit, etc.): report the exact error and stop. Do NOT fall back to any other form of merge.
 
-16. **Enable auto-merge.** `gh pr merge --auto --squash` (idempotent — no-op if already enabled). `--squash` keeps main's history linear, matching the repo's existing pattern. Never use `--admin`.
-
-    **Verify it actually got set.** Auto-merge enablement has been observed to silently no-op even when the command exits 0. After step 16, run:
+16. **Enable auto-merge.** The `gh pr merge --auto --squash` CLI and the GraphQL `enablePullRequestAutoMerge` mutation both fail with auth errors in this environment (keyring token scope). Use the REST API directly instead:
 
     ```
-    gh pr view --json autoMergeRequest,state,mergeStateStatus
+    gh api --method PUT repos/RGMjr/filings_reviewer/pulls/<num>/merge --field merge_method=squash
     ```
 
-    - `autoMergeRequest` non-null → set; proceed.
-    - `autoMergeRequest` null AND `mergeStateStatus == UNSTABLE` → step 17's UNSTABLE branch handles it; don't retry here.
-    - `autoMergeRequest` null otherwise → retry `gh pr merge --auto --squash <num>` once. If still null, warn: "Auto-merge did not engage on PR #<n> — verify manually after CI completes."
+    This is idempotent-safe when CI is green and squash-merges immediately. `--squash` keeps main's history linear, matching the repo's existing pattern. Never use `--admin`.
 
-17. **Conflict guard.** After enabling auto-merge, wait 5 seconds for GitHub to compute merge status, then check:
+    **If CI is still running**, do not merge yet — wait for required checks (Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright)) to complete first, then issue the PUT.
+
+17. **Conflict guard.** Before issuing the merge PUT, check:
     ```
-    gh pr view --json mergeable,mergeStateStatus,statusCheckRollup
+    gh api repos/RGMjr/filings_reviewer/pulls/<num> --jq '{mergeable_state,mergeable}'
     ```
-    - `DIRTY`: run `gh pr update-branch` (merges `main` into the PR branch). If it exits non-zero (real content conflict), warn: "Branch is DIRTY and update-branch failed — manual conflict resolution required."
-    - `UNSTABLE`: a non-required check is failing or in-progress and `--auto --squash` will not engage. Inspect `statusCheckRollup` — if every check on the project's required list (Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright)) has `conclusion: SUCCESS`, fall back to `gh pr merge --squash <num>` (without `--auto`). A direct merge is permitted when required checks are green; the UNSTABLE from non-required checks does not block it. If any required check is still pending or failed, do nothing — wait for them.
-    - `BLOCKED` / `CLEAN` / `UNKNOWN`: no action.
+    - `mergeable_state: dirty`: run `gh pr update-branch --rebase <num>` to bring the branch up to date. If it fails (real content conflict), warn: "Branch is DIRTY and update-branch failed — manual conflict resolution required." Do not merge.
+    - `mergeable_state: unknown`: GitHub is still computing — the REST PUT will still succeed if CI is green; proceed.
+    - `mergeable_state: clean` or `unstable`: proceed with the PUT. `unstable` means a non-required check is failing; as long as all 5 required checks are `SUCCESS`, a direct merge is permitted.
+    - `mergeable: false`: do not merge; report the exact state.
 
 18. **Report.** Final one-line summary to the user, naming the actual PR head branch (which may differ from the local branch if a follow-up rename happened):
     ```
-    PR #<n> opened/updated on <headRefName>: <url>. Auto-merge enabled (squash). Waits on: Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright). Run /ci-fix if checks go red.
+    PR #<n> opened/updated on <headRefName>: <url>. Will merge via REST PUT once CI passes. Waits on: Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright). Run /ci-fix if checks go red.
     ```
     Get `<headRefName>` from `gh pr view --json headRefName -q .headRefName`.
+
+19. **Concurrent-PR check.** After reporting, run:
+    ```
+    gh api repos/RGMjr/filings_reviewer/pulls --jq '[.[] | select(.state=="open")] | length'
+    ```
+    If the count is **2 or more**, fetch the open PR numbers:
+    ```
+    gh api repos/RGMjr/filings_reviewer/pulls --jq '[.[] | select(.state=="open") | .number] | join(" ")'
+    ```
+    Then append to the report:
+    ```
+    N PRs currently open (#X #Y ...). Consider running: /loop 5m /supervise-prs X Y
+    ```
+    If only 1 PR is open (the one just created), skip silently.
 
 ---
 
