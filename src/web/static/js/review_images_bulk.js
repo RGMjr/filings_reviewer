@@ -96,6 +96,26 @@
     // Attach checkbox handlers
     function attachCheckboxHandlers() {
         document.querySelectorAll('.thumb-select-cb').forEach((cb) => {
+            cb.addEventListener('click', function (e) {
+                if (e.shiftKey && lastClickedIndex >= 0) {
+                    // Range-select from the last anchor to here. preventDefault
+                    // blocks the browser's checkbox toggle so shift-click never
+                    // flips the anchor itself — it only extends the selection.
+                    // updateUI() inside selectRange syncs every checkbox's
+                    // visual state from `selected`. Mirrors the thumbnail-body
+                    // shift-click handler.
+                    e.preventDefault();
+                    const idx = getThumbIndex(cb.dataset.imgId);
+                    selectRange(lastClickedIndex, idx);
+                    // Do NOT update lastClickedIndex on shift-click, so
+                    // successive shift-clicks always extend from the original
+                    // anchor.
+                }
+                // Plain click: fall through. Browser toggles cb.checked, then
+                // the `change` handler below syncs `selected` and sets
+                // lastClickedIndex.
+            });
+
             cb.addEventListener('change', function () {
                 const imgId = cb.dataset.imgId;
                 if (cb.checked) selected.add(imgId);
