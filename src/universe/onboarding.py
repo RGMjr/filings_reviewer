@@ -806,3 +806,150 @@ def onboard(
             break
 
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Universe-state aggregations — power the /ingest/ form facet cascade.
+# Year ↔ industry counts so the operator only sees slices that actually have
+# rows in the universe. See docs/operations/TICKER_ONBOARDING.md.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class YearCount:
+    """A year present in `filings` and the count of rows that fall in it."""
+
+    year: int
+    count: int
+
+
+@dataclass(frozen=True)
+class IndustryCount:
+    """A YAML industry entry and the count of filings whose company SIC code
+    is in that industry's sic_codes list."""
+
+    key: str  # canonical industry name from YAML (e.g. "biotech")
+    label: str  # humanised (e.g. "Biotech") — same shape as `_industry_options()`
+    count: int
+
+
+def _industry_label(key: str) -> str:
+    """Match the legacy `_industry_options()` label format."""
+    return key.replace("_", " ").title()
+
+
+_YEAR_COUNTS_SQL = """
+SELECT EXTRACT(YEAR FROM f.filing_date)::int AS yr,
+       COUNT(*)::int AS cnt
+FROM filings f
+JOIN companies c ON c.company_id = f.company_id
+WHERE 1=1
+"""
+
+_YEAR_COUNTS_INDUSTRY_GATE = "  AND c.industry_code = ANY(%(sic_codes)s)\n"
+
+_YEAR_COUNTS_TAIL = """GROUP BY yr
+ORDER BY yr DESC
+"""
+
+
+def query_universe_year_counts(
+    db: DatabaseAdapter,
+    *,
+    sic_codes: list[str] | None = None,
+) -> list[YearCount]:
+    """Return distinct years in `filings` with their row count, DESC.
+
+    Optional ``sic_codes`` restricts to filings whose
+    ``companies.industry_code`` IS IN the list. None or empty list means
+    all-time, all-industry.
+
+    Years with count==0 are not returned (they wouldn't have a row in
+    ``filings`` anyway).
+    """
+    sql = _YEAR_COUNTS_SQL
+    params: dict[str, Any] = {}
+    if sic_codes:
+        sql += _YEAR_COUNTS_INDUSTRY_GATE
+        params["sic_codes"] = list(sic_codes)
+    sql += _YEAR_COUNTS_TAIL
+    rows = db.query(sql, params)
+    return [YearCount(year=int(r["yr"]), count=int(r["cnt"])) for r in rows]
+
+
+_INDUSTRY_COUNTS_SQL_TEMPLATE = """
+SELECT industry_sic.industry_key,
+       industry_sic.industry_label,
+       COUNT(f.filing_id)::int AS cnt
+FROM unnest(
+    %(keys)s::text[],
+    %(labels)s::text[],
+    %(sics)s::text[]
+) AS industry_sic(industry_key, industry_label, sic)
+LEFT JOIN companies c ON c.industry_code = industry_sic.sic
+LEFT JOIN filings  f ON f.company_id = c.company_id
+{year_filter}
+GROUP BY industry_sic.industry_key, industry_sic.industry_label
+ORDER BY industry_sic.industry_label
+"""
+
+
+def query_universe_industry_counts(
+    db: DatabaseAdapter,
+    industry_map: dict[str, Any],
+    *,
+    years: list[int] | None = None,
+) -> list[IndustryCount]:
+    """For every industry in *industry_map*, return its filing count.
+
+    Implementation: a single SQL query joins filings → companies → an inline
+    relation built from ``unnest()`` of three parallel arrays
+    ``(industry_key, industry_label, sic)`` derived from the YAML.
+
+    SIC-code overlap across industries is handled cleanly: a filing whose
+    ``companies.industry_code`` matches multiple industries contributes one
+    row toward each (the unnest gives one tuple per (industry, sic) pair).
+
+    Optional ``years`` restricts to filings whose filing_date year is in the
+    list. The filter is applied ON the JOIN, not in WHERE, so industries
+    with zero filings are still returned (count=0). The endpoint / template
+    decides whether to display zero-count entries.
+
+    Sorted alphabetically by ``label``.
+    """
+    industries: dict[str, Any] = industry_map.get("industries") or {}
+    if not industries:
+        return []
+
+    keys: list[str] = []
+    labels: list[str] = []
+    sics: list[str] = []
+    for industry_key, entry in industries.items():
+        label = _industry_label(industry_key)
+        for sic in entry.get("sic_codes") or []:
+            keys.append(industry_key)
+            labels.append(label)
+            sics.append(sic)
+
+    if not keys:
+        return []
+
+    if years:
+        year_filter = "AND EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)"
+    else:
+        year_filter = ""
+
+    sql = _INDUSTRY_COUNTS_SQL_TEMPLATE.format(year_filter=year_filter)
+    params: dict[str, Any] = {"keys": keys, "labels": labels, "sics": sics}
+    if years:
+        params["years"] = [int(y) for y in years]
+
+    rows = db.query(sql, params)
+    return [
+        IndustryCount(
+            key=str(r["industry_key"]),
+            label=str(r["industry_label"]),
+            count=int(r["cnt"]),
+        )
+        for r in rows
+    ]

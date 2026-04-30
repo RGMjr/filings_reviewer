@@ -4,6 +4,7 @@ JSON API endpoints for batch ingestion.
 Routes:
   GET  /api/v2/ingest/batches/<uuid>/status  — JSON status + filings list
   POST /api/v2/ingest/batches/<uuid>/cancel  — Soft-cancel a batch
+  GET  /api/v2/ingest/filter-options         — Year ↔ industry facet counts
 """
 
 from __future__ import annotations
@@ -13,8 +14,14 @@ import logging
 import uuid as _uuid
 
 import psycopg
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
+from src.universe.onboarding import (
+    load_industry_map,
+    query_universe_industry_counts,
+    query_universe_year_counts,
+    resolve_industry,
+)
 from src.web.app import get_db
 from src.web.middleware import register_api_auth
 
@@ -194,3 +201,60 @@ def batch_cancel(batch_id: str):
         return jsonify({"status": "ok", "message": "no-op"}), 200
 
     return jsonify({"status": "ok"}), 200
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v2/ingest/filter-options
+#
+# Year ↔ industry facet counts for the /ingest/ form. Each axis ignores its
+# own selections (standard facet behaviour) so the user always sees the full
+# set of options for that axis given the OTHER axis's filter.
+# ---------------------------------------------------------------------------
+
+
+@api_ingest_bp.route("/filter-options", methods=["GET"])
+def filter_options():
+    raw_years = request.args.getlist("year")
+    raw_industries = request.args.getlist("industry")
+
+    selected_years: list[int] = []
+    for raw in raw_years:
+        try:
+            selected_years.append(int(raw))
+        except (TypeError, ValueError):
+            continue  # ignore malformed input rather than 400 — facet is best-effort
+
+    industry_map = load_industry_map()
+    selected_sic_codes: list[str] = []
+    for ind_name in raw_industries:
+        try:
+            _, codes = resolve_industry(ind_name, industry_map)
+        except ValueError:
+            continue  # unknown industry → ignored
+        selected_sic_codes.extend(codes)
+    # Dedupe SIC codes while preserving order
+    seen: set[str] = set()
+    selected_sic_codes = [s for s in selected_sic_codes if not (s in seen or seen.add(s))]
+
+    db = get_db()
+
+    try:
+        # Year counts: filter only by selected industries (axis ignores its own selections)
+        year_rows = query_universe_year_counts(
+            db, sic_codes=selected_sic_codes if selected_sic_codes else None
+        )
+        # Industry counts: filter only by selected years (same reason)
+        industry_rows = query_universe_industry_counts(
+            db, industry_map, years=selected_years if selected_years else None
+        )
+    except psycopg.DatabaseError as exc:
+        logger.error("DB error in filter-options: %s", exc)
+        return jsonify({"status": "error", "message": "Database error"}), 500
+
+    payload = {
+        "years": [{"year": yc.year, "count": yc.count} for yc in year_rows],
+        "industries": [
+            {"key": ic.key, "label": ic.label, "count": ic.count} for ic in industry_rows
+        ],
+    }
+    return jsonify(payload), 200

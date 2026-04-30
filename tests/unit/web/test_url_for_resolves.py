@@ -35,6 +35,9 @@ _ENDPOINTS: list[tuple[str, dict]] = [
     # Ingest API routes
     ("api_ingest.batch_status", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
     ("api_ingest.batch_cancel", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
+    ("api_ingest.filter_options", {}),
+    # Static assets new with the facet cascade
+    ("static", {"filename": "js/ingest_form_facets.js"}),
 ]
 
 
