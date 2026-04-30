@@ -39,6 +39,7 @@ Design principles:
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -344,6 +345,21 @@ class PipelineResult:
     def vision_spend_usd_total(self) -> float:
         """Sum of ``vision_spend_usd_by_site`` across every site."""
         return round(sum(self.vision_spend_usd_by_site.values()), 6)
+
+    @property
+    def chart_fallback_escalations(self) -> int:
+        """Total chart-read fallback escalations across all stages.
+
+        Sums ``stage_results[*].metadata['chart_fallback_escalations']``,
+        which `OCRExtractionStage` increments each time the Sonnet
+        fallback's response replaces a low-confidence Haiku response.
+        """
+        total = 0
+        for result in self.stage_results:
+            value = result.metadata.get("chart_fallback_escalations")
+            if isinstance(value, int):
+                total += value
+        return total
 
     @property
     def stub_stage_warnings(self) -> list[str]:
@@ -725,7 +741,7 @@ class V2Pipeline:
             f"extracted in {total_ms}ms"
         )
 
-        return PipelineResult(
+        result = PipelineResult(
             document=context.document or Document(),
             facts=output_facts,
             tables=context.tables,
@@ -739,6 +755,21 @@ class V2Pipeline:
             presences=context.presences,
             context=context if self.config.retain_context else None,
         )
+
+        # Structured single-line telemetry for production cost monitoring.
+        # Grep `vision_spend filing_id=` in Render logs to recover per-filing
+        # spend distributions and chart-fallback escalation rate.
+        logger.info(
+            "vision_spend filing_id=%s total_usd=%.6f by_site=%s "
+            "chart_fallback_escalations=%d duration_ms=%d",
+            filing_id,
+            result.vision_spend_usd_total,
+            json.dumps(result.vision_spend_usd_by_site, sort_keys=True),
+            result.chart_fallback_escalations,
+            total_ms,
+        )
+
+        return result
 
     def _build_failure_result(
         self,

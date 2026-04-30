@@ -39,7 +39,29 @@ This pins chart-read to Haiku regardless of confidence.
 
 ## Measuring spend
 
-After a cold-cache run (`LLM_CACHE_DISABLED=1`), inspect `PipelineResult.vision_spend_usd_by_site` (added in PR #357) for per-filing breakdown, or sum across filings via `vision_spend_usd_total`.
+After a cold-cache run (`LLM_CACHE_ENABLED=false`), inspect `PipelineResult.vision_spend_usd_by_site` (added in PR #357) for per-filing breakdown, or sum across filings via `vision_spend_usd_total`.
+
+### Production observability
+
+Every successful pipeline run emits a single structured log line at INFO level via `V2Pipeline.process()`:
+
+```
+vision_spend filing_id=<id> total_usd=<f> by_site=<json> chart_fallback_escalations=<n> duration_ms=<n>
+```
+
+The `by_site` field is JSON-encoded with all six call-site keys present (zero-spend keys included). To recover the production distribution from Render logs:
+
+```bash
+# Stream recent vision_spend lines
+gh run view ...                              # or use Render's log search UI
+grep "vision_spend filing_id=" <log>         # all rows
+grep "chart_fallback_escalations=" <log> | awk -F'chart_fallback_escalations=' '{print $2}' | awk '{print $1}' | sort | uniq -c
+                                              # escalation-rate distribution
+```
+
+Healthy ranges (post-PR #367):
+- `chart_read_premium` averaging ~$0.07–0.10 on chart-heavy filings (was ~$0.23 with Sonnet primary).
+- `chart_fallback_escalations` per chart-heavy filing in the 0–3 range; aggregate escalation rate 5–20% across filings. >25% suggests Haiku is rescuing too often (consider rolling back); <5% suggests the fallback is dead weight (drop it).
 
 ## Changing a model
 
