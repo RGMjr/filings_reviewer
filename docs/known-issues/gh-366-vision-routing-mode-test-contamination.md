@@ -3,7 +3,7 @@ id: 366
 source: gh
 slug: vision-routing-mode-test-contamination
 title: Fix VISION_ROUTING_MODE test contamination causing 16 ordering-dependent failures
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: —
@@ -11,15 +11,16 @@ touches: []
 discovered: 2026-04-30
 updated: 2026-04-30
 gh_issue: 366
-note: 16 chart-related tests fail in full suite due to VISION_ROUTING_MODE=two_stage leaking from an earlier test; all pass in isolation; root cause not yet traced
+note: Root cause identified and fixed — test_batch_runner.py's module-level exec_module runs load_dotenv() which sets VISION_ROUTING_MODE=two_stage from local .env; fixed via autouse conftest fixture + save/restore guard in test_batch_runner.py
 ---
 
 ### Problem
 
-When `tests/unit/extraction_v2/` runs as a full suite, 16 chart-extraction tests fail because `VISION_ROUTING_MODE=two_stage` leaks from an earlier test into subsequent tests that expect legacy mode. All 16 pass when run in isolation. The failure set is identical between the current `main` and the PR 3 worktree — pre-existing, not introduced by recent changes. Root cause: a test somewhere before `test_image_pipeline_integration.py`, `test_ocr_extraction.py`, and `test_vision_cost_telemetry.py` sets the env var without monkeypatch cleanup.
+When `tests/unit/` runs as a full suite, `test_image_pipeline_integration.py::TestChartAnnotationExtraction::test_annotations_parsed_from_response` fails because `VISION_ROUTING_MODE=two_stage` leaks from `test_batch_runner.py` into subsequent tests that expect legacy mode. The test passes in isolation. The failure was pre-existing on `main`.
 
-### Next Steps
+**Root cause:** `test_batch_runner.py` loads `batch_v2_extraction.py` via `importlib.exec_module` at module collection time. That script calls `load_dotenv()` at module level, which reads `VISION_ROUTING_MODE=two_stage` from the local `.env` file and sets it in `os.environ` for the rest of the test session.
 
-- Bisect to find which test file introduces the contamination (binary search via `pytest --collect-only` ordering)
-- Fix the leaking test to use `monkeypatch.setenv` instead of direct `os.environ` mutation
-- Consider adding a session-scoped fixture that asserts `VISION_ROUTING_MODE` is unset at the start of each test file
+### Fix Applied
+
+1. Added `tests/unit/extraction_v2/conftest.py` with an `autouse=True` fixture that calls `monkeypatch.delenv("VISION_ROUTING_MODE", raising=False)` before each test — runtime guarantee.
+2. Added save/restore guard around `exec_module` in `test_batch_runner.py` — documents the root cause and provides module-load-time protection.
