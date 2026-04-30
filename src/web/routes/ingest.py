@@ -39,6 +39,7 @@ from src.universe.onboarding import (
     count_reviewer_work,
     discover,
     load_industry_map,
+    query_universe_form_type_counts,
     query_universe_industry_counts,
     query_universe_year_counts,
     resolve_criteria,
@@ -93,6 +94,32 @@ def _year_options() -> list[dict[str, int]]:
     except Exception:  # noqa: BLE001
         logger.warning("Failed to load year options with counts", exc_info=True)
         return []
+
+
+# Static labels for the form-type checkbox row. Counts are added dynamically
+# by `_form_type_options()`; the static fallback (DB unavailable in tests)
+# preserves the legacy labels with count=0.
+_FORM_TYPE_STATIC_LABELS: dict[str, str] = {
+    "s1f1": "S-1 / F-1 (IPO filings)",
+    "10k": "10-K (Annual reports)",
+    "8k": "8-K (Current reports)",
+}
+
+
+def _form_type_options() -> list[dict[str, Any]]:
+    """Return [{key, label, count}] for the form-type checkbox row.
+
+    Counts come from ``query_universe_form_type_counts`` (no axis filter
+    on initial render — JS facet cascade refreshes them as the user
+    selects years/industries). Falls back to count=0 when the DB is
+    unavailable so the form still renders during tests.
+    """
+    try:
+        rows = query_universe_form_type_counts(get_db())
+        return [{"key": r.key, "label": r.label, "count": r.count} for r in rows]
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to load form-type options with counts", exc_info=True)
+        return [{"key": k, "label": v, "count": 0} for k, v in _FORM_TYPE_STATIC_LABELS.items()]
 
 
 def _parse_form_criteria() -> dict[str, Any]:
@@ -164,13 +191,6 @@ def _volume_band_message(band: VolumeBand, total: int) -> str:
     return messages.get(band, f"{total} filings.")
 
 
-_FORM_TYPES_AVAILABLE = [
-    {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)"},
-    {"key": "10k", "label": "10-K (Annual reports)"},
-    {"key": "8k", "label": "8-K (Current reports)"},
-]
-
-
 def _render_ingest_form(form_state: dict[str, Any] | None = None, status: int = 200):
     """Render the criteria form. When *form_state* is given, the template
     repopulates fields so a validation error doesn't wipe user input.
@@ -183,7 +203,7 @@ def _render_ingest_form(form_state: dict[str, Any] | None = None, status: int = 
             reviewer_name=reviewer_name,
             industries=_industry_options(),
             years_available=_year_options(),
-            form_types_available=_FORM_TYPES_AVAILABLE,
+            form_types_available=_form_type_options(),
             form_state=state,
         ),
         status,

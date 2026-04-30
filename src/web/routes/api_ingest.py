@@ -17,7 +17,9 @@ import psycopg
 from flask import Blueprint, jsonify, request
 
 from src.universe.onboarding import (
+    FORM_TYPE_BUNDLES,
     load_industry_map,
+    query_universe_form_type_counts,
     query_universe_industry_counts,
     query_universe_year_counts,
     resolve_industry,
@@ -206,9 +208,10 @@ def batch_cancel(batch_id: str):
 # ---------------------------------------------------------------------------
 # GET /api/v2/ingest/filter-options
 #
-# Year ↔ industry facet counts for the /ingest/ form. Each axis ignores its
-# own selections (standard facet behaviour) so the user always sees the full
-# set of options for that axis given the OTHER axis's filter.
+# Year ↔ industry ↔ form-type facet counts for the /ingest/ form. Each axis
+# ignores its own selections (standard facet behaviour) so the user always
+# sees the full set of options for that axis given the OTHER two axes'
+# filters.
 # ---------------------------------------------------------------------------
 
 
@@ -216,6 +219,7 @@ def batch_cancel(batch_id: str):
 def filter_options():
     raw_years = request.args.getlist("year")
     raw_industries = request.args.getlist("industry")
+    raw_form_types = request.args.getlist("form_type")
 
     selected_years: list[int] = []
     for raw in raw_years:
@@ -236,16 +240,36 @@ def filter_options():
     seen: set[str] = set()
     selected_sic_codes = [s for s in selected_sic_codes if not (s in seen or seen.add(s))]
 
+    # Resolve form-type bundle keys (s1f1, 10k, 8k) to canonical form-type
+    # strings (S-1, S-1/A, 10-K, ...). Unknown bundle keys are ignored.
+    selected_form_types: list[str] = []
+    seen_ft: set[str] = set()
+    for ft_key in raw_form_types:
+        if ft_key in FORM_TYPE_BUNDLES:
+            for ft in FORM_TYPE_BUNDLES[ft_key]:
+                if ft not in seen_ft:
+                    selected_form_types.append(ft)
+                    seen_ft.add(ft)
+
     db = get_db()
 
     try:
-        # Year counts: filter only by selected industries (axis ignores its own selections)
+        # Each axis is filtered by the OTHER two axes' selections, ignoring its own.
         year_rows = query_universe_year_counts(
-            db, sic_codes=selected_sic_codes if selected_sic_codes else None
+            db,
+            sic_codes=selected_sic_codes or None,
+            form_types=selected_form_types or None,
         )
-        # Industry counts: filter only by selected years (same reason)
         industry_rows = query_universe_industry_counts(
-            db, industry_map, years=selected_years if selected_years else None
+            db,
+            industry_map,
+            years=selected_years or None,
+            form_types=selected_form_types or None,
+        )
+        form_type_rows = query_universe_form_type_counts(
+            db,
+            years=selected_years or None,
+            sic_codes=selected_sic_codes or None,
         )
     except psycopg.DatabaseError as exc:
         logger.error("DB error in filter-options: %s", exc)
@@ -255,6 +279,9 @@ def filter_options():
         "years": [{"year": yc.year, "count": yc.count} for yc in year_rows],
         "industries": [
             {"key": ic.key, "label": ic.label, "count": ic.count} for ic in industry_rows
+        ],
+        "form_types": [
+            {"key": ftc.key, "label": ftc.label, "count": ftc.count} for ftc in form_type_rows
         ],
     }
     return jsonify(payload), 200

@@ -848,6 +848,8 @@ WHERE 1=1
 
 _YEAR_COUNTS_INDUSTRY_GATE = "  AND c.industry_code = ANY(%(sic_codes)s)\n"
 
+_YEAR_COUNTS_FORM_TYPE_GATE = "  AND f.form_type = ANY(%(form_types)s)\n"
+
 _YEAR_COUNTS_TAIL = """GROUP BY yr
 ORDER BY yr DESC
 """
@@ -857,12 +859,15 @@ def query_universe_year_counts(
     db: DatabaseAdapter,
     *,
     sic_codes: list[str] | None = None,
+    form_types: list[str] | None = None,
 ) -> list[YearCount]:
     """Return distinct years in `filings` with their row count, DESC.
 
     Optional ``sic_codes`` restricts to filings whose
-    ``companies.industry_code`` IS IN the list. None or empty list means
-    all-time, all-industry.
+    ``companies.industry_code`` IS IN the list. ``form_types`` is a list of
+    canonical form-type strings (e.g. ["S-1", "F-1/A", "10-K"]); the caller
+    is responsible for resolving bundle keys via ``FORM_TYPE_BUNDLES``.
+    None or empty for either means no filter on that axis.
 
     Years with count==0 are not returned (they wouldn't have a row in
     ``filings`` anyway).
@@ -872,6 +877,9 @@ def query_universe_year_counts(
     if sic_codes:
         sql += _YEAR_COUNTS_INDUSTRY_GATE
         params["sic_codes"] = list(sic_codes)
+    if form_types:
+        sql += _YEAR_COUNTS_FORM_TYPE_GATE
+        params["form_types"] = list(form_types)
     sql += _YEAR_COUNTS_TAIL
     rows = db.query(sql, params)
     return [YearCount(year=int(r["yr"]), count=int(r["cnt"])) for r in rows]
@@ -888,7 +896,7 @@ FROM unnest(
 ) AS industry_sic(industry_key, industry_label, sic)
 LEFT JOIN companies c ON c.industry_code = industry_sic.sic
 LEFT JOIN filings  f ON f.company_id = c.company_id
-{year_filter}
+    {filing_join_extra}
 GROUP BY industry_sic.industry_key, industry_sic.industry_label
 ORDER BY industry_sic.industry_label
 """
@@ -899,6 +907,7 @@ def query_universe_industry_counts(
     industry_map: dict[str, Any],
     *,
     years: list[int] | None = None,
+    form_types: list[str] | None = None,
 ) -> list[IndustryCount]:
     """For every industry in *industry_map*, return its filing count.
 
@@ -910,10 +919,12 @@ def query_universe_industry_counts(
     ``companies.industry_code`` matches multiple industries contributes one
     row toward each (the unnest gives one tuple per (industry, sic) pair).
 
-    Optional ``years`` restricts to filings whose filing_date year is in the
-    list. The filter is applied ON the JOIN, not in WHERE, so industries
-    with zero filings are still returned (count=0). The endpoint / template
-    decides whether to display zero-count entries.
+    Optional ``years`` and ``form_types`` restrict to filings matching those
+    criteria. ``form_types`` is a list of canonical form-type strings (the
+    caller resolves bundle keys via ``FORM_TYPE_BUNDLES``). Both filters
+    apply on the LEFT JOIN to filings, not in WHERE, so industries with
+    zero matching filings are still returned (count=0). The endpoint /
+    template decides whether to display zero-count entries.
 
     Sorted alphabetically by ``label``.
     """
@@ -934,15 +945,19 @@ def query_universe_industry_counts(
     if not keys:
         return []
 
+    extra_clauses = []
     if years:
-        year_filter = "AND EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)"
-    else:
-        year_filter = ""
+        extra_clauses.append("AND EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)")
+    if form_types:
+        extra_clauses.append("AND f.form_type = ANY(%(form_types)s)")
+    filing_join_extra = "\n    ".join(extra_clauses)
 
-    sql = _INDUSTRY_COUNTS_SQL_TEMPLATE.format(year_filter=year_filter)
+    sql = _INDUSTRY_COUNTS_SQL_TEMPLATE.format(filing_join_extra=filing_join_extra)
     params: dict[str, Any] = {"keys": keys, "labels": labels, "sics": sics}
     if years:
         params["years"] = [int(y) for y in years]
+    if form_types:
+        params["form_types"] = list(form_types)
 
     rows = db.query(sql, params)
     return [
@@ -952,4 +967,109 @@ def query_universe_industry_counts(
             count=int(r["cnt"]),
         )
         for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Form-type counts — third axis of the /ingest/ form facet cascade.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FormTypeCount:
+    """A FORM_TYPE_BUNDLES entry and the count of filings whose form_type
+    is in the bundle's list of canonical form types."""
+
+    key: str  # bundle key from FORM_TYPE_BUNDLES (e.g. "s1f1", "10k", "8k")
+    label: str  # human label (e.g. "S-1 / F-1 (IPO filings)")
+    count: int
+
+
+_FORM_TYPE_COUNTS_SQL_TEMPLATE = """
+SELECT bundle.bundle_key,
+       bundle.bundle_label,
+       COUNT(f.filing_id) FILTER (
+           WHERE f.filing_id IS NOT NULL {company_filter_clause}
+       )::int AS cnt
+FROM unnest(
+    %(keys)s::text[],
+    %(labels)s::text[],
+    %(form_types)s::text[]
+) AS bundle(bundle_key, bundle_label, form_type)
+LEFT JOIN filings f ON f.form_type = bundle.form_type
+    {year_clause}
+LEFT JOIN companies c ON c.company_id = f.company_id
+GROUP BY bundle.bundle_key, bundle.bundle_label
+"""
+
+
+def query_universe_form_type_counts(
+    db: DatabaseAdapter,
+    bundles: dict[str, tuple[str, list[str]]] | None = None,
+    *,
+    years: list[int] | None = None,
+    sic_codes: list[str] | None = None,
+) -> list[FormTypeCount]:
+    """Return [{key, label, count}] for every form-type bundle.
+
+    *bundles* maps bundle_key → (label, [canonical_form_types]). When None,
+    defaults to the visible-form-row bundles (s1f1, 10k, 8k) — the same
+    set rendered in the discovery form's checkbox row. Each filing whose
+    ``form_type`` matches any of the bundle's canonical types contributes
+    +1 to that bundle's count. A filing's ``form_type`` matches at most
+    one bundle in our YAML (S-1 → s1f1, 10-K → 10k, etc.), so no DISTINCT
+    is needed.
+
+    Optional ``years`` restricts by filing year; optional ``sic_codes``
+    restricts by company SIC. Filters apply on the LEFT JOIN so bundles
+    with zero matches still appear (count=0).
+
+    Sorted by bundle key for stable output (s1f1 → 10k → 8k).
+    """
+    if bundles is None:
+        bundles = {
+            "s1f1": ("S-1 / F-1 (IPO filings)", FORM_TYPE_BUNDLES["s1f1"]),
+            "10k": ("10-K (Annual reports)", FORM_TYPE_BUNDLES["10k"]),
+            "8k": ("8-K (Current reports)", FORM_TYPE_BUNDLES["8k"]),
+        }
+    if not bundles:
+        return []
+
+    keys: list[str] = []
+    labels: list[str] = []
+    form_types_flat: list[str] = []
+    label_by_key: dict[str, str] = {}
+    bundle_order: list[str] = []
+    for bundle_key, (label, form_types_list) in bundles.items():
+        label_by_key[bundle_key] = label
+        bundle_order.append(bundle_key)
+        for ft in form_types_list:
+            keys.append(bundle_key)
+            labels.append(label)
+            form_types_flat.append(ft)
+
+    if not keys:
+        return []
+
+    year_clause = "AND EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)" if years else ""
+    company_filter_clause = "AND c.industry_code = ANY(%(sic_codes)s)" if sic_codes else ""
+
+    sql = _FORM_TYPE_COUNTS_SQL_TEMPLATE.format(
+        year_clause=year_clause,
+        company_filter_clause=company_filter_clause,
+    )
+    params: dict[str, Any] = {
+        "keys": keys,
+        "labels": labels,
+        "form_types": form_types_flat,
+    }
+    if years:
+        params["years"] = [int(y) for y in years]
+    if sic_codes:
+        params["sic_codes"] = list(sic_codes)
+
+    rows = db.query(sql, params)
+    by_key = {str(r["bundle_key"]): int(r["cnt"]) for r in rows}
+    return [
+        FormTypeCount(key=k, label=label_by_key[k], count=by_key.get(k, 0)) for k in bundle_order
     ]

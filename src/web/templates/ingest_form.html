@@ -142,11 +142,16 @@
         <label class="form-label fw-semibold">Form Types</label>
         <div>
           {% for ft in form_types_available %}
+          {% set ft_count = ft.get('count', 0) %}
+          {% set ft_checked = ft.key in selected_form_types %}
+          {% set ft_disabled = ft_count == 0 and not ft_checked %}
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox"
                    id="ft_{{ ft.key }}" name="form_types" value="{{ ft.key }}"
-                   {% if ft.key in selected_form_types %}checked{% endif %}>
-            <label class="form-check-label" for="ft_{{ ft.key }}">{{ ft.label }}</label>
+                   data-count="{{ ft_count }}"
+                   {% if ft_checked %}checked{% endif %}
+                   {% if ft_disabled %}disabled{% endif %}>
+            <label class="form-check-label{% if ft_disabled %} text-muted{% endif %}" for="ft_{{ ft.key }}">{{ ft.label }} ({{ ft_count }})</label>
           </div>
           {% endfor %}
         </div>

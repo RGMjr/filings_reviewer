@@ -155,6 +155,28 @@ def test_ingest_form_loads_facet_cascade_js(client):
     assert "ingest_form_facets.js" in body
 
 
+def test_ingest_form_form_types_show_counts_and_disable_zero(client):
+    """Form-type checkboxes carry data-count, show "(N)" in the label, and the
+    disabled+text-muted style applies when count==0 and the option isn't
+    pre-checked. With the DB unavailable in tests _form_type_options() falls
+    back to count=0 for every bundle, so all three should be disabled."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Every form-type checkbox carries data-count="0" in the test environment
+    assert 'data-count="0"' in body
+    # The "(0)" suffix appears in at least one form-type label
+    assert "(0)" in body
+    # In the test environment all three bundles default to count=0 with no
+    # pre-selection (the form_state defaults to selected=['s1f1']), so 10k
+    # and 8k must be marked disabled.
+    assert 'id="ft_10k"' in body
+    assert 'id="ft_8k"' in body
+    # Find the input for ft_10k and confirm it's disabled
+    chunk_10k = next(c for c in body.split("<input") if 'id="ft_10k"' in c)
+    assert "disabled" in chunk_10k.split(">", 1)[0]
+
+
 def test_ingest_form_renders_universe_build_panel(client):
     """GET /ingest/ exposes the Build-universe panel pointing at /ingest/populate."""
     resp = client.get("/ingest/")
@@ -231,10 +253,10 @@ def test_parse_form_criteria_single_year_multi_select(app):
     assert result["year"] == "2017"
 
 
-def test_filter_options_endpoint_no_filters_returns_both_axes(client):
+def test_filter_options_endpoint_no_filters_returns_three_axes(client):
     """GET /api/v2/ingest/filter-options without query params returns all-time
-    counts on both axes, derived from the mocked DB rows."""
-    from src.universe.onboarding import IndustryCount, YearCount
+    counts on all three axes, derived from the mocked DB rows."""
+    from src.universe.onboarding import FormTypeCount, IndustryCount, YearCount
 
     with (
         patch(
@@ -246,6 +268,14 @@ def test_filter_options_endpoint_no_filters_returns_both_axes(client):
             return_value=[
                 IndustryCount(key="biotech", label="Biotech", count=28),
                 IndustryCount(key="commercial_banking", label="Commercial Banking", count=12),
+            ],
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_form_type_counts",
+            return_value=[
+                FormTypeCount(key="s1f1", label="S-1 / F-1 (IPO filings)", count=467),
+                FormTypeCount(key="10k", label="10-K (Annual reports)", count=0),
+                FormTypeCount(key="8k", label="8-K (Current reports)", count=0),
             ],
         ),
     ):
@@ -260,6 +290,11 @@ def test_filter_options_endpoint_no_filters_returns_both_axes(client):
         {"key": "biotech", "label": "Biotech", "count": 28},
         {"key": "commercial_banking", "label": "Commercial Banking", "count": 12},
     ]
+    assert data["form_types"] == [
+        {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)", "count": 467},
+        {"key": "10k", "label": "10-K (Annual reports)", "count": 0},
+        {"key": "8k", "label": "8-K (Current reports)", "count": 0},
+    ]
 
 
 def test_filter_options_endpoint_year_param_passes_through(client):
@@ -268,7 +303,7 @@ def test_filter_options_endpoint_year_param_passes_through(client):
 
     captured: dict = {}
 
-    def fake_industry_counts(db, industry_map, *, years=None):
+    def fake_industry_counts(db, industry_map, *, years=None, form_types=None):
         captured["years"] = years
         return [IndustryCount(key="biotech", label="Biotech", count=5)]
 
@@ -280,6 +315,10 @@ def test_filter_options_endpoint_year_param_passes_through(client):
         patch(
             "src.web.routes.api_ingest.query_universe_industry_counts",
             side_effect=fake_industry_counts,
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_form_type_counts",
+            return_value=[],
         ),
     ):
         resp = client.get("/api/v2/ingest/filter-options?year=2016&year=2017")
@@ -294,7 +333,7 @@ def test_filter_options_endpoint_industry_param_resolves_to_sic(client):
 
     captured: dict = {}
 
-    def fake_year_counts(db, *, sic_codes=None):
+    def fake_year_counts(db, *, sic_codes=None, form_types=None):
         captured["sic_codes"] = sic_codes
         return [YearCount(year=2018, count=3)]
 
@@ -306,6 +345,10 @@ def test_filter_options_endpoint_industry_param_resolves_to_sic(client):
         patch(
             "src.web.routes.api_ingest.query_universe_industry_counts",
             return_value=[IndustryCount(key="biotech", label="Biotech", count=3)],
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_form_type_counts",
+            return_value=[],
         ),
     ):
         resp = client.get("/api/v2/ingest/filter-options?industry=biotech")
@@ -319,7 +362,7 @@ def test_filter_options_endpoint_unknown_industry_silently_ignored(client):
     best-effort."""
     captured: dict = {}
 
-    def fake_year_counts(db, *, sic_codes=None):
+    def fake_year_counts(db, *, sic_codes=None, form_types=None):
         captured["sic_codes"] = sic_codes
         return []
 
@@ -332,11 +375,89 @@ def test_filter_options_endpoint_unknown_industry_silently_ignored(client):
             "src.web.routes.api_ingest.query_universe_industry_counts",
             return_value=[],
         ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_form_type_counts",
+            return_value=[],
+        ),
     ):
         resp = client.get("/api/v2/ingest/filter-options?industry=not_a_thing&industry=biotech")
     assert resp.status_code == 200
     # not_a_thing is dropped; biotech's SICs reach the year-count call
     assert set(captured["sic_codes"]) == {"2836", "8731"}
+
+
+def test_filter_options_endpoint_form_type_param_resolves_bundle(client):
+    """A `form_type=s1f1` resolves to the S-1/F-1 canonical form types and
+    flows into query_universe_year_counts(form_types=...) and
+    query_universe_industry_counts(form_types=...)."""
+    from src.universe.onboarding import IndustryCount, YearCount
+
+    year_captured: dict = {}
+    industry_captured: dict = {}
+
+    def fake_year_counts(db, *, sic_codes=None, form_types=None):
+        year_captured["form_types"] = form_types
+        return [YearCount(year=2015, count=467)]
+
+    def fake_industry_counts(db, industry_map, *, years=None, form_types=None):
+        industry_captured["form_types"] = form_types
+        return [IndustryCount(key="biotech", label="Biotech", count=5)]
+
+    with (
+        patch(
+            "src.web.routes.api_ingest.query_universe_year_counts",
+            side_effect=fake_year_counts,
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_industry_counts",
+            side_effect=fake_industry_counts,
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_form_type_counts",
+            return_value=[],
+        ),
+    ):
+        resp = client.get("/api/v2/ingest/filter-options?form_type=s1f1")
+    assert resp.status_code == 200
+    expected = {"S-1", "S-1/A", "F-1", "F-1/A"}
+    assert set(year_captured["form_types"] or []) == expected
+    assert set(industry_captured["form_types"] or []) == expected
+
+
+def test_filter_options_endpoint_multiple_form_types_union(client):
+    """Multiple `form_type=` values union the bundles."""
+    from src.universe.onboarding import IndustryCount, YearCount
+
+    year_captured: dict = {}
+
+    def fake_year_counts(db, *, sic_codes=None, form_types=None):
+        year_captured["form_types"] = form_types
+        return [YearCount(year=2015, count=10)]
+
+    with (
+        patch(
+            "src.web.routes.api_ingest.query_universe_year_counts",
+            side_effect=fake_year_counts,
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_industry_counts",
+            return_value=[IndustryCount(key="biotech", label="Biotech", count=1)],
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_form_type_counts",
+            return_value=[],
+        ),
+    ):
+        resp = client.get("/api/v2/ingest/filter-options?form_type=s1f1&form_type=10k")
+    assert resp.status_code == 200
+    assert set(year_captured["form_types"] or []) == {
+        "S-1",
+        "S-1/A",
+        "F-1",
+        "F-1/A",
+        "10-K",
+        "10-K/A",
+    }
 
 
 def test_parse_form_criteria_non_contiguous_years_become_min_max(app):

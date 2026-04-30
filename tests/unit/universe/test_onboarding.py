@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from src.universe.onboarding import (
+    FormTypeCount,
     Gap,
     IndustryCount,
     ResolvedQuery,
@@ -20,6 +21,7 @@ from src.universe.onboarding import (
     detect_universe_gaps,
     discover_candidates,
     load_industry_map,
+    query_universe_form_type_counts,
     query_universe_industry_counts,
     query_universe_year_counts,
     resolve_criteria,
@@ -690,3 +692,114 @@ def test_query_universe_industry_counts_empty_yaml_returns_empty_list() -> None:
     assert out == []
     # No SQL should fire if there's nothing to unnest
     assert db.last_sql is None
+
+
+# ---------------------------------------------------------------------------
+# query_universe_year_counts — form_types filter (Phase 2c)
+# ---------------------------------------------------------------------------
+
+
+def test_query_universe_year_counts_with_form_types_filter() -> None:
+    db = _FakeDB(rows=[{"yr": 2018, "cnt": 1}])
+    query_universe_year_counts(db, form_types=["S-1", "S-1/A"])
+    assert "f.form_type = ANY(%(form_types)s)" in db.last_sql
+    assert db.last_params["form_types"] == ["S-1", "S-1/A"]
+
+
+def test_query_universe_year_counts_no_form_types_filter_omits_clause() -> None:
+    db = _FakeDB(rows=[])
+    query_universe_year_counts(db)
+    assert "form_type" not in db.last_sql
+    assert "form_types" not in (db.last_params or {})
+
+
+# ---------------------------------------------------------------------------
+# query_universe_industry_counts — form_types filter (Phase 2c)
+# ---------------------------------------------------------------------------
+
+
+def test_query_universe_industry_counts_with_form_types_filter() -> None:
+    industry_map = {
+        "industries": {"biotech": {"sic_codes": ["2836"]}},
+        "aliases": {},
+    }
+    db = _FakeDB(rows=[])
+    query_universe_industry_counts(db, industry_map, form_types=["10-K"])
+    assert "AND f.form_type = ANY(%(form_types)s)" in db.last_sql
+    assert db.last_params["form_types"] == ["10-K"]
+
+
+def test_query_universe_industry_counts_year_and_form_types_combined() -> None:
+    industry_map = {
+        "industries": {"biotech": {"sic_codes": ["2836"]}},
+        "aliases": {},
+    }
+    db = _FakeDB(rows=[])
+    query_universe_industry_counts(db, industry_map, years=[2016], form_types=["S-1"])
+    assert "EXTRACT(YEAR" in db.last_sql
+    assert "f.form_type = ANY(%(form_types)s)" in db.last_sql
+    assert db.last_params["years"] == [2016]
+    assert db.last_params["form_types"] == ["S-1"]
+
+
+# ---------------------------------------------------------------------------
+# query_universe_form_type_counts — third axis of the facet cascade
+# ---------------------------------------------------------------------------
+
+
+def test_query_universe_form_type_counts_default_bundles() -> None:
+    """Without explicit bundles, returns counts for s1f1 / 10k / 8k in that order."""
+    db = _FakeDB(
+        rows=[
+            {"bundle_key": "s1f1", "bundle_label": "S-1 / F-1 (IPO filings)", "cnt": 467},
+            {"bundle_key": "10k", "bundle_label": "10-K (Annual reports)", "cnt": 0},
+            {"bundle_key": "8k", "bundle_label": "8-K (Current reports)", "cnt": 0},
+        ]
+    )
+    out = query_universe_form_type_counts(db)
+    keys = [c.key for c in out]
+    assert keys == ["s1f1", "10k", "8k"]
+    by_key = {c.key: c for c in out}
+    assert by_key["s1f1"].count == 467
+    assert by_key["10k"].count == 0
+    assert by_key["8k"].count == 0
+
+
+def test_query_universe_form_type_counts_zero_count_bundles_preserved() -> None:
+    """A bundle with no matching filings still appears in the result with count=0."""
+    db = _FakeDB(rows=[{"bundle_key": "s1f1", "bundle_label": "S-1 / F-1 (IPO filings)", "cnt": 5}])
+    out = query_universe_form_type_counts(db)
+    by_key = {c.key: c.count for c in out}
+    assert by_key["s1f1"] == 5
+    assert by_key["10k"] == 0
+    assert by_key["8k"] == 0
+
+
+def test_query_universe_form_type_counts_with_year_filter() -> None:
+    db = _FakeDB(rows=[])
+    query_universe_form_type_counts(db, years=[2016, 2017])
+    assert "EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)" in db.last_sql
+    assert db.last_params["years"] == [2016, 2017]
+
+
+def test_query_universe_form_type_counts_with_sic_codes_filter() -> None:
+    db = _FakeDB(rows=[])
+    query_universe_form_type_counts(db, sic_codes=["6020", "6021"])
+    assert "c.industry_code = ANY(%(sic_codes)s)" in db.last_sql
+    assert db.last_params["sic_codes"] == ["6020", "6021"]
+
+
+def test_query_universe_form_type_counts_no_filters_omits_clauses() -> None:
+    db = _FakeDB(rows=[])
+    query_universe_form_type_counts(db)
+    assert "EXTRACT(YEAR" not in db.last_sql
+    assert "industry_code" not in db.last_sql
+
+
+def test_query_universe_form_type_counts_returns_dataclass_instances() -> None:
+    db = _FakeDB(rows=[{"bundle_key": "s1f1", "bundle_label": "S-1 / F-1 (IPO filings)", "cnt": 3}])
+    out = query_universe_form_type_counts(db)
+    assert all(isinstance(c, FormTypeCount) for c in out)
+    assert out[0].key == "s1f1"
+    assert out[0].label == "S-1 / F-1 (IPO filings)"
+    assert out[0].count == 3
