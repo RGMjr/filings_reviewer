@@ -109,6 +109,32 @@ def _build_cheap_ocr_client(provider: str, model: str) -> Any:
             os.environ["VISION_MODEL_OCR"] = prior_model
 
 
+def _build_chart_fallback_client(provider: str, model: str) -> Any:
+    """Build an isolated VisionClient for the chart-read fallback (Sonnet by default).
+
+    Mirrors _build_cheap_ocr_client. Forces VISION_PROVIDER + VISION_MODEL_CHART
+    via env override, then restores prior values so the primary chart-read client
+    is unaffected.
+    """
+    from src.llm.vision_client import VisionClient
+
+    prior_provider = os.environ.get("VISION_PROVIDER")
+    prior_chart_model = os.environ.get("VISION_MODEL_CHART")
+    os.environ["VISION_PROVIDER"] = provider
+    os.environ["VISION_MODEL_CHART"] = model
+    try:
+        return VisionClient()
+    finally:
+        if prior_provider is None:
+            os.environ.pop("VISION_PROVIDER", None)
+        else:
+            os.environ["VISION_PROVIDER"] = prior_provider
+        if prior_chart_model is None:
+            os.environ.pop("VISION_MODEL_CHART", None)
+        else:
+            os.environ["VISION_MODEL_CHART"] = prior_chart_model
+
+
 class OCRExtractionStage:
     """
     Stage 5: OCR & Chart Extraction - process high-relevance images.
@@ -187,6 +213,9 @@ class OCRExtractionStage:
         # None at the top of each process() call for per-filing isolation.
         self._full_page_ocr_client: Any = None
         self._prescan_client: Any = None
+        # PR 3: chart-read fallback (Sonnet rescue for low-confidence Haiku responses).
+        self._chart_fallback_client: Any = None
+        self._chart_fallback_escalations: int = 0
 
     @staticmethod
     def _zero_spend_by_site() -> dict[str, float]:
@@ -213,6 +242,14 @@ class OCRExtractionStage:
                 context.config.vision_prescan_model,
             )
         return self._prescan_client
+
+    def _get_chart_fallback_client(self, context: pipeline.PipelineContext) -> Any:
+        if self._chart_fallback_client is None:
+            self._chart_fallback_client = _build_chart_fallback_client(
+                context.config.vision_chart_fallback_provider,
+                context.config.vision_chart_fallback_model,
+            )
+        return self._chart_fallback_client
 
     @property
     def vision_client(self) -> Any:
@@ -796,7 +833,9 @@ numbers also appear as explicit data labels on the chart itself.
             _grid=grid,
         )
 
-    def process_chart(self, asset: ImageAsset) -> float:
+    def process_chart(
+        self, asset: ImageAsset, context: pipeline.PipelineContext | None = None
+    ) -> float:
         """
         Extract labeled values from chart.
 
@@ -895,6 +934,44 @@ numbers also appear as explicit data labels on the chart itself.
                 asset.confidence = 0.0
                 asset.requires_manual_capture = True
                 return call_cost
+
+            # Fallback escalation (PR 3): if primary (Haiku) confidence is below threshold,
+            # re-call the fallback model (Sonnet) on the same image. Both calls' costs
+            # are recorded; escalation count is surfaced in stage metadata.
+            # context may be None when process_chart is called directly in tests.
+            primary_confidence = float(chart_response.get("confidence", 0.8))
+            fallback_model = (
+                context.config.vision_chart_fallback_model if context is not None else ""
+            )
+            if (
+                context is not None
+                and primary_confidence < context.config.vision_chart_confidence_threshold
+                and fallback_model
+            ):
+                fallback_client = self._get_chart_fallback_client(context)
+                try:
+                    fallback_response = fallback_client.analyze_image_targeted(
+                        image_bytes=image_bytes,
+                        prompt=self._get_chart_extraction_prompt(
+                            nearby_text=asset.nearby_text,
+                            ocr_text=ocr_text_blob,
+                        ),
+                        task_type="chart_read",
+                        detail="high",
+                        max_tokens=2000,
+                        response_format={"type": "json_object"},
+                    )
+                    fallback_cost = float(getattr(fallback_response, "cost_usd", 0.0))
+                    call_cost += fallback_cost
+                    self._vision_spend_by_site["chart_read_premium"] += fallback_cost
+                    fallback_parsed = self._parse_chart_json(fallback_response.content)
+                    if fallback_parsed is not None:
+                        fallback_confidence = float(fallback_parsed.get("confidence", 0.8))
+                        if fallback_confidence > primary_confidence:
+                            chart_response = fallback_parsed
+                            self._chart_fallback_escalations += 1
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"Chart fallback escalation failed for {asset.img_id}: {exc}")
 
             # Extract chart metadata
             chart_type_str = chart_response.get("chart_type", "unknown")
@@ -1254,6 +1331,8 @@ numbers also appear as explicit data labels on the chart itself.
         self._vision_spend_by_site = self._zero_spend_by_site()
         self._full_page_ocr_client = None
         self._prescan_client = None
+        self._chart_fallback_client = None
+        self._chart_fallback_escalations = 0
 
         # A3: per-filing chart-spend ceiling. Read env each call so tests
         # and operators can tune at runtime without reconstructing the stage.
@@ -1375,7 +1454,7 @@ numbers also appear as explicit data labels on the chart itself.
                         if asset.ocr_table is not None:
                             context.tables.append(asset.ocr_table)
                     elif asset.classification == ImageClassification.CHART:
-                        chart_cost = self.process_chart(asset)
+                        chart_cost = self.process_chart(asset, context)
                         self._chart_call_count += 1
                         self._chart_vision_spend += chart_cost
                         # Track charts that were processed but yielded no data.
@@ -1391,7 +1470,7 @@ numbers also appear as explicit data labels on the chart itself.
                         if contains_chart:
                             has_tier1 = bool(self.TIER1_KEYWORDS_RE.search(asset.nearby_text or ""))
                             if has_tier1 or round(self._chart_vision_spend, 4) < chart_budget_usd:
-                                chart_cost = self.process_chart(asset)
+                                chart_cost = self.process_chart(asset, context)
                                 self._chart_call_count += 1
                                 self._chart_vision_spend += chart_cost
                                 self._api_call_count += 1
@@ -1462,6 +1541,7 @@ numbers also appear as explicit data labels on the chart itself.
                     "skipped_by_budget_cap": skipped_by_budget_cap,
                     "parse_failed": self._parse_failed_count,
                     "chart_data_none_after_processing": chart_data_none_after_processing,
+                    "chart_fallback_escalations": self._chart_fallback_escalations,
                     "vision_spend_usd_by_site": {
                         site: round(spend, 6) for site, spend in self._vision_spend_by_site.items()
                     },

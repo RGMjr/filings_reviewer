@@ -214,6 +214,16 @@ class PipelineConfig:
     vision_prescan_provider: str = "gemini"
     vision_prescan_model: str = "gemini-2.0-flash"
 
+    # Chart-read fallback (PR 3). Default chart-read uses Haiku-4.5 for cost;
+    # low-confidence chart responses re-call the fallback model (Sonnet) so
+    # hard charts still get premium quality.
+    vision_chart_fallback_model: str = "claude-sonnet-4-6"
+    vision_chart_fallback_provider: str = "anthropic"
+    vision_chart_confidence_threshold: float = 0.7
+    """Below this confidence on the primary chart-read response, re-call the
+    fallback model on the same image. Default 0.7 — tune via gold-standard
+    validation."""
+
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
         """Create a config tuned for earnings call transcripts."""
@@ -498,6 +508,23 @@ class V2Pipeline:
             self.config.vision_prescan_provider = os.environ["VISION_PROVIDER_PRESCAN"]
         if os.environ.get("VISION_MODEL_PRESCAN"):
             self.config.vision_prescan_model = os.environ["VISION_MODEL_PRESCAN"]
+        if os.environ.get("VISION_CHART_FALLBACK_MODEL") is not None:
+            self.config.vision_chart_fallback_model = os.environ["VISION_CHART_FALLBACK_MODEL"]
+        if os.environ.get("VISION_CHART_FALLBACK_PROVIDER"):
+            self.config.vision_chart_fallback_provider = os.environ[
+                "VISION_CHART_FALLBACK_PROVIDER"
+            ]
+        if os.environ.get("VISION_CHART_CONFIDENCE_THRESHOLD"):
+            try:
+                self.config.vision_chart_confidence_threshold = float(
+                    os.environ["VISION_CHART_CONFIDENCE_THRESHOLD"]
+                )
+            except ValueError:
+                logger.warning(
+                    "Invalid VISION_CHART_CONFIDENCE_THRESHOLD=%r; keeping default %s",
+                    os.environ["VISION_CHART_CONFIDENCE_THRESHOLD"],
+                    self.config.vision_chart_confidence_threshold,
+                )
 
     def _check_vision_api_availability(self) -> None:
         """Check if OPENAI_API_KEY is set; disable image/chart extraction if not."""
