@@ -193,6 +193,12 @@ def test_full_page_ocr_path_a_synthesizes_image_ocr_segments(
     )
     assert ocr_stage is not None, "OCRExtractionStage missing from pipeline"
     ocr_stage._vision_client = mock_vision_client
+    # PR 2: full_page_ocr now routes through _build_cheap_ocr_client; patch it
+    # so the mock is used instead of building a real Gemini VisionClient.
+    monkeypatch.setattr(
+        "src.extraction_v2.stages.ocr_extraction._build_cheap_ocr_client",
+        lambda provider, model: mock_vision_client,
+    )
 
     result: PipelineResult = pipeline.process(
         html_path=full_page_scan_html,

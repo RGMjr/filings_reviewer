@@ -82,6 +82,33 @@ def _synthesize_ocr_segment(
     )
 
 
+def _build_cheap_ocr_client(provider: str, model: str) -> Any:
+    """Build an isolated VisionClient for triage OCR sites (full-page + prescan).
+
+    Mirrors src.extraction_v2.stages.image_classify._build_client. Forces
+    VISION_PROVIDER + VISION_MODEL_OCR via env override so VisionClient picks
+    the right backend, then restores prior values so chart/table OCR —
+    which uses self.vision_client — is unaffected.
+    """
+    from src.llm.vision_client import VisionClient
+
+    prior_provider = os.environ.get("VISION_PROVIDER")
+    prior_model = os.environ.get("VISION_MODEL_OCR")
+    os.environ["VISION_PROVIDER"] = provider
+    os.environ["VISION_MODEL_OCR"] = model
+    try:
+        return VisionClient()
+    finally:
+        if prior_provider is None:
+            os.environ.pop("VISION_PROVIDER", None)
+        else:
+            os.environ["VISION_PROVIDER"] = prior_provider
+        if prior_model is None:
+            os.environ.pop("VISION_MODEL_OCR", None)
+        else:
+            os.environ["VISION_MODEL_OCR"] = prior_model
+
+
 class OCRExtractionStage:
     """
     Stage 5: OCR & Chart Extraction - process high-relevance images.
@@ -156,6 +183,10 @@ class OCRExtractionStage:
         # disjoint: chart_read_premium and chart_ocr_fast both fire inside
         # process_chart but bucketed separately for cost-experiment analysis.
         self._vision_spend_by_site: dict[str, float] = self._zero_spend_by_site()
+        # Lazy-built auxiliary clients for triage OCR sites (PR 2). Reset to
+        # None at the top of each process() call for per-filing isolation.
+        self._full_page_ocr_client: Any = None
+        self._prescan_client: Any = None
 
     @staticmethod
     def _zero_spend_by_site() -> dict[str, float]:
@@ -166,6 +197,22 @@ class OCRExtractionStage:
             "full_page_ocr": 0.0,
             "prescan": 0.0,
         }
+
+    def _get_full_page_ocr_client(self, context: pipeline.PipelineContext) -> Any:
+        if self._full_page_ocr_client is None:
+            self._full_page_ocr_client = _build_cheap_ocr_client(
+                context.config.vision_full_page_ocr_provider,
+                context.config.vision_full_page_ocr_model,
+            )
+        return self._full_page_ocr_client
+
+    def _get_prescan_client(self, context: pipeline.PipelineContext) -> Any:
+        if self._prescan_client is None:
+            self._prescan_client = _build_cheap_ocr_client(
+                context.config.vision_prescan_provider,
+                context.config.vision_prescan_model,
+            )
+        return self._prescan_client
 
     @property
     def vision_client(self) -> Any:
@@ -1019,7 +1066,9 @@ numbers also appear as explicit data labels on the chart itself.
             raise FileNotFoundError(f"Image file not found: {asset.file_path}") from None
 
         try:
-            extraction = self.vision_client.analyze_image_for_text(image_bytes=image_bytes)
+            extraction = self._get_full_page_ocr_client(context).analyze_image_for_text(
+                image_bytes=image_bytes
+            )
         except Exception as e:
             logger.error(f"Error during full-page OCR for {asset.img_id}: {e}", exc_info=True)
             asset.processed = True
@@ -1110,7 +1159,9 @@ numbers also appear as explicit data labels on the chart itself.
                 continue
 
             try:
-                extraction = self.vision_client.analyze_image_for_text(image_bytes=image_bytes)
+                extraction = self._get_prescan_client(context).analyze_image_for_text(
+                    image_bytes=image_bytes
+                )
             except Exception as e:
                 logger.warning("pre-scan: vision call failed for %s: %s", asset.img_id, e)
                 continue
@@ -1201,6 +1252,8 @@ numbers also appear as explicit data labels on the chart itself.
         self._parse_failed_count = 0
         self._chart_vision_spend = 0.0
         self._vision_spend_by_site = self._zero_spend_by_site()
+        self._full_page_ocr_client = None
+        self._prescan_client = None
 
         # A3: per-filing chart-spend ceiling. Read env each call so tests
         # and operators can tune at runtime without reconstructing the stage.

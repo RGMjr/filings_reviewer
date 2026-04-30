@@ -109,6 +109,10 @@ Rules for any DB-touching command in this repo:
 | `VISION_CLASSIFY_PROVIDER` | With `ENABLE_METRIC_CLASSIFY` | Provider for the classify call (default `gemini`). Independent of `VISION_PROVIDER` so classify and OCR can pick different cost-optimal providers. |
 | `VISION_CLASSIFY_MODEL` | With `ENABLE_METRIC_CLASSIFY` | Model id (default `gemini-2.5-flash-lite`, per 2026-04-23 bake-off). |
 | `VISION_CLASSIFY_THRESHOLD` | With `ENABLE_METRIC_CLASSIFY` | Confidence floor (default `0.5`) for the downstream `predicted_relevant` signal. Records below the floor are still persisted. |
+| `VISION_PROVIDER_FULL_PAGE_OCR` | Optional | Provider for the full-page-scan OCR triage site (default `gemini`). Independent of `VISION_PROVIDER`. See `docs/operations/vision-model-selection.md`. |
+| `VISION_MODEL_FULL_PAGE_OCR` | Optional | Model for the full-page-scan OCR triage site (default `gemini-2.0-flash`). |
+| `VISION_PROVIDER_PRESCAN` | Optional | Provider for the image-level keyword pre-scan site (default `gemini`). Independent of `VISION_PROVIDER`. |
+| `VISION_MODEL_PRESCAN` | Optional | Model for the keyword pre-scan site (default `gemini-2.0-flash`). |
 | `GEMINI_API_KEY` | With `VISION_CLASSIFY_PROVIDER=gemini` | Google AI Studio key for Gemini vision calls. Set manually in Render. |
 | `FILINGS_REVIEWER_ALLOW_PROD_WRITES` | Required for `R2Storage.put_bytes` | Must be set to `"1"` for any process that writes image bytes to R2. Refused otherwise. Reads (`get_bytes`, `exists`) are unaffected. Set on Render services that run extraction/ingestion (`filings-reviewer`, `filings-extraction`, `filings-onboarding-runner`); leave unset on local dev to prevent accidental prod writes when prod creds are sourced for one-off CLI work. |
 
