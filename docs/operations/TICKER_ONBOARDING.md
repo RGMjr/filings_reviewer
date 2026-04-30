@@ -308,8 +308,8 @@ who prefer a browser workflow. It drives the same underlying pipeline.
 
 ### Workflow
 
-1. **Criteria form** (`/ingest/`) — enter industry, year(s), form type, and an
-   optional filing limit. Submit to preview.
+1. **Criteria form** (`/ingest/`) — enter industry, year(s), form type, and
+   (optionally) a candidate limit. Submit to preview.
 2. **Preview** (`/ingest/preview`) — shows the three filing buckets (see below)
    and per-bucket counts. Opt-in checkboxes for ALREADY EXTRACTED filings.
    Large batches trigger warnings or hard blocks before you can proceed.
@@ -317,6 +317,46 @@ who prefer a browser workflow. It drives the same underlying pipeline.
    (`status='queued'`). Redirects immediately to the live-progress page.
 4. **Live progress** (`/ingest/batch/<id>`) — polls `/api/v2/ingest/batches/<id>/status`
    every 3 seconds and renders per-filing status in real time.
+
+### Sizing controls (Phase 1, 2026-04-30)
+
+Two complementary affordances for capping batch size when an "all-industry"
+year sweep returns hundreds of candidates:
+
+- **Candidate Limit** field on the criteria form — applies a SQL `LIMIT` to
+  the discovery query. Range 1–5 000; blank = no cap. The volume banner on the
+  preview page reflects the limited count, so a large universe can land in the
+  OK band by setting `limit=25`.
+- **"Check first N"** controls per section on the preview page — uncheck all
+  rows in that section, then check the first N currently-rendered rows. Useful
+  for slicing an already-discovered list of, say, 200 candidates into batches
+  of 25 without re-querying.
+
+Discovery is sorted **most-recent first** (`filing_date DESC, company_name ASC`),
+so "first N" means the N most recent filings. The same sort applies to
+`load_candidates_by_filing_ids` and the `/api/v2/ingest/batches/<id>/status`
+filings list.
+
+### Industry catalog
+
+Named industries live in `config/industry_sic_codes.yaml`. The Phase 1
+expansion (2026-04-30) added 20 non-tech sectors (biotech, pharmaceuticals,
+medical_devices, commercial_banking, investment_management, apparel_retail,
+home_improvement_retail, auto_dealers, restaurants, oil_gas_exploration,
+oil_gas_refining, electric_utilities, semiconductors, computer_hardware,
+telecom_equipment, aerospace_defense, media_publishing, gaming_entertainment,
+it_services_consulting, homebuilding) plus aliases (`bio`, `pharma`,
+`medtech`, `banks`, `chips`, `defense`, etc.). All SIC codes verified against
+SEC's published list. To add a new industry, append to the YAML and run
+`pytest tests/unit/universe/test_onboarding.py::test_load_industry_map_includes_new_industries`.
+
+### Universe gap banner
+
+If the criteria reference (year × form_type) combinations with zero rows in
+the `filings` table, the preview surfaces a "Universe gaps detected" banner
+with one-click populate buttons. Clicking submits a `kind='populate'` batch
+inline; the preview re-fetches when populate completes. Gap detection works
+for company-name-only criteria too (no industry / no SIC required).
 
 ### Three filing buckets
 

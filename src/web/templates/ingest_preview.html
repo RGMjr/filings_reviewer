@@ -50,6 +50,15 @@
       <p class="text-muted small">
         All are checked by default — uncheck any filing you don't want in this batch.
       </p>
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <label class="text-muted small mb-0" for="take-first-n-new">Check first</label>
+        <input type="number" min="1" id="take-first-n-new" class="form-control form-control-sm take-first-n-input"
+               style="width: 7rem;" data-section="new" placeholder="N">
+        <button type="button" class="btn btn-sm btn-outline-secondary take-first-n-btn" data-section="new">
+          Apply
+        </button>
+        <span class="text-muted small">unchecks the rest in this section.</span>
+      </div>
       <div class="table-responsive mb-4">
         <table class="table table-sm table-striped align-middle">
           <thead class="table-dark">
@@ -105,6 +114,15 @@
         These filings have already been extracted. Include them only if you want to re-extract (overwrites existing facts).
         All are <strong>unchecked</strong> by default.
       </p>
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <label class="text-muted small mb-0" for="take-first-n-reextract">Check first</label>
+        <input type="number" min="1" id="take-first-n-reextract" class="form-control form-control-sm take-first-n-input"
+               style="width: 7rem;" data-section="reextract" placeholder="N">
+        <button type="button" class="btn btn-sm btn-outline-secondary take-first-n-btn" data-section="reextract">
+          Apply
+        </button>
+        <span class="text-muted small">unchecks the rest in this section.</span>
+      </div>
       <div class="table-responsive mb-4">
         <table class="table table-sm table-striped align-middle">
           <thead class="table-dark">
@@ -160,6 +178,15 @@
         <strong>Warning:</strong> Including these filings will re-extract them and
         permanently delete human review decisions. All are <strong>unchecked</strong> by default —
         check with caution.
+      </div>
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <label class="text-muted small mb-0" for="take-first-n-reextract-reviewed">Check first</label>
+        <input type="number" min="1" id="take-first-n-reextract-reviewed" class="form-control form-control-sm take-first-n-input"
+               style="width: 7rem;" data-section="reextract_reviewed" placeholder="N">
+        <button type="button" class="btn btn-sm btn-outline-secondary take-first-n-btn" data-section="reextract_reviewed">
+          Apply
+        </button>
+        <span class="text-muted small">unchecks the rest in this section.</span>
       </div>
       <div class="table-responsive mb-4">
         <table class="table table-sm table-striped align-middle">
@@ -286,6 +313,26 @@
   includeCbs.forEach(function (cb) {
     cb.addEventListener('change', function () {
       syncSelectAll(cb.getAttribute('data-section'));
+      updateCount();
+    });
+  });
+
+  // "Check first N" per-section action — uncheck all rows in the section, then check the first N
+  document.querySelectorAll('.take-first-n-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var section = btn.getAttribute('data-section');
+      var input = document.querySelector('.take-first-n-input[data-section="' + section + '"]');
+      if (!input) return;
+      var n = parseInt(input.value, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        input.focus();
+        return;
+      }
+      var rows = document.querySelectorAll('.filing-include-cb[data-section="' + section + '"]');
+      rows.forEach(function (cb, idx) {
+        cb.checked = idx < n;
+      });
+      syncSelectAll(section);
       updateCount();
     });
   });

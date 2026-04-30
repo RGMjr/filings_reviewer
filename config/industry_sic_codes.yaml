@@ -151,6 +151,137 @@ industries:
       - "7374"  # SERVICES-COMPUTER PROCESSING & DATA PREPARATION (payroll processing)
       - "7361"  # HELP SUPPLY SERVICES
 
+  # ---------------------------------------------------------------------------
+  # Phase 1 expansion (2026-04-30): non-tech sectors. All codes verified
+  # against SEC's published SIC list:
+  # https://www.sec.gov/corpfin/division-of-corporation-finance-standard-industrial-classification-sic-code-list
+  # ---------------------------------------------------------------------------
+
+  biotech:
+    description: "Biotechnology / biological products R&D"
+    sic_codes:
+      - "2836"  # PHARMACEUTICAL PREPARATIONS — biological products subset
+      - "8731"  # SERVICES-COMMERCIAL PHYSICAL & BIOLOGICAL RESEARCH
+
+  pharmaceuticals:
+    description: "Pharmaceutical preparations and diagnostics"
+    sic_codes:
+      - "2834"  # PHARMACEUTICAL PREPARATIONS
+      - "2835"  # IN VITRO & IN VIVO DIAGNOSTIC SUBSTANCES
+
+  medical_devices:
+    description: "Surgical, orthopedic, electromedical instruments"
+    sic_codes:
+      - "3841"  # SURGICAL & MEDICAL INSTRUMENTS & APPARATUS
+      - "3842"  # ORTHOPEDIC, PROSTHETIC & SURGICAL APPLIANCES & SUPPLIES
+      - "3845"  # ELECTROMEDICAL & ELECTROTHERAPEUTIC APPARATUS
+
+  commercial_banking:
+    description: "State and national commercial banks"
+    sic_codes:
+      - "6020"  # STATE COMMERCIAL BANKS
+      - "6021"  # NATIONAL COMMERCIAL BANKS
+      - "6022"  # STATE COMMERCIAL BANKS (alt)
+      - "6029"  # COMMERCIAL BANKS, NEC
+
+  investment_management:
+    description: "Investment advisors and offices (excluding SPAC blank checks)"
+    sic_codes:
+      - "6282"  # INVESTMENT ADVICE
+      - "6726"  # INVESTMENT OFFICES, NEC
+
+  apparel_retail:
+    description: "Apparel, shoe, and accessory retail"
+    sic_codes:
+      - "5621"  # RETAIL-WOMEN'S CLOTHING STORES
+      - "5651"  # RETAIL-FAMILY CLOTHING STORES
+      - "5661"  # RETAIL-SHOE STORES
+      - "5699"  # RETAIL-APPAREL & ACCESSORY STORES, NEC
+
+  home_improvement_retail:
+    description: "Lumber, building materials, hardware retail"
+    sic_codes:
+      - "5211"  # RETAIL-LUMBER & OTHER BUILDING MATERIALS DEALERS
+      - "5251"  # RETAIL-HARDWARE STORES
+
+  auto_dealers:
+    description: "Motor vehicle dealers"
+    sic_codes:
+      - "5511"  # RETAIL-MOTOR VEHICLE DEALERS (NEW & USED)
+      - "5521"  # RETAIL-MOTOR VEHICLE DEALERS (USED ONLY)
+
+  restaurants:
+    description: "Eating places"
+    sic_codes:
+      - "5812"  # RETAIL-EATING PLACES
+
+  oil_gas_exploration:
+    description: "Crude petroleum & natural gas exploration / drilling"
+    sic_codes:
+      - "1311"  # CRUDE PETROLEUM & NATURAL GAS
+      - "1381"  # SERVICES-DRILLING OIL & GAS WELLS
+
+  oil_gas_refining:
+    description: "Petroleum refining"
+    sic_codes:
+      - "2911"  # PETROLEUM REFINING
+
+  electric_utilities:
+    description: "Electric and combined utilities"
+    sic_codes:
+      - "4911"  # ELECTRIC SERVICES
+      - "4931"  # ELECTRIC & OTHER SERVICES COMBINED
+
+  semiconductors:
+    description: "Semiconductors and related devices"
+    sic_codes:
+      - "3674"  # SEMICONDUCTORS & RELATED DEVICES
+
+  computer_hardware:
+    description: "Computer peripherals, communications equipment, PCBs"
+    sic_codes:
+      - "3576"  # COMPUTER COMMUNICATIONS EQUIPMENT
+      - "3577"  # COMPUTER PERIPHERAL EQUIPMENT, NEC
+      - "3672"  # PRINTED CIRCUIT BOARDS
+
+  telecom_equipment:
+    description: "Telephone, radio, and broadcasting equipment"
+    sic_codes:
+      - "3661"  # TELEPHONE & TELEGRAPH APPARATUS
+      - "3663"  # RADIO & TV BROADCASTING & COMMUNICATIONS EQUIPMENT
+
+  aerospace_defense:
+    description: "Aircraft, aircraft parts, and defense electronics"
+    sic_codes:
+      - "3721"  # AIRCRAFT & PARTS
+      - "3728"  # AIRCRAFT PARTS & AUXILIARY EQUIPMENT, NEC
+      - "3812"  # SEARCH, DETECTION, NAVIGATION, GUIDANCE, AERONAUTICAL SYS
+
+  media_publishing:
+    description: "Newspaper, periodical, and book publishing"
+    sic_codes:
+      - "2711"  # NEWSPAPERS: PUBLISHING OR PUBLISHING & PRINTING
+      - "2721"  # PERIODICALS: PUBLISHING OR PUBLISHING AND PRINTING
+      - "2731"  # BOOKS: PUBLISHING, OR PUBLISHING & PRINTING
+
+  gaming_entertainment:
+    description: "Game studios, motion picture production, amusement services"
+    sic_codes:
+      - "7372"  # SERVICES-PREPACKAGED SOFTWARE (most modern game cos. file here)
+      - "7812"  # SERVICES-MOTION PICTURE & VIDEO TAPE PRODUCTION
+      - "7993"  # SERVICES-AMUSEMENT & RECREATION SERVICES
+
+  it_services_consulting:
+    description: "IT consulting, programming services, business services NEC"
+    sic_codes:
+      - "7371"  # SERVICES-COMPUTER PROGRAMMING SERVICES
+      - "7389"  # SERVICES-SERVICES, NEC
+
+  homebuilding:
+    description: "Operative builders / single-family housing construction"
+    sic_codes:
+      - "1531"  # OPERATIVE BUILDERS
+
 aliases:
   saas: software
   "computer services": software
@@ -193,3 +324,45 @@ aliases:
   "hr tech": hr_tech
   "human resources": hr_tech
   "workforce": hr_tech
+  # Phase 1 expansion (2026-04-30)
+  "bio": biotech
+  "biotechnology": biotech
+  "pharma": pharmaceuticals
+  "pharmaceutical": pharmaceuticals
+  "medtech": medical_devices
+  "medical device": medical_devices
+  "banks": commercial_banking
+  "banking": commercial_banking
+  "wealth management": investment_management
+  "asset management": investment_management
+  "retail apparel": apparel_retail
+  "clothing retail": apparel_retail
+  "home improvement": home_improvement_retail
+  "hardware retail": home_improvement_retail
+  "automotive retail": auto_dealers
+  "car dealers": auto_dealers
+  "dining": restaurants
+  "food service": restaurants
+  "oil": oil_gas_exploration
+  "gas": oil_gas_exploration
+  "oil and gas": oil_gas_exploration
+  "refining": oil_gas_refining
+  "utilities": electric_utilities
+  "electric": electric_utilities
+  "chips": semiconductors
+  "semis": semiconductors
+  "hardware": computer_hardware
+  "computer peripherals": computer_hardware
+  "telecom": telecom_equipment
+  "telecommunications": telecom_equipment
+  "defense": aerospace_defense
+  "aerospace": aerospace_defense
+  "media": media_publishing
+  "publishing": media_publishing
+  "gaming": gaming_entertainment
+  "video games": gaming_entertainment
+  "entertainment": gaming_entertainment
+  "it services": it_services_consulting
+  "consulting": it_services_consulting
+  "homebuilders": homebuilding
+  "construction": homebuilding

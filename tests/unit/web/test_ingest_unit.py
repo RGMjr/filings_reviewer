@@ -87,6 +87,29 @@ def test_ingest_form_pre_fills_reviewer_cookie(client):
     assert b"TestUser" in resp.data
 
 
+def test_ingest_form_renders_limit_field(client):
+    """GET /ingest/ exposes the candidate-limit input."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'name="limit"' in body
+    assert 'type="number"' in body
+    # Help text mentions the cap behaviour so reviewers know what it does
+    assert "Cap the discovered candidate list" in body
+
+
+def test_ingest_form_renders_new_industry_options(client):
+    """GET /ingest/ surfaces the Phase-1 added industries in the multi-select."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # New industries appear with their humanised labels
+    assert 'value="biotech"' in body
+    assert 'value="commercial_banking"' in body
+    assert 'value="aerospace_defense"' in body
+    assert 'value="homebuilding"' in body
+
+
 # ---------------------------------------------------------------------------
 # _parse_form_criteria helper
 # ---------------------------------------------------------------------------
@@ -126,6 +149,42 @@ def test_parse_form_criteria_multi_industry(app):
         result = _parse_form_criteria()
     assert "software" in result["industries"]
     assert "grocery_retail" in result["industries"]
+
+
+def test_parse_form_criteria_includes_limit(app):
+    """_parse_form_criteria forwards a non-empty limit string."""
+    from src.web.routes.ingest import _parse_form_criteria
+
+    with app.test_request_context(
+        "/ingest/preview",
+        method="POST",
+        data={
+            "industries": ["software"],
+            "year": "2023",
+            "reviewer_name": "Rob",
+            "limit": "25",
+        },
+    ):
+        result = _parse_form_criteria()
+    assert result["limit"] == "25"
+
+
+def test_parse_form_criteria_limit_blank_means_none(app):
+    """Blank limit field is normalised to None (resolve_criteria treats as no cap)."""
+    from src.web.routes.ingest import _parse_form_criteria
+
+    with app.test_request_context(
+        "/ingest/preview",
+        method="POST",
+        data={
+            "industries": ["software"],
+            "year": "2023",
+            "reviewer_name": "Rob",
+            "limit": "",
+        },
+    ):
+        result = _parse_form_criteria()
+    assert result["limit"] is None
 
 
 # ---------------------------------------------------------------------------

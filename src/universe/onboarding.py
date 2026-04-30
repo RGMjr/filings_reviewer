@@ -210,14 +210,20 @@ _INDUSTRY_GATE = "  AND c.industry_code = ANY(%(sic_codes)s)\n"
 
 _PHASE1_GATE = "  AND f.is_in_scope_phase1 = TRUE\n"
 
-_DISCOVERY_ORDER = "ORDER BY f.filing_date, c.company_name\n"
+_DISCOVERY_ORDER = "ORDER BY f.filing_date DESC, c.company_name ASC\n"
+
+_LIMIT_CLAUSE = "LIMIT %(limit)s\n"
 
 # Exposed for tests and backward compatibility. Equivalent to the original
 # S-1/F-1-gated query (Phase-1 filter included, industry filter present).
 DISCOVERY_SQL = _DISCOVERY_SQL_BASE + _INDUSTRY_GATE + _PHASE1_GATE + _DISCOVERY_ORDER
 
 
-def _build_discovery_sql(form_types: list[str], sic_codes: list[str]) -> str:
+def _build_discovery_sql(
+    form_types: list[str],
+    sic_codes: list[str],
+    limit: int | None = None,
+) -> str:
     """Include the Phase-1 gate only when at least one S-1/F-1 form is requested.
 
     For 10-K-only (or other non-S-1/F-1) queries, Phase-1 filter doesn't apply:
@@ -226,6 +232,9 @@ def _build_discovery_sql(form_types: list[str], sic_codes: list[str]) -> str:
     Include the industry (SIC-code) clause only when ``sic_codes`` is non-empty.
     Empty SIC list means the caller is filtering by company name alone; emitting
     ``= ANY(ARRAY[]::text[])`` would return zero rows.
+
+    Append a LIMIT clause when ``limit`` is set; the bound parameter is named
+    ``limit`` so the caller must include it in the query params dict.
     """
     include_phase1 = bool(S1F1_FORMS & set(form_types))
     return (
@@ -233,6 +242,7 @@ def _build_discovery_sql(form_types: list[str], sic_codes: list[str]) -> str:
         + (_INDUSTRY_GATE if sic_codes else "")
         + (_PHASE1_GATE if include_phase1 else "")
         + _DISCOVERY_ORDER
+        + (_LIMIT_CLAUSE if limit else "")
     )
 
 
@@ -242,6 +252,7 @@ def discover_candidates(
     year_min: int,
     year_max: int,
     sic_codes: list[str],
+    limit: int | None = None,
 ) -> list[Candidate]:
     params: dict[str, Any] = {
         "form_types": form_types,
@@ -250,8 +261,10 @@ def discover_candidates(
     }
     if sic_codes:
         params["sic_codes"] = sic_codes
+    if limit:
+        params["limit"] = limit
     rows = db.query(
-        _build_discovery_sql(form_types, sic_codes),
+        _build_discovery_sql(form_types, sic_codes, limit=limit),
         params,
     )
     return [
@@ -306,6 +319,7 @@ class ResolvedQuery:
     year_max: int
     include_amendments: bool = True
     company_name_ilike: str | None = None  # None = no filter
+    limit: int | None = None  # None = no cap
 
 
 def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
@@ -330,6 +344,12 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
     company_name_ilike : str | None
         Optional ILIKE pattern for company name filtering.  E.g. "% Inc." or
         "Acme%".
+    limit : int | str | None
+        Optional cap on the number of candidates returned by ``discover()``.
+        Applied as SQL ``LIMIT`` against the discovery query (after ORDER BY,
+        before the company-name post-filter). Must be 1–5000 if set; ``None``
+        or empty string means no cap. Strings are coerced to int; non-numeric
+        values raise ``ValueError``.
 
     Raises
     ------
@@ -386,6 +406,16 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
     if not form_type_set:
         raise ValueError("Resolved form_types list is empty after filtering amendments")
 
+    raw_limit = criteria.get("limit")
+    limit: int | None = None
+    if raw_limit is not None and raw_limit != "":
+        try:
+            limit = int(raw_limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid limit {raw_limit!r}: must be a positive integer") from exc
+        if not (1 <= limit <= 5000):
+            raise ValueError(f"Invalid limit {limit}: must be between 1 and 5000")
+
     return ResolvedQuery(
         sic_codes=sorted(sic_set),
         form_types=form_type_set,
@@ -393,6 +423,7 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
         year_max=year_max,
         include_amendments=include_amendments,
         company_name_ilike=criteria.get("company_name_ilike") or None,
+        limit=limit,
     )
 
 
@@ -400,15 +431,20 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
 # Gap detection
 # ---------------------------------------------------------------------------
 
-_YEARS_IN_FILINGS_SQL = """
+_YEARS_IN_FILINGS_BASE = """
 SELECT DISTINCT EXTRACT(YEAR FROM f.filing_date)::int AS yr,
                 f.form_type
 FROM filings f
 JOIN companies c ON c.company_id = f.company_id
 WHERE f.form_type = ANY(%(form_types)s)
   AND EXTRACT(YEAR FROM f.filing_date) BETWEEN %(year_min)s AND %(year_max)s
-  AND c.industry_code = ANY(%(sic_codes)s)
 """
+
+_YEARS_IN_FILINGS_INDUSTRY_GATE = "  AND c.industry_code = ANY(%(sic_codes)s)\n"
+
+# Backwards-compatible alias preserving the SIC-gated form for callers that
+# import the constant directly.
+_YEARS_IN_FILINGS_SQL = _YEARS_IN_FILINGS_BASE + _YEARS_IN_FILINGS_INDUSTRY_GATE
 
 
 @dataclass
@@ -424,16 +460,21 @@ def detect_universe_gaps(db: DatabaseAdapter, query: ResolvedQuery) -> list[Gap]
 
     This tells the caller which (year, form_type) combos need a
     ``populate`` run before discovery will find anything.
+
+    When ``query.sic_codes`` is empty (company-name-only criteria), the SIC
+    clause is omitted entirely. Otherwise an empty SIC list would short-circuit
+    the query to zero rows and the gap banner would never appear for
+    name-filtered searches.
     """
-    rows = db.query(
-        _YEARS_IN_FILINGS_SQL,
-        {
-            "form_types": query.form_types,
-            "year_min": query.year_min,
-            "year_max": query.year_max,
-            "sic_codes": query.sic_codes,
-        },
-    )
+    sql = _YEARS_IN_FILINGS_BASE + (_YEARS_IN_FILINGS_INDUSTRY_GATE if query.sic_codes else "")
+    params: dict[str, Any] = {
+        "form_types": query.form_types,
+        "year_min": query.year_min,
+        "year_max": query.year_max,
+    }
+    if query.sic_codes:
+        params["sic_codes"] = query.sic_codes
+    rows = db.query(sql, params)
     present: set[tuple[int, str]] = {(r["yr"], r["form_type"]) for r in rows}
 
     gaps: list[Gap] = []
@@ -503,6 +544,11 @@ def discover(db: DatabaseAdapter, query: ResolvedQuery) -> DiscoveryResult:
 
     Wraps ``discover_candidates`` and adds gap detection so callers can
     present a one-click populate prompt.
+
+    The SQL ``LIMIT`` is applied *before* the company-name post-filter, so a
+    user combining limit + company_name_ilike may see fewer rows than the
+    limit. This matches the behaviour the volume banner expects: the limit
+    is a cap on the result set the reviewer sees, not a quota to fill.
     """
     candidates = discover_candidates(
         db,
@@ -510,6 +556,7 @@ def discover(db: DatabaseAdapter, query: ResolvedQuery) -> DiscoveryResult:
         year_min=query.year_min,
         year_max=query.year_max,
         sic_codes=query.sic_codes,
+        limit=query.limit,
     )
 
     # Apply optional company-name filter (ILIKE equivalent — Python side for
@@ -580,7 +627,7 @@ FROM filings f
 JOIN companies c ON c.company_id = f.company_id
 LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
 WHERE f.filing_id = ANY(%(filing_ids)s)
-ORDER BY f.filing_date, c.company_name
+ORDER BY f.filing_date DESC, c.company_name ASC
 """
     rows = db.query(sql, {"filing_ids": list(filing_ids)})
     return [
