@@ -129,3 +129,40 @@ class TestReviewerAggregation:
 
         assert row is not None
         assert row["reviewers"] == []
+
+
+class TestImagesReviewedCount:
+    """Guards the filings-list `images_reviewed` counter against under-reporting
+    images that the reviewer flipped to 'skipped' via "Reject all (no relevant
+    metrics)" — those carry per-metric reject rows in
+    v2_image_metric_confirmations and should count as reviewed."""
+
+    def test_skipped_with_confirmations_counts_as_reviewed(self, clean_db: DatabaseAdapter) -> None:
+        _, filing_id = create_test_company_and_filing(clean_db)
+        create_test_v2_document(clean_db, filing_id)
+
+        # Image #1 — finalized via Mark Complete: counts.
+        _insert_v2_image(clean_db, filing_id, "img1.jpg", review_status="reviewed")
+        # Image #2 — Reject-all: skipped + per-metric reject row. Should count.
+        img2 = _insert_v2_image(clean_db, filing_id, "img2.jpg", review_status="skipped")
+        clean_db.execute(
+            """
+            INSERT INTO v2_image_metric_confirmations
+                (img_id, detected_metric_id, confirmed_metric_id,
+                 decision, rejection_reason, reviewer_id)
+            VALUES
+                (%(img_id)s, NULL, NULL, 'reject', 'no_relevant_metrics', 'rgm')
+            """,
+            {"img_id": img2},
+        )
+        # Image #3 — pure "Skip whole image" with zero confirmations. Should NOT count.
+        _insert_v2_image(clean_db, filing_id, "img3.jpg", review_status="skipped")
+        # Image #4 — pending. Should NOT count toward reviewed.
+        _insert_v2_image(clean_db, filing_id, "img4.jpg", review_status="pending")
+
+        rows = clean_db.get_unified_filings_for_review()
+        row = _find_filing_row(rows, filing_id)
+
+        assert row is not None
+        assert row["images_pending"] == 1
+        assert row["images_reviewed"] == 2  # img1 (reviewed) + img2 (skipped+confirmation)
