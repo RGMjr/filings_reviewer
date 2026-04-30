@@ -110,6 +110,25 @@ def test_ingest_form_renders_new_industry_options(client):
     assert 'value="homebuilding"' in body
 
 
+def test_ingest_form_renders_universe_build_panel(client):
+    """GET /ingest/ exposes the Build-universe panel pointing at /ingest/populate."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Separate <form> targets the populate endpoint
+    assert 'action="/ingest/populate"' in body
+    # Year input is numeric with the populate endpoint's accepted range
+    assert 'id="universe_year"' in body
+    assert 'name="year"' in body
+    assert 'min="1990"' in body
+    assert 'max="2030"' in body
+    # Form-type dropdown exposes s1f1 + 10k bundles
+    assert 'name="form_type"' in body
+    assert 'id="universe_form_type"' in body
+    # Reviewer name input is present and required
+    assert 'id="universe_reviewer_name"' in body
+
+
 # ---------------------------------------------------------------------------
 # _parse_form_criteria helper
 # ---------------------------------------------------------------------------

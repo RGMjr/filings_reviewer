@@ -358,6 +358,33 @@ with one-click populate buttons. Clicking submits a `kind='populate'` batch
 inline; the preview re-fetches when populate completes. Gap detection works
 for company-name-only criteria too (no industry / no SIC required).
 
+### Build universe via UI (Phase 2a, 2026-04-30)
+
+The criteria form at `/ingest/` also exposes a top-of-page **"Build universe
+(populate from SEC)"** panel — the direct equivalent of running
+`scripts/build_universe_real.py --start-date YYYY-01-01 --end-date YYYY-12-31`.
+Submit a year + form-type bundle (`s1f1` or `10k`) + reviewer name to enqueue
+a `kind='populate'` batch; the worker (`filings-onboarding-runner` in prod,
+local subprocess in dev) drains it via `UniverseBuilder.build_universe`. The
+existing `/ingest/batch/<id>` progress page and `/ingest/history` list both
+render populate batches.
+
+Notes:
+- **Single year per submit.** The endpoint accepts one year (1990–2030); for
+  multi-year campaigns submit multiple times. The worker processes one build
+  at a time, so concurrent submissions queue safely.
+- **Idempotent.** Re-running a year upserts rows in `companies` / `filings`
+  and re-runs amendment supersession; no duplicates.
+- **8-K not exposed in the dropdown.** `FORM_TYPE_BUNDLES` admits `8k` but
+  `UniverseBuilder` does not classify SPAC / first-time-issuer / amendment
+  supersession on 8-Ks (those gates are S-1/F-1 and 10-K-scoped by design),
+  so populating 8-K via this UI yields a raw filing index that is not a
+  CMASB universe. Use the CLI with `--form-types 8-K,8-K/A` if you need it.
+- **Prereq:** `SEC_USER_AGENT` must be set on the runner service
+  (`filings-onboarding-runner` env group) — the placeholder fallback in
+  `onboarding_runner.py` violates SEC's contact-email requirement and will
+  trigger 403/429 from EDGAR.
+
 ### Three filing buckets
 
 | Bucket | Default | Override |
