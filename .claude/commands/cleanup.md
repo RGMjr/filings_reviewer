@@ -49,6 +49,8 @@
      - If dead: `git worktree remove -f -f <path>` then `git branch -D <branch>` for the matching `worktree-agent-*` branch. Double `-f` is required — a single `--force` won't override the worktree's lock and fails with `cannot remove a locked working tree`.
      - Worktrees without a `locked` line (unexpected): report and skip — do not auto-remove.
 
+   - **Non-agent internal trees** (path is under `.claude/worktrees/` but does NOT match `agent-*`): legacy worktrees created by older session workflows (e.g. direct `git worktree add .claude/worktrees/<name>`). Apply the same dirty + in-use + disposition logic as ccw trees below. Use `--force` on removal since these trees may have been created outside of `ccw` and lack a clean lock state. Report removed trees in the summary as `removed stale internal worktrees`.
+
    - **`ccw` trees** (path under `$HOME/.claude-worktrees/<repo>/`, created by the `ccw` zsh wrapper — see `docs/development/claude-sessions-and-worktrees.md`):
      - **Dirty check**: `git -C <path> status --porcelain`. If non-empty, skip and report as `dirty: <branch>`.
      - **In-use check**: `lsof +D <path> 2>/dev/null | awk 'NR>1'`. If any process has files open under the path (typically a live `claude` session), skip and report as `in-use: <branch>`.
@@ -57,7 +59,7 @@
        - Branch starts with `scratch/` AND `git -C <path> log origin/main..HEAD --oneline` is empty (no unique commits) → remove. Run `git worktree remove <path>`, then `git branch -d <branch>`.
        - Anything else (open PR, closed-not-merged PR, scratch with commits, unknown branch state) → skip and report as `keep: <branch> (<reason>)`.
 
-   - **Any other worktree path** (primary working tree, user-managed worktrees elsewhere): skip silently. Never touched.
+   - **Any other worktree path** (primary working tree, user-managed worktrees outside `.claude/worktrees/` and `$HOME/.claude-worktrees/`): skip silently. Never touched.
 
 6. **Report.** Output a concise summary:
    ```
@@ -65,9 +67,10 @@
      pruned remote-tracking refs: N
      deleted local branches: <list or "none">
      removed stale agent worktrees: <list or "none">
+     removed stale internal worktrees: <list or "none">
      removed merged ccw worktrees: <list or "none">
      removed empty scratch worktrees: <list or "none">
-     kept ccw worktrees: <list with one-word reason, or "none">
+     kept internal/ccw worktrees: <list with one-word reason, or "none">
      skipped active agent worktrees: N (live pids)
    ```
 
@@ -76,9 +79,9 @@
 - Never touch `main` or the currently checked-out branch.
 - Never delete a local branch unless GitHub confirms its PR is merged (step 3 is the source of truth; do not infer from `git branch --merged`).
 - Never force-remove a worktree whose lock pid is live. A live lock means an active session owns it.
-- Never remove a ccw worktree whose tree is dirty (`git status --porcelain` non-empty) or whose files are open in any process (`lsof +D` non-empty). Both checks must pass.
-- For ccw worktrees, auto-remove only on two dispositions: (a) branch has a merged PR per step 3, or (b) branch name starts with `scratch/` AND the worktree has zero unique commits beyond `origin/main`. Every other case skips with a reported reason.
-- Worktrees whose path is neither `.claude/worktrees/agent-*` nor `$HOME/.claude-worktrees/<repo>/` are never touched — they're user-managed.
+- Never remove a ccw or non-agent internal worktree whose tree is dirty (`git status --porcelain` non-empty) or whose files are open in any process (`lsof +D` non-empty). Both checks must pass.
+- For ccw and non-agent internal worktrees, auto-remove only on two dispositions: (a) branch has a merged PR per step 3, or (b) branch name starts with `scratch/` AND the worktree has zero unique commits beyond `origin/main`. Every other case skips with a reported reason.
+- Worktrees whose path is neither under `.claude/worktrees/` nor under `$HOME/.claude-worktrees/<repo>/` are never touched — they're user-managed.
 - Do not prune branches via step 4 that are still checked out in any linked worktree — step 5 removes the worktree and branch together.
 
 ## Out of scope
