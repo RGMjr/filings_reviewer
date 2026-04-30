@@ -1170,6 +1170,16 @@
     flex-shrink: 0;
 }
 
+/* Pin the bulk action bar so Undo / Reject stay visible (and on top of the
+   sticky review header at z-index 1010) while the reviewer scrolls the
+   thumbnail column. */
+#bulk-action-bar {
+    position: sticky;
+    top: var(--navbar-height);
+    z-index: 1011;
+    background: var(--bs-white, #fff);
+}
+
 .image-thumbnail-sidebar .card {
     position: sticky;
     top: 80px;

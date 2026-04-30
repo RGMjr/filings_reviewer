@@ -212,8 +212,9 @@ class TestBulkUndoImageCandidates:
         assert body["results"][0]["status"] == "unskipped"
         mock_db.unskip_image_candidate_v2.assert_called_once_with(IMG_ID_1)
 
-    def test_success_delete_confirmations_on_reviewed_image(self, client, monkeypatch):
-        """Reviewed (non-skipped) images: all reviewer's confirmations are deleted."""
+    def test_success_delete_confirmations_on_pending_image(self, client, monkeypatch):
+        """Pending images with partial confirmations: reviewer's confirmations are
+        deleted; raw review_status stays 'pending' (no spurious reopen call)."""
         mock_db = MagicMock()
         _patch_get_db(monkeypatch, mock_db)
 
@@ -242,6 +243,41 @@ class TestBulkUndoImageCandidates:
         assert result["deleted_confirmations"] == 1
         # Only the reviewer's own confirmation is deleted
         mock_db.delete_image_metric_confirmation.assert_called_once_with(conf_id_1, REVIEWER)
+        # Pending image must not trigger a reopen — that branch is reviewed-only.
+        mock_db.reopen_image_candidate_v2.assert_not_called()
+
+    def test_success_reopen_reviewed_image(self, client, monkeypatch):
+        """Reviewed images: confirmations are deleted AND raw review_status is
+        flipped back to 'pending' via reopen_image_candidate_v2 (mirroring the
+        single-image /reopen flow). Without this, the center-pane status alert
+        and top-right badge stay stuck on 'Reviewed' after bulk undo."""
+        mock_db = MagicMock()
+        _patch_get_db(monkeypatch, mock_db)
+
+        conf_id_1 = "conf-uuid-0002-0002-0002-000000000001"
+        mock_db.get_image_review_candidate_v2.return_value = _make_candidate(
+            IMG_ID_1, review_status="reviewed"
+        )
+        mock_db.get_image_metric_confirmations.return_value = [
+            {"confirmation_id": conf_id_1, "reviewer_id": REVIEWER, "decision": "accept"},
+        ]
+        mock_db.delete_image_metric_confirmation.return_value = {"confirmation_id": conf_id_1}
+        mock_db.reopen_image_candidate_v2.return_value = True
+        mock_db.get_pending_image_candidates_v2.return_value = []
+
+        resp = client.post(
+            "/api/v2/image-candidates/bulk-undo",
+            json={"image_ids": [IMG_ID_1], "reviewer_id": REVIEWER},
+        )
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is True
+        result = body["results"][0]
+        assert result["status"] == "reopened"
+        assert result["deleted_confirmations"] == 1
+        mock_db.delete_image_metric_confirmation.assert_called_once_with(conf_id_1, REVIEWER)
+        mock_db.reopen_image_candidate_v2.assert_called_once_with(IMG_ID_1)
 
     def test_missing_reviewer_id_returns_403(self, client, monkeypatch):
         mock_db = MagicMock()

@@ -380,8 +380,12 @@ def bulk_undo_image_candidates():
     """
     Bulk undo — reverts the most recent reviewer action on each selected image:
     - If skipped: unskip (return to pending).
-    - Otherwise: delete all per-metric confirmations for this reviewer on this image
-      (rolling back any promoted chart facts).
+    - If reviewed: delete all per-metric confirmations for this reviewer (rolling back
+      any promoted chart facts) and flip v2_image_assets.review_status='pending' via
+      db.reopen_image_candidate_v2, mirroring the single-image /reopen flow so the
+      center-pane status alert and top-right badge update on reload.
+    - If pending (partial confirmations): delete the reviewer's confirmations only;
+      raw review_status stays 'pending'.
 
     Request body: {image_ids: [...str], reviewer_id: str, image_status: str|null}
     Response: {ok: true, processed: int, results: [...], next_candidate, ...pending_counts}
@@ -421,7 +425,9 @@ def bulk_undo_image_candidates():
                 results.append({"img_id": img_id, "status": "error", "reason": "not found"})
                 continue
 
-            if candidate.get("review_status") == "skipped":
+            status = candidate.get("review_status")
+
+            if status == "skipped":
                 db.unskip_image_candidate_v2(img_id)
                 results.append({"img_id": img_id, "status": "unskipped"})
             else:
@@ -434,9 +440,24 @@ def bulk_undo_image_candidates():
                     )
                     if result is not None:
                         deleted += 1
-                results.append(
-                    {"img_id": img_id, "status": "undone", "deleted_confirmations": deleted}
-                )
+
+                if status == "reviewed":
+                    db.reopen_image_candidate_v2(img_id)
+                    results.append(
+                        {
+                            "img_id": img_id,
+                            "status": "reopened",
+                            "deleted_confirmations": deleted,
+                        }
+                    )
+                else:
+                    results.append(
+                        {
+                            "img_id": img_id,
+                            "status": "undone",
+                            "deleted_confirmations": deleted,
+                        }
+                    )
 
             last_filing_id = candidate["filing_id"]
             last_img_id = img_id
