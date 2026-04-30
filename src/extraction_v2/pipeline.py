@@ -206,6 +206,14 @@ class PipelineConfig:
     Records below the floor are still persisted with their true confidence —
     the floor does not gate persistence, only the boolean interpretation."""
 
+    # Per-site model knobs for triage OCR sites (PR 2). These two sites are
+    # recall/triage with no precision requirement, so they default to a cheap
+    # Gemini model regardless of VISION_PROVIDER.
+    vision_full_page_ocr_provider: str = "gemini"
+    vision_full_page_ocr_model: str = "gemini-2.0-flash"
+    vision_prescan_provider: str = "gemini"
+    vision_prescan_model: str = "gemini-2.0-flash"
+
     @classmethod
     def for_transcript(cls, **overrides) -> PipelineConfig:
         """Create a config tuned for earnings call transcripts."""
@@ -482,6 +490,14 @@ class V2Pipeline:
                     os.environ["VISION_CLASSIFY_THRESHOLD"],
                     self.config.vision_classify_threshold,
                 )
+        if os.environ.get("VISION_PROVIDER_FULL_PAGE_OCR"):
+            self.config.vision_full_page_ocr_provider = os.environ["VISION_PROVIDER_FULL_PAGE_OCR"]
+        if os.environ.get("VISION_MODEL_FULL_PAGE_OCR"):
+            self.config.vision_full_page_ocr_model = os.environ["VISION_MODEL_FULL_PAGE_OCR"]
+        if os.environ.get("VISION_PROVIDER_PRESCAN"):
+            self.config.vision_prescan_provider = os.environ["VISION_PROVIDER_PRESCAN"]
+        if os.environ.get("VISION_MODEL_PRESCAN"):
+            self.config.vision_prescan_model = os.environ["VISION_MODEL_PRESCAN"]
 
     def _check_vision_api_availability(self) -> None:
         """Check if OPENAI_API_KEY is set; disable image/chart extraction if not."""

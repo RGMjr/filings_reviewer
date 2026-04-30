@@ -80,6 +80,16 @@ Rollback: `DELETE FROM v2_segments WHERE source_type='image_ocr'`
 `docs/operations/full-page-ocr-runbook.md` for operator workflows and
 verification SQL.
 
+## Vision Model Selection
+
+Per-site model knobs are documented in `docs/operations/vision-model-selection.md`.
+Triage sites (`process_full_page_scan`, `_prescan_ambiguous_images`) default to
+Gemini (`gemini-2.0-flash`) regardless of `VISION_PROVIDER` so legacy-mode
+operators don't accidentally pay gpt-4o for recall calls. Override per-site via
+`VISION_MODEL_FULL_PAGE_OCR` / `VISION_MODEL_PRESCAN` (and the matching
+`VISION_PROVIDER_*` knobs). Cost is observed via
+`PipelineResult.vision_spend_usd_by_site`.
+
 ## Image Asset Identity
 
 `v2_image_assets` is unique on `(filing_id, filename)`; `img_id` is stable across re-extractions because `_persist_images_in_tx` upserts via `ON CONFLICT (filing_id, filename) DO UPDATE` and preserves the existing `img_id` on conflict. `persist_pipeline_result` uses the old→stable img_id map returned by `_persist_images_in_tx` to rewrite in-memory fact `source_locator.img_id` values before fact persistence, keeping metric-fact provenance consistent with the canonical DB row.

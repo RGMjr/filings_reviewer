@@ -51,6 +51,27 @@ def _route_image_cache_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     get_image_storage.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _route_triage_ocr_through_injected_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PR 2 compatibility: route triage OCR calls through the injected vision_client.
+
+    PR 2 sends full_page_ocr and prescan calls through _build_cheap_ocr_client,
+    which builds a real Gemini VisionClient. Tests in this module inject a mock
+    via OCRExtractionStage(vision_client=mock); this fixture bridges the gap by
+    making _get_full_page_ocr_client / _get_prescan_client return the injected
+    client so all unit tests remain hermetic.
+    """
+
+    def _get_full_page_ocr_client(self, context):  # type: ignore[override]
+        return self._vision_client
+
+    def _get_prescan_client(self, context):  # type: ignore[override]
+        return self._vision_client
+
+    monkeypatch.setattr(OCRExtractionStage, "_get_full_page_ocr_client", _get_full_page_ocr_client)
+    monkeypatch.setattr(OCRExtractionStage, "_get_prescan_client", _get_prescan_client)
+
+
 class MockVisionClient:
     """Mock vision client for testing that inherits from VisionClient."""
 

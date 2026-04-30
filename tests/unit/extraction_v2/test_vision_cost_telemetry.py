@@ -290,7 +290,9 @@ class TestPerSiteBuckets:
         assert spend["chart_ocr_fast"] == pytest.approx(0.001)
         assert spend["chart_read_premium"] == pytest.approx(0.04)
 
-    def test_full_page_ocr_attributes_to_full_page_ocr_bucket(self, tmp_path: Path) -> None:
+    def test_full_page_ocr_attributes_to_full_page_ocr_bucket(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         jpg = tmp_path / "page.jpg"
         jpg.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg-bytes")
 
@@ -307,6 +309,13 @@ class TestPerSiteBuckets:
             ]
         )
         stage = OCRExtractionStage(vision_client=client)
+        # PR 2: full_page_ocr now routes through _build_cheap_ocr_client, not
+        # stage.vision_client. Patch the builder to return the sequenced mock so
+        # cost attribution still flows through the same client object.
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.ocr_extraction._build_cheap_ocr_client",
+            lambda provider, model: client,
+        )
         images = [
             ImageAsset(
                 img_id="p1",
@@ -330,7 +339,9 @@ class TestPerSiteBuckets:
         assert spend["full_page_ocr"] == pytest.approx(0.02)
         assert spend["chart_read_premium"] == 0.0
 
-    def test_prescan_attributes_to_prescan_bucket(self, tmp_path: Path) -> None:
+    def test_prescan_attributes_to_prescan_bucket(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Pre-scan promotes UNKNOWN images that hit a Tier-1 keyword in OCR text."""
         png = tmp_path / "ambig.png"
         _write_dummy_png(png)
@@ -349,6 +360,13 @@ class TestPerSiteBuckets:
             responses=[_vision_response(_valid_table_payload(), cost=0.03)],
         )
         stage = OCRExtractionStage(vision_client=client)
+        # PR 2: prescan now routes through _build_cheap_ocr_client. Patch the
+        # builder to return the sequenced mock so text_responses still supply the
+        # prescan response; stage.vision_client supplies the follow-on table call.
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.ocr_extraction._build_cheap_ocr_client",
+            lambda provider, model: client,
+        )
         images = [
             ImageAsset(
                 img_id="u1",
