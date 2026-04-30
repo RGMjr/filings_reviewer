@@ -1,11 +1,14 @@
 /**
- * /ingest/ form facet cascade.
+ * /ingest/ form 3-axis facet cascade.
  *
- * Listens for change events on the Industries and Year multi-selects and
- * fetches GET /api/v2/ingest/filter-options to refresh the OTHER axis's
- * counts and visibility. Each axis ignores its own selection (standard
- * facet pattern), so picking 2016 narrows industries; picking biotech
- * narrows years.
+ * Listens for change events on the Industries multi-select, Year
+ * multi-select, and Form-type checkboxes. On each change, fetches
+ * GET /api/v2/ingest/filter-options with the current selections, and
+ * rewrites the OTHER two axes' option counts + visibility.
+ *
+ * Each axis ignores its own selection (standard facet pattern), so
+ * picking 2016 narrows industries + form-types; picking biotech narrows
+ * years + form-types; picking a form-type narrows years + industries.
  *
  * Vanilla ES5 IIFE — no framework dependency. Loaded as a static asset
  * from src/web/templates/ingest_form.html.
@@ -15,7 +18,8 @@
 
   var industriesEl = document.getElementById("industries");
   var yearEl = document.getElementById("year");
-  if (!industriesEl || !yearEl) {
+  var formTypeEls = document.querySelectorAll('input[name="form_types"]');
+  if (!industriesEl || !yearEl || formTypeEls.length === 0) {
     return; // not on the ingest form page
   }
 
@@ -30,7 +34,17 @@
     return out;
   }
 
-  function buildQuery(years, industries) {
+  function selectedFormTypes() {
+    var out = [];
+    for (var i = 0; i < formTypeEls.length; i++) {
+      if (formTypeEls[i].checked) {
+        out.push(formTypeEls[i].value);
+      }
+    }
+    return out;
+  }
+
+  function buildQuery(years, industries, formTypes) {
     var parts = [];
     var i;
     for (i = 0; i < years.length; i++) {
@@ -39,12 +53,15 @@
     for (i = 0; i < industries.length; i++) {
       parts.push("industry=" + encodeURIComponent(industries[i]));
     }
+    for (i = 0; i < formTypes.length; i++) {
+      parts.push("form_type=" + encodeURIComponent(formTypes[i]));
+    }
     return parts.join("&");
   }
 
   /**
-   * Update a select's options in place from a `[{value, label, count}]` list.
-   * Selected options are kept enabled even when count == 0 so the user can
+   * Update a <select>'s options in place from a `[{value, label, count}]` list.
+   * Selected options stay enabled even when count == 0 so the user can
    * deselect them. Zero-count, unselected options are hidden.
    */
   function applyCounts(selectEl, items, valueKey, labelTemplate) {
@@ -58,8 +75,6 @@
       var opt = options[i];
       var item = byValue[opt.value];
       if (!item) {
-        // Option no longer present in the response (shouldn't happen for our
-        // server which always returns the same axis). Treat as count 0.
         opt.setAttribute("data-count", "0");
         opt.text = labelTemplate(opt.value, 0);
         opt.hidden = !opt.selected;
@@ -69,16 +84,51 @@
       var count = parseInt(item.count, 10) || 0;
       opt.setAttribute("data-count", String(count));
       opt.text = labelTemplate(item, count);
-      // Hide zero-count options unless they're currently selected.
       opt.hidden = count === 0 && !opt.selected;
-      opt.disabled = false; // never disable — keep selected toggleable
+      opt.disabled = false;
+    }
+  }
+
+  /**
+   * Update form-type checkbox row counts + disabled state.
+   *
+   * Per UX choice: zero-count unchecked checkboxes are disabled+greyed
+   * (not hidden) so the small fixed set of form-types stays visually
+   * stable. Checked checkboxes always stay enabled so the user can
+   * uncheck them.
+   */
+  function applyFormTypeCounts(items) {
+    var byKey = {};
+    for (var i = 0; i < items.length; i++) {
+      byKey[String(items[i].key)] = items[i];
+    }
+    for (var j = 0; j < formTypeEls.length; j++) {
+      var input = formTypeEls[j];
+      var item = byKey[input.value];
+      var count = item ? parseInt(item.count, 10) || 0 : 0;
+      var label = input.parentNode.querySelector("label.form-check-label");
+      var baseLabel = item ? item.label : (label ? label.textContent.replace(/\s*\(\d+\)\s*$/, "") : input.value);
+      input.setAttribute("data-count", String(count));
+      if (label) {
+        label.textContent = baseLabel + " (" + count + ")";
+      }
+      var shouldDisable = count === 0 && !input.checked;
+      input.disabled = shouldDisable;
+      if (label) {
+        if (shouldDisable) {
+          label.classList.add("text-muted");
+        } else {
+          label.classList.remove("text-muted");
+        }
+      }
     }
   }
 
   function refresh() {
     var years = selectedValues(yearEl);
     var industries = selectedValues(industriesEl);
-    var qs = buildQuery(years, industries);
+    var formTypes = selectedFormTypes();
+    var qs = buildQuery(years, industries, formTypes);
     fetch("/api/v2/ingest/filter-options" + (qs ? "?" + qs : ""), {
       credentials: "same-origin",
     })
@@ -95,14 +145,13 @@
         });
         applyCounts(industriesEl, data.industries || [], "key", function (item, count) {
           if (typeof item !== "object") {
-            // Stale option not in response — keep its current label minus count
             return String(item);
           }
           return item.label + " (" + count + ")";
         });
+        applyFormTypeCounts(data.form_types || []);
       })
       .catch(function (err) {
-        // Non-fatal — leave the form in its current state.
         if (window.console && window.console.warn) {
           window.console.warn("filter-options fetch failed:", err);
         }
@@ -111,4 +160,7 @@
 
   industriesEl.addEventListener("change", refresh);
   yearEl.addEventListener("change", refresh);
+  for (var k = 0; k < formTypeEls.length; k++) {
+    formTypeEls[k].addEventListener("change", refresh);
+  }
 })();

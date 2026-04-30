@@ -350,32 +350,33 @@ it_services_consulting, homebuilding) plus aliases (`bio`, `pharma`,
 SEC's published list. To add a new industry, append to the YAML and run
 `pytest tests/unit/universe/test_onboarding.py::test_load_industry_map_includes_new_industries`.
 
-### Year ↔ industry facet cascade (Phase 2b, 2026-04-30)
+### Year ↔ industry ↔ form-type facet cascade (Phase 2b–2c, 2026-04-30)
 
 The discovery form (the lower section under the Build-universe panel) is
-now **facet-driven**: both Industries and Year are multi-select listboxes
-populated from the actual contents of `filings`, with row counts shown
-next to each option. Selecting one axis narrows the other:
+**facet-driven across three axes**: Industries (multi-select listbox),
+Year (multi-select listbox), and Form Types (checkbox row). All three
+are populated from the actual contents of `filings`, with row counts
+shown next to each option. Each axis count equals the number of filings
+matching the OTHER two axes' selections (standard facet UX — each axis
+ignores its own selection so the user always sees the full set of
+choices for that axis):
 
-- Selecting year(s) → industries listbox re-renders with counts narrowed
-  to filings in those years; industries with zero rows in the selection
-  are hidden.
-- Selecting industries → year listbox re-renders with counts narrowed to
-  filings whose company SIC is in any selected industry's SIC list.
-- Each axis ignores its own selections (standard facet UX), so picking
-  "2016" doesn't shrink the year list to just "2016".
-- Selected options that drop to zero count stay visible-and-selected
-  (greyed `(0)`) so the user can deselect them.
+- Selecting year(s) narrows industries + form-types.
+- Selecting industries narrows years + form-types.
+- Selecting form-type(s) narrows years + industries.
+- Form-type checkboxes: multiple selections are OR-ed, so `IPO` + `10-K`
+  shows year/industry counts for filings in either bundle.
+- Selected options that drop to zero count stay visible (greyed `(0)`)
+  so the user can deselect them. For Year and Industry listboxes,
+  unselected zero-count options are hidden; for Form-type checkboxes,
+  unselected zero-count options stay visible-but-disabled (the row only
+  has 3 entries, hiding would be jarring).
 
-Backed by `GET /api/v2/ingest/filter-options?year=...&industry=...` →
-`{years: [{year, count}], industries: [{key, label, count}]}`. Both
-queries live in `src/universe/onboarding.py`
-(`query_universe_year_counts`, `query_universe_industry_counts`).
+Backed by `GET /api/v2/ingest/filter-options?year=...&industry=...&form_type=...`
+→ `{years: [...], industries: [...], form_types: [...]}`. Helpers in
+`src/universe/onboarding.py`: `query_universe_year_counts`,
+`query_universe_industry_counts`, `query_universe_form_type_counts`.
 Cascade JS: `src/web/static/js/ingest_form_facets.js`.
-
-**Form-types row** is intentionally NOT part of the cascade — it stays
-as the full 4-checkbox set. Add to the cascade if it becomes confusing
-in practice.
 
 **Year multi-select edge case:** non-contiguous selections (e.g. 2016 +
 2018 with 2017 omitted) silently expand to the inclusive (min, max) range
