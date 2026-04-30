@@ -92,7 +92,7 @@ def batch_status(batch_id: str):
             JOIN filings f ON f.filing_id = ibf.filing_id
             JOIN companies c ON c.company_id = f.company_id
             WHERE ibf.batch_id = %(batch_id)s
-            ORDER BY f.filing_date, c.company_name
+            ORDER BY f.filing_date DESC, c.company_name ASC
             """,
             {"batch_id": batch_id},
         )

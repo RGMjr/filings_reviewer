@@ -16,7 +16,10 @@ from src.universe.onboarding import (
     classify_volume,
     count_reviewer_work,
     detect_universe_gaps,
+    discover_candidates,
+    load_industry_map,
     resolve_criteria,
+    resolve_industry,
 )
 
 # ---------------------------------------------------------------------------
@@ -330,8 +333,8 @@ def test_no_gap_when_matching_sic_present() -> None:
     assert db.last_params["sic_codes"] == ["5411"]
 
 
-def test_empty_sic_codes_preserves_old_behavior() -> None:
-    """Empty sic_codes list is passed through unchanged (ANY([]) short-circuits in SQL)."""
+def test_empty_sic_codes_omits_industry_clause() -> None:
+    """Company-name-only criteria (empty sic_codes) skip the SIC SQL clause."""
     db = _FakeDB(rows=[])
     query = ResolvedQuery(
         sic_codes=[],
@@ -340,12 +343,28 @@ def test_empty_sic_codes_preserves_old_behavior() -> None:
         year_max=2023,
     )
     gaps = detect_universe_gaps(db, query)
-    # With empty SIC list, SQL returns no rows → gap reported (same as pre-fix behavior
-    # where all years would appear as gaps when filings table is empty)
+    # Empty filings table → gap reported.
     assert gaps == [Gap(year=2023, form_type="S-1")]
-    # sic_codes passed through as empty list (no special-casing)
+    # sic_codes is NOT in params when the list is empty — the SQL clause is
+    # omitted entirely, so a name-only criteria can still surface gaps.
     assert db.last_params is not None
-    assert db.last_params["sic_codes"] == []
+    assert "sic_codes" not in db.last_params
+
+
+def test_detect_universe_gaps_name_only_finds_gap_when_filings_present() -> None:
+    """Even with rows present in the year, a non-matching form_type is a gap."""
+    # Filings table has S-1 in 2023, but the query asks for 10-K in 2023.
+    db = _FakeDB(rows=[{"yr": 2023, "form_type": "S-1"}])
+    query = ResolvedQuery(
+        sic_codes=[],  # company-name-only criteria
+        form_types=["10-K"],
+        year_min=2023,
+        year_max=2023,
+    )
+    gaps = detect_universe_gaps(db, query)
+    assert gaps == [Gap(year=2023, form_type="10-K")]
+    assert db.last_params is not None
+    assert "sic_codes" not in db.last_params
 
 
 # ---------------------------------------------------------------------------
@@ -406,3 +425,159 @@ def test_count_reviewer_work_issues_single_query() -> None:
 
     count_reviewer_work(_CountingDB(), [1, 2, 3, 4, 5])
     assert call_count == 1, "count_reviewer_work must use a single batched DB query"
+
+
+# ---------------------------------------------------------------------------
+# discover_candidates — limit + DESC sort
+# ---------------------------------------------------------------------------
+
+
+def _candidate_row(filing_id: int, **overrides: Any) -> dict[str, Any]:
+    """Build a fake row matching the DISCOVERY_SQL projection."""
+    base = {
+        "filing_id": filing_id,
+        "cik": "0000000001",
+        "ticker": None,
+        "company_name": f"Co {filing_id}",
+        "form_type": "S-1",
+        "filing_date": "2024-01-01",
+        "industry_code": "7372",
+        "accession_number": f"0000000001-24-{filing_id:06d}",
+        "primary_doc_url": "https://example.com/doc",
+        "txt_url": None,
+        "already_extracted": False,
+        "extracted_at": None,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_discover_candidates_omits_limit_clause_when_unset() -> None:
+    """Without limit, SQL should not contain LIMIT and params should not include it."""
+    db = _FakeDB(rows=[])
+    discover_candidates(db, form_types=["S-1"], year_min=2024, year_max=2024, sic_codes=["7372"])
+    assert db.last_sql is not None
+    assert "LIMIT" not in db.last_sql
+    assert db.last_params is not None
+    assert "limit" not in db.last_params
+
+
+def test_discover_candidates_appends_limit_clause_when_set() -> None:
+    """With limit=N, SQL gets LIMIT %(limit)s and params include limit."""
+    db = _FakeDB(rows=[])
+    discover_candidates(
+        db, form_types=["S-1"], year_min=2024, year_max=2024, sic_codes=["7372"], limit=10
+    )
+    assert db.last_sql is not None
+    assert "LIMIT %(limit)s" in db.last_sql
+    assert db.last_params is not None
+    assert db.last_params["limit"] == 10
+
+
+def test_discover_candidates_default_sort_is_filing_date_desc() -> None:
+    """ORDER BY clause should sort filing_date DESC for 'most recent first'."""
+    db = _FakeDB(rows=[])
+    discover_candidates(db, form_types=["S-1"], year_min=2024, year_max=2024, sic_codes=["7372"])
+    assert db.last_sql is not None
+    assert "ORDER BY f.filing_date DESC, c.company_name ASC" in db.last_sql
+
+
+# ---------------------------------------------------------------------------
+# resolve_criteria — limit validation
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_criteria_limit_none_when_unset() -> None:
+    """limit defaults to None when not present in criteria dict."""
+    q = resolve_criteria({"industries": ["software"], "year": "2023"})
+    assert q.limit is None
+
+
+def test_resolve_criteria_limit_empty_string_treated_as_unset() -> None:
+    """Empty string means 'no limit' (avoids HTML-form-driven false positives)."""
+    q = resolve_criteria({"industries": ["software"], "year": "2023", "limit": ""})
+    assert q.limit is None
+
+
+def test_resolve_criteria_limit_valid_integer_passes_through() -> None:
+    q = resolve_criteria({"industries": ["software"], "year": "2023", "limit": 25})
+    assert q.limit == 25
+
+
+def test_resolve_criteria_limit_string_coerced_to_int() -> None:
+    """HTML form input arrives as string; resolve_criteria must coerce."""
+    q = resolve_criteria({"industries": ["software"], "year": "2023", "limit": "50"})
+    assert q.limit == 50
+
+
+def test_resolve_criteria_limit_zero_raises() -> None:
+    with pytest.raises(ValueError, match="must be between 1 and 5000"):
+        resolve_criteria({"industries": ["software"], "year": "2023", "limit": 0})
+
+
+def test_resolve_criteria_limit_too_large_raises() -> None:
+    with pytest.raises(ValueError, match="must be between 1 and 5000"):
+        resolve_criteria({"industries": ["software"], "year": "2023", "limit": 5001})
+
+
+def test_resolve_criteria_limit_non_numeric_raises() -> None:
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        resolve_criteria({"industries": ["software"], "year": "2023", "limit": "abc"})
+
+
+# ---------------------------------------------------------------------------
+# Industry catalog expansion — Phase 1 added 20 new sectors
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "industry, expected_codes",
+    [
+        ("biotech", {"2836", "8731"}),
+        ("pharmaceuticals", {"2834", "2835"}),
+        ("medical_devices", {"3841", "3842", "3845"}),
+        ("commercial_banking", {"6020", "6021", "6022", "6029"}),
+        ("investment_management", {"6282", "6726"}),
+        ("apparel_retail", {"5621", "5651", "5661", "5699"}),
+        ("home_improvement_retail", {"5211", "5251"}),
+        ("auto_dealers", {"5511", "5521"}),
+        ("restaurants", {"5812"}),
+        ("oil_gas_exploration", {"1311", "1381"}),
+        ("oil_gas_refining", {"2911"}),
+        ("electric_utilities", {"4911", "4931"}),
+        ("semiconductors", {"3674"}),
+        ("computer_hardware", {"3576", "3577", "3672"}),
+        ("telecom_equipment", {"3661", "3663"}),
+        ("aerospace_defense", {"3721", "3728", "3812"}),
+        ("media_publishing", {"2711", "2721", "2731"}),
+        ("gaming_entertainment", {"7372", "7812", "7993"}),
+        ("it_services_consulting", {"7371", "7389"}),
+        ("homebuilding", {"1531"}),
+    ],
+)
+def test_load_industry_map_includes_new_industries(industry: str, expected_codes: set[str]) -> None:
+    m = load_industry_map()
+    canon, codes = resolve_industry(industry, m)
+    assert canon == industry
+    assert set(codes) == expected_codes
+
+
+@pytest.mark.parametrize(
+    "alias, target",
+    [
+        ("bio", "biotech"),
+        ("pharma", "pharmaceuticals"),
+        ("medtech", "medical_devices"),
+        ("banks", "commercial_banking"),
+        ("wealth management", "investment_management"),
+        ("oil", "oil_gas_exploration"),
+        ("chips", "semiconductors"),
+        ("defense", "aerospace_defense"),
+        ("gaming", "gaming_entertainment"),
+        ("homebuilders", "homebuilding"),
+    ],
+)
+def test_load_industry_map_resolves_new_aliases(alias: str, target: str) -> None:
+    m = load_industry_map()
+    canon, _codes = resolve_industry(alias, m)
+    assert canon == target

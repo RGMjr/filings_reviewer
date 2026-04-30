@@ -76,6 +76,7 @@ def _parse_form_criteria() -> dict[str, Any]:
     year = request.form.get("year", "").strip()
     reviewer_name = request.form.get("reviewer_name", "").strip()
     company_name_ilike = request.form.get("company_name_ilike", "").strip() or None
+    limit_raw = request.form.get("limit", "").strip() or None
 
     return {
         "industries": industries,
@@ -83,6 +84,7 @@ def _parse_form_criteria() -> dict[str, Any]:
         "form_types": form_types if form_types else ["s1f1"],
         "year": year,
         "company_name_ilike": company_name_ilike,
+        "limit": limit_raw,
         "_reviewer_name": reviewer_name,
     }
 
@@ -202,6 +204,7 @@ def ingest_preview():
             "year_max": query.year_max,
             "include_amendments": query.include_amendments,
             "company_name_ilike": query.company_name_ilike,
+            "limit": query.limit,
         }
     )
 

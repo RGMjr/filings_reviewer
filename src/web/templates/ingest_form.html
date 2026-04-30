@@ -90,6 +90,18 @@
         <div class="form-text">Case-insensitive substring match on company name.</div>
       </div>
 
+      <!-- Limit -->
+      <div class="mb-3">
+        <label for="limit" class="form-label fw-semibold">
+          Candidate Limit <span class="text-muted fw-normal">(optional)</span>
+        </label>
+        <input type="number" id="limit" name="limit"
+               class="form-control" placeholder="No limit"
+               min="1" max="5000"
+               value="{{ state.get('limit') or '' }}">
+        <div class="form-text">Cap the discovered candidate list. Most-recent filings come first. Leave blank for no limit.</div>
+      </div>
+
       <!-- Reviewer name -->
       <div class="mb-4">
         <label for="reviewer_name" class="form-label fw-semibold">Your Name</label>
