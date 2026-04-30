@@ -350,6 +350,38 @@ it_services_consulting, homebuilding) plus aliases (`bio`, `pharma`,
 SEC's published list. To add a new industry, append to the YAML and run
 `pytest tests/unit/universe/test_onboarding.py::test_load_industry_map_includes_new_industries`.
 
+### Year ↔ industry facet cascade (Phase 2b, 2026-04-30)
+
+The discovery form (the lower section under the Build-universe panel) is
+now **facet-driven**: both Industries and Year are multi-select listboxes
+populated from the actual contents of `filings`, with row counts shown
+next to each option. Selecting one axis narrows the other:
+
+- Selecting year(s) → industries listbox re-renders with counts narrowed
+  to filings in those years; industries with zero rows in the selection
+  are hidden.
+- Selecting industries → year listbox re-renders with counts narrowed to
+  filings whose company SIC is in any selected industry's SIC list.
+- Each axis ignores its own selections (standard facet UX), so picking
+  "2016" doesn't shrink the year list to just "2016".
+- Selected options that drop to zero count stay visible-and-selected
+  (greyed `(0)`) so the user can deselect them.
+
+Backed by `GET /api/v2/ingest/filter-options?year=...&industry=...` →
+`{years: [{year, count}], industries: [{key, label, count}]}`. Both
+queries live in `src/universe/onboarding.py`
+(`query_universe_year_counts`, `query_universe_industry_counts`).
+Cascade JS: `src/web/static/js/ingest_form_facets.js`.
+
+**Form-types row** is intentionally NOT part of the cascade — it stays
+as the full 4-checkbox set. Add to the cascade if it becomes confusing
+in practice.
+
+**Year multi-select edge case:** non-contiguous selections (e.g. 2016 +
+2018 with 2017 omitted) silently expand to the inclusive (min, max) range
+because the underlying discovery SQL uses `BETWEEN year_min AND year_max`.
+For a true gap, submit two batches.
+
 ### Universe gap banner
 
 If the criteria reference (year × form_type) combinations with zero rows in

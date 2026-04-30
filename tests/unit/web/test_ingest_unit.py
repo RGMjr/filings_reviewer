@@ -110,6 +110,51 @@ def test_ingest_form_renders_new_industry_options(client):
     assert 'value="homebuilding"' in body
 
 
+def test_ingest_form_renders_new_page_title(client):
+    """GET /ingest/ uses the new combined page title."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Ingest and process documents" in body
+    # The old "Batch Ingest" h2 should not be present any more
+    assert '<h2 class="mb-4">Batch Ingest</h2>' not in body
+
+
+def test_ingest_form_year_picker_is_multi_select(client):
+    """GET /ingest/ renders Year as <select multiple> not a free-text input."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # The year widget is now a select, not an input. The element appears with
+    # id="year" and the multiple attribute. The <input type="text" id="year">
+    # form has been replaced.
+    assert '<select id="year"' in body
+    assert "multiple" in body  # the year listbox carries multiple
+    assert '<input type="text" id="year"' not in body
+
+
+def test_ingest_form_industries_two_column_layout(client):
+    """Industries on the left half, Direct SIC Codes on the right (col-md-6)."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Bootstrap row + col-md-6 markers; the industries label is inside
+    # the same row as the SIC label (verifies column scoping).
+    assert '<div class="row g-3 mb-3">' in body
+    assert '<div class="col-md-6">' in body
+    # Both labels still rendered:
+    assert "Industries" in body
+    assert "Direct SIC Codes" in body
+
+
+def test_ingest_form_loads_facet_cascade_js(client):
+    """The new ingest_form_facets.js is loaded on the form page."""
+    resp = client.get("/ingest/")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "ingest_form_facets.js" in body
+
+
 def test_ingest_form_renders_universe_build_panel(client):
     """GET /ingest/ exposes the Build-universe panel pointing at /ingest/populate."""
     resp = client.get("/ingest/")
@@ -150,6 +195,167 @@ def test_parse_form_criteria_defaults(app):
     assert result["form_types"] == ["s1f1"]
     assert result["year"] == "2023"
     assert result["_reviewer_name"] == "Rob"
+
+
+def test_parse_form_criteria_multi_year_collapses_to_range(app):
+    """Multiple `year` values posted (multi-select) collapse to YYYY-YYYY."""
+    from src.web.routes.ingest import _parse_form_criteria
+
+    with app.test_request_context(
+        "/ingest/preview",
+        method="POST",
+        data={
+            "industries": ["software"],
+            "year": ["2016", "2017", "2018"],
+            "reviewer_name": "Rob",
+        },
+    ):
+        result = _parse_form_criteria()
+    assert result["year"] == "2016-2018"
+
+
+def test_parse_form_criteria_single_year_multi_select(app):
+    """A single `year` value from the multi-select stays as a bare string."""
+    from src.web.routes.ingest import _parse_form_criteria
+
+    with app.test_request_context(
+        "/ingest/preview",
+        method="POST",
+        data={
+            "industries": ["software"],
+            "year": ["2017"],
+            "reviewer_name": "Rob",
+        },
+    ):
+        result = _parse_form_criteria()
+    assert result["year"] == "2017"
+
+
+def test_filter_options_endpoint_no_filters_returns_both_axes(client):
+    """GET /api/v2/ingest/filter-options without query params returns all-time
+    counts on both axes, derived from the mocked DB rows."""
+    from src.universe.onboarding import IndustryCount, YearCount
+
+    with (
+        patch(
+            "src.web.routes.api_ingest.query_universe_year_counts",
+            return_value=[YearCount(year=2018, count=412), YearCount(year=2017, count=380)],
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_industry_counts",
+            return_value=[
+                IndustryCount(key="biotech", label="Biotech", count=28),
+                IndustryCount(key="commercial_banking", label="Commercial Banking", count=12),
+            ],
+        ),
+    ):
+        resp = client.get("/api/v2/ingest/filter-options")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["years"] == [
+        {"year": 2018, "count": 412},
+        {"year": 2017, "count": 380},
+    ]
+    assert data["industries"] == [
+        {"key": "biotech", "label": "Biotech", "count": 28},
+        {"key": "commercial_banking", "label": "Commercial Banking", "count": 12},
+    ]
+
+
+def test_filter_options_endpoint_year_param_passes_through(client):
+    """A `year=2016` query param reaches query_universe_industry_counts(years=...)."""
+    from src.universe.onboarding import IndustryCount, YearCount
+
+    captured: dict = {}
+
+    def fake_industry_counts(db, industry_map, *, years=None):
+        captured["years"] = years
+        return [IndustryCount(key="biotech", label="Biotech", count=5)]
+
+    with (
+        patch(
+            "src.web.routes.api_ingest.query_universe_year_counts",
+            return_value=[YearCount(year=2016, count=10)],
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_industry_counts",
+            side_effect=fake_industry_counts,
+        ),
+    ):
+        resp = client.get("/api/v2/ingest/filter-options?year=2016&year=2017")
+    assert resp.status_code == 200
+    assert captured["years"] == [2016, 2017]
+
+
+def test_filter_options_endpoint_industry_param_resolves_to_sic(client):
+    """A `industry=biotech` query param resolves to biotech's SIC list and
+    flows into query_universe_year_counts(sic_codes=...)."""
+    from src.universe.onboarding import IndustryCount, YearCount
+
+    captured: dict = {}
+
+    def fake_year_counts(db, *, sic_codes=None):
+        captured["sic_codes"] = sic_codes
+        return [YearCount(year=2018, count=3)]
+
+    with (
+        patch(
+            "src.web.routes.api_ingest.query_universe_year_counts",
+            side_effect=fake_year_counts,
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_industry_counts",
+            return_value=[IndustryCount(key="biotech", label="Biotech", count=3)],
+        ),
+    ):
+        resp = client.get("/api/v2/ingest/filter-options?industry=biotech")
+    assert resp.status_code == 200
+    # biotech's YAML SIC codes are 2836 and 8731
+    assert set(captured["sic_codes"]) == {"2836", "8731"}
+
+
+def test_filter_options_endpoint_unknown_industry_silently_ignored(client):
+    """An `industry=not_a_thing` is ignored rather than 400'd — facet is
+    best-effort."""
+    captured: dict = {}
+
+    def fake_year_counts(db, *, sic_codes=None):
+        captured["sic_codes"] = sic_codes
+        return []
+
+    with (
+        patch(
+            "src.web.routes.api_ingest.query_universe_year_counts",
+            side_effect=fake_year_counts,
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_industry_counts",
+            return_value=[],
+        ),
+    ):
+        resp = client.get("/api/v2/ingest/filter-options?industry=not_a_thing&industry=biotech")
+    assert resp.status_code == 200
+    # not_a_thing is dropped; biotech's SICs reach the year-count call
+    assert set(captured["sic_codes"]) == {"2836", "8731"}
+
+
+def test_parse_form_criteria_non_contiguous_years_become_min_max(app):
+    """Non-contiguous selection (e.g. 2016 + 2018) collapses to inclusive range."""
+    from src.web.routes.ingest import _parse_form_criteria
+
+    with app.test_request_context(
+        "/ingest/preview",
+        method="POST",
+        data={
+            "industries": ["software"],
+            "year": ["2018", "2016"],  # unsorted, gap at 2017
+            "reviewer_name": "Rob",
+        },
+    ):
+        result = _parse_form_criteria()
+    # Documented trade-off: non-contiguous selections silently expand to
+    # the (min, max) inclusive range.
+    assert result["year"] == "2016-2018"
 
 
 def test_parse_form_criteria_multi_industry(app):

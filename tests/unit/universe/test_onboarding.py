@@ -11,13 +11,17 @@ import pytest
 
 from src.universe.onboarding import (
     Gap,
+    IndustryCount,
     ResolvedQuery,
     VolumeBand,
+    YearCount,
     classify_volume,
     count_reviewer_work,
     detect_universe_gaps,
     discover_candidates,
     load_industry_map,
+    query_universe_industry_counts,
+    query_universe_year_counts,
     resolve_criteria,
     resolve_industry,
 )
@@ -581,3 +585,108 @@ def test_load_industry_map_resolves_new_aliases(alias: str, target: str) -> None
     m = load_industry_map()
     canon, _codes = resolve_industry(alias, m)
     assert canon == target
+
+
+# ---------------------------------------------------------------------------
+# query_universe_year_counts — facet support for /ingest/ form
+# ---------------------------------------------------------------------------
+
+
+def test_query_universe_year_counts_returns_dataclass_list() -> None:
+    db = _FakeDB(
+        rows=[
+            {"yr": 2018, "cnt": 412},
+            {"yr": 2017, "cnt": 380},
+            {"yr": 2016, "cnt": 215},
+        ]
+    )
+    out = query_universe_year_counts(db)
+    assert out == [
+        YearCount(year=2018, count=412),
+        YearCount(year=2017, count=380),
+        YearCount(year=2016, count=215),
+    ]
+
+
+def test_query_universe_year_counts_empty_universe_returns_empty_list() -> None:
+    db = _FakeDB(rows=[])
+    assert query_universe_year_counts(db) == []
+
+
+def test_query_universe_year_counts_no_industry_filter_omits_clause() -> None:
+    db = _FakeDB(rows=[])
+    query_universe_year_counts(db, sic_codes=None)
+    assert "industry_code" not in db.last_sql
+    assert "sic_codes" not in (db.last_params or {})
+
+
+def test_query_universe_year_counts_with_industry_filter_includes_clause() -> None:
+    db = _FakeDB(rows=[{"yr": 2018, "cnt": 1}])
+    query_universe_year_counts(db, sic_codes=["6020", "6021"])
+    assert "industry_code" in db.last_sql
+    assert db.last_params["sic_codes"] == ["6020", "6021"]
+
+
+# ---------------------------------------------------------------------------
+# query_universe_industry_counts — facet support for /ingest/ form
+# ---------------------------------------------------------------------------
+
+
+def test_query_universe_industry_counts_builds_unnest_arrays() -> None:
+    """The query should unnest three parallel arrays of (key, label, sic)."""
+    industry_map = {
+        "industries": {
+            "biotech": {"sic_codes": ["2836", "8731"]},
+            "commercial_banking": {"sic_codes": ["6020"]},
+        },
+        "aliases": {},
+    }
+    db = _FakeDB(
+        rows=[
+            {"industry_key": "biotech", "industry_label": "Biotech", "cnt": 28},
+            {
+                "industry_key": "commercial_banking",
+                "industry_label": "Commercial Banking",
+                "cnt": 12,
+            },
+        ]
+    )
+    out = query_universe_industry_counts(db, industry_map)
+    assert out == [
+        IndustryCount(key="biotech", label="Biotech", count=28),
+        IndustryCount(key="commercial_banking", label="Commercial Banking", count=12),
+    ]
+    # The arrays passed to unnest carry one row per (industry, sic) tuple
+    assert db.last_params["keys"] == ["biotech", "biotech", "commercial_banking"]
+    assert db.last_params["labels"] == ["Biotech", "Biotech", "Commercial Banking"]
+    assert db.last_params["sics"] == ["2836", "8731", "6020"]
+
+
+def test_query_universe_industry_counts_with_year_filter_includes_clause() -> None:
+    industry_map = {
+        "industries": {"biotech": {"sic_codes": ["2836"]}},
+        "aliases": {},
+    }
+    db = _FakeDB(rows=[])
+    query_universe_industry_counts(db, industry_map, years=[2016, 2017])
+    assert "EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)" in db.last_sql
+    assert db.last_params["years"] == [2016, 2017]
+
+
+def test_query_universe_industry_counts_no_year_filter_omits_clause() -> None:
+    industry_map = {
+        "industries": {"biotech": {"sic_codes": ["2836"]}},
+        "aliases": {},
+    }
+    db = _FakeDB(rows=[])
+    query_universe_industry_counts(db, industry_map, years=None)
+    assert "EXTRACT(YEAR" not in db.last_sql
+    assert "years" not in (db.last_params or {})
+
+
+def test_query_universe_industry_counts_empty_yaml_returns_empty_list() -> None:
+    db = _FakeDB(rows=[])
+    out = query_universe_industry_counts(db, {"industries": {}, "aliases": {}})
+    assert out == []
+    # No SQL should fire if there's nothing to unnest
+    assert db.last_sql is None

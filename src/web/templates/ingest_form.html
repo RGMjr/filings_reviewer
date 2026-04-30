@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Batch Ingest — {{ app_name }}{% endblock %}
+{% block title %}Ingest and process documents — {{ app_name }}{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
-    <h2 class="mb-4">Batch Ingest</h2>
+    <h2 class="mb-4">Ingest and process documents</h2>
 
     <!-- Build universe (populate from SEC) -->
     <div class="card mb-4 border-info">
@@ -56,19 +56,44 @@
     {% set state = form_state or {} %}
     {% set selected_industries = state.get('industries') or [] %}
     {% set selected_form_types = state.get('form_types') or ['s1f1'] %}
+    {% set selected_year_raw = state.get('year') or '' %}
+    {% set selected_years = [] %}
+    {% if selected_year_raw %}
+      {% if '-' in selected_year_raw %}
+        {% set _lo, _hi = selected_year_raw.split('-', 1) %}
+        {% if _lo.isdigit() and _hi.isdigit() %}
+          {% set selected_years = range(_lo|int, _hi|int + 1) | list %}
+        {% endif %}
+      {% elif selected_year_raw.isdigit() %}
+        {% set selected_years = [selected_year_raw|int] %}
+      {% endif %}
+    {% endif %}
     <form method="POST" action="{{ url_for('ingest.ingest_preview') }}">
 
-      <!-- Industry multi-select -->
-      <div class="mb-3">
-        <label for="industries" class="form-label fw-semibold">Industries</label>
-        <input type="text" id="industry_search" class="form-control form-control-sm mb-1"
-               placeholder="Search industries..." autocomplete="off">
-        <select id="industries" name="industries" class="form-select" multiple size="8">
-          {% for ind in industries %}
-          <option value="{{ ind.key }}" {% if ind.key in selected_industries %}selected{% endif %}>{{ ind.label }}</option>
-          {% endfor %}
-        </select>
-        <div class="form-text">Hold Ctrl / Cmd to select multiple industries. Provide an industry, SIC code, or company name filter.</div>
+      <!-- Row 1: Industries (left) + Direct SIC Codes (right) -->
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label for="industries" class="form-label fw-semibold">Industries</label>
+          <input type="text" id="industry_search" class="form-control form-control-sm mb-1"
+                 placeholder="Search industries..." autocomplete="off">
+          <select id="industries" name="industries" class="form-select" multiple size="8">
+            {% for ind in industries %}
+            <option value="{{ ind.key }}"
+                    data-count="{{ ind.count }}"
+                    {% if ind.key in selected_industries %}selected{% endif %}
+                    {% if ind.count == 0 and ind.key not in selected_industries %}hidden{% endif %}>{{ ind.label }} ({{ ind.count }})</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Hold Ctrl / Cmd to select multiple. List narrows to industries with rows in the selected year(s).</div>
+        </div>
+
+        <div class="col-md-6">
+          <label for="sic_codes" class="form-label fw-semibold">Direct SIC Codes</label>
+          <input type="text" id="sic_codes" name="sic_codes"
+                 class="form-control" placeholder="e.g. 7372, 5411"
+                 value="{{ state.get('sic_codes') or '' }}">
+          <div class="form-text">Comma-separated 4-digit SIC codes. Unioned with the Industries selection on the left. Use this to reach industries that don't appear in the named list.</div>
+        </div>
       </div>
 
       <script>
@@ -81,20 +106,35 @@
             for (var i = 0; i < options.length; i++) {
               var opt = options[i];
               var match = opt.textContent.toLowerCase().indexOf(term) !== -1;
-              opt.hidden = !match;
-              // Never deselect already-selected options even when hidden
+              // Preserve the facet-cascade `hidden` when count==0; only hide when search excludes
+              if (term === '') {
+                opt.hidden = (parseInt(opt.getAttribute('data-count') || '0', 10) === 0 && !opt.selected);
+              } else {
+                opt.hidden = !match;
+              }
             }
           });
         })();
       </script>
 
-      <!-- Direct SIC codes -->
+      <!-- Year picker — multi-select listbox over years present in the universe -->
       <div class="mb-3">
-        <label for="sic_codes" class="form-label fw-semibold">Direct SIC Codes</label>
-        <input type="text" id="sic_codes" name="sic_codes"
-               class="form-control" placeholder="e.g. 7372, 5411"
-               value="{{ state.get('sic_codes') or '' }}">
-        <div class="form-text">Comma-separated 4-digit SIC codes. Combined (union) with industry selection above.</div>
+        <label for="year" class="form-label fw-semibold">Year</label>
+        {% set _year_keys = years_available | map(attribute='year') | list %}
+        <select id="year" name="year" class="form-select" multiple size="6">
+          {% for yr in years_available %}
+          <option value="{{ yr.year }}"
+                  data-count="{{ yr.count }}"
+                  {% if yr.year in selected_years %}selected{% endif %}>{{ yr.year }} ({{ yr.count }})</option>
+          {% endfor %}
+          {# Render any selected years that aren't in years_available (defensive — covers stale form_state and DB-unavailable test conditions) #}
+          {% for sy in selected_years %}
+            {% if sy not in _year_keys %}
+            <option value="{{ sy }}" data-count="0" selected>{{ sy }} (0)</option>
+            {% endif %}
+          {% endfor %}
+        </select>
+        <div class="form-text">Hold Ctrl / Cmd to multi-select. Showing only years with filings in the universe. Non-contiguous selections (e.g. 2016 + 2018) are treated as the inclusive range; submit twice for true gaps.</div>
       </div>
 
       <!-- Form types -->
@@ -110,15 +150,6 @@
           </div>
           {% endfor %}
         </div>
-      </div>
-
-      <!-- Year / year range -->
-      <div class="mb-3">
-        <label for="year" class="form-label fw-semibold">Year or Year Range</label>
-        <input type="text" id="year" name="year"
-               class="form-control" placeholder="e.g. 2023 or 2020-2024"
-               value="{{ state.get('year') or '' }}" required>
-        <div class="form-text">Single year (2023) or inclusive range (2020-2024).</div>
       </div>
 
       <!-- Company name filter -->
@@ -157,4 +188,5 @@
     </form>
   </div>
 </div>
+<script src="{{ url_for('static', filename='js/ingest_form_facets.js') }}"></script>
 {% endblock %}

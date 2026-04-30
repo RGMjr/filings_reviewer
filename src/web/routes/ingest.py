@@ -39,6 +39,8 @@ from src.universe.onboarding import (
     count_reviewer_work,
     discover,
     load_industry_map,
+    query_universe_industry_counts,
+    query_universe_year_counts,
     resolve_criteria,
 )
 from src.web.app import get_db
@@ -55,16 +57,41 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 # ---------------------------------------------------------------------------
 
 
-def _industry_options() -> list[dict[str, str]]:
-    """Return sorted list of industry options from industry_sic_codes.yaml."""
+def _industry_options() -> list[dict[str, Any]]:
+    """Return industry options annotated with universe filing counts.
+
+    Industries with no filings in the universe (count == 0) are still
+    returned so the JS facet cascade can show them as disabled rather than
+    making them disappear when years narrow the result. The template
+    decides whether to hide zero-count rows on initial render.
+    """
     try:
         ind_map = load_industry_map()
-        return sorted(
-            [{"key": k, "label": k.replace("_", " ").title()} for k in ind_map["industries"]],
-            key=lambda x: x["label"],
-        )
+        rows = query_universe_industry_counts(get_db(), ind_map)
+        return [{"key": r.key, "label": r.label, "count": r.count} for r in rows]
     except Exception:  # noqa: BLE001
-        logger.warning("Failed to load industry map", exc_info=True)
+        logger.warning("Failed to load industry options with counts", exc_info=True)
+        # Fall back to YAML-only list with count=0 so the form still renders.
+        try:
+            ind_map = load_industry_map()
+            return sorted(
+                [
+                    {"key": k, "label": k.replace("_", " ").title(), "count": 0}
+                    for k in ind_map["industries"]
+                ],
+                key=lambda x: x["label"],
+            )
+        except Exception:  # noqa: BLE001
+            return []
+
+
+def _year_options() -> list[dict[str, int]]:
+    """Return [{year, count}] for every year present in `filings`, DESC."""
+    try:
+        rows = query_universe_year_counts(get_db())
+        return [{"year": r.year, "count": r.count} for r in rows]
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to load year options with counts", exc_info=True)
         return []
 
 
@@ -73,7 +100,27 @@ def _parse_form_criteria() -> dict[str, Any]:
     industries = request.form.getlist("industries")
     sic_codes_raw = request.form.get("sic_codes", "").strip()
     form_types = request.form.getlist("form_types")
-    year = request.form.get("year", "").strip()
+    # Year is now a multi-select listbox: getlist returns the list of
+    # selected year strings. Collapse to (min, max) range for ResolvedQuery,
+    # which keeps the existing year_min/year_max SQL contract intact.
+    # NOTE: a non-contiguous selection (e.g. 2016 + 2018 with 2017 omitted)
+    # silently expands to the full 2016-2018 range. The form's UI is
+    # facet-driven and most selections will be either single-year or
+    # contiguous spans, so this is an acceptable trade-off; a future
+    # refactor can pass an explicit list to a years=ANY(...) SQL clause.
+    # Defensive fallback to the legacy single-string input handles old
+    # callers still posting year="2023" (tests, populate flow, etc.).
+    year_list = [y.strip() for y in request.form.getlist("year") if y and y.strip()]
+    if len(year_list) > 1:
+        try:
+            ints = sorted(int(y) for y in year_list)
+            year_value = f"{ints[0]}-{ints[-1]}"
+        except ValueError:
+            year_value = ""  # let resolve_criteria raise with its own message
+    elif len(year_list) == 1:
+        year_value = year_list[0]
+    else:
+        year_value = request.form.get("year", "").strip()
     reviewer_name = request.form.get("reviewer_name", "").strip()
     company_name_ilike = request.form.get("company_name_ilike", "").strip() or None
     limit_raw = request.form.get("limit", "").strip() or None
@@ -82,7 +129,7 @@ def _parse_form_criteria() -> dict[str, Any]:
         "industries": industries,
         "sic_codes": sic_codes_raw,
         "form_types": form_types if form_types else ["s1f1"],
-        "year": year,
+        "year": year_value,
         "company_name_ilike": company_name_ilike,
         "limit": limit_raw,
         "_reviewer_name": reviewer_name,
@@ -135,6 +182,7 @@ def _render_ingest_form(form_state: dict[str, Any] | None = None, status: int = 
             "ingest_form.html",
             reviewer_name=reviewer_name,
             industries=_industry_options(),
+            years_available=_year_options(),
             form_types_available=_FORM_TYPES_AVAILABLE,
             form_state=state,
         ),
