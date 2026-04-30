@@ -5,10 +5,52 @@
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-8">
-    <h2 class="mb-4">Batch Ingest — Criteria</h2>
+    <h2 class="mb-4">Batch Ingest</h2>
+
+    <!-- Build universe (populate from SEC) -->
+    <div class="card mb-4 border-info">
+      <div class="card-body">
+        <h5 class="card-title">Build universe (populate from SEC)</h5>
+        <p class="text-muted mb-3">
+          Discovers and classifies every SEC filing of the chosen type for the chosen year.
+          Idempotent — re-running picks up where it left off without creating duplicates.
+          A full year typically takes 30–60 minutes; the worker processes one build at a time,
+          so multi-year campaigns queue safely.
+        </p>
+        <form method="POST" action="{{ url_for('ingest.populate') }}">
+          <div class="row g-3 align-items-end">
+            <div class="col-sm-3">
+              <label for="universe_year" class="form-label fw-semibold">Year</label>
+              <input type="number" id="universe_year" name="year"
+                     class="form-control" placeholder="e.g. 2016"
+                     min="1990" max="2030" required>
+            </div>
+            <div class="col-sm-4">
+              <label for="universe_form_type" class="form-label fw-semibold">Form types</label>
+              <select id="universe_form_type" name="form_type" class="form-select">
+                <option value="s1f1" selected>IPO registrations (S-1, S-1/A, F-1, F-1/A)</option>
+                <option value="10k">Annual reports (10-K, 10-K/A)</option>
+              </select>
+            </div>
+            <div class="col-sm-3">
+              <label for="universe_reviewer_name" class="form-label fw-semibold">Your name</label>
+              <input type="text" id="universe_reviewer_name" name="reviewer_name"
+                     class="form-control" placeholder="e.g. Rob"
+                     value="{{ reviewer_name }}" required maxlength="100">
+            </div>
+            <div class="col-sm-2">
+              <button type="submit" class="btn btn-info w-100">Start build</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <h4 class="mb-2">Discover &amp; ingest filings</h4>
     <p class="text-muted">
-      Select criteria below to discover filings for extraction.
+      Find filings already in the database to fetch and extract.
       After previewing the candidate list you can start a batch run.
+      <span class="d-block small mt-1">Need to populate the universe first? Use <strong>Build universe</strong> above.</span>
     </p>
 
     {% set state = form_state or {} %}

@@ -27,7 +27,6 @@ from src.infra.db import DatabaseAdapter  # noqa: E402
 from src.infra.logging_config import configure_logging  # noqa: E402
 from src.infra.sec_client import SECClient  # noqa: E402
 
-load_dotenv()
 configure_logging(level="INFO")
 logger = logging.getLogger(__name__)
 
@@ -313,6 +312,7 @@ def _print_table(report: dict) -> None:
 
 
 def main() -> int:
+    load_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output-dir",

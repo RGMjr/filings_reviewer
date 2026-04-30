@@ -51,8 +51,6 @@ from dotenv import load_dotenv  # noqa: E402
 from src.extraction_v2.logging_config import configure_logging  # noqa: E402
 from src.infra.db import DatabaseAdapter  # noqa: E402
 
-load_dotenv()
-
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -720,6 +718,7 @@ class BatchV2Runner:
 
 
 def main() -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(
         description="Batch V2 extraction pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
