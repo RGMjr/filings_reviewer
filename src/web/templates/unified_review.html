@@ -749,6 +749,15 @@
   <div class="row image-review-layout">
     {# Left Column: Thumbnail Sidebar #}
     <div class="col-auto image-thumbnail-sidebar">
+      <div id="bulk-action-bar" class="mb-2 d-none">
+        <div class="d-flex align-items-center gap-2 p-2 bg-light border rounded">
+          <span id="bulk-selected-count" class="small fw-bold">0 selected</span>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-bulk-select-all">Select all</button>
+          <button type="button" class="btn btn-sm btn-danger" id="btn-bulk-reject">Reject all</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-bulk-undo">Undo</button>
+          <button type="button" class="btn btn-sm btn-link text-secondary p-0" id="btn-bulk-clear">Clear</button>
+        </div>
+      </div>
       <div class="card">
         <div class="card-header py-2">
           <h6 class="mb-0">Images ({{ image_candidates|length }})</h6>
@@ -760,8 +769,11 @@
             <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, img_id=candidate.img_id, image_status=image_filters.status, tab='images') }}"
                class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.image_review_state in ('relevant', 'no_relevant') else '' }}"
                data-img-id="{{ candidate.img_id }}"
-               data-image-review-state="{{ candidate.image_review_state or 'pending' }}">
+               data-image-review-state="{{ candidate.image_review_state or 'pending' }}"
+               data-has-detected-metrics="{{ 'true' if candidate.detected_metrics else 'false' }}">
               <div class="d-flex align-items-center gap-2">
+                <input type="checkbox" class="thumb-select-cb me-1" data-img-id="{{ candidate.img_id }}"
+                       style="flex-shrink: 0; cursor: pointer;" onclick="event.stopPropagation();">
                 <div class="thumbnail-preview">
                   <img src="{{ candidate.image_url }}"
                        alt="Image {{ loop.index }}"
@@ -821,8 +833,6 @@
               </span>
               {% if current_image.review_status == 'reviewed' %}
               <span class="badge bg-success">Reviewed</span>
-              {% elif current_image.review_status == 'skipped' and (current_image.total_confirmation_count or 0) > 0 %}
-              <span class="badge bg-secondary">No relevant metrics</span>
               {% elif current_image.review_status == 'skipped' %}
               <span class="badge bg-secondary">Skipped</span>
               {% else %}
@@ -853,16 +863,7 @@
           {# Image-level skip / unskip: parks the whole image without
              recording any per-metric decision. Per-metric Accept/Reject/
              Correct/Skip/Add live inside the Detected Metrics card below. #}
-          {% if current_image.review_status == 'skipped' and (current_image.total_confirmation_count or 0) > 0 %}
-          <div class="alert alert-secondary mb-3">
-            <div class="d-flex justify-content-between align-items-center">
-              <div><strong>Status:</strong> No relevant metrics</div>
-              <button type="button" id="btn-undo" class="btn btn-outline-secondary btn-sm">
-                <span class="badge bg-secondary me-1">U</span> Undo
-              </button>
-            </div>
-          </div>
-          {% elif current_image.review_status == 'skipped' %}
+          {% if current_image.review_status == 'skipped' %}
           <div class="alert alert-secondary mb-3">
             <div class="d-flex justify-content-between align-items-center">
               <div><strong>Status:</strong> Image skipped</div>
@@ -878,15 +879,9 @@
               <button type="button" id="btn-reopen-image" class="btn btn-outline-secondary"
                       data-img-id="{{ current_image.img_id }}"
                       title="Return this image to the pending queue. Prior decisions are preserved.">
-                Re-open for review <span class="kbd ms-1">Shift+U</span>
+                Re-open for review
               </button>
             </div>
-            {% if current_image.is_stale_vs_decision %}
-            <div class="mt-2 text-warning small">
-              <i class="bi bi-exclamation-triangle-fill me-1"></i>
-              OCR/chart data updated since review — consider re-opening.
-            </div>
-            {% endif %}
           </div>
           {% else %}
           <div class="d-flex justify-content-between align-items-center mb-3">
@@ -896,7 +891,7 @@
               </button>
               <button type="button" id="btn-reject-all-metrics" class="btn btn-outline-danger"
                       title="Mark every unreviewed detected metric as 'not present' on this chart and move to the next image.">
-                Reject all (no relevant metrics) <span class="kbd ms-1">X</span>
+                Reject all (no relevant metrics)
               </button>
             </div>
             <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images', image_status=image_filters.status) }}"
@@ -968,7 +963,7 @@
                     </div>
                     <button type="button" class="btn btn-link btn-sm btn-undo-metric ms-2"
                             data-action="undo" style="display: none;">
-                      Undo <span class="kbd ms-1">U</span>
+                      Undo
                     </button>
                   </div>
                   <div class="reject-expansion mt-2" style="display: none;">
@@ -1116,38 +1111,19 @@
   {# Keyboard Hints Bar #}
   <div id="keyboard-hints" class="keyboard-hints-bar d-none">
     <div class="container-fluid">
-      <div class="d-flex justify-content-between align-items-start">
+      <div class="d-flex justify-content-between align-items-center">
         <div class="hints-content">
-          <div>
-            <strong class="me-2">Image:</strong>
-            <kbd>S</kbd> Skip
-            <span class="mx-1">|</span>
-            <kbd>U</kbd> Undo skip
-            <span class="mx-1">|</span>
-            <kbd>X</kbd> Reject all
-            <span class="mx-1">|</span>
-            <kbd>Shift+U</kbd> Re-open
-            <span class="mx-1">|</span>
-            <kbd>&larr;&rarr;</kbd> / <kbd>N</kbd>/<kbd>P</kbd> Navigate
-            <span class="mx-1">|</span>
-            <kbd>F</kbd> Next filing
-            <span class="mx-1">|</span>
-            <kbd>?</kbd> Help
-          </div>
-          <div class="mt-1">
-            <strong class="me-2">On focused metric row:</strong>
-            <kbd>A</kbd> Accept
-            <span class="mx-1">|</span>
-            <kbd>R</kbd> Reject
-            <span class="mx-1">|</span>
-            <kbd>C</kbd> Correct
-            <span class="mx-1">|</span>
-            <kbd>S</kbd> Skip
-            <span class="mx-1">|</span>
-            <kbd>U</kbd> Undo decision
-            <span class="mx-1">|</span>
-            <kbd>N</kbd>/<kbd>P</kbd> Next/prev metric
-          </div>
+          <kbd>S</kbd> Skip
+          <span class="mx-1">|</span>
+          <kbd>U</kbd> Undo
+          <span class="mx-1">|</span>
+          <kbd>&larr;&rarr;</kbd> / <kbd>N</kbd>/<kbd>P</kbd> Navigate
+          <span class="mx-1">|</span>
+          <kbd>Shift+R</kbd> Reject all
+          <span class="mx-1">|</span>
+          <kbd>F</kbd> Next filing
+          <span class="mx-1">|</span>
+          <kbd>?</kbd> Help
         </div>
         <button type="button" class="btn-close btn-close-white btn-sm" id="close-hints" aria-label="Close"></button>
       </div>
@@ -1211,7 +1187,7 @@ const FACTS = [
   {% endfor %}
 ];
 const CURRENT_FACT_ID = {% if current_fact %}"{{ current_fact.fact_id }}"{% else %}null{% endif %};
-let IMAGE_PENDING = {{ image_pending|tojson }};
+const IMAGE_PENDING = {{ image_pending|tojson }};
 const NEXT_FILING_URL = {{ next_filing_url|tojson }};
 window.NEXT_FILING_URL = NEXT_FILING_URL;
 // Exposed for the images-tab IIFE so it can mirror the text-tab's
@@ -1309,7 +1285,6 @@ function submitDecision(decision) {
       window.location.href = nextUrl.toString();
     } else if (data.status === 'success') {
       // No more pending facts in this filing
-      if (typeof data.image_pending_count === 'number') IMAGE_PENDING = data.image_pending_count;
       if (IMAGE_PENDING > 0) {
         window.location.href = `/v2/review/${FILING_ID}?tab=images`;
       } else {
@@ -1497,6 +1472,7 @@ document.addEventListener('keydown', function(e) {
 })();
 </script>
 <script src="{{ url_for('static', filename='js/review_images_v2.js') }}"></script>
+<script src="{{ url_for('static', filename='js/review_images_bulk.js') }}"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"
         integrity="sha384-ZOYffjPUyf23W5DufkQVkrN7uZvIMRRCPo64S2N2S0mFM9+bFZpn2/MQTy2O35gF"
@@ -1537,6 +1513,24 @@ document.addEventListener('keydown', function(e) {
   }
 })();
 </script>
+
+<div class="modal fade" id="bulkRejectModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirm Bulk Reject</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p id="bulkRejectModalBody"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btn-bulk-reject-confirm">Reject all selected</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {# Shared datalist for all active metrics -- used by correction and missed-metric inputs #}
 <datalist id="all-metrics-datalist">
