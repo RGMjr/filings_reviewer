@@ -20,7 +20,7 @@ Wave B4 two-stage routing:
   - CHART calls make *two* sequential calls:
     1. Fast OCR pass (same fast provider) to extract axis labels / legends /
        annotation strings as a text blob.
-    2. Premium reader (``VISION_MODEL_CHART``, default ``claude-sonnet-4-6``)
+    2. Premium reader (``VISION_MODEL_CHART``, default ``claude-haiku-4-5-20251001``)
        with the standard chart-extraction prompt augmented by the OCR blob as
        grounding context.  The premium prompt still enforces "labeled values
        only — no interpolation".
@@ -253,7 +253,7 @@ def _build_provider(provider_name: str, model: str) -> object:
 # Default models for two-stage routing (Wave B4).
 # These are read at stage init; operators can override via env vars.
 _TWO_STAGE_DEFAULT_OCR_MODEL = "gemini-2.5-flash-lite"
-_TWO_STAGE_DEFAULT_CHART_MODEL = "claude-sonnet-4-6"
+_TWO_STAGE_DEFAULT_CHART_MODEL = "claude-haiku-4-5-20251001"
 _TWO_STAGE_DEFAULT_OCR_PROVIDER = "gemini"
 _TWO_STAGE_DEFAULT_CHART_PROVIDER = "anthropic"
 
@@ -266,7 +266,7 @@ def _resolve_two_stage_providers() -> tuple[tuple[str, str], tuple[str, str]]:
 
     OCR model is controlled by ``VISION_MODEL_OCR`` env var (default:
     ``gemini-2.5-flash-lite`` via Gemini).  Chart model is controlled by
-    ``VISION_MODEL_CHART`` env var (default: ``claude-sonnet-4-6`` via
+    ``VISION_MODEL_CHART`` env var (default: ``claude-haiku-4-5-20251001`` via
     Anthropic).  When an env-var override specifies a model that belongs to a
     different provider, we make a best-effort guess based on model name
     prefixes; callers can also set ``VISION_PROVIDER_OCR`` /
@@ -535,7 +535,7 @@ class VisionClient:
         - ``task_type='table_ocr'`` or ``'chart_ocr'`` → fast provider
           (``VISION_MODEL_OCR``, default ``gemini-2.5-flash-lite``).
         - ``task_type='chart_read'`` → premium reader (``VISION_MODEL_CHART``,
-          default ``claude-sonnet-4-6``).
+          default ``claude-haiku-4-5-20251001``).
 
         When ``VISION_ROUTING_MODE=legacy`` (default), all task types route
         through the single provider configured at init — behavior is
