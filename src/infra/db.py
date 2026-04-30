@@ -934,11 +934,28 @@ class DatabaseAdapter:
                 GROUP BY mf.filing_id
             ),
             image_progress AS (
+                -- "images_reviewed" widens beyond raw review_status='reviewed' to also
+                -- include images the reviewer flipped to 'skipped' via "Reject all (no
+                -- relevant metrics)" — those carry per-metric reject rows in
+                -- v2_image_metric_confirmations. Without this widening the filings-list
+                -- progress counter under-reports completion (skipped images with
+                -- confirmations are neither pending nor counted as reviewed).
+                -- Mirrors the per-image badge disambiguation in unified_review.html
+                -- (PR #371). True "Skip whole image" parks (skipped, zero confirmations)
+                -- still don't count as reviewed.
                 SELECT
                     v.filing_id,
                     COUNT(v.img_id)                                                         AS image_count,
                     COUNT(CASE WHEN v.review_status = 'pending'    THEN 1 END)              AS images_pending,
-                    COUNT(CASE WHEN v.review_status = 'reviewed'   THEN 1 END)              AS images_reviewed
+                    COUNT(
+                        CASE
+                            WHEN v.review_status = 'reviewed' THEN 1
+                            WHEN v.review_status = 'skipped' AND EXISTS (
+                                SELECT 1 FROM v2_image_metric_confirmations c
+                                WHERE c.img_id = v.img_id
+                            ) THEN 1
+                        END
+                    )                                                                       AS images_reviewed
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
@@ -1143,11 +1160,20 @@ class DatabaseAdapter:
                 GROUP BY mf.filing_id
             ),
             image_progress AS (
+                -- See parallel CTE in get_unified_filings_for_review for rationale.
                 SELECT
                     v.filing_id,
                     COUNT(v.img_id) AS image_count,
                     COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending,
-                    COUNT(CASE WHEN v.review_status = 'reviewed' THEN 1 END) AS images_reviewed
+                    COUNT(
+                        CASE
+                            WHEN v.review_status = 'reviewed' THEN 1
+                            WHEN v.review_status = 'skipped' AND EXISTS (
+                                SELECT 1 FROM v2_image_metric_confirmations c
+                                WHERE c.img_id = v.img_id
+                            ) THEN 1
+                        END
+                    ) AS images_reviewed
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
