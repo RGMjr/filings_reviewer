@@ -67,6 +67,7 @@
             <th>Persisted</th>
             <th>Failed</th>
             <th>Criteria</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -92,7 +93,9 @@
               {% endif %}
             </td>
             <td>
-              {% if b.status == 'running' %}
+              {% if b.status == 'running' and b.lock_stale %}
+              <span class="badge bg-warning text-dark" title="Worker lock expired — stalled">stalled</span>
+              {% elif b.status == 'running' %}
               <span class="badge bg-primary">running</span>
               {% elif b.status == 'complete' %}
               <span class="badge bg-success">complete</span>
@@ -124,6 +127,16 @@
                 {% endif %}
               {% else %}
               —
+              {% endif %}
+            </td>
+            <td>
+              {% if b.status in ('cancelled', 'failed') or (b.status == 'running' and b.lock_stale) %}
+              <form method="POST"
+                    action="{{ url_for('ingest.ingest_resume', batch_id=b.batch_id) }}"
+                    onsubmit="return confirm('Resume this batch? Cancelled and failed filings will be re-queued.');"
+                    class="d-inline">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Resume</button>
+              </form>
               {% endif %}
             </td>
           </tr>
