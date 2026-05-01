@@ -34,6 +34,7 @@ from flask import (
 
 from src.universe.onboarding import (
     FORM_TYPE_BUNDLES,
+    OTHER_INDUSTRY_KEY,
     VolumeBand,
     classify_volume,
     count_reviewer_work,
@@ -41,6 +42,7 @@ from src.universe.onboarding import (
     load_industry_map,
     query_universe_form_type_counts,
     query_universe_industry_counts,
+    query_universe_other_count,
     query_universe_year_counts,
     resolve_criteria,
 )
@@ -88,16 +90,31 @@ def _industry_options(form_types: list[str] | None = None) -> list[dict[str, Any
         form_types = list(FORM_TYPE_BUNDLES["s1f1"])
     try:
         ind_map = load_industry_map()
-        rows = query_universe_industry_counts(get_db(), ind_map, form_types=form_types)
-        return [
+        db = get_db()
+        rows = query_universe_industry_counts(db, ind_map, form_types=form_types)
+        options = [
             {"key": r.key, "label": r.label, "total": r.total, "pending": r.pending} for r in rows
         ]
+        # Append the "Other" pseudo-industry so the partition is MECE: selecting
+        # every YAML industry plus Other = all filings. Counts come from a
+        # separate query that mirrors the discovery SQL's "industry_code IS NULL
+        # OR not in mapped set" partition.
+        other = query_universe_other_count(db, ind_map, form_types=form_types)
+        options.append(
+            {
+                "key": other.key,
+                "label": other.label,
+                "total": other.total,
+                "pending": other.pending,
+            }
+        )
+        return options
     except Exception:  # noqa: BLE001
         logger.warning("Failed to load industry options with counts", exc_info=True)
         # Fall back to YAML-only list with total=pending=0 so the form still renders.
         try:
             ind_map = load_industry_map()
-            return sorted(
+            fallback = sorted(
                 [
                     {
                         "key": k,
@@ -109,6 +126,15 @@ def _industry_options(form_types: list[str] | None = None) -> list[dict[str, Any
                 ],
                 key=lambda x: x["label"],
             )
+            fallback.append(
+                {
+                    "key": OTHER_INDUSTRY_KEY,
+                    "label": "Other (uncategorised)",
+                    "total": 0,
+                    "pending": 0,
+                }
+            )
+            return fallback
         except Exception:  # noqa: BLE001
             return []
 
@@ -322,6 +348,8 @@ def ingest_preview():
             "include_amendments": query.include_amendments,
             "company_name_ilike": query.company_name_ilike,
             "limit": query.limit,
+            "include_other": query.include_other,
+            "mapped_sic_codes": query.mapped_sic_codes,
         }
     )
 

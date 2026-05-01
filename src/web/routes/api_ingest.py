@@ -21,6 +21,7 @@ from src.universe.onboarding import (
     load_industry_map,
     query_universe_form_type_counts,
     query_universe_industry_counts,
+    query_universe_other_count,
     query_universe_year_counts,
     resolve_industry,
 )
@@ -266,6 +267,12 @@ def filter_options():
             years=selected_years or None,
             form_types=selected_form_types or None,
         )
+        other_row = query_universe_other_count(
+            db,
+            industry_map,
+            years=selected_years or None,
+            form_types=selected_form_types or None,
+        )
         form_type_rows = query_universe_form_type_counts(
             db,
             years=selected_years or None,
@@ -280,6 +287,14 @@ def filter_options():
         "industries": [
             {"key": ic.key, "label": ic.label, "total": ic.total, "pending": ic.pending}
             for ic in industry_rows
+        ]
+        + [
+            {
+                "key": other_row.key,
+                "label": other_row.label,
+                "total": other_row.total,
+                "pending": other_row.pending,
+            }
         ],
         "form_types": [
             {"key": ftc.key, "label": ftc.label, "total": ftc.total, "pending": ftc.pending}

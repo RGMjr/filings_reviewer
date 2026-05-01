@@ -96,6 +96,12 @@ FORM_TYPE_BUNDLES: dict[str, list[str]] = {
 # "10-K onboarding semantics".
 S1F1_FORMS = {"S-1", "S-1/A", "F-1", "F-1/A"}
 
+# Sentinel value the ingest UI uses for the "Other" pseudo-industry that
+# captures companies whose ``industry_code`` is NULL or is not present in
+# any YAML industry bucket. Double-underscored to guarantee no collision
+# with a legitimate YAML industry name.
+OTHER_INDUSTRY_KEY = "__other__"
+
 
 # ---------------------------------------------------------------------------
 # Candidate dataclass
@@ -208,6 +214,18 @@ WHERE f.form_type = ANY(%(form_types)s)
 
 _INDUSTRY_GATE = "  AND c.industry_code = ANY(%(sic_codes)s)\n"
 
+# "Other" bucket: rows whose industry_code is NULL or not in the universe of
+# YAML-mapped SIC codes. ``<> ALL(...)`` treats NULL as not-matching, so the
+# explicit ``IS NULL`` disjunct is required.
+_OTHER_GATE_ALONE = (
+    "  AND (c.industry_code IS NULL OR c.industry_code <> ALL(%(mapped_sic_codes)s))\n"
+)
+_OTHER_GATE_UNION = (
+    "  AND (c.industry_code = ANY(%(sic_codes)s) "
+    "OR c.industry_code IS NULL "
+    "OR c.industry_code <> ALL(%(mapped_sic_codes)s))\n"
+)
+
 _PHASE1_GATE = "  AND f.is_in_scope_phase1 = TRUE\n"
 
 _DISCOVERY_ORDER = "ORDER BY f.filing_date DESC, c.company_name ASC\n"
@@ -219,10 +237,19 @@ _LIMIT_CLAUSE = "LIMIT %(limit)s\n"
 DISCOVERY_SQL = _DISCOVERY_SQL_BASE + _INDUSTRY_GATE + _PHASE1_GATE + _DISCOVERY_ORDER
 
 
+def _industry_clause(sic_codes: list[str], include_other: bool) -> str:
+    """Pick the industry-clause snippet for the given (sic_codes, include_other) combo."""
+    if include_other:
+        return _OTHER_GATE_UNION if sic_codes else _OTHER_GATE_ALONE
+    return _INDUSTRY_GATE if sic_codes else ""
+
+
 def _build_discovery_sql(
     form_types: list[str],
     sic_codes: list[str],
     limit: int | None = None,
+    *,
+    include_other: bool = False,
 ) -> str:
     """Include the Phase-1 gate only when at least one S-1/F-1 form is requested.
 
@@ -233,13 +260,17 @@ def _build_discovery_sql(
     Empty SIC list means the caller is filtering by company name alone; emitting
     ``= ANY(ARRAY[]::text[])`` would return zero rows.
 
+    When ``include_other`` is True the clause widens to also match rows whose
+    ``industry_code`` is NULL or is not in the union of every YAML-mapped SIC
+    code (passed in via the ``mapped_sic_codes`` query parameter).
+
     Append a LIMIT clause when ``limit`` is set; the bound parameter is named
     ``limit`` so the caller must include it in the query params dict.
     """
     include_phase1 = bool(S1F1_FORMS & set(form_types))
     return (
         _DISCOVERY_SQL_BASE
-        + (_INDUSTRY_GATE if sic_codes else "")
+        + _industry_clause(sic_codes, include_other)
         + (_PHASE1_GATE if include_phase1 else "")
         + _DISCOVERY_ORDER
         + (_LIMIT_CLAUSE if limit else "")
@@ -253,7 +284,15 @@ def discover_candidates(
     year_max: int,
     sic_codes: list[str],
     limit: int | None = None,
+    *,
+    include_other: bool = False,
+    mapped_sic_codes: list[str] | None = None,
 ) -> list[Candidate]:
+    if include_other and not mapped_sic_codes:
+        raise ValueError(
+            "include_other=True requires a non-empty mapped_sic_codes list "
+            "(union of every YAML industry SIC code)."
+        )
     params: dict[str, Any] = {
         "form_types": form_types,
         "year_min": year_min,
@@ -261,10 +300,12 @@ def discover_candidates(
     }
     if sic_codes:
         params["sic_codes"] = sic_codes
+    if include_other:
+        params["mapped_sic_codes"] = list(mapped_sic_codes or [])
     if limit:
         params["limit"] = limit
     rows = db.query(
-        _build_discovery_sql(form_types, sic_codes, limit=limit),
+        _build_discovery_sql(form_types, sic_codes, limit=limit, include_other=include_other),
         params,
     )
     return [
@@ -320,6 +361,15 @@ class ResolvedQuery:
     include_amendments: bool = True
     company_name_ilike: str | None = None  # None = no filter
     limit: int | None = None  # None = no cap
+    # When True, the discovery query also returns rows whose
+    # ``companies.industry_code`` is NULL or is not present in
+    # ``mapped_sic_codes``. Lets the UI surface filings that don't fall into
+    # any of the YAML-defined industry buckets.
+    include_other: bool = False
+    # Universe of every SIC code mapped to a YAML industry. Populated only
+    # when ``include_other`` is True; used as the negation set for the
+    # ``industry_code <> ALL(...)`` clause.
+    mapped_sic_codes: list[str] = field(default_factory=list)
 
 
 def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
@@ -361,8 +411,15 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
 
     # --- SIC codes from industry picker ---
     sic_set: set[str] = set()
-    for ind_name in criteria.get("industries") or []:
+    raw_industries = list(criteria.get("industries") or [])
+    include_other = OTHER_INDUSTRY_KEY in raw_industries
+    industries_to_resolve = [ind for ind in raw_industries if ind != OTHER_INDUSTRY_KEY]
+
+    ind_map: dict[str, Any] | None = None
+    if industries_to_resolve or include_other:
         ind_map = load_industry_map(_DEFAULT_YAML_PATH)
+    for ind_name in industries_to_resolve:
+        assert ind_map is not None
         _, codes = resolve_industry(ind_name, ind_map)
         sic_set.update(codes)
 
@@ -375,7 +432,16 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
             raise ValueError(f"Invalid SIC code {code!r}: must be a 4-digit numeric string")
         sic_set.add(code)
 
-    if not sic_set and not (criteria.get("company_name_ilike") or "").strip():
+    # --- "Other" bucket: union of every YAML-mapped SIC code ---
+    mapped_sic_codes: list[str] = []
+    if include_other:
+        assert ind_map is not None
+        all_mapped: set[str] = set()
+        for entry in ind_map["industries"].values():
+            all_mapped.update(entry.get("sic_codes") or [])
+        mapped_sic_codes = sorted(all_mapped)
+
+    if not sic_set and not include_other and not (criteria.get("company_name_ilike") or "").strip():
         raise ValueError("Provide at least one of: industry, SIC code, or company name filter")
 
     # --- Year range ---
@@ -424,6 +490,8 @@ def resolve_criteria(criteria: dict[str, Any]) -> ResolvedQuery:
         include_amendments=include_amendments,
         company_name_ilike=criteria.get("company_name_ilike") or None,
         limit=limit,
+        include_other=include_other,
+        mapped_sic_codes=mapped_sic_codes,
     )
 
 
@@ -465,8 +533,14 @@ def detect_universe_gaps(db: DatabaseAdapter, query: ResolvedQuery) -> list[Gap]
     clause is omitted entirely. Otherwise an empty SIC list would short-circuit
     the query to zero rows and the gap banner would never appear for
     name-filtered searches.
+
+    When ``query.include_other`` is True the partitioning mirrors the discovery
+    query — rows with NULL or non-mapped ``industry_code`` are included, so the
+    gap banner doesn't spuriously prompt populate-runs for years that already
+    have such rows.
     """
-    sql = _YEARS_IN_FILINGS_BASE + (_YEARS_IN_FILINGS_INDUSTRY_GATE if query.sic_codes else "")
+    industry_clause = _industry_clause(query.sic_codes, query.include_other)
+    sql = _YEARS_IN_FILINGS_BASE + industry_clause
     params: dict[str, Any] = {
         "form_types": query.form_types,
         "year_min": query.year_min,
@@ -474,6 +548,8 @@ def detect_universe_gaps(db: DatabaseAdapter, query: ResolvedQuery) -> list[Gap]
     }
     if query.sic_codes:
         params["sic_codes"] = query.sic_codes
+    if query.include_other:
+        params["mapped_sic_codes"] = list(query.mapped_sic_codes)
     rows = db.query(sql, params)
     present: set[tuple[int, str]] = {(r["yr"], r["form_type"]) for r in rows}
 
@@ -557,6 +633,8 @@ def discover(db: DatabaseAdapter, query: ResolvedQuery) -> DiscoveryResult:
         year_max=query.year_max,
         sic_codes=query.sic_codes,
         limit=query.limit,
+        include_other=query.include_other,
+        mapped_sic_codes=query.mapped_sic_codes if query.include_other else None,
     )
 
     # Apply optional company-name filter (ILIKE equivalent — Python side for
@@ -1007,6 +1085,73 @@ def query_universe_industry_counts(
         )
         for r in rows
     ]
+
+
+_OTHER_COUNT_SQL_BASE = """
+SELECT COUNT(f.filing_id)::int AS total,
+       COUNT(f.filing_id) FILTER (WHERE v.doc_id IS NULL)::int AS pending
+FROM filings f
+JOIN companies c ON c.company_id = f.company_id
+LEFT JOIN v2_documents v ON v.filing_id = f.filing_id
+WHERE (c.industry_code IS NULL OR c.industry_code <> ALL(%(mapped_sic_codes)s))
+"""
+
+_OTHER_COUNT_YEAR_GATE = "  AND EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)\n"
+_OTHER_COUNT_FORM_TYPE_GATE = "  AND f.form_type = ANY(%(form_types)s)\n"
+_OTHER_COUNT_PHASE1_GATE = "  AND f.is_in_scope_phase1 = TRUE\n"
+
+
+def query_universe_other_count(
+    db: DatabaseAdapter,
+    industry_map: dict[str, Any],
+    *,
+    years: list[int] | None = None,
+    form_types: list[str] | None = None,
+) -> IndustryCount:
+    """Return total + pending counts for the "Other" pseudo-industry slice.
+
+    The "Other" slice covers filings whose company ``industry_code`` is NULL
+    or is not present in the union of every YAML-mapped SIC code. This is
+    the partition that selecting all 15 named industries cannot reach.
+
+    The returned ``IndustryCount`` always has ``key=OTHER_INDUSTRY_KEY`` and
+    ``label="Other (uncategorised)"`` — caller can override the label if it
+    wants a different display string.
+
+    Phase-1 gate is applied when ``form_types`` intersects S1F1_FORMS, same
+    rule as ``query_universe_industry_counts``.
+    """
+    industries: dict[str, Any] = industry_map.get("industries") or {}
+    mapped: set[str] = set()
+    for entry in industries.values():
+        mapped.update(entry.get("sic_codes") or [])
+
+    include_phase1 = bool(form_types and (S1F1_FORMS & set(form_types)))
+    sql = _OTHER_COUNT_SQL_BASE
+    params: dict[str, Any] = {"mapped_sic_codes": sorted(mapped)}
+    if years:
+        sql += _OTHER_COUNT_YEAR_GATE
+        params["years"] = [int(y) for y in years]
+    if form_types:
+        sql += _OTHER_COUNT_FORM_TYPE_GATE
+        params["form_types"] = list(form_types)
+    if include_phase1:
+        sql += _OTHER_COUNT_PHASE1_GATE
+    rows = db.query(sql, params)
+    if not rows:
+        return IndustryCount(
+            key=OTHER_INDUSTRY_KEY,
+            label="Other (uncategorised)",
+            total=0,
+            pending=0,
+        )
+    r = rows[0]
+    return IndustryCount(
+        key=OTHER_INDUSTRY_KEY,
+        label="Other (uncategorised)",
+        total=int(r["total"] or 0),
+        pending=int(r["pending"] or 0),
+    )
 
 
 # ---------------------------------------------------------------------------

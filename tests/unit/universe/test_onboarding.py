@@ -10,12 +10,14 @@ from typing import Any
 import pytest
 
 from src.universe.onboarding import (
+    OTHER_INDUSTRY_KEY,
     FormTypeCount,
     Gap,
     IndustryCount,
     ResolvedQuery,
     VolumeBand,
     YearCount,
+    _build_discovery_sql,
     classify_volume,
     count_reviewer_work,
     detect_universe_gaps,
@@ -23,6 +25,7 @@ from src.universe.onboarding import (
     load_industry_map,
     query_universe_form_type_counts,
     query_universe_industry_counts,
+    query_universe_other_count,
     query_universe_year_counts,
     resolve_criteria,
     resolve_industry,
@@ -909,3 +912,158 @@ def test_query_universe_form_type_counts_returns_dataclass_instances() -> None:
     assert out[0].label == "S-1 / F-1 (IPO filings)"
     assert out[0].total == 3
     assert out[0].pending == 1
+
+
+# ---------------------------------------------------------------------------
+# "Other" pseudo-industry — sentinel routing through resolve_criteria,
+# discovery SQL, and gap detection.
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_criteria_other_alone_sets_include_other() -> None:
+    """Selecting only the __other__ sentinel populates include_other and
+    mapped_sic_codes, leaves sic_codes empty, and does not raise."""
+    q = resolve_criteria(
+        {"industries": [OTHER_INDUSTRY_KEY], "year": "2015", "form_types": ["s1f1"]}
+    )
+    assert q.include_other is True
+    assert q.sic_codes == []
+    # YAML expansion = some non-trivial set; the count only matters for the
+    # discovery query parameter.
+    assert len(q.mapped_sic_codes) > 0
+    # Common SIC codes that the YAML maps. If the YAML is reorganised these
+    # could move, but at least one of these survives every plausible refactor.
+    assert "7372" in q.mapped_sic_codes
+
+
+def test_resolve_criteria_other_combined_with_industry() -> None:
+    """Mixed selection (__other__ + a real industry) populates both axes."""
+    q = resolve_criteria(
+        {
+            "industries": ["software", OTHER_INDUSTRY_KEY],
+            "year": "2015",
+            "form_types": ["s1f1"],
+        }
+    )
+    assert q.include_other is True
+    # software's SIC codes are still in q.sic_codes
+    assert "7372" in q.sic_codes
+    # mapped_sic_codes includes software's codes plus every other industry's
+    assert set(q.sic_codes).issubset(set(q.mapped_sic_codes))
+
+
+def test_resolve_criteria_other_does_not_require_other_filters() -> None:
+    """include_other alone satisfies the narrowing-criterion guard."""
+    q = resolve_criteria(
+        {"industries": [OTHER_INDUSTRY_KEY], "year": "2020", "form_types": ["s1f1"]}
+    )
+    assert q.include_other is True
+    assert q.company_name_ilike is None
+
+
+def test_resolve_criteria_default_include_other_false() -> None:
+    """Without the sentinel, include_other stays False and mapped_sic_codes empty."""
+    q = resolve_criteria({"industries": ["software"], "year": "2020"})
+    assert q.include_other is False
+    assert q.mapped_sic_codes == []
+
+
+def test_build_discovery_sql_other_alone_emits_disjunction() -> None:
+    """include_other=True with empty sic_codes uses the IS NULL OR <> ALL clause."""
+    sql = _build_discovery_sql(["S-1"], [], include_other=True)
+    assert "c.industry_code IS NULL" in sql
+    assert "c.industry_code <> ALL(%(mapped_sic_codes)s)" in sql
+    assert "c.industry_code = ANY(%(sic_codes)s)" not in sql
+
+
+def test_build_discovery_sql_other_with_sic_codes_unions() -> None:
+    """include_other=True with sic_codes uses the union form."""
+    sql = _build_discovery_sql(["S-1"], ["7372"], include_other=True)
+    assert "c.industry_code = ANY(%(sic_codes)s)" in sql
+    assert "c.industry_code IS NULL" in sql
+    assert "c.industry_code <> ALL(%(mapped_sic_codes)s)" in sql
+
+
+def test_build_discovery_sql_unchanged_when_other_false() -> None:
+    """Pre-change query shape is preserved when include_other defaults False —
+    regression guard for CLI / test imports."""
+    sql_legacy = _build_discovery_sql(["S-1"], ["7372"])
+    sql_explicit = _build_discovery_sql(["S-1"], ["7372"], include_other=False)
+    assert sql_legacy == sql_explicit
+    assert "c.industry_code = ANY(%(sic_codes)s)" in sql_legacy
+    assert "<> ALL" not in sql_legacy
+
+
+def test_discover_candidates_other_alone_threads_mapped_codes_param() -> None:
+    db = _FakeDB(rows=[])
+    discover_candidates(
+        db,
+        form_types=["S-1"],
+        year_min=2015,
+        year_max=2015,
+        sic_codes=[],
+        include_other=True,
+        mapped_sic_codes=["7372", "5411"],
+    )
+    assert db.last_params is not None
+    assert db.last_params["mapped_sic_codes"] == ["7372", "5411"]
+    assert "sic_codes" not in db.last_params
+    assert db.last_sql is not None
+    assert "c.industry_code IS NULL" in db.last_sql
+
+
+def test_discover_candidates_other_requires_mapped_sic_codes() -> None:
+    """include_other=True without mapped_sic_codes is a programmer error."""
+    db = _FakeDB(rows=[])
+    with pytest.raises(ValueError, match="mapped_sic_codes"):
+        discover_candidates(
+            db,
+            form_types=["S-1"],
+            year_min=2015,
+            year_max=2015,
+            sic_codes=[],
+            include_other=True,
+            mapped_sic_codes=[],
+        )
+
+
+def test_detect_universe_gaps_other_threads_mapped_codes() -> None:
+    """Gap detection mirrors the discovery partition so 'Other' rows count."""
+    db = _FakeDB(rows=[{"yr": 2015, "form_type": "S-1"}])
+    query = ResolvedQuery(
+        sic_codes=[],
+        form_types=["S-1"],
+        year_min=2015,
+        year_max=2015,
+        include_other=True,
+        mapped_sic_codes=["7372", "5411"],
+    )
+    detect_universe_gaps(db, query)
+    assert db.last_sql is not None
+    assert "c.industry_code IS NULL" in db.last_sql
+    assert db.last_params is not None
+    assert db.last_params["mapped_sic_codes"] == ["7372", "5411"]
+
+
+def test_query_universe_other_count_returns_industry_count() -> None:
+    """The Other count helper returns an IndustryCount keyed __other__."""
+    db = _FakeDB(rows=[{"total": 32, "pending": 28}])
+    industry_map = {"industries": {"software": {"sic_codes": ["7372"]}}}
+    out = query_universe_other_count(db, industry_map, form_types=["S-1"])
+    assert isinstance(out, IndustryCount)
+    assert out.key == OTHER_INDUSTRY_KEY
+    assert out.total == 32
+    assert out.pending == 28
+    # The helper threads the YAML SIC union into mapped_sic_codes.
+    assert db.last_params is not None
+    assert db.last_params["mapped_sic_codes"] == ["7372"]
+
+
+def test_query_universe_other_count_handles_zero_rows() -> None:
+    """Empty DB result still returns a valid (zero) IndustryCount."""
+    db = _FakeDB(rows=[])
+    industry_map = {"industries": {"software": {"sic_codes": ["7372"]}}}
+    out = query_universe_other_count(db, industry_map)
+    assert out.total == 0
+    assert out.pending == 0
+    assert out.key == OTHER_INDUSTRY_KEY

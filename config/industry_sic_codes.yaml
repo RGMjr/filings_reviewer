@@ -11,6 +11,13 @@
 # 4-digit SIC codes. Add common alternate names under `aliases:`.
 # Only codes that appear in SEC's published list should be added — other codes
 # are never assigned to `companies.industry_code` by the pipeline.
+#
+# The /ingest/ UI surfaces an additional "Other (uncategorised)" pseudo-industry
+# that captures filings whose ``companies.industry_code`` is NULL or is not
+# present in any bucket below — selecting every named industry plus "Other" is
+# equivalent to no industry filter at all. The sentinel key is ``__other__``
+# (``OTHER_INDUSTRY_KEY`` in src/universe/onboarding.py); it must never
+# collide with a real industry name added here.
 
 industries:
   software:
