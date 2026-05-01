@@ -80,7 +80,7 @@ def test_stats_renders_empty(client, mock_db):
     resp = client.get("/v2/review/stats")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "Review Statistics" in body
+    assert "Metric Analytics" in body
     # Empty-state alert in the images tab pane
     assert "No image review decisions yet" in body
 
