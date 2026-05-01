@@ -1243,6 +1243,26 @@ def trigger_image_classifier_retrain():
 
     db = get_db()
 
+    # Stale-row sweep (gh-392). The retrain script wraps its work in a
+    # try/except that flips the row to status='failed' on any Python
+    # exception — but SIGKILL/OOM bypass that path entirely (Python never
+    # re-enters), leaving the row 'running' forever and permanently
+    # blocking the concurrency gate below. Auto-mark rows older than
+    # 1 hour as failed so the next button-click is never stuck waiting
+    # for a process that no longer exists. The interval matches the
+    # documented manual escape hatch in .claude/rules/web.md.
+    db.execute(
+        """
+        UPDATE model_training_runs
+           SET status = 'failed',
+               error  = 'auto-cleanup: stale running row (>1h, gh-392)',
+               completed_at = NOW()
+         WHERE model_type = 'image_relevance'
+           AND status = 'running'
+           AND started_at < NOW() - INTERVAL '1 hour'
+        """
+    )
+
     # Concurrency gate — never let two retrains race on the same model artifact.
     running_rows = db.query(
         """
