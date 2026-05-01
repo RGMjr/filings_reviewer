@@ -421,7 +421,7 @@ def _shared_template_vars(
         image_reviewed=1,
         image_skipped=0,
         image_auto_reject_candidates=0,
-        image_filters={"status": "all"},
+        image_filters={"status": "all", "sort": "relevance"},
         chart_types=IMAGE_CHART_TYPES,
         rejection_reasons=IMAGE_REJECTION_REASONS,
         image_decisions=IMAGE_DECISIONS,

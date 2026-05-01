@@ -223,6 +223,12 @@ def create_app(
         # Custom configuration
         app = create_app(config_override={'DATABASE_URL': 'postgresql://...'})
     """
+    # Guard: refuse to start if production env + dev bypass are both active.
+    # Import inside the function to avoid circular-import issues at module load time.
+    from src.auth.dev_bypass import verify_dev_bypass_safe
+
+    verify_dev_bypass_safe()
+
     # Determine configuration
     if config_name is None:
         config_name = os.environ.get("APP_ENV", "development")

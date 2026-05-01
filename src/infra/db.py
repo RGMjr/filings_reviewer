@@ -2858,6 +2858,92 @@ class DatabaseAdapter:
         return [dict(r) for r in rows]
 
     # =============================================================================
+    # Recommendation-decision readers/writers (text_pattern_recommendation_decisions)
+    # =============================================================================
+
+    def upsert_recommendation_decision(
+        self,
+        *,
+        metric_id: str,
+        rule: str,
+        decision_key: str,
+        decision: str,
+        reviewer_id: str,
+        reviewer_note: str | None = None,
+    ) -> dict:
+        """Insert or update a recommendation decision row.
+
+        Unique on (metric_id, rule, decision_key, reviewer_id) so a same-
+        reviewer change-of-mind upserts cleanly. Returns the resulting row.
+        """
+        sql = """
+            INSERT INTO text_pattern_recommendation_decisions
+                (metric_id, rule, decision_key, decision, reviewer_id, reviewer_note)
+            VALUES
+                (%(metric_id)s, %(rule)s, %(decision_key)s, %(decision)s,
+                 %(reviewer_id)s, %(reviewer_note)s)
+            ON CONFLICT (metric_id, rule, decision_key, reviewer_id) DO UPDATE
+               SET decision      = EXCLUDED.decision,
+                   reviewer_note = EXCLUDED.reviewer_note,
+                   updated_at    = NOW()
+            RETURNING id, metric_id, rule, decision_key, decision,
+                      reviewer_id, reviewer_note, pr_number, pr_url,
+                      created_at, updated_at
+        """
+        rows = self.query(
+            sql,
+            {
+                "metric_id": metric_id,
+                "rule": rule,
+                "decision_key": decision_key,
+                "decision": decision,
+                "reviewer_id": reviewer_id,
+                "reviewer_note": reviewer_note,
+            },
+        )
+        return dict(rows[0])
+
+    def delete_recommendation_decision(self, decision_id: str, reviewer_id: str) -> bool:
+        """Delete a decision row scoped to its owning reviewer.
+
+        Returns True when a row was deleted, False when nothing matched
+        (id unknown OR row exists but belongs to a different reviewer —
+        admins shouldn't accidentally undo each other's decisions).
+        """
+        sql = """
+            DELETE FROM text_pattern_recommendation_decisions
+             WHERE id = %(id)s AND reviewer_id = %(reviewer_id)s
+            RETURNING id
+        """
+        rows = self.query(sql, {"id": decision_id, "reviewer_id": reviewer_id})
+        return bool(rows)
+
+    def get_recommendation_decisions(self, metric_ids: list[str] | None = None) -> list[dict]:
+        """Return all recommendation decision rows, optionally filtered by metric.
+
+        Used at render time by `review_unified.stats()` to merge decisions
+        into the freshly computed recommendation list. Sorted newest-first
+        per (metric, rule) so the UI can show "Accepted by RGM 2 hours ago"
+        with the latest reviewer's action.
+        """
+        params: dict[str, Any] = {}
+        where_clause = ""
+        if metric_ids:
+            where_clause = " WHERE metric_id = ANY(%(metric_ids)s)"
+            params["metric_ids"] = list(metric_ids)
+        sql = f"""
+            SELECT id, metric_id, rule, decision_key, decision,
+                   reviewer_id, reviewer_note, pr_number, pr_url,
+                   created_at, updated_at
+              FROM text_pattern_recommendation_decisions
+             {where_clause}
+             ORDER BY metric_id ASC, rule ASC, decision_key ASC,
+                      updated_at DESC
+        """
+        rows = self.query(sql, params)
+        return [dict(r) for r in rows]
+
+    # =============================================================================
     # V2 Image Metric Confirmation Methods (v2_image_metric_confirmations)
     # =============================================================================
 

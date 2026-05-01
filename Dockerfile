@@ -58,6 +58,12 @@ COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser scripts/ ./scripts/
 COPY --chown=appuser:appuser sql/ ./sql/
 COPY --chown=appuser:appuser config/ ./config/
+# Image-relevance model artifact, loaded by src/shared/image_features.py to
+# power the "Model score" sort on the image-review queue. Stopgap until
+# gh-391 (R2 artifact persistence) — until then the joblib must ride in the
+# image so it survives Render's ephemeral disk wipe on every deploy.
+COPY --chown=appuser:appuser data/image_model/relevance_model.joblib ./data/image_model/relevance_model.joblib
+COPY --chown=appuser:appuser data/image_model/model_report.txt ./data/image_model/model_report.txt
 
 RUN mkdir -p /app/logs /app/data /app/filings_cache /app/htmlcov && \
     touch /app/.coverage && \
