@@ -1069,6 +1069,28 @@
                 </tr>
                 <tr class="collapse" id="patterns-row-{{ loop.index }}">
                   <td colspan="7" class="bg-light">
+                    {# Suggested actions panel — populated only when at least one
+                       rule fires for this metric. Rules + thresholds documented
+                       in src/web/text_pattern_recommendations.py. #}
+                    {% set recs = text_recommendations.get(s.metric_id, []) %}
+                    {% if recs %}
+                    <div class="alert alert-warning small mb-3 mt-2">
+                      <strong class="d-block mb-2">
+                        Suggested actions
+                        <span class="badge bg-secondary ms-1">{{ recs|length }}</span>
+                      </strong>
+                      {% for r in recs %}
+                      <div class="mb-2">
+                        <span class="badge bg-{{ 'danger' if r.severity == 'high' else 'warning text-dark' }} me-1">
+                          {{ r.severity }}
+                        </span>
+                        <strong>{{ r.title }}</strong>
+                        <div class="text-muted">{{ r.evidence }}</div>
+                        <div><em>{{ r.action }}</em></div>
+                      </div>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
                     <div class="row">
                       {% for decision_type in ['reject', 'correct'] %}
                       <div class="col-md-6">

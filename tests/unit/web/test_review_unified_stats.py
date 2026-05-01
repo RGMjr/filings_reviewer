@@ -271,6 +271,82 @@ def test_stats_summary_renders_recent_activity(client, mock_db):
     assert "Acme" in body
 
 
+def test_patterns_tab_renders_recommendation_alert(client, mock_db):
+    """A metric whose findings fire a recommendation rule renders the
+    Suggested-actions callout in its expanded Patterns-tab row.
+
+    Pinning the wire-up between compute_recommendations() and the template.
+    Helper-rule logic itself is covered by test_text_pattern_recommendations.
+    """
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 0,
+        "relevant_count": 0,
+        "not_relevant_count": 0,
+        "relevant_pct": 0.0,
+        "not_relevant_pct": 0.0,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 0,
+        "pending_count": 0,
+        "reviewed_count": 0,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 0.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {"wrong_metric": 18, "wrong_value": 13},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "rejection_reason",
+            "occurrence_count": 14,
+            "pct_of_decisions": 45.20,
+            "examples": [],
+        }
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Recommendation panel rendered.
+    assert "Suggested actions" in body
+    # Phrase carried through to the title.
+    assert "Add exclusion pattern" in body
+    assert "accounts receivable" in body
+    # Severity badge for medium (45.20 < 50 threshold).
+    assert "medium" in body
+
+
 def test_stats_does_not_swallow_db_errors(app, mock_db):
     """A DB regression should propagate, not be swallowed by a flash + redirect.
 
