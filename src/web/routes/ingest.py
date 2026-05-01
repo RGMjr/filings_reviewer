@@ -7,7 +7,8 @@ Routes:
   POST /ingest/start                     — Create batch rows, spawn runner, redirect to progress page
   GET  /ingest/history                   — Browse all past batches with filtering
   GET  /ingest/batch/<uuid>              — Progress page (server-rendered initial state; polling via JS)
-  POST /ingest/batch/<uuid>/retry-failed — Re-queue failed filings and re-spawn the runner
+  POST /ingest/batch/<uuid>/resume       — Re-queue cancelled+failed filings and re-spawn the runner
+  POST /ingest/batch/<uuid>/reextract    — Force re-extraction of every filing in a complete batch
 """
 
 from __future__ import annotations
@@ -705,13 +706,16 @@ def ingest_history():
             b.reviewer_id,
             b.created_at,
             b.criteria,
+            b.run_lock_until,
+            (b.status = 'running' AND b.run_lock_until IS NOT NULL AND b.run_lock_until < NOW()) AS lock_stale,
             COUNT(ibf.filing_id)                                                  AS total_filings,
             COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'persisted') AS persisted_count,
-            COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'failed')    AS failed_count
+            COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'failed')    AS failed_count,
+            COUNT(ibf.filing_id) FILTER (WHERE ibf.current_status = 'cancelled') AS cancelled_count
         FROM v2_ingest_batches b
         LEFT JOIN v2_ingest_batch_filings ibf ON ibf.batch_id = b.batch_id
         {where_sql}
-        GROUP BY b.batch_id, b.kind, b.status, b.reviewer_id, b.created_at, b.criteria
+        GROUP BY b.batch_id, b.kind, b.status, b.reviewer_id, b.created_at, b.criteria, b.run_lock_until
         ORDER BY b.created_at DESC
         """,
         params,
@@ -760,7 +764,9 @@ def ingest_batch(batch_id: str):
         """
         SELECT batch_id, kind, status, reviewer_id, total_filings,
                criteria, limits,
-               created_at, started_at, finished_at, cancelled_at, error
+               created_at, started_at, finished_at, cancelled_at, error,
+               run_lock_until,
+               (status = 'running' AND run_lock_until IS NOT NULL AND run_lock_until < NOW()) AS lock_stale
         FROM v2_ingest_batches
         WHERE batch_id = %(batch_id)s
         """,
@@ -826,16 +832,69 @@ def ingest_batch(batch_id: str):
 
 
 # ---------------------------------------------------------------------------
-# POST /ingest/batch/<uuid>/retry-failed
+# Resume / Re-extract — shared helpers
 # ---------------------------------------------------------------------------
 
 
-@ingest_bp.route("/batch/<batch_id>/retry-failed", methods=["POST"])
-def ingest_retry_failed(batch_id: str):
-    """Re-queue all failed filings in a batch and re-spawn the runner.
+def _spawn_ingest_runner(batch_id: str) -> bool:
+    """Spawn the onboarding_runner subprocess for *batch_id*.
 
-    Idempotent: if no filings are in 'failed' state, redirects back with a
-    neutral flash message.  The batch must not be currently running.
+    Returns True on success or when spawning is disabled (tests). Returns False
+    only when the OS-level Popen call raises — caller decides whether to flash
+    a warning. On Render, this Popen is best-effort; the watcher service will
+    still pick the batch up via _CLAIM_NEXT_SQL polling.
+    """
+    if not current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
+        return True
+
+    log_dir = _PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"ingest_runner_{batch_id}.log"
+    log_fh = open(log_path, "ab")
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "src.universe.onboarding_runner", "--batch-id", batch_id],
+            start_new_session=True,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            cwd=str(_PROJECT_ROOT),
+        )
+        logger.info("Spawned runner for batch_id=%s", batch_id)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to spawn runner for batch %s: %s", batch_id, exc)
+        return False
+    finally:
+        log_fh.close()
+
+
+_RESET_BATCH_SQL = """
+UPDATE v2_ingest_batches
+SET status         = 'queued',
+    finished_at    = NULL,
+    cancelled_at   = NULL,
+    error          = NULL,
+    run_lock_until = NULL
+WHERE batch_id = %(batch_id)s
+"""
+
+
+# ---------------------------------------------------------------------------
+# POST /ingest/batch/<uuid>/resume
+# ---------------------------------------------------------------------------
+
+
+@ingest_bp.route("/batch/<batch_id>/resume", methods=["POST"])
+def ingest_resume(batch_id: str):
+    """Re-queue cancelled+failed filings in a batch and re-spawn the runner.
+
+    Eligible from any state except actively-running (status='running' AND
+    run_lock_until > NOW()). Stale-running, cancelled, failed, and complete
+    batches are all accepted; the per-filing reset is the same in every case
+    and a no-op for already-persisted filings.
+
+    For populate batches (no per-filing rows), the per-filing reset is
+    naturally a no-op and we just clear the lock + restart the runner.
     """
     try:
         _uuid.UUID(batch_id)
@@ -845,7 +904,80 @@ def ingest_retry_failed(batch_id: str):
 
     db = get_db()
 
-    # Fetch the batch to validate state
+    batch_rows = db.query(
+        """
+        SELECT batch_id, status, kind,
+               (run_lock_until IS NOT NULL AND run_lock_until > NOW()) AS lock_fresh
+        FROM v2_ingest_batches WHERE batch_id = %(batch_id)s
+        """,
+        {"batch_id": batch_id},
+    )
+    if not batch_rows:
+        flash("Batch not found.", "danger")
+        return redirect(url_for("ingest.ingest_history"))
+
+    batch_status = batch_rows[0]["status"]
+    if batch_status == "running" and batch_rows[0]["lock_fresh"]:
+        flash(
+            "A worker is actively processing this batch. Cancel it first if you want to resume.",
+            "warning",
+        )
+        return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+
+    reset_rows = db.query(
+        """
+        UPDATE v2_ingest_batch_filings
+        SET current_status = 'queued',
+            error          = NULL,
+            started_at     = NULL,
+            finished_at    = NULL
+        WHERE batch_id       = %(batch_id)s
+          AND current_status IN ('cancelled', 'failed')
+        RETURNING filing_id, current_status
+        """,
+        {"batch_id": batch_id},
+    )
+
+    db.execute(_RESET_BATCH_SQL, {"batch_id": batch_id})
+
+    reset_count = len(reset_rows)
+    if not _spawn_ingest_runner(batch_id):
+        flash(
+            f"Re-queued {reset_count} filing(s) but runner could not be spawned. "
+            "The watcher will pick it up on its next poll.",
+            "warning",
+        )
+        return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+
+    if reset_count == 0:
+        flash("Batch re-opened and runner restarted (no per-filing rows reset).", "success")
+    else:
+        flash(f"Re-queued {reset_count} filing(s). Runner restarted.", "success")
+    return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
+
+
+# ---------------------------------------------------------------------------
+# POST /ingest/batch/<uuid>/reextract
+# ---------------------------------------------------------------------------
+
+
+@ingest_bp.route("/batch/<batch_id>/reextract", methods=["POST"])
+def ingest_reextract(batch_id: str):
+    """Force re-extraction of every filing in a complete batch.
+
+    Destructive: rebuilds v2_metric_facts for filings without reviewer
+    decisions. Filings with reviewer decisions are protected by
+    ReviewedFilingError in V2PersistenceAdapter and end up status='failed'.
+    Only callable on status='complete' batches.
+    """
+    try:
+        _uuid.UUID(batch_id)
+    except ValueError:
+        flash("Invalid batch ID.", "danger")
+        return redirect(url_for("ingest.ingest_form"))
+
+    db = get_db()
+
     batch_rows = db.query(
         "SELECT batch_id, status FROM v2_ingest_batches WHERE batch_id = %(batch_id)s",
         {"batch_id": batch_id},
@@ -854,69 +986,41 @@ def ingest_retry_failed(batch_id: str):
         flash("Batch not found.", "danger")
         return redirect(url_for("ingest.ingest_history"))
 
-    batch_status = batch_rows[0]["status"]
-    if batch_status == "running":
-        flash("Cannot retry while the batch is still running.", "warning")
+    if batch_rows[0]["status"] != "complete":
+        flash(
+            "Re-extract is only available on completed batches. Use Resume for other states.",
+            "warning",
+        )
         return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
 
-    # Reset failed filings → queued and clear error/timing columns
     reset_rows = db.query(
         """
         UPDATE v2_ingest_batch_filings
         SET current_status = 'queued',
+            initial_bucket = 'reextract_reviewed',
             error          = NULL,
             started_at     = NULL,
             finished_at    = NULL
-        WHERE batch_id     = %(batch_id)s
-          AND current_status = 'failed'
+        WHERE batch_id = %(batch_id)s
         RETURNING filing_id
         """,
         {"batch_id": batch_id},
     )
+    reset_count = len(reset_rows)
 
-    if not reset_rows:
-        flash("No failed filings to retry.", "info")
+    db.execute(_RESET_BATCH_SQL, {"batch_id": batch_id})
+
+    if not _spawn_ingest_runner(batch_id):
+        flash(
+            f"Flagged {reset_count} filing(s) for re-extraction but runner could not be spawned. "
+            "The watcher will pick it up on its next poll.",
+            "warning",
+        )
         return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
 
-    retry_count = len(reset_rows)
-
-    # Re-open the batch so the runner picks it up
-    db.query(
-        """
-        UPDATE v2_ingest_batches
-        SET status      = 'queued',
-            finished_at = NULL,
-            error       = NULL
-        WHERE batch_id = %(batch_id)s
-        """,
-        {"batch_id": batch_id},
+    flash(
+        f"Re-extracting {reset_count} filing(s). "
+        "Filings with reviewer decisions will fail (ReviewedFilingError) — that's expected.",
+        "success",
     )
-
-    # Spawn the runner (guarded by config flag for tests)
-    if current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
-        log_dir = _PROJECT_ROOT / "logs"
-        log_dir.mkdir(exist_ok=True)
-        log_path = log_dir / f"ingest_runner_{batch_id}.log"
-        log_fh = open(log_path, "ab")
-        try:
-            subprocess.Popen(
-                [sys.executable, "-m", "src.universe.onboarding_runner", "--batch-id", batch_id],
-                start_new_session=True,
-                stdout=log_fh,
-                stderr=subprocess.STDOUT,
-                cwd=str(_PROJECT_ROOT),
-            )
-            logger.info("Spawned retry runner for batch_id=%s (%d filings)", batch_id, retry_count)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to spawn retry runner for batch %s: %s", batch_id, exc)
-            flash(
-                "Filings re-queued but runner could not be spawned. "
-                "Contact an administrator to start processing.",
-                "warning",
-            )
-            return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))
-        finally:
-            log_fh.close()
-
-    flash(f"Re-queued {retry_count} failed filing(s). Runner restarted.", "success")
     return redirect(url_for("ingest.ingest_batch", batch_id=batch_id))

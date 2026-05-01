@@ -32,6 +32,8 @@ _ENDPOINTS: list[tuple[str, dict]] = [
     ("ingest.populate", {}),
     ("ingest.ingest_history", {}),
     ("ingest.ingest_batch", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
+    ("ingest.ingest_resume", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
+    ("ingest.ingest_reextract", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
     # Ingest API routes
     ("api_ingest.batch_status", {"batch_id": "00000000-0000-0000-0000-000000000000"}),
     ("api_ingest.batch_cancel", {"batch_id": "00000000-0000-0000-0000-000000000000"}),

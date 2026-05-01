@@ -28,13 +28,24 @@
           &nbsp;|&nbsp; Created: {{ batch.created_at.strftime('%Y-%m-%d %H:%M UTC') if batch.created_at else '—' }}
         </p>
       </div>
-      <!-- Cancel button (visible only when batch is queued or running) -->
-      {% if batch.status in ('queued', 'running') %}
-      <button class="btn btn-outline-danger"
-              id="cancel-btn">
-        Cancel Batch
-      </button>
-      {% endif %}
+      <!-- Top-right action: Cancel / Resume / Re-extract. At most one renders. -->
+      <div class="d-flex gap-2">
+        {% if batch.status in ('queued', 'running') and not batch.lock_stale %}
+        <button class="btn btn-outline-danger" id="cancel-btn">Cancel Batch</button>
+        {% elif batch.status in ('cancelled', 'failed') or (batch.status == 'running' and batch.lock_stale) %}
+        <form method="POST"
+              action="{{ url_for('ingest.ingest_resume', batch_id=batch.batch_id) }}"
+              onsubmit="return confirm('Resume this batch? Cancelled and failed filings will be re-queued; persisted filings are left alone.');">
+          <button type="submit" class="btn btn-primary">Resume Batch</button>
+        </form>
+        {% elif batch.status == 'complete' %}
+        <form method="POST"
+              action="{{ url_for('ingest.ingest_reextract', batch_id=batch.batch_id) }}"
+              onsubmit="return confirm('Re-extract from scratch? This rebuilds facts for all {{ total }} filing(s). Filings without reviewer decisions will lose current values; reviewed filings will fail with ReviewedFilingError. Continue?');">
+          <button type="submit" class="btn btn-outline-danger">Re-extract from scratch</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
 
     <!-- Status badge -->
@@ -203,15 +214,6 @@
       <a href="{{ url_for('ingest.ingest_form') }}" class="btn btn-outline-secondary">
         Start Another Batch
       </a>
-      {% if status_counts.failed > 0 and batch.status not in ('running',) %}
-      <form method="POST"
-            action="{{ url_for('ingest.ingest_retry_failed', batch_id=batch.batch_id) }}"
-            onsubmit="return confirm('Re-queue {{ status_counts.failed }} failed filing(s) and restart the runner?');">
-        <button type="submit" class="btn btn-warning">
-          Retry {{ status_counts.failed }} Failed Filing{{ 's' if status_counts.failed != 1 else '' }}
-        </button>
-      </form>
-      {% endif %}
     </div>
 
   </div>

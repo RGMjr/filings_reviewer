@@ -491,3 +491,267 @@ class TestIngestPreview:
             f'name="filing_id" value="{filing_id_b}"'.encode() in html
             or f'value="{filing_id_b}"'.encode() in html
         )
+
+
+# ---------------------------------------------------------------------------
+# TestResumeApi — POST /ingest/batch/<id>/resume + /reextract
+# ---------------------------------------------------------------------------
+
+
+def _make_batch_with_filings(db_adapter, status, filings):
+    """Insert a v2_ingest_batches row and one v2_ingest_batch_filings row per
+    entry in *filings* (list of (filing_id, current_status) tuples).
+    Returns the batch_id (str)."""
+    rows = db_adapter.query(
+        """
+        INSERT INTO v2_ingest_batches
+            (kind, reviewer_id, criteria, resolved_query, limits, total_filings, status)
+        VALUES ('onboard', 'testbot', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, %s, %s)
+        RETURNING batch_id::text;
+        """,
+        [len(filings), status],
+    )
+    bid = rows[0]["batch_id"]
+    for fid, cs in filings:
+        db_adapter.execute(
+            """
+            INSERT INTO v2_ingest_batch_filings
+                (batch_id, filing_id, initial_bucket, current_status)
+            VALUES (%s, %s, 'new', %s);
+            """,
+            [bid, fid, cs],
+        )
+    return bid
+
+
+class TestResumeApi:
+    """POST /ingest/batch/<id>/resume — covers gh-313 mid-batch-stall recovery
+    plus the legacy retry-failed flow it replaces."""
+
+    @pytest.fixture
+    def two_filings(self, db_adapter):
+        _, fa = create_test_company_and_filing(
+            db_adapter,
+            cik="0007770001",
+            accession_number="0007770001-24-000001",
+            form_type="S-1",
+        )
+        _, fb = create_test_company_and_filing(
+            db_adapter,
+            cik="0007770002",
+            accession_number="0007770002-24-000001",
+            form_type="S-1",
+        )
+        yield fa, fb
+        db_adapter.execute(
+            "DELETE FROM v2_ingest_batch_filings WHERE filing_id IN (%s, %s)",
+            [fa, fb],
+        )
+        db_adapter.execute("DELETE FROM filings WHERE filing_id IN (%s, %s)", [fa, fb])
+        db_adapter.execute("DELETE FROM companies WHERE cik IN ('0007770001', '0007770002')")
+
+    def test_resume_cancelled_batch_resets_cancelled_rows(self, client, db_adapter, two_filings):
+        fa, fb = two_filings
+        bid = _make_batch_with_filings(
+            db_adapter,
+            "cancelled",
+            [(fa, "cancelled"), (fb, "persisted")],
+        )
+        try:
+            r = client.post(f"/ingest/batch/{bid}/resume", follow_redirects=False)
+            assert r.status_code == 302, r.data
+            assert r.location == f"/ingest/batch/{bid}"
+
+            batch = db_adapter.query(
+                "SELECT status, finished_at, run_lock_until FROM v2_ingest_batches WHERE batch_id = %s",
+                [bid],
+            )[0]
+            assert batch["status"] == "queued"
+            assert batch["finished_at"] is None
+            assert batch["run_lock_until"] is None
+
+            filings = {
+                r["filing_id"]: r["current_status"]
+                for r in db_adapter.query(
+                    "SELECT filing_id, current_status FROM v2_ingest_batch_filings WHERE batch_id = %s",
+                    [bid],
+                )
+            }
+            assert filings[fa] == "queued"
+            assert filings[fb] == "persisted"  # untouched
+        finally:
+            db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [bid])
+
+    def test_resume_failed_batch_resets_failed_rows(self, client, db_adapter, two_filings):
+        fa, fb = two_filings
+        bid = _make_batch_with_filings(
+            db_adapter,
+            "failed",
+            [(fa, "failed"), (fb, "persisted")],
+        )
+        try:
+            r = client.post(f"/ingest/batch/{bid}/resume", follow_redirects=False)
+            assert r.status_code == 302
+            filings = {
+                r["filing_id"]: r["current_status"]
+                for r in db_adapter.query(
+                    "SELECT filing_id, current_status FROM v2_ingest_batch_filings WHERE batch_id = %s",
+                    [bid],
+                )
+            }
+            assert filings[fa] == "queued"
+            assert filings[fb] == "persisted"
+        finally:
+            db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [bid])
+
+    def test_resume_stale_running_clears_lock(self, client, db_adapter, two_filings):
+        fa, _ = two_filings
+        bid = _make_batch_with_filings(db_adapter, "running", [(fa, "fetching")])
+        # Simulate a stalled worker: lock expired in the past.
+        db_adapter.execute(
+            "UPDATE v2_ingest_batches SET run_lock_until = NOW() - INTERVAL '1 hour' "
+            "WHERE batch_id = %s",
+            [bid],
+        )
+        try:
+            r = client.post(f"/ingest/batch/{bid}/resume", follow_redirects=False)
+            assert r.status_code == 302
+            batch = db_adapter.query(
+                "SELECT status, run_lock_until FROM v2_ingest_batches WHERE batch_id = %s",
+                [bid],
+            )[0]
+            assert batch["status"] == "queued"
+            assert batch["run_lock_until"] is None
+            # In-flight 'fetching' row is not in the reset predicate; left untouched.
+            row = db_adapter.query(
+                "SELECT current_status FROM v2_ingest_batch_filings WHERE batch_id = %s",
+                [bid],
+            )[0]
+            assert row["current_status"] == "fetching"
+        finally:
+            db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [bid])
+
+    def test_resume_active_running_rejects(self, client, db_adapter, two_filings):
+        fa, _ = two_filings
+        bid = _make_batch_with_filings(db_adapter, "running", [(fa, "fetching")])
+        # Fresh lock (worker actively holds the batch).
+        db_adapter.execute(
+            "UPDATE v2_ingest_batches SET run_lock_until = NOW() + INTERVAL '5 minutes' "
+            "WHERE batch_id = %s",
+            [bid],
+        )
+        try:
+            r = client.post(f"/ingest/batch/{bid}/resume", follow_redirects=False)
+            assert r.status_code == 302
+            batch = db_adapter.query(
+                "SELECT status FROM v2_ingest_batches WHERE batch_id = %s",
+                [bid],
+            )[0]
+            # Status not flipped — still running.
+            assert batch["status"] == "running"
+        finally:
+            db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [bid])
+
+    def test_resume_complete_batch_is_noop_reset(self, client, db_adapter, two_filings):
+        """Resume on a complete batch flips status->queued but resets zero per-filing rows
+        (everything is 'persisted'). The Re-extract button is the right tool for this case."""
+        fa, fb = two_filings
+        bid = _make_batch_with_filings(
+            db_adapter,
+            "complete",
+            [(fa, "persisted"), (fb, "persisted")],
+        )
+        try:
+            r = client.post(f"/ingest/batch/{bid}/resume", follow_redirects=False)
+            assert r.status_code == 302
+            filings = {
+                r["filing_id"]: r["current_status"]
+                for r in db_adapter.query(
+                    "SELECT filing_id, current_status FROM v2_ingest_batch_filings WHERE batch_id = %s",
+                    [bid],
+                )
+            }
+            assert filings[fa] == "persisted"
+            assert filings[fb] == "persisted"
+        finally:
+            db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [bid])
+
+    def test_resume_unknown_batch_redirects_to_history(self, client):
+        bogus = "00000000-0000-0000-0000-000000000000"
+        r = client.post(f"/ingest/batch/{bogus}/resume", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.location.endswith("/ingest/history")
+
+
+class TestReextractApi:
+    """POST /ingest/batch/<id>/reextract — only valid on complete batches."""
+
+    @pytest.fixture
+    def two_filings(self, db_adapter):
+        _, fa = create_test_company_and_filing(
+            db_adapter,
+            cik="0007770003",
+            accession_number="0007770003-24-000001",
+            form_type="S-1",
+        )
+        _, fb = create_test_company_and_filing(
+            db_adapter,
+            cik="0007770004",
+            accession_number="0007770004-24-000001",
+            form_type="S-1",
+        )
+        yield fa, fb
+        db_adapter.execute(
+            "DELETE FROM v2_ingest_batch_filings WHERE filing_id IN (%s, %s)",
+            [fa, fb],
+        )
+        db_adapter.execute("DELETE FROM filings WHERE filing_id IN (%s, %s)", [fa, fb])
+        db_adapter.execute("DELETE FROM companies WHERE cik IN ('0007770003', '0007770004')")
+
+    def test_reextract_complete_flips_all_to_reextract_reviewed(
+        self, client, db_adapter, two_filings
+    ):
+        fa, fb = two_filings
+        bid = _make_batch_with_filings(
+            db_adapter,
+            "complete",
+            [(fa, "persisted"), (fb, "persisted")],
+        )
+        try:
+            r = client.post(f"/ingest/batch/{bid}/reextract", follow_redirects=False)
+            assert r.status_code == 302
+            batch = db_adapter.query(
+                "SELECT status FROM v2_ingest_batches WHERE batch_id = %s",
+                [bid],
+            )[0]
+            assert batch["status"] == "queued"
+            rows = db_adapter.query(
+                "SELECT filing_id, current_status, initial_bucket "
+                "FROM v2_ingest_batch_filings WHERE batch_id = %s",
+                [bid],
+            )
+            for r in rows:
+                assert r["current_status"] == "queued"
+                assert r["initial_bucket"] == "reextract_reviewed"
+        finally:
+            db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [bid])
+
+    def test_reextract_rejects_non_complete(self, client, db_adapter, two_filings):
+        fa, _ = two_filings
+        bid = _make_batch_with_filings(db_adapter, "cancelled", [(fa, "cancelled")])
+        try:
+            r = client.post(f"/ingest/batch/{bid}/reextract", follow_redirects=False)
+            assert r.status_code == 302
+            # Status unchanged — endpoint refuses non-complete batches.
+            batch = db_adapter.query(
+                "SELECT status FROM v2_ingest_batches WHERE batch_id = %s",
+                [bid],
+            )[0]
+            assert batch["status"] == "cancelled"
+            row = db_adapter.query(
+                "SELECT initial_bucket FROM v2_ingest_batch_filings WHERE batch_id = %s",
+                [bid],
+            )[0]
+            assert row["initial_bucket"] == "new"
+        finally:
+            db_adapter.execute("DELETE FROM v2_ingest_batches WHERE batch_id = %s", [bid])
