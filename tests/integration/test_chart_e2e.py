@@ -27,12 +27,13 @@ from src.llm.vision_client import VisionResponse
 
 @pytest.fixture(autouse=True)
 def _route_image_cache_to_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Route LocalFilesystemStorage under tmp_path for all tests in this module."""
+    """Route LocalFilesystemStorage under tmp_path; pin VISION_ROUTING_MODE."""
     from src.infra.image_storage import get_image_storage
     from src.infra.paths import image_cache_dir
 
     monkeypatch.setenv("IMAGE_CACHE_DIR", str(tmp_path))
     monkeypatch.delenv("R2_BUCKET", raising=False)
+    monkeypatch.setenv("VISION_ROUTING_MODE", "two_stage")
     image_cache_dir.cache_clear()
     get_image_storage.cache_clear()
     yield
@@ -150,7 +151,8 @@ class TestChartExtractionE2E:
         result = stage.process(context)
 
         assert result.success is True
-        assert mock_client.call_count == 1
+        # Wave B4 two-stage chart routing: chart_ocr triage + chart_read premium
+        assert mock_client.call_count == 2
         assert asset.processed is True
         assert asset.chart_data is not None
         assert asset.chart_data.chart_type == ChartType.BAR
