@@ -86,7 +86,10 @@ class TestCountImageDecisionsSince:
         db.query.return_value = []
         db.count_image_decisions_since(None)
         sql, params = db.query.call_args[0]
-        assert "%(ts)s IS NULL" in sql
+        # ::timestamptz cast is required so psycopg can infer the parameter
+        # type when ts=None — without it, real Postgres raises
+        # AmbiguousParameter (regression caught in prod 2026-05-01).
+        assert "%(ts)s::timestamptz IS NULL" in sql
         assert params == {"ts": None}
 
     def test_zero_when_no_rows(self, db):

@@ -71,8 +71,10 @@ class TestRejectionRollup:
         db.query.return_value = []
         db.get_rejection_reason_rollup("image", since=None)
         sql, params = db.query.call_args[0]
-        # The %(since)s IS NULL branch unwraps the time filter.
-        assert "%(since)s IS NULL" in sql
+        # ::timestamptz cast is required so psycopg can infer the parameter
+        # type when since=None — without it, real Postgres raises
+        # AmbiguousParameter (regression caught in prod 2026-05-01).
+        assert "%(since)s::timestamptz IS NULL" in sql
         assert params == {"since": None}
 
     def test_orders_by_count_desc(self, db):
