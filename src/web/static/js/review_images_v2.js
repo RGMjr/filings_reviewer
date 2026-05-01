@@ -833,6 +833,16 @@
             return;
         }
 
+        // Optional free-text reviewer note, applied to every row in this batch
+        // (server validates max 1000 chars per row).
+        const notesEl = document.getElementById('image-reviewer-notes');
+        const reviewerNotes = (notesEl?.value || '').trim();
+        if (reviewerNotes) {
+            for (const d of decisions) {
+                d.reviewer_notes = reviewerNotes;
+            }
+        }
+
         const reviewerName = (typeof window.requireReviewerName === 'function')
             ? window.requireReviewerName()
             : localStorage.getItem('reviewer_name');
@@ -866,6 +876,8 @@
                 document.querySelectorAll('#detected-metrics-list .added-metric-row')
                     .forEach(n => n.remove());
                 applyInitialDecisionState();
+                // Clear the notes field so it doesn't bleed into the next image.
+                if (notesEl) notesEl.value = '';
 
                 // Refresh state.textPending from the server's fresh count so
                 // the cross-tab cascade uses current data, not the page-load value.

@@ -370,6 +370,74 @@
       </div>
     </div>
 
+    {# Phase 4c: "Why Reviewers Reject" — categorical rejection-reason rollup
+       across all decisions ever recorded (lifetime totals, not since-anchor).
+       Bootstrap progress bars used for the simple bar-chart effect (no chart
+       library; same approach as the existing Confidence Band Distribution). #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <h4 class="mb-3">Why Reviewers Reject</h4>
+      </div>
+
+      {# Text-fact rejection categories #}
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Text Facts <span class="badge bg-secondary ms-1">{{ text_rejection_rollup|length }}</span></h6>
+          </div>
+          <div class="card-body">
+            {% if text_rejection_rollup %}
+              {% set max_text_pct = (text_rejection_rollup|map(attribute='percent')|max) or 100 %}
+              {% for r in text_rejection_rollup %}
+              <div class="mb-2">
+                <div class="d-flex justify-content-between small">
+                  <span>{{ r.reason|replace('_', ' ')|title }}</span>
+                  <span class="text-muted">{{ r.count }} ({{ r.percent }}%)</span>
+                </div>
+                <div class="progress" style="height: 8px;">
+                  <div class="progress-bar bg-danger" role="progressbar"
+                       style="width: {{ ((r.percent / max_text_pct) * 100)|round(1) }}%"
+                       aria-valuenow="{{ r.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+              </div>
+              {% endfor %}
+            {% else %}
+            <p class="text-muted small mb-0">No text-fact rejections yet.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# Image-metric rejection reasons #}
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Image Metrics <span class="badge bg-secondary ms-1">{{ image_rejection_rollup|length }}</span></h6>
+          </div>
+          <div class="card-body">
+            {% if image_rejection_rollup %}
+              {% set max_img_pct = (image_rejection_rollup|map(attribute='percent')|max) or 100 %}
+              {% for r in image_rejection_rollup %}
+              <div class="mb-2">
+                <div class="d-flex justify-content-between small">
+                  <span>{{ rejection_reason_labels.get(r.reason, r.reason|replace('_', ' ')|title) }}</span>
+                  <span class="text-muted">{{ r.count }} ({{ r.percent }}%)</span>
+                </div>
+                <div class="progress" style="height: 8px;">
+                  <div class="progress-bar bg-danger" role="progressbar"
+                       style="width: {{ ((r.percent / max_img_pct) * 100)|round(1) }}%"
+                       aria-valuenow="{{ r.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+              </div>
+              {% endfor %}
+            {% else %}
+            <p class="text-muted small mb-0">No image-metric rejections yet.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div> {# end summary-stats tab pane #}
 
   {# =====================================================================

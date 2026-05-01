@@ -30,6 +30,14 @@ Powers the **Update Image Classifier** button on `/v2/review/stats` (Metric Anal
 
 Threshold env vars are surfaced to the template by `review_unified.stats()` so the helper text on the disabled button reads "Need N more total decisions" / "Need M more positive decisions". The `button_active` flag combines `not retrain_running AND total >= threshold_total AND positive >= threshold_positive`.
 
+## Image-confirmation reviewer notes
+
+`v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.
+
+## Why Reviewers Reject — Summary panel
+
+`/v2/review/stats` Summary tab renders a categorical rollup of rejected decisions (lifetime totals, both sides). `db.get_rejection_reason_rollup(side, since=None)` reads `v2_review_decisions.rejection_category` for `side='text'` and `v2_image_metric_confirmations.rejection_reason` for `side='image'`. Returns `[{reason, count, percent}]` ordered DESC. Rendered as Bootstrap progress-bar rows (no chart library). The future LLM-summarized "Top Reviewer Themes" panel (deferred) will read `reviewer_notes` rather than the categorical rollup — the two panels are complementary.
+
 ## Conventions
 
 - API auth: `_check_api_key` before_request hook in the V2 API blueprint, configured via `FILINGS_API_KEY` env var. For individual routes on mixed blueprints (e.g. `image_crop` on `review_unified_bp`), use the `@require_api_key` per-view decorator from `src/web/middleware.py` — same Origin/Referer bypass, no blueprint-wide `before_request` install. Same-origin browser bypass uses scheme-independent host comparison for both `Origin` and `Referer` so HTTPS-terminating proxies (Render) don't mask same-origin GET AJAX (which omits `Origin` per the Fetch spec) as cross-origin and 401 it.

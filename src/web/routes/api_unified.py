@@ -988,12 +988,24 @@ def create_image_metric_confirmations():
                     return jsonify({"error": f"{prefix}: skip must not have rejection_reason"}), 400
                 confirmed_metric_id = None
 
+            # Optional free-text observation; max 1000 chars (mirrors the text-side
+            # validator for v2_review_decisions.reviewer_notes).
+            reviewer_notes_raw = d.get("reviewer_notes")
+            if reviewer_notes_raw is not None and not isinstance(reviewer_notes_raw, str):
+                return jsonify({"error": f"{prefix}.reviewer_notes must be a string"}), 400
+            if isinstance(reviewer_notes_raw, str) and len(reviewer_notes_raw) > 1000:
+                return jsonify(
+                    {"error": f"{prefix}.reviewer_notes must be 1000 characters or less"}
+                ), 400
+            reviewer_notes = (reviewer_notes_raw or None) if reviewer_notes_raw else None
+
             validated.append(
                 {
                     "detected_metric_id": detected_metric_id,
                     "confirmed_metric_id": confirmed_metric_id,
                     "decision": decision,
                     "rejection_reason": rejection_reason,
+                    "reviewer_notes": reviewer_notes,
                 }
             )
 
