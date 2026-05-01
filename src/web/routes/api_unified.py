@@ -1441,6 +1441,24 @@ def trigger_text_decision_analysis():
 
     db = get_db()
 
+    # Stale-row sweep. The analysis script wraps its work in a try/except that
+    # flips the row to status='failed' on any Python exception — but SIGKILL/OOM
+    # bypass that path entirely (Python never re-enters), leaving the row
+    # 'running' forever and permanently blocking the concurrency gate below.
+    # Auto-mark rows older than 1 hour as failed so the next button-click is
+    # never stuck waiting for a process that no longer exists. Mirrors the
+    # image-retrain sweep above (gh-392).
+    db.execute(
+        """
+        UPDATE text_decision_analysis_runs
+           SET status = 'failed',
+               error  = 'auto-cleanup: stale running row (>1h)',
+               completed_at = NOW()
+         WHERE status = 'running'
+           AND started_at < NOW() - INTERVAL '1 hour'
+        """
+    )
+
     running, running_run_id = db.is_text_analysis_running()
     if running:
         return (
