@@ -137,12 +137,17 @@
         return new URLSearchParams(window.location.search).get('image_status') || 'all';
     }
 
+    function getImageSort() {
+        return new URLSearchParams(window.location.search).get('image_sort') || 'relevance';
+    }
+
     // Bulk reject
     async function executeBulkReject(imageIds) {
         const reviewerName = getReviewerName();
         if (!reviewerName) return;
 
         const imageStatus = getImageStatus();
+        const imageSort = getImageSort();
         try {
             const resp = await fetch('/api/v2/image-candidates/bulk-reject', {
                 method: 'POST',
@@ -151,6 +156,7 @@
                     image_ids: imageIds,
                     reviewer_id: reviewerName,
                     image_status: imageStatus,
+                    image_sort: imageSort,
                 }),
             });
             const data = await resp.json();
@@ -215,6 +221,7 @@
 
         const imageIds = Array.from(selected);
         const imageStatus = getImageStatus();
+        const imageSort = getImageSort();
         try {
             const resp = await fetch('/api/v2/image-candidates/bulk-undo', {
                 method: 'POST',
@@ -223,6 +230,7 @@
                     image_ids: imageIds,
                     reviewer_id: reviewerName,
                     image_status: imageStatus,
+                    image_sort: imageSort,
                 }),
             });
             const data = await resp.json();

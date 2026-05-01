@@ -309,7 +309,14 @@ def bulk_reject_image_candidates():
         return jsonify({"error": "bulk-reject limited to 50 images per request"}), 400
 
     image_status = data.get("image_status") or None
-    view_filters = {"status": image_status} if image_status else None
+    image_sort = data.get("image_sort") or None
+    view_filters: dict[str, Any] | None = None
+    if image_status or image_sort:
+        view_filters = {}
+        if image_status:
+            view_filters["status"] = image_status
+        if image_sort:
+            view_filters["sort"] = image_sort
 
     results = []
     last_filing_id = None
@@ -426,7 +433,14 @@ def bulk_undo_image_candidates():
         return jsonify({"error": "bulk-undo limited to 50 images per request"}), 400
 
     image_status = data.get("image_status") or None
-    view_filters = {"status": image_status} if image_status else None
+    image_sort = data.get("image_sort") or None
+    view_filters: dict[str, Any] | None = None
+    if image_status or image_sort:
+        view_filters = {}
+        if image_status:
+            view_filters["status"] = image_status
+        if image_sort:
+            view_filters["sort"] = image_sort
 
     results = []
     last_filing_id = None
@@ -555,8 +569,13 @@ def skip_image_candidate(img_id):
                 view_filters = data["view_filters"]
         if view_filters is None:
             qs_status = request.args.get("image_status")
-            if qs_status:
-                view_filters = {"status": qs_status}
+            qs_sort = request.args.get("image_sort")
+            if qs_status or qs_sort:
+                view_filters = {}
+                if qs_status:
+                    view_filters["status"] = qs_status
+                if qs_sort:
+                    view_filters["sort"] = qs_sort
         next_cand = _get_next_image_candidate_info(
             db, filing_id, img_id_str, view_filters=view_filters
         )
@@ -617,8 +636,11 @@ def unskip_image_candidate(img_id):
 
         qs = f"img_id={img_id_str}&tab=images"
         image_status = request.args.get("image_status")
+        image_sort = request.args.get("image_sort")
         if image_status:
             qs += f"&image_status={image_status}"
+        if image_sort and image_sort != "relevance":
+            qs += f"&image_sort={image_sort}"
         return jsonify(
             {
                 "status": "success",
@@ -1596,6 +1618,7 @@ def _get_next_pending_fact(
 
 
 _VALID_IMAGE_STATUSES = ("pending", "reviewed", "skipped", "auto_rejected")
+_VALID_IMAGE_SORTS = ("relevance", "model_score", "tier", "position")
 
 
 _AUDIT_IMAGE_STATUSES = frozenset(("reviewed", "skipped", "auto_rejected"))
@@ -1627,14 +1650,35 @@ def _get_next_image_candidate_info(
     raw_status = view_filters.get("status")
     db_status = raw_status if raw_status in _VALID_IMAGE_STATUSES else None
 
+    raw_sort = view_filters.get("sort")
+    image_sort = raw_sort if raw_sort in _VALID_IMAGE_SORTS else "relevance"
+    # 'model_score' isn't a SQL sort — fetch in 'relevance' order, then re-sort
+    # in Python below to match the route's display order exactly.
+    db_sort = "relevance" if image_sort == "model_score" else image_sort
+
     candidates = db.get_image_review_candidates_for_filing_v2(
         filing_id=filing_id,
         status=db_status,
-        sort_by="relevance",
+        sort_by=db_sort,
         limit=1000,
     )
     if not candidates:
         return None
+
+    if image_sort == "model_score":
+        from src.shared.image_features import predict_relevance, v2_row_to_features_input
+
+        for c in candidates:
+            native_row = {
+                "nearby_text": c.get("preceding_text"),
+                "width": c.get("image_width"),
+                "height": c.get("image_height"),
+                "relevance_score": c.get("cohort_confidence"),
+                "classification": c.get("classification"),
+                "filename": c.get("filename"),
+            }
+            c["_model_score"] = predict_relevance(v2_row_to_features_input(native_row))
+        candidates.sort(key=lambda c: (c["_model_score"] is None, -(c["_model_score"] or 0.0)))
 
     current_idx = None
     for i, c in enumerate(candidates):
@@ -1653,6 +1697,8 @@ def _get_next_image_candidate_info(
                     qs = f"img_id={next_id}&tab=images"
                     if db_status:
                         qs += f"&image_status={db_status}"
+                    if image_sort != "relevance":
+                        qs += f"&image_sort={image_sort}"
                     return {"img_id": next_id, "url": f"/v2/review/{filing_id}?{qs}"}
         return None
 
@@ -1688,10 +1734,13 @@ def _get_next_image_candidate_info(
         return None
 
     # Preserve the active image_status filter on the next URL so the strip
-    # the reviewer lands on shows the same scope.
+    # the reviewer lands on shows the same scope. Same for image_sort so the
+    # next page's queue order matches what the reviewer was just looking at.
     qs = f"img_id={next_id}&tab=images"
     if db_status:
         qs += f"&image_status={db_status}"
+    if image_sort != "relevance":
+        qs += f"&image_sort={image_sort}"
     return {
         "img_id": next_id,
         "url": f"/v2/review/{filing_id}?{qs}",
