@@ -30,6 +30,32 @@ Powers the **Update Image Classifier** button on `/v2/review/stats` (Metric Anal
 
 Threshold env vars are surfaced to the template by `review_unified.stats()` so the helper text on the disabled button reads "Need N more total decisions" / "Need M more positive decisions". The `button_active` flag combines `not retrain_running AND total >= threshold_total AND positive >= threshold_positive`.
 
+## Text-decision pattern analysis endpoints
+
+Powers the **Update Text Pattern Analysis** button on `/v2/review/stats` (Metric Analytics → Summary tab). Text extraction is rule-based, not ML — there is no model to retrain. Instead, `scripts/analyze_text_decision_patterns.py` mines `v2_review_decisions` joined to `v2_metric_facts` and `v2_segments` for high-incidence root-cause phrases (n-grams over `rejection_reason`, `reviewer_notes`, and a window of `segment_text`) that inform manual edits to `config/metric_keywords.yaml` and the FP-filter rules in `src/extraction_v2/stages/false_positive_filter.py`.
+
+The script writes findings to three tables — it does NOT mutate `v2_review_decisions` or any extraction config. Render-disk-ephemerality does not affect this surface because nothing is persisted to disk; the UI renders directly from DB rows.
+
+- `POST /api/v2/extraction/analyze-text-decisions` — kicks off `scripts/analyze_text_decision_patterns.py` as a detached subprocess via `_spawn_text_analysis_runner` (mirrors `_spawn_retrain_runner`). Returns `202 + {run_id, status: 'running'}`. Three server-side gates:
+  - `_require_reviewer_id` → 403 `{error: "reviewer_name_required"}`.
+  - **Concurrency**: `is_text_analysis_running()` — any `text_decision_analysis_runs` row with `status='running'` → 409 `{error: "analysis_already_running", running_run_id}`.
+  - **Threshold**: `count_text_decisions_since(last_succeeded_run.completed_at)` ≥ `TEXT_ANALYSIS_THRESHOLD_TOTAL` (default `50`). Below → 409 `{error: "below_threshold", count, threshold}`. Single gate (no positive/negative split — every text decision is signal for rule-based extraction).
+- `GET /api/v2/extraction/analysis-runs/<uuid:run_id>/status` — polled by `static/js/analytics.js` every 5s. Returns the `text_decision_analysis_runs` row (id, started_at, completed_at, status, num_decisions_analyzed, num_metrics_analyzed, triggered_by, error) or 404 if the id is unknown. The `<uuid:>` converter rejects non-UUID paths with 404.
+
+**Schema** (timestamp migration `sql/202605011906_add_text_decision_analysis.sql`):
+
+- `text_decision_analysis_runs` — one row per run. Mirrors `model_training_runs` structure but without the model-specific columns. `status IN ('running', 'succeeded', 'failed')`.
+- `text_decision_metric_summary` — `(run_id, metric_id)` PK. Per-metric counts + `rejection_categories JSONB` histogram + `top_correction_targets JSONB` list.
+- `text_decision_phrase_findings` — one row per `(run, metric, phrase, source_field)` finding above the threshold (`occurrence_count ≥ 2 AND pct_of_decisions ≥ 10%`, top 15 per `(metric, decision_type, source_field)`). `examples JSONB` holds up to 5 `{fact_id, filing_id}` pairs for UI drill-down.
+
+**Script writeback** (`scripts/analyze_text_decision_patterns.py --run-id <uuid>`): the optional `--run-id` flag tells the script to UPDATE the row on completion — `status='succeeded'` plus `num_decisions_analyzed` and `num_metrics_analyzed`. A top-level try/except flips the row to `status='failed', error=<exc>` on any Python exception. **SIGKILL/OOM still leak** — same caveat as the image retrain; manual escape hatch is `psql -c "UPDATE text_decision_analysis_runs SET status='failed', error='manual cleanup' WHERE status='running' AND started_at < NOW() - INTERVAL '1 hour'"`.
+
+**Tunables**: `MIN_OCCURRENCES`, `MIN_PCT`, `TOP_N_PER_BUCKET`, `MAX_EXAMPLES`, `NGRAM_SIZES`, `SEGMENT_WINDOW_CHARS` are constants at the top of the script. Stopword list and metric-keyword-token suppression (read from `config/metric_keywords.yaml` to prevent the metric's own name from dominating its findings) keep findings actionable.
+
+**Drill-down links**: phrase findings link to `/v2/review/<filing_id>` (no fact-anchor — that route does not currently accept a fact-selection query parameter). Reviewers click through to the filing-level review page and locate the fact manually. Adding a `?fact_id=` anchor would require a non-trivial change to `unified_review.html`'s text-tab JS state restore and is deferred.
+
+**View persistence**: the new "Text Patterns" tab (`#patterns-tab` → `#patterns-stats`) does not currently persist to localStorage. If you add a key for it, follow the `cmasb:` namespace convention documented under "View persistence (localStorage)" below.
+
 ## Image-confirmation reviewer notes
 
 `v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.

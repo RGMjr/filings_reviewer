@@ -192,7 +192,7 @@ def filing_list():
 @review_unified_bp.route("/stats")
 def stats():
     """Display aggregate review statistics for both text and image review."""
-    from src.web.routes.api_unified import _retrain_thresholds
+    from src.web.routes.api_unified import _retrain_thresholds, _text_analysis_threshold
 
     db = get_db()
     text_data = db.get_v2_review_stats()
@@ -241,6 +241,29 @@ def stats():
         and image_decisions_since["positive"] >= threshold_positive
     )
 
+    # Text-decision pattern analysis surface (parallel to the image-classifier
+    # retrain). Anchor is the most recent succeeded analysis; counter is the
+    # number of text decisions accumulated since then. The button enables when
+    # the count clears the threshold and no analysis is currently running.
+    last_text_analysis_run = db.get_last_text_analysis_run()
+    text_analysis_anchor = (
+        last_text_analysis_run["completed_at"] if last_text_analysis_run else None
+    )
+    text_decisions_since_analysis = db.count_text_decisions_since(text_analysis_anchor)
+    text_analysis_running, text_analysis_running_run_id = db.is_text_analysis_running()
+    text_analysis_threshold = _text_analysis_threshold()
+    text_analysis_button_active = (
+        not text_analysis_running and text_decisions_since_analysis >= text_analysis_threshold
+    )
+    if last_text_analysis_run:
+        text_metric_summary = db.get_text_decision_metric_summary(str(last_text_analysis_run["id"]))
+        text_phrase_findings = db.get_text_decision_phrase_findings(
+            str(last_text_analysis_run["id"])
+        )
+    else:
+        text_metric_summary = []
+        text_phrase_findings = []
+
     return render_template(
         "unified_stats.html",
         per_company=text_data["per_company"],
@@ -265,6 +288,14 @@ def stats():
         button_active=button_active,
         text_rejection_rollup=text_rejection_rollup,
         image_rejection_rollup=image_rejection_rollup,
+        last_text_analysis_run=last_text_analysis_run,
+        text_decisions_since_analysis=text_decisions_since_analysis,
+        text_analysis_running=text_analysis_running,
+        text_analysis_running_run_id=text_analysis_running_run_id,
+        text_analysis_threshold=text_analysis_threshold,
+        text_analysis_button_active=text_analysis_button_active,
+        text_metric_summary=text_metric_summary,
+        text_phrase_findings=text_phrase_findings,
     )
 
 

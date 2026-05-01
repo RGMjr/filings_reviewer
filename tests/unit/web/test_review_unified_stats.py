@@ -83,6 +83,13 @@ def _stub_analytics_helpers(mock_db) -> None:
     # Phase 4c: rejection-reason rollup helper. Default empty rollups so the
     # template renders the "No rejections yet" empty state.
     mock_db.get_rejection_reason_rollup.return_value = []
+    # Text-decision pattern analysis helpers. Default to "no run yet" so the
+    # Patterns tab renders the empty state and the Summary card shows
+    # "Last analysis: never".
+    mock_db.get_last_text_analysis_run.return_value = None
+    mock_db.is_text_analysis_running.return_value = (False, None)
+    mock_db.get_text_decision_metric_summary.return_value = []
+    mock_db.get_text_decision_phrase_findings.return_value = []
 
 
 def test_stats_renders_empty(client, mock_db):
@@ -247,6 +254,11 @@ def test_stats_summary_renders_recent_activity(client, mock_db):
         },
     ]
     mock_db.get_recent_image_corrections.return_value = []
+    # Text-decision pattern analysis helpers (no run yet → empty Patterns tab).
+    mock_db.get_last_text_analysis_run.return_value = None
+    mock_db.is_text_analysis_running.return_value = (False, None)
+    mock_db.get_text_decision_metric_summary.return_value = []
+    mock_db.get_text_decision_phrase_findings.return_value = []
 
     resp = client.get("/v2/review/stats")
     assert resp.status_code == 200
