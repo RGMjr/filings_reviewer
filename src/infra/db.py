@@ -2583,7 +2583,7 @@ class DatabaseAdapter:
                 COUNT(*) FILTER (WHERE decision IN ('accept', 'correct', 'add'))    AS positive,
                 COUNT(*) FILTER (WHERE decision = 'reject')                         AS negative
               FROM v2_image_metric_confirmations
-             WHERE (%(ts)s IS NULL OR created_at > %(ts)s)
+             WHERE (%(ts)s::timestamptz IS NULL OR created_at > %(ts)s::timestamptz)
         """
         rows = self.query(sql, {"ts": ts})
         if not rows:
@@ -2605,7 +2605,7 @@ class DatabaseAdapter:
         sql = """
             SELECT COUNT(*) AS n
               FROM v2_review_decisions
-             WHERE (%(ts)s IS NULL OR created_at > %(ts)s)
+             WHERE (%(ts)s::timestamptz IS NULL OR created_at > %(ts)s::timestamptz)
         """
         rows = self.query(sql, {"ts": ts})
         return int(rows[0]["n"]) if rows else 0
@@ -2741,7 +2741,7 @@ class DatabaseAdapter:
                       FROM v2_review_decisions
                      WHERE decision = 'reject'
                        AND rejection_category IS NOT NULL
-                       AND (%(since)s IS NULL OR created_at > %(since)s)
+                       AND (%(since)s::timestamptz IS NULL OR created_at > %(since)s::timestamptz)
                 )
                 SELECT
                     reason,
@@ -2761,7 +2761,7 @@ class DatabaseAdapter:
                       FROM v2_image_metric_confirmations
                      WHERE decision = 'reject'
                        AND rejection_reason IS NOT NULL
-                       AND (%(since)s IS NULL OR created_at > %(since)s)
+                       AND (%(since)s::timestamptz IS NULL OR created_at > %(since)s::timestamptz)
                 )
                 SELECT
                     reason,
