@@ -185,6 +185,7 @@ class DocsChecker:
             "threading",
             "time",
             "traceback",
+            "types",
             "typing",
             "unittest",
             "urllib",
