@@ -44,6 +44,54 @@
      ===================================================================== #}
   <div class="tab-pane fade show active" id="summary-stats" role="tabpanel" aria-labelledby="summary-tab">
 
+    {# Image-classifier model status card. The "Update Image Classifier" button
+       is rendered inert in Phase 2 — Phase 3 wires it to a retrain endpoint
+       gated by FILINGS_API_KEY + threshold checks (server-side enforced). #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card border-info">
+          <div class="card-body">
+            <div class="row align-items-center">
+              <div class="col-md-7">
+                <h5 class="card-title mb-2">Image Relevance Classifier</h5>
+                <p class="mb-1 small">
+                  {% if last_training_run and last_training_run.completed_at %}
+                    <strong>Last updated:</strong>
+                    {{ last_training_run.completed_at.strftime('%Y-%m-%d %H:%M UTC') }}
+                    {% if last_training_run.triggered_by %}
+                    <span class="text-muted">(by {{ last_training_run.triggered_by }})</span>
+                    {% endif %}
+                  {% else %}
+                    <strong>Last updated:</strong>
+                    <span class="text-muted">never (no training runs recorded)</span>
+                  {% endif %}
+                </p>
+                <p class="mb-0 small">
+                  <strong>Image decisions since last update:</strong>
+                  {{ image_decisions_since.total or 0 }}
+                  <span class="text-success">({{ image_decisions_since.positive or 0 }} positive</span>
+                  / <span class="text-danger">{{ image_decisions_since.negative or 0 }} negative</span>)
+                </p>
+                <p class="mb-0 small text-muted">
+                  Text decisions since same anchor: {{ text_decisions_since or 0 }}
+                  (informational — text extraction is rule-based, no retrain pipeline).
+                </p>
+              </div>
+              <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                <button class="btn btn-primary" disabled
+                        title="Threshold + retrain endpoint ship in Phase 3">
+                  Update Image Classifier
+                </button>
+                <div class="text-muted small mt-1">
+                  Disabled — wired in Phase 3
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     {# Side-by-side aggregate cards: text facts + image confirmations #}
     <div class="row mb-4">
       <div class="col-lg-6 mb-3">
@@ -128,6 +176,177 @@
               View tier &amp; rejection-reason breakdown &rarr;
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    {# Recent Activity panels — 4 small tables of most recent reviewer activity.
+       Each row links to its source filing's review page. #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <h4 class="mb-3">Recent Activity</h4>
+      </div>
+
+      {# Text fact corrections #}
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Text Fact Corrections <span class="badge bg-secondary ms-1">{{ recent_text_corrections|length }}</span></h6>
+          </div>
+          {% if recent_text_corrections %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 small">
+              <thead class="table-light">
+                <tr>
+                  <th>When</th>
+                  <th>Company</th>
+                  <th>Original &rarr; Corrected</th>
+                  <th>Reviewer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in recent_text_corrections %}
+                <tr>
+                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
+                  <td>
+                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}">
+                      {{ r.company_name }}
+                    </a>
+                  </td>
+                  <td class="font-monospace small">
+                    {{ r.original_metric_id }}
+                    {% if r.corrected_metric_id and r.corrected_metric_id != r.original_metric_id %}
+                    &rarr; {{ r.corrected_metric_id }}
+                    {% endif %}
+                  </td>
+                  <td>{{ r.reviewer_id or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="card-body text-muted small">No corrections yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Text fact additions (manually-entered missed metrics) #}
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Text Fact Additions <span class="badge bg-secondary ms-1">{{ recent_text_additions|length }}</span></h6>
+          </div>
+          {% if recent_text_additions %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 small">
+              <thead class="table-light">
+                <tr>
+                  <th>When</th>
+                  <th>Company</th>
+                  <th>Metric</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in recent_text_additions %}
+                <tr>
+                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
+                  <td>
+                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}">
+                      {{ r.company_name }}
+                    </a>
+                  </td>
+                  <td class="font-monospace small">{{ r.canonical_metric_id }}</td>
+                  <td>{{ r.value_raw }}{% if r.unit %} <span class="text-muted">{{ r.unit }}</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="card-body text-muted small">No manual additions yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Image metric additions #}
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Image Metric Additions <span class="badge bg-secondary ms-1">{{ recent_image_additions|length }}</span></h6>
+          </div>
+          {% if recent_image_additions %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 small">
+              <thead class="table-light">
+                <tr>
+                  <th>When</th>
+                  <th>Company</th>
+                  <th>Added Metric</th>
+                  <th>Reviewer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in recent_image_additions %}
+                <tr>
+                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
+                  <td>
+                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}?tab=images">
+                      {{ r.company_name }}
+                    </a>
+                  </td>
+                  <td class="font-monospace small">{{ r.confirmed_metric_id }}</td>
+                  <td>{{ r.reviewer_id or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="card-body text-muted small">No image additions yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Image metric corrections #}
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Image Metric Corrections <span class="badge bg-secondary ms-1">{{ recent_image_corrections|length }}</span></h6>
+          </div>
+          {% if recent_image_corrections %}
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 small">
+              <thead class="table-light">
+                <tr>
+                  <th>When</th>
+                  <th>Company</th>
+                  <th>Detected &rarr; Confirmed</th>
+                  <th>Reviewer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in recent_image_corrections %}
+                <tr>
+                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
+                  <td>
+                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}?tab=images">
+                      {{ r.company_name }}
+                    </a>
+                  </td>
+                  <td class="font-monospace small">
+                    {{ r.detected_metric_id }} &rarr; {{ r.confirmed_metric_id }}
+                  </td>
+                  <td>{{ r.reviewer_id or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="card-body text-muted small">No image corrections yet.</div>
+          {% endif %}
         </div>
       </div>
     </div>

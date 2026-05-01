@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from contextlib import contextmanager
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -2539,6 +2540,185 @@ class DatabaseAdapter:
         """
         rows = self.query(sql, {"filing_id": filing_id})
         return int(rows[0]["n"]) if rows else 0
+
+    # =============================================================================
+    # Metric Analytics — Summary tab helpers
+    #
+    # Powers the "Decisions since last model update" counters and the Recent
+    # Activity panels on /v2/review/stats. The model_training_runs table is
+    # the anchor for the "since" timestamp (image classifier retrains only —
+    # no text-side trainable model exists yet).
+    # =============================================================================
+
+    def get_last_training_run(self, model_type: str) -> dict | None:
+        """Most recent succeeded training run for the given model_type.
+
+        Returns None if no run has completed yet — callers fall back to the
+        on-disk model artifact's mtime, or treat the count as "all decisions
+        ever" depending on context.
+        """
+        sql = """
+            SELECT id, model_type, started_at, completed_at, status,
+                   num_training_rows, num_positive_rows,
+                   model_path, report_path, triggered_by
+              FROM model_training_runs
+             WHERE model_type = %(model_type)s
+               AND status = 'succeeded'
+             ORDER BY completed_at DESC
+             LIMIT 1
+        """
+        rows = self.query(sql, {"model_type": model_type})
+        return dict(rows[0]) if rows else None
+
+    def count_image_decisions_since(self, ts: datetime | None) -> dict:
+        """Count v2_image_metric_confirmations rows created after `ts`.
+
+        Returns {total, positive, negative}. Excludes 'skip' (deferred, not
+        decided). Positive = accept|correct|add. Negative = reject. When `ts`
+        is None, counts every substantive decision ever recorded.
+        """
+        sql = """
+            SELECT
+                COUNT(*) FILTER (WHERE decision != 'skip')                          AS total,
+                COUNT(*) FILTER (WHERE decision IN ('accept', 'correct', 'add'))    AS positive,
+                COUNT(*) FILTER (WHERE decision = 'reject')                         AS negative
+              FROM v2_image_metric_confirmations
+             WHERE (%(ts)s IS NULL OR created_at > %(ts)s)
+        """
+        rows = self.query(sql, {"ts": ts})
+        if not rows:
+            return {"total": 0, "positive": 0, "negative": 0}
+        row = rows[0]
+        return {
+            "total": int(row["total"] or 0),
+            "positive": int(row["positive"] or 0),
+            "negative": int(row["negative"] or 0),
+        }
+
+    def count_text_decisions_since(self, ts: datetime | None) -> int:
+        """Count v2_review_decisions rows created after `ts`.
+
+        Informational only — no text-side trainable model. Surfaces in the
+        Summary tab so reviewers can see how much manual ground truth has
+        accumulated independent of the image-classifier retrain anchor.
+        """
+        sql = """
+            SELECT COUNT(*) AS n
+              FROM v2_review_decisions
+             WHERE (%(ts)s IS NULL OR created_at > %(ts)s)
+        """
+        rows = self.query(sql, {"ts": ts})
+        return int(rows[0]["n"]) if rows else 0
+
+    def get_recent_text_corrections(self, limit: int = 10) -> list[dict]:
+        """Most recent text-fact corrections (decision='correct').
+
+        Joins v2_review_decisions to v2_metric_facts + filings + companies so
+        the Summary panel can show original→corrected metric, value, and a
+        link to the source filing.
+        """
+        sql = """
+            SELECT
+                rd.created_at,
+                rd.reviewer_id,
+                rd.assigned_metric_id    AS corrected_metric_id,
+                rd.corrected_value,
+                rd.reviewer_notes,
+                mf.fact_id,
+                mf.canonical_metric_id   AS original_metric_id,
+                mf.value_raw             AS original_value_raw,
+                mf.filing_id,
+                c.company_name,
+                c.cik
+              FROM v2_review_decisions rd
+              JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+              JOIN filings f          ON f.filing_id = mf.filing_id
+              JOIN companies c        ON c.company_id = f.company_id
+             WHERE rd.decision = 'correct'
+             ORDER BY rd.created_at DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
+
+    def get_recent_text_additions(self, limit: int = 10) -> list[dict]:
+        """Most recent manually-entered text facts (extraction_method='manual').
+
+        Sourced from POST /api/v2/missed-metric. Joined for filing/company
+        context so the Summary panel can link out.
+        """
+        sql = """
+            SELECT
+                mf.created_at,
+                mf.fact_id,
+                mf.canonical_metric_id,
+                mf.value_raw,
+                mf.unit,
+                mf.review_reason,
+                mf.filing_id,
+                c.company_name,
+                c.cik
+              FROM v2_metric_facts mf
+              JOIN filings f   ON f.filing_id = mf.filing_id
+              JOIN companies c ON c.company_id = f.company_id
+             WHERE mf.extraction_method = 'manual'
+             ORDER BY mf.created_at DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
+
+    def get_recent_image_additions(self, limit: int = 10) -> list[dict]:
+        """Most recent reviewer-added image metrics (decision='add')."""
+        sql = """
+            SELECT
+                imc.created_at,
+                imc.id                AS confirmation_id,
+                imc.img_id,
+                imc.confirmed_metric_id,
+                imc.reviewer_id,
+                ia.filing_id,
+                c.company_name,
+                c.cik
+              FROM v2_image_metric_confirmations imc
+              JOIN v2_image_assets ia ON ia.img_id = imc.img_id
+              JOIN filings f          ON f.filing_id = ia.filing_id
+              JOIN companies c        ON c.company_id = f.company_id
+             WHERE imc.decision = 'add'
+             ORDER BY imc.created_at DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
+
+    def get_recent_image_corrections(self, limit: int = 10) -> list[dict]:
+        """Most recent image-metric corrections (decision='correct').
+
+        detected_metric_id and confirmed_metric_id are both populated and
+        differ — surfaces the keyword-matcher's mistakes for downstream
+        analysis.
+        """
+        sql = """
+            SELECT
+                imc.created_at,
+                imc.id                  AS confirmation_id,
+                imc.img_id,
+                imc.detected_metric_id,
+                imc.confirmed_metric_id,
+                imc.reviewer_id,
+                ia.filing_id,
+                c.company_name,
+                c.cik
+              FROM v2_image_metric_confirmations imc
+              JOIN v2_image_assets ia ON ia.img_id = imc.img_id
+              JOIN filings f          ON f.filing_id = ia.filing_id
+              JOIN companies c        ON c.company_id = f.company_id
+             WHERE imc.decision = 'correct'
+             ORDER BY imc.created_at DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
 
     # =============================================================================
     # V2 Image Metric Confirmation Methods (v2_image_metric_confirmations)
