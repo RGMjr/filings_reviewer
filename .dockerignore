@@ -45,6 +45,12 @@ README.md
 **/filings_cache
 **/logs
 **/data
+# …but the image-relevance model artifact and its training report are
+# COPY'd into the runtime image by Dockerfile (loaded at request time by
+# src/shared/image_features.py for the "Model score" sort). Stopgap until
+# gh-391 (R2 artifact persistence) — until then they must ride in the image.
+!data/image_model/relevance_model.joblib
+!data/image_model/model_report.txt
 
 # Dev tooling, IDE, and AI assistant scaffolding — not read at runtime.
 **/.claude
