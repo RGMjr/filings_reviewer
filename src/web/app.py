@@ -298,6 +298,12 @@ def create_app(
     # Register blueprints (routes will be added in later tasks)
     _register_blueprints(app)
 
+    # Register CSRF protection middleware (A4).
+    # No-op when auth_enforcement_enabled flag is off or missing (safe default).
+    from src.auth.csrf import csrf_protect
+
+    app.before_request(csrf_protect)
+
     # Register error handlers
     _register_error_handlers(app)
 
