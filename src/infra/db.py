@@ -2720,6 +2720,61 @@ class DatabaseAdapter:
         rows = self.query(sql, {"limit": limit})
         return [dict(r) for r in rows]
 
+    def get_rejection_reason_rollup(self, side: str, since: datetime | None = None) -> list[dict]:
+        """Aggregate rejected decisions by reason for the Summary tab.
+
+        Returns rows of {reason, count, percent}. Percent is share of all
+        rejections in the side (text or image). Side='text' reads
+        v2_review_decisions.rejection_category; side='image' reads
+        v2_image_metric_confirmations.rejection_reason.
+
+        When `since` is None, includes every rejection ever recorded; otherwise
+        filters to rows with created_at > since.
+        """
+        if side not in ("text", "image"):
+            raise ValueError(f"Unknown side: {side!r} (expected 'text' or 'image')")
+
+        if side == "text":
+            sql = """
+                WITH r AS (
+                    SELECT rejection_category AS reason
+                      FROM v2_review_decisions
+                     WHERE decision = 'reject'
+                       AND rejection_category IS NOT NULL
+                       AND (%(since)s IS NULL OR created_at > %(since)s)
+                )
+                SELECT
+                    reason,
+                    COUNT(*)                                                AS count,
+                    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) AS percent
+                  FROM r
+                 GROUP BY reason
+                 ORDER BY count DESC
+            """
+        else:
+            # Image side: use rejection_reason. Includes the no_relevant_metrics
+            # sentinel (NULL detected_metric_id) since reviewers DO see that as a
+            # distinct rejection reason.
+            sql = """
+                WITH r AS (
+                    SELECT rejection_reason AS reason
+                      FROM v2_image_metric_confirmations
+                     WHERE decision = 'reject'
+                       AND rejection_reason IS NOT NULL
+                       AND (%(since)s IS NULL OR created_at > %(since)s)
+                )
+                SELECT
+                    reason,
+                    COUNT(*)                                                AS count,
+                    ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) AS percent
+                  FROM r
+                 GROUP BY reason
+                 ORDER BY count DESC
+            """
+
+        rows = self.query(sql, {"since": since})
+        return [dict(r) for r in rows]
+
     # =============================================================================
     # V2 Image Metric Confirmation Methods (v2_image_metric_confirmations)
     # =============================================================================
@@ -2756,17 +2811,18 @@ class DatabaseAdapter:
             INSERT INTO v2_image_metric_confirmations (
                 img_id, detected_metric_id, confirmed_metric_id,
                 decision, rejection_reason, reviewer_id,
-                decided_against_hash
+                reviewer_notes, decided_against_hash
             ) VALUES (
                 %(img_id)s, %(detected_metric_id)s, %(confirmed_metric_id)s,
                 %(decision)s, %(rejection_reason)s, %(reviewer_id)s,
-                %(decided_against_hash)s
+                %(reviewer_notes)s, %(decided_against_hash)s
             )
             ON CONFLICT (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
             DO UPDATE SET
                 decision            = EXCLUDED.decision,
                 confirmed_metric_id = EXCLUDED.confirmed_metric_id,
                 rejection_reason    = EXCLUDED.rejection_reason,
+                reviewer_notes      = EXCLUDED.reviewer_notes,
                 decided_against_hash = EXCLUDED.decided_against_hash,
                 updated_at          = now()
         """
@@ -2804,6 +2860,7 @@ class DatabaseAdapter:
                             "decision": decision,
                             "rejection_reason": entry.get("rejection_reason"),
                             "reviewer_id": reviewer_id,
+                            "reviewer_notes": entry.get("reviewer_notes"),
                             "decided_against_hash": decided_against_hash,
                         },
                     )

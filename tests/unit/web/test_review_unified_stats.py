@@ -80,6 +80,9 @@ def _stub_analytics_helpers(mock_db) -> None:
     # is currently running. Default to "none running" so button gating depends
     # only on the threshold counters.
     mock_db.query.return_value = []
+    # Phase 4c: rejection-reason rollup helper. Default empty rollups so the
+    # template renders the "No rejections yet" empty state.
+    mock_db.get_rejection_reason_rollup.return_value = []
 
 
 def test_stats_renders_empty(client, mock_db):

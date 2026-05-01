@@ -215,6 +215,13 @@ def stats():
     recent_image_additions = db.get_recent_image_additions(limit=10)
     recent_image_corrections = db.get_recent_image_corrections(limit=10)
 
+    # Phase 4c: rejection-reason rollup. "Why Reviewers Reject" panel groups
+    # decisions by category for both sides. Lifetime totals (since=None) so
+    # the panel reflects the full reviewer corpus, not just decisions since
+    # the last classifier retrain.
+    text_rejection_rollup = db.get_rejection_reason_rollup("text", since=None)
+    image_rejection_rollup = db.get_rejection_reason_rollup("image", since=None)
+
     # Phase 3: button activation logic. Active iff thresholds are met AND no
     # retrain is currently running. The endpoint enforces the same gates
     # server-side (this is just UX).
@@ -256,6 +263,8 @@ def stats():
         retrain_running=retrain_running,
         running_run_id=running_run_id,
         button_active=button_active,
+        text_rejection_rollup=text_rejection_rollup,
+        image_rejection_rollup=image_rejection_rollup,
     )
 
 
