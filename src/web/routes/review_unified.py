@@ -49,6 +49,12 @@ V2_REVIEW_STATUSES = ("pending_review", "accepted", "rejected", "corrected", "au
 # Valid sort options
 V2_SORT_OPTIONS = ("confidence_desc", "confidence_asc", "metric", "period")
 
+# Image-tab sort options. The DB function only knows the three legacy values
+# ('relevance', 'tier', 'position'); 'model_score' is computed in Python after
+# the SELECT (predicted_relevance is NULL in prod since USE_LEARNED_TRIAGE=false).
+IMAGE_SORT_OPTIONS = ("relevance", "model_score", "tier", "position")
+IMAGE_SORT_DEFAULT = "relevance"
+
 # Valid analytical tab keys for the filing list filter. Stored in the URL under
 # ?document_type=<tab> so existing bookmarks keep the same param name; the value
 # space changed in the 2026-04 tab rename (was: sec_filing / earnings_call /
@@ -494,12 +500,43 @@ def review_filing(filing_id: int):
         image_status = request.args.get("image_status", "all")
         db_image_status = image_status if image_status in IMAGE_REVIEW_STATUSES else None
 
+        image_sort = request.args.get("image_sort", IMAGE_SORT_DEFAULT)
+        if image_sort not in IMAGE_SORT_OPTIONS:
+            image_sort = IMAGE_SORT_DEFAULT
+        # 'model_score' isn't a SQL sort — fetch in 'relevance' order, then
+        # re-sort in Python below.
+        db_image_sort = "relevance" if image_sort == "model_score" else image_sort
+
         image_candidates = db.get_image_review_candidates_for_filing_v2(
             filing_id=filing_id,
             status=db_image_status,
-            sort_by="relevance",
+            sort_by=db_image_sort,
             limit=1000,
         )
+
+        # Score-on-render: predicted_relevance is NULL in prod, so the SQL
+        # 'relevance' sort silently degrades to relevance_score DESC. Compute
+        # model score in Python from row metadata (no R2 fetch — pipeline
+        # cached per worker in image_features.py).
+        if image_sort == "model_score":
+            from src.shared.image_features import predict_relevance, v2_row_to_features_input
+
+            for c in image_candidates:
+                # Queue SELECT projects fields under aliases (preceding_text,
+                # image_width, image_height, cohort_confidence). Bridge to the
+                # native key names v2_row_to_features_input expects.
+                native_row = {
+                    "nearby_text": c.get("preceding_text"),
+                    "width": c.get("image_width"),
+                    "height": c.get("image_height"),
+                    "relevance_score": c.get("cohort_confidence"),
+                    "classification": c.get("classification"),
+                    "filename": c.get("filename"),
+                }
+                c["_model_score"] = predict_relevance(v2_row_to_features_input(native_row))
+            image_candidates.sort(
+                key=lambda c: (c["_model_score"] is None, -(c["_model_score"] or 0.0))
+            )
 
         # Stable partition: pending first (in existing probability-desc order),
         # then everything else. Note: strip ordering uses raw review_status;
@@ -602,7 +639,7 @@ def review_filing(filing_id: int):
             image_skipped=image_skipped,
             image_auto_rejected=image_auto_rejected,
             image_auto_reject_candidates=image_auto_reject_candidates,
-            image_filters={"status": image_status},
+            image_filters={"status": image_status, "sort": image_sort},
             chart_types=chart_types,
             rejection_reasons=rejection_reasons,
             image_decisions=IMAGE_DECISIONS,

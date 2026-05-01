@@ -22,6 +22,7 @@
         candidates: [],
         submitting: false,
         imageStatus: null,
+        imageSort: null,
     };
 
     function init() {
@@ -31,6 +32,7 @@
         state.filingId = container.dataset.filingId;
         state.currentImgId = container.dataset.imgId;
         state.imageStatus = container.dataset.imageStatus || 'all';
+        state.imageSort = container.dataset.imageSort || 'relevance';
 
         try {
             state.candidates = JSON.parse(container.dataset.candidates || '[]');
@@ -165,9 +167,14 @@
         state.submitting = true;
 
         try {
-            const qs = state.imageStatus && state.imageStatus !== 'all'
-                ? `?image_status=${encodeURIComponent(state.imageStatus)}`
-                : '';
+            const qsParts = [];
+            if (state.imageStatus && state.imageStatus !== 'all') {
+                qsParts.push(`image_status=${encodeURIComponent(state.imageStatus)}`);
+            }
+            if (state.imageSort && state.imageSort !== 'relevance') {
+                qsParts.push(`image_sort=${encodeURIComponent(state.imageSort)}`);
+            }
+            const qs = qsParts.length ? `?${qsParts.join('&')}` : '';
             const response = await fetch(
                 `/api/v2/image-candidates/${state.currentImgId}/skip${qs}`,
                 { method: 'POST' }
@@ -203,8 +210,13 @@
         }
 
         try {
-            const imageStatus = new URLSearchParams(window.location.search).get('image_status');
-            const unskipQs = imageStatus ? `?image_status=${encodeURIComponent(imageStatus)}` : '';
+            const urlParams = new URLSearchParams(window.location.search);
+            const imageStatus = urlParams.get('image_status');
+            const imageSort = urlParams.get('image_sort');
+            const unskipQsParts = [];
+            if (imageStatus) unskipQsParts.push(`image_status=${encodeURIComponent(imageStatus)}`);
+            if (imageSort && imageSort !== 'relevance') unskipQsParts.push(`image_sort=${encodeURIComponent(imageSort)}`);
+            const unskipQs = unskipQsParts.length ? `?${unskipQsParts.join('&')}` : '';
             const response = await fetch(
                 `/api/v2/image-candidates/${imgId}/unskip${unskipQs}`,
                 { method: 'POST' }
@@ -237,9 +249,14 @@
 
         state.submitting = true;
         try {
-            const qs = state.imageStatus && state.imageStatus !== 'all'
-                ? `?image_status=${encodeURIComponent(state.imageStatus)}`
-                : '';
+            const qsParts = [];
+            if (state.imageStatus && state.imageStatus !== 'all') {
+                qsParts.push(`image_status=${encodeURIComponent(state.imageStatus)}`);
+            }
+            if (state.imageSort && state.imageSort !== 'relevance') {
+                qsParts.push(`image_sort=${encodeURIComponent(state.imageSort)}`);
+            }
+            const qs = qsParts.length ? `?${qsParts.join('&')}` : '';
             const response = await fetch(
                 `/api/v2/image-candidates/${imgId}/reopen${qs}`,
                 {
@@ -360,6 +377,7 @@
         submitting: false,
         focusedRow: null,
         imageStatus: 'all',
+        imageSort: 'relevance',
         textPending: 0,
         nextFilingUrl: null,
     };
@@ -372,6 +390,7 @@
         const container = document.getElementById('review-container');
         if (container) {
             state.imageStatus = container.dataset.imageStatus || 'all';
+            state.imageSort = container.dataset.imageSort || 'relevance';
         }
         state.textPending = (typeof window.TEXT_PENDING === 'number') ? window.TEXT_PENDING : 0;
         state.nextFilingUrl = window.NEXT_FILING_URL || null;
@@ -854,7 +873,7 @@
             reviewer_id: reviewerName,
             decisions,
             mark_complete: markComplete,
-            view_filters: { status: state.imageStatus },
+            view_filters: { status: state.imageStatus, sort: state.imageSort },
         };
 
         try {
@@ -968,7 +987,7 @@
                 img_id: state.imgId,
                 reviewer_id: reviewerName,
                 decisions: decisions,
-                view_filters: { status: state.imageStatus },
+                view_filters: { status: state.imageStatus, sort: state.imageSort },
             };
             const resp = await fetch('/api/v2/image-metric-confirmations', {
                 method: 'POST',
@@ -981,9 +1000,14 @@
                 return;
             }
 
-            const skipQs = state.imageStatus && state.imageStatus !== 'all'
-                ? `?image_status=${encodeURIComponent(state.imageStatus)}`
-                : '';
+            const skipQsParts = [];
+            if (state.imageStatus && state.imageStatus !== 'all') {
+                skipQsParts.push(`image_status=${encodeURIComponent(state.imageStatus)}`);
+            }
+            if (state.imageSort && state.imageSort !== 'relevance') {
+                skipQsParts.push(`image_sort=${encodeURIComponent(state.imageSort)}`);
+            }
+            const skipQs = skipQsParts.length ? `?${skipQsParts.join('&')}` : '';
             const skipResp = await fetch(
                 `/api/v2/image-candidates/${state.imgId}/skip${skipQs}`,
                 { method: 'POST' }
