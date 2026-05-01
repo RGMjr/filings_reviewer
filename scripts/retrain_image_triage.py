@@ -153,6 +153,41 @@ def _finalize_run(args: argparse.Namespace) -> None:
     )
 
 
+def _read_pinned_sklearn_version() -> str:
+    """Read the sklearn pin from requirements.lock (single source of truth)."""
+    lock_path = Path(__file__).resolve().parent.parent / "requirements.lock"
+    for line in lock_path.read_text().splitlines():
+        stripped = line.strip()
+        if stripped.startswith("scikit-learn==") and not stripped.startswith("#"):
+            return stripped.split("==", 1)[1].split()[0]
+    raise RuntimeError(
+        f"scikit-learn pin not found in {lock_path}. "
+        "Refusing to retrain without a known target version."
+    )
+
+
+def check_sklearn_version(*, allow_mismatch: bool = False) -> None:
+    """Exit with a clear error if local sklearn != requirements.lock pin."""
+    import sklearn  # noqa: PLC0415
+
+    pinned = _read_pinned_sklearn_version()
+    installed = sklearn.__version__
+    if installed == pinned:
+        return
+    msg = (
+        f"sklearn version mismatch: requirements.lock pins {pinned}, "
+        f"local venv has {installed}. A version-mismatched joblib "
+        "unpickles silently into None on Render — predict_relevance "
+        "returns None, no error is raised. Run: "
+        "uv pip install -r requirements.lock"
+    )
+    if allow_mismatch:
+        logger.warning("%s (continuing because --allow-version-mismatch was set)", msg)
+        return
+    logger.error(msg)
+    sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Monthly retrain wrapper for the image relevance triage model",
@@ -214,9 +249,18 @@ def main() -> None:
             "leave this unset."
         ),
     )
+    parser.add_argument(
+        "--allow-version-mismatch",
+        action="store_true",
+        help=(
+            "Skip the sklearn version guard. For local experimentation only — "
+            "produced joblib will not load on Render."
+        ),
+    )
     args = parser.parse_args()
 
     configure_logging(level="INFO")
+    check_sklearn_version(allow_mismatch=args.allow_version_mismatch)
 
     if not args.database_url and args.source in ("sec", "all"):
         logger.error("No database URL available. Set $TEST_DATABASE_URL or pass --database-url.")
