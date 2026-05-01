@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Review Statistics - {{ super() }}{% endblock %}
+{% block title %}Metric Analytics - {{ super() }}{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
   <div class="col-12 d-flex justify-content-between align-items-center">
     <div>
-      <h1>Review Statistics</h1>
+      <h1>Metric Analytics</h1>
       <p class="text-muted mb-0">Aggregate review progress across text facts and images</p>
     </div>
     <a href="{{ url_for('review_unified.filing_list') }}" class="btn btn-outline-secondary">
@@ -15,11 +15,17 @@
   </div>
 </div>
 
-{# Bootstrap tab bar #}
+{# Bootstrap tab bar — Summary is default; Text Facts / Images keep existing per-document detail #}
 <ul class="nav nav-tabs mb-4" id="statsTab" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="text-tab" data-bs-toggle="tab" data-bs-target="#text-stats"
-            type="button" role="tab" aria-controls="text-stats" aria-selected="true">
+    <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary-stats"
+            type="button" role="tab" aria-controls="summary-stats" aria-selected="true">
+      Summary
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="text-tab" data-bs-toggle="tab" data-bs-target="#text-stats"
+            type="button" role="tab" aria-controls="text-stats" aria-selected="false">
       Text Facts
     </button>
   </li>
@@ -34,9 +40,104 @@
 <div class="tab-content" id="statsTabContent">
 
   {# =====================================================================
+     SUMMARY TAB
+     ===================================================================== #}
+  <div class="tab-pane fade show active" id="summary-stats" role="tabpanel" aria-labelledby="summary-tab">
+
+    {# Side-by-side aggregate cards: text facts + image confirmations #}
+    <div class="row mb-4">
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h5 class="mb-0">Text Facts</h5>
+          </div>
+          <div class="card-body">
+            <div class="row text-center">
+              <div class="col-4 mb-3">
+                <div class="fs-4 fw-bold text-primary">{{ totals.fact_count or 0 }}</div>
+                <div class="text-muted small">Total</div>
+              </div>
+              <div class="col-4 mb-3">
+                <div class="fs-4 fw-bold text-warning">{{ totals.pending_count or 0 }}</div>
+                <div class="text-muted small">Pending</div>
+              </div>
+              <div class="col-4 mb-3">
+                <div class="fs-4 fw-bold text-success">{{ totals.accepted_count or 0 }}</div>
+                <div class="text-muted small">Accepted</div>
+              </div>
+              <div class="col-4">
+                <div class="fs-4 fw-bold text-danger">{{ totals.rejected_count or 0 }}</div>
+                <div class="text-muted small">Rejected</div>
+              </div>
+              <div class="col-4">
+                <div class="fs-4 fw-bold text-info">{{ totals.corrected_count or 0 }}</div>
+                <div class="text-muted small">Corrected</div>
+              </div>
+              <div class="col-4">
+                <div class="fs-4 fw-bold text-secondary">{{ totals.auto_accepted_count or 0 }}</div>
+                <div class="text-muted small">Auto-accepted</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer bg-transparent text-center">
+            <button class="btn btn-link btn-sm p-0" type="button"
+                    onclick="document.getElementById('text-tab').click()">
+              View per-company breakdown &rarr;
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+          <div class="card-header">
+            <h5 class="mb-0">Image Confirmations</h5>
+          </div>
+          <div class="card-body">
+            {% set img = image_overall or {} %}
+            <div class="row text-center">
+              <div class="col-4 mb-3">
+                <div class="fs-4 fw-bold text-primary">{{ img.total_decisions or 0 }}</div>
+                <div class="text-muted small">Total Decisions</div>
+              </div>
+              <div class="col-4 mb-3">
+                <div class="fs-4 fw-bold text-success">{{ img.relevant_count or 0 }}</div>
+                <div class="text-muted small">Relevant</div>
+              </div>
+              <div class="col-4 mb-3">
+                <div class="fs-4 fw-bold text-danger">{{ img.not_relevant_count or 0 }}</div>
+                <div class="text-muted small">Not Relevant</div>
+              </div>
+              <div class="col-4">
+                <div class="fs-4 fw-bold text-warning">{{ image_progress.pending_count or 0 }}</div>
+                <div class="text-muted small">Pending Images</div>
+              </div>
+              <div class="col-4">
+                <div class="fs-4 fw-bold text-info">{{ image_progress.reviewed_count or 0 }}</div>
+                <div class="text-muted small">Reviewed Images</div>
+              </div>
+              <div class="col-4">
+                <div class="fs-4 fw-bold text-secondary">{{ image_progress.skipped_count or 0 }}</div>
+                <div class="text-muted small">Skipped Images</div>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer bg-transparent text-center">
+            <button class="btn btn-link btn-sm p-0" type="button"
+                    onclick="document.getElementById('images-tab').click()">
+              View tier &amp; rejection-reason breakdown &rarr;
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div> {# end summary-stats tab pane #}
+
+  {# =====================================================================
      TEXT FACTS TAB
      ===================================================================== #}
-  <div class="tab-pane fade show active" id="text-stats" role="tabpanel" aria-labelledby="text-tab">
+  <div class="tab-pane fade" id="text-stats" role="tabpanel" aria-labelledby="text-tab">
 
     {# Aggregate Totals Cards #}
     <div class="row mb-4">

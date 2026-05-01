@@ -1874,6 +1874,12 @@ class DatabaseAdapter:
         v.review_status,
         v.section_type,
         (v.classification IN ('decorative', 'logo', 'signature')) AS is_decorative,
+        NOT (
+            (v.classification = 'chart' AND v.relevance_score >= 0.6)
+            OR (v.classification IN ('chart', 'table_image')
+                AND COALESCE(v.width, 0) >= 300
+                AND COALESCE(v.height, 0) >= 300)
+        ) AS auto_reject_candidate,
         CASE
             WHEN v.classification = 'chart' AND v.relevance_score >= 0.6
                 THEN 'tier_1_cohort'

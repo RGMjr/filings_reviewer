@@ -450,6 +450,11 @@ def review_filing(filing_id: int):
         image_auto_rejected = sum(
             1 for c in all_image_candidates if c["review_status"] == "auto_rejected"
         )
+        image_auto_reject_candidates = sum(
+            1
+            for c in all_image_candidates
+            if c.get("auto_reject_candidate") and c["review_status"] == "pending"
+        )
 
         # Finalize tab default: if the caller did not pass an explicit ?tab=
         # and text is empty but images have pending work, open the images tab.
@@ -504,6 +509,7 @@ def review_filing(filing_id: int):
             image_reviewed=image_reviewed,
             image_skipped=image_skipped,
             image_auto_rejected=image_auto_rejected,
+            image_auto_reject_candidates=image_auto_reject_candidates,
             image_filters={"status": image_status},
             chart_types=chart_types,
             rejection_reasons=rejection_reasons,

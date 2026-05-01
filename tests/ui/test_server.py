@@ -237,6 +237,7 @@ MOCK_IMAGE_CANDIDATE_PENDING = {
     "classification_confidence": None,
     "image_review_state": "pending",
     "is_stale_vs_decision": False,
+    "auto_reject_candidate": False,
 }
 
 MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION = {
@@ -270,6 +271,7 @@ MOCK_IMAGE_CANDIDATE_WITH_CLASSIFICATION = {
     "classification_confidence": 0.93,
     "image_review_state": "pending",
     "is_stale_vs_decision": False,
+    "auto_reject_candidate": False,
 }
 
 MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
@@ -307,6 +309,7 @@ MOCK_IMAGE_CANDIDATE_WITH_DETECTED = {
     "classification_confidence": None,
     "image_review_state": "pending",
     "is_stale_vs_decision": False,
+    "auto_reject_candidate": False,
 }
 
 MOCK_IMAGE_CANDIDATE_REVIEWED = {
@@ -337,6 +340,7 @@ MOCK_IMAGE_CANDIDATE_REVIEWED = {
     "classification_confidence": None,
     "image_review_state": "relevant",
     "is_stale_vs_decision": False,
+    "auto_reject_candidate": False,
 }
 
 IMAGE_CHART_TYPES = [
@@ -416,6 +420,7 @@ def _shared_template_vars(
         image_pending=1,
         image_reviewed=1,
         image_skipped=0,
+        image_auto_reject_candidates=0,
         image_filters={"status": "all"},
         chart_types=IMAGE_CHART_TYPES,
         rejection_reasons=IMAGE_REJECTION_REASONS,
@@ -664,6 +669,7 @@ MOCK_IMAGE_CANDIDATE_A_LAST = {
     "image_index": 1,
     "detected_metrics": [],
     "is_stale_vs_decision": False,
+    "auto_reject_candidate": False,
 }
 
 MOCK_IMAGE_CANDIDATE_B_PENDING = {
@@ -690,6 +696,7 @@ MOCK_IMAGE_CANDIDATE_B_PENDING = {
     "image_index": 1,
     "detected_metrics": [],
     "is_stale_vs_decision": False,
+    "auto_reject_candidate": False,
 }
 
 

@@ -792,7 +792,15 @@ def onboard(
     )
     persistence = V2PersistenceAdapter(db)
 
-    # Build execution list: all NEW + caller-approved re-extracts
+    # Build execution list: all NEW + caller-approved re-extracts.
+    #
+    # The processing gate is c.already_extracted (presence of a v2_documents
+    # row), NOT v2_ingest_batch_filings.current_status. To force re-extraction
+    # of an already-persisted filing the caller must pass
+    # reextract_decisions[filing_id]=True — flipping current_status='queued'
+    # alone is silently a no-op here. _run_onboard
+    # (src/universe/onboarding_runner.py) builds reextract_decisions from each
+    # row's initial_bucket ('reextract' / 'reextract_reviewed').
     to_process: list[tuple[Any, bool]] = []
     for c in candidates:
         if not c.already_extracted:
