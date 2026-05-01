@@ -2776,6 +2776,88 @@ class DatabaseAdapter:
         return [dict(r) for r in rows]
 
     # =============================================================================
+    # Text-decision pattern analysis readers (text_decision_analysis_runs et al.)
+    # =============================================================================
+
+    def get_last_text_analysis_run(self) -> dict | None:
+        """Most recent succeeded text-decision pattern-analysis run.
+
+        Returns None when no run has succeeded yet — UI then shows "never"
+        and decision counters fall back to lifetime totals.
+        """
+        sql = """
+            SELECT id, started_at, completed_at, status,
+                   num_decisions_analyzed, num_metrics_analyzed,
+                   triggered_by, error
+              FROM text_decision_analysis_runs
+             WHERE status = 'succeeded'
+             ORDER BY completed_at DESC
+             LIMIT 1
+        """
+        rows = self.query(sql)
+        return dict(rows[0]) if rows else None
+
+    def is_text_analysis_running(self) -> tuple[bool, str | None]:
+        """Concurrency check for the API gate.
+
+        Returns (True, run_id) if any row is currently in 'running' status,
+        else (False, None).
+        """
+        rows = self.query(
+            """
+            SELECT id FROM text_decision_analysis_runs
+             WHERE status = 'running'
+             LIMIT 1
+            """
+        )
+        if not rows:
+            return False, None
+        return True, str(rows[0]["id"])
+
+    def get_text_decision_metric_summary(self, run_id: str) -> list[dict]:
+        """All text_decision_metric_summary rows for a given run, ordered by
+        rejection volume DESC so the UI can render highest-pain metrics first.
+        """
+        sql = """
+            SELECT metric_id, total_decisions, accept_count, reject_count,
+                   correct_count, rejection_categories, top_correction_targets
+              FROM text_decision_metric_summary
+             WHERE run_id = %(run_id)s
+             ORDER BY reject_count DESC, total_decisions DESC, metric_id ASC
+        """
+        rows = self.query(sql, {"run_id": run_id})
+        return [dict(r) for r in rows]
+
+    def get_text_decision_phrase_findings(
+        self,
+        run_id: str,
+        metric_id: str | None = None,
+        decision_type: str | None = None,
+    ) -> list[dict]:
+        """Phrase findings for a run, optionally filtered by metric and/or
+        decision_type for drill-down.
+        """
+        conditions = ["run_id = %(run_id)s"]
+        params: dict[str, Any] = {"run_id": run_id}
+        if metric_id is not None:
+            conditions.append("metric_id = %(metric_id)s")
+            params["metric_id"] = metric_id
+        if decision_type is not None:
+            conditions.append("decision_type = %(decision_type)s")
+            params["decision_type"] = decision_type
+        where_clause = " AND ".join(conditions)
+        sql = f"""
+            SELECT id, metric_id, decision_type, phrase, phrase_ngram_size,
+                   source_field, occurrence_count, pct_of_decisions, examples
+              FROM text_decision_phrase_findings
+             WHERE {where_clause}
+             ORDER BY metric_id ASC, decision_type ASC, source_field ASC,
+                      occurrence_count DESC, phrase ASC
+        """
+        rows = self.query(sql, params)
+        return [dict(r) for r in rows]
+
+    # =============================================================================
     # V2 Image Metric Confirmation Methods (v2_image_metric_confirmations)
     # =============================================================================
 

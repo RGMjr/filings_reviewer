@@ -35,6 +35,12 @@
       Images
     </button>
   </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="patterns-tab" data-bs-toggle="tab" data-bs-target="#patterns-stats"
+            type="button" role="tab" aria-controls="patterns-stats" aria-selected="false">
+      Text Patterns
+    </button>
+  </li>
 </ul>
 
 <div class="tab-content" id="statsTabContent">
@@ -102,6 +108,73 @@
                     Need {{ threshold_positive - image_decisions_since.positive }} more positive decisions.
                   {% else %}
                     Ready — clicking will start a retrain.
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Text-decision pattern analysis card. Mirrors the Image Relevance
+       Classifier card above but for rule-based text extraction. The button
+       POSTs to /api/v2/extraction/analyze-text-decisions; the analysis script
+       writes per-(metric, phrase) findings to text_decision_phrase_findings,
+       which the "Text Patterns" tab renders for human-driven YAML edits. #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card border-info">
+          <div class="card-body">
+            <div class="row align-items-center">
+              <div class="col-md-7">
+                <h5 class="card-title mb-2">Text Extraction Pattern Analysis</h5>
+                <p class="mb-1 small">
+                  {% if last_text_analysis_run and last_text_analysis_run.completed_at %}
+                    <strong>Last analysis:</strong>
+                    {{ last_text_analysis_run.completed_at.strftime('%Y-%m-%d %H:%M UTC') }}
+                    {% if last_text_analysis_run.triggered_by %}
+                    <span class="text-muted">(by {{ last_text_analysis_run.triggered_by }})</span>
+                    {% endif %}
+                    <span class="text-muted">
+                      — {{ last_text_analysis_run.num_decisions_analyzed or 0 }} decisions across
+                      {{ last_text_analysis_run.num_metrics_analyzed or 0 }} metrics
+                    </span>
+                  {% else %}
+                    <strong>Last analysis:</strong>
+                    <span class="text-muted">never (no analyses recorded)</span>
+                  {% endif %}
+                </p>
+                <p class="mb-0 small">
+                  <strong>Text decisions since last analysis:</strong>
+                  {{ text_decisions_since_analysis or 0 }} / {{ text_analysis_threshold }}
+                </p>
+                <p class="mb-0 small text-muted">
+                  Mines high-incidence root-cause phrases from rejection_reason, reviewer_notes,
+                  and source segment text. Output informs manual edits to
+                  <code>config/metric_keywords.yaml</code> and the FP-filter rules — not a model retrain.
+                </p>
+                <div id="text-analysis-status" class="small mt-2"
+                     {% if text_analysis_running %}data-running-id="{{ text_analysis_running_run_id }}"{% endif %}>
+                  {% if text_analysis_running %}
+                  <span class="text-warning">⏳ Analysis in progress — polling for completion…</span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                <button id="btn-update-text-analysis"
+                        class="btn btn-primary"
+                        {% if not text_analysis_button_active %}disabled{% endif %}
+                        data-threshold="{{ text_analysis_threshold }}">
+                  Update Text Pattern Analysis
+                </button>
+                <div class="text-muted small mt-1">
+                  {% if text_analysis_running %}
+                    Analysis already running — waiting on it to finish.
+                  {% elif text_decisions_since_analysis < text_analysis_threshold %}
+                    Need {{ text_analysis_threshold - text_decisions_since_analysis }} more text decisions.
+                  {% else %}
+                    Ready — clicking will start an analysis.
                   {% endif %}
                 </div>
               </div>
@@ -898,6 +971,185 @@
     {% endif %} {# end overall_stats check #}
 
   </div> {# end images-stats tab pane #}
+
+  {# =====================================================================
+     TEXT PATTERNS TAB
+     Renders the latest succeeded text_decision_analysis_runs row. The card
+     above (Summary tab) explains what produces these rows.
+     ===================================================================== #}
+  <div class="tab-pane fade" id="patterns-stats" role="tabpanel" aria-labelledby="patterns-tab">
+
+    {% if not last_text_analysis_run %}
+    <div class="row">
+      <div class="col-12">
+        <div class="alert alert-info" role="alert">
+          <h4 class="alert-heading">No analysis run yet</h4>
+          <p>
+            Click <strong>Update Text Pattern Analysis</strong> on the Summary tab once enough
+            text decisions have accumulated to mine patterns from. The button enables when at
+            least {{ text_analysis_threshold }} text decisions have been recorded.
+          </p>
+        </div>
+      </div>
+    </div>
+    {% else %}
+
+    <div class="row mb-3">
+      <div class="col-12">
+        <h5 class="mb-1">Findings from the latest analysis</h5>
+        <p class="text-muted small mb-0">
+          Run on
+          {{ last_text_analysis_run.completed_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          — {{ last_text_analysis_run.num_decisions_analyzed or 0 }} decisions across
+          {{ last_text_analysis_run.num_metrics_analyzed or 0 }} metrics. Phrases are filtered to
+          n-grams appearing in ≥10% of decisions for the metric (threshold tunable; see
+          <code>scripts/analyze_text_decision_patterns.py</code>).
+        </p>
+      </div>
+    </div>
+
+    {# Per-metric rollup. Sorted by reject volume DESC server-side. Each row
+       expands to show the phrase findings + (for corrections) the top
+       canonical→assigned target metrics for that group. #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Per-metric decision rollup</h6>
+            <span class="text-muted small">{{ text_metric_summary|length }} metric{{ '' if text_metric_summary|length == 1 else 's' }}</span>
+          </div>
+          {% if not text_metric_summary %}
+          <div class="card-body">
+            <p class="text-muted small mb-0">No decisions found for the latest analysis run.</p>
+          </div>
+          {% else %}
+          {# Group findings by (metric, decision_type, source_field) once so the
+             template can render drill-down without nested filtering loops. #}
+          {% set grouped_findings = {} %}
+          {% for f in text_phrase_findings %}
+            {% set key = (f.metric_id, f.decision_type, f.source_field) %}
+            {% if key not in grouped_findings %}
+              {% set _ = grouped_findings.update({key: []}) %}
+            {% endif %}
+            {% set _ = grouped_findings[key].append(f) %}
+          {% endfor %}
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:30%">Metric</th>
+                  <th class="text-end">Total</th>
+                  <th class="text-end">Accept</th>
+                  <th class="text-end">Reject</th>
+                  <th class="text-end">Correct</th>
+                  <th>Rejection categories</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+              {% for s in text_metric_summary %}
+                <tr data-bs-toggle="collapse" data-bs-target="#patterns-row-{{ loop.index }}"
+                    aria-expanded="false" style="cursor:pointer;">
+                  <td><code class="small">{{ s.metric_id }}</code></td>
+                  <td class="text-end">{{ s.total_decisions }}</td>
+                  <td class="text-end text-success">{{ s.accept_count }}</td>
+                  <td class="text-end text-danger">{{ s.reject_count }}</td>
+                  <td class="text-end text-info">{{ s.correct_count }}</td>
+                  <td class="small">
+                    {% set cats = s.rejection_categories or {} %}
+                    {% if cats %}
+                      {% for cat, cnt in cats.items() %}
+                      <span class="badge bg-secondary me-1">{{ cat|replace('_', ' ') }} {{ cnt }}</span>
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end small text-muted">expand ▾</td>
+                </tr>
+                <tr class="collapse" id="patterns-row-{{ loop.index }}">
+                  <td colspan="7" class="bg-light">
+                    <div class="row">
+                      {% for decision_type in ['reject', 'correct'] %}
+                      <div class="col-md-6">
+                        <h6 class="mt-2 mb-2">
+                          {% if decision_type == 'reject' %}
+                          <span class="text-danger">Reject</span> phrases
+                          {% else %}
+                          <span class="text-info">Correct</span> phrases
+                          {% endif %}
+                        </h6>
+                        {% set any_findings = false %}
+                        {% for source_field in ['rejection_reason', 'reviewer_notes', 'segment_text'] %}
+                          {% set bucket = grouped_findings.get((s.metric_id, decision_type, source_field), []) %}
+                          {% if bucket %}
+                            {% set any_findings = true %}
+                            <p class="text-muted small mb-1 mt-2">
+                              <strong>{{ source_field|replace('_', ' ')|title }}</strong>
+                            </p>
+                            <ul class="list-unstyled small mb-2">
+                              {% for f in bucket %}
+                              <li class="mb-1">
+                                <code>{{ f.phrase }}</code>
+                                <span class="text-muted">
+                                  &middot; {{ f.occurrence_count }} ({{ f.pct_of_decisions }}%)
+                                  &middot; n={{ f.phrase_ngram_size }}
+                                </span>
+                                {% set examples = f.examples or [] %}
+                                {% if examples %}
+                                <span class="text-muted">
+                                  &middot; examples:
+                                  {% for ex in examples %}
+                                  <a href="{{ url_for('review_unified.review_filing', filing_id=ex.filing_id) }}"
+                                     class="text-decoration-none small"
+                                     title="fact_id {{ ex.fact_id }}">
+                                    #{{ ex.filing_id }}
+                                  </a>{% if not loop.last %}, {% endif %}
+                                  {% endfor %}
+                                </span>
+                                {% endif %}
+                              </li>
+                              {% endfor %}
+                            </ul>
+                          {% endif %}
+                        {% endfor %}
+                        {% if not any_findings %}
+                        <p class="text-muted small fst-italic">
+                          No high-incidence phrases for {{ decision_type }} on this metric.
+                        </p>
+                        {% endif %}
+
+                        {% if decision_type == 'correct' %}
+                          {% set targets = s.top_correction_targets or [] %}
+                          {% if targets %}
+                          <p class="text-muted small mb-1 mt-2"><strong>Top correction targets</strong></p>
+                          <ul class="list-unstyled small mb-2">
+                            {% for t in targets[:10] %}
+                            <li>
+                              <code>{{ s.metric_id }}</code> &rarr; <code>{{ t.target_metric_id }}</code>
+                              <span class="text-muted">&middot; {{ t.count }}</span>
+                            </li>
+                            {% endfor %}
+                          </ul>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                      {% endfor %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% endif %} {# end last_text_analysis_run check #}
+
+  </div> {# end patterns-stats tab pane #}
 
 </div> {# end tab-content #}
 {% endblock %}

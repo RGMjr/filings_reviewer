@@ -30,12 +30,18 @@ register_timing(api_unified_bp)
 # Project root, used to locate the retrain script and place its log file.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _RETRAIN_SCRIPT = _PROJECT_ROOT / "scripts" / "retrain_image_triage.py"
+_TEXT_ANALYSIS_SCRIPT = _PROJECT_ROOT / "scripts" / "analyze_text_decision_patterns.py"
 
 # Image-classifier retrain thresholds. Both must be exceeded for the UI button
 # to activate AND for the endpoint to accept a retrain request. Configurable
 # so we can loosen them in early-data mode and tighten as the corpus grows.
 DEFAULT_RETRAIN_THRESHOLD_TOTAL = 100
 DEFAULT_RETRAIN_THRESHOLD_POSITIVE = 10
+
+# Text-decision pattern-analysis threshold. Single gate (no positive/negative
+# split — every decision is signal for rule-based extraction). Default chosen
+# so the first run is meaningful but doesn't fire on a handful of decisions.
+DEFAULT_TEXT_ANALYSIS_THRESHOLD = 50
 
 # Valid V2 decisions
 V2_DECISION_TYPES = ("accept", "reject", "correct")
@@ -1307,6 +1313,159 @@ def get_training_run_status(run_id):
         return jsonify({"error": "not_found"}), 404
     row = dict(rows[0])
     # UUID and timestamp objects need explicit serialization for jsonify.
+    row["id"] = str(row["id"])
+    if row.get("started_at"):
+        row["started_at"] = row["started_at"].isoformat()
+    if row.get("completed_at"):
+        row["completed_at"] = row["completed_at"].isoformat()
+    return jsonify(row), 200
+
+
+# =============================================================================
+# Text-decision pattern analysis (rule-based extraction improvement surface)
+# =============================================================================
+
+
+def _text_analysis_threshold() -> int:
+    """Read TEXT_ANALYSIS_THRESHOLD_TOTAL from env, falling back to default."""
+    try:
+        return int(os.environ.get("TEXT_ANALYSIS_THRESHOLD_TOTAL", DEFAULT_TEXT_ANALYSIS_THRESHOLD))
+    except ValueError:
+        return DEFAULT_TEXT_ANALYSIS_THRESHOLD
+
+
+def _spawn_text_analysis_runner(run_id: str, *, database_url: str) -> bool:
+    """Spawn the text-decision pattern-analysis script as a detached subprocess.
+
+    Mirrors _spawn_retrain_runner. Fire-and-forget; the subprocess writes
+    status back to text_decision_analysis_runs via --run-id.
+    """
+    if not current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
+        return True
+
+    log_dir = _PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"text_analysis_{run_id}.log"
+    log_fh = open(log_path, "ab")
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                str(_TEXT_ANALYSIS_SCRIPT),
+                "--run-id",
+                run_id,
+                "--database-url",
+                database_url,
+            ],
+            start_new_session=True,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            cwd=str(_PROJECT_ROOT),
+        )
+        logger.info("Spawned text-analysis runner for run_id=%s", run_id)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to spawn text-analysis runner for run_id=%s: %s", run_id, exc)
+        return False
+    finally:
+        log_fh.close()
+
+
+@api_unified_bp.route("/extraction/analyze-text-decisions", methods=["POST"])
+def trigger_text_decision_analysis():
+    """Kick off a text-decision pattern-analysis run.
+
+    Mirrors POST /models/image-classifier/retrain but for rule-based text
+    extraction — the script does NOT mutate v2_review_decisions or
+    config/metric_keywords.yaml; it writes its findings to
+    text_decision_metric_summary + text_decision_phrase_findings, and the
+    /v2/review/stats page renders them for human-driven YAML edits.
+
+    Gates:
+      - Reviewer name required (matches per-decision-write contract).
+      - Concurrency: rejects if a 'running' row already exists.
+      - Threshold: at least N text decisions since the last succeeded
+        analysis (env: TEXT_ANALYSIS_THRESHOLD_TOTAL, default 50).
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    db = get_db()
+
+    running, running_run_id = db.is_text_analysis_running()
+    if running:
+        return (
+            jsonify(
+                {
+                    "error": "analysis_already_running",
+                    "running_run_id": running_run_id,
+                }
+            ),
+            409,
+        )
+
+    last_run = db.get_last_text_analysis_run()
+    since_ts = last_run["completed_at"] if last_run else None
+    count = db.count_text_decisions_since(since_ts)
+    threshold = _text_analysis_threshold()
+    if count < threshold:
+        return (
+            jsonify(
+                {
+                    "error": "below_threshold",
+                    "count": count,
+                    "threshold": threshold,
+                }
+            ),
+            409,
+        )
+
+    run_id = str(_uuid.uuid4())
+    database_url = os.environ.get("DATABASE_URL", "")
+    db.execute(
+        """
+        INSERT INTO text_decision_analysis_runs (id, status, triggered_by)
+        VALUES (%(id)s, 'running', %(triggered_by)s)
+        """,
+        {"id": run_id, "triggered_by": reviewer_id},
+    )
+
+    spawned = _spawn_text_analysis_runner(run_id, database_url=database_url)
+    if not spawned:
+        db.execute(
+            """
+            UPDATE text_decision_analysis_runs
+               SET status = 'failed',
+                   error  = 'subprocess_spawn_failed',
+                   completed_at = NOW()
+             WHERE id = %(id)s
+            """,
+            {"id": run_id},
+        )
+        return jsonify({"error": "subprocess_spawn_failed", "run_id": run_id}), 500
+
+    return jsonify({"run_id": run_id, "status": "running"}), 202
+
+
+@api_unified_bp.route("/extraction/analysis-runs/<uuid:run_id>/status", methods=["GET"])
+def get_text_analysis_run_status(run_id):
+    """Return current status of a text_decision_analysis_runs row."""
+    db = get_db()
+    rows = db.query(
+        """
+        SELECT id, status, started_at, completed_at,
+               num_decisions_analyzed, num_metrics_analyzed,
+               triggered_by, error
+          FROM text_decision_analysis_runs
+         WHERE id = %(id)s
+        """,
+        {"id": str(run_id)},
+    )
+    if not rows:
+        return jsonify({"error": "not_found"}), 404
+    row = dict(rows[0])
     row["id"] = str(row["id"])
     if row.get("started_at"):
         row["started_at"] = row["started_at"].isoformat()
