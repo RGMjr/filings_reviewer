@@ -24,7 +24,7 @@ Powers the **Update Image Classifier** button on `/v2/review/stats` (Metric Anal
   - On INSERT-then-spawn-failed (rare; OS-level Popen raises): the row is UPDATEd to `status='failed', error='subprocess_spawn_failed'` so the next page load clears the `retrain_running` flag and re-enables the button.
 - `GET /api/v2/models/training/<uuid:run_id>/status` — polled by `static/js/analytics.js` every 5s. The `<uuid:>` converter rejects non-UUID paths with 404 before the handler runs. Returns the `model_training_runs` row (including `error` text on failure) or 404 if the id is unknown.
 
-**Retrain script writeback** (`scripts/retrain_image_triage.py --run-id <uuid>`): the optional `--run-id` flag tells the script to UPDATE the row on completion — `status='succeeded'` plus `num_training_rows`, `num_positive_rows`, `model_path`, `report_path`, `completed_at`. A top-level try/except flips the row to `status='failed', error=<exc>` on any Python exception. **SIGKILL/OOM still leak** — the script never re-enters Python after the signal, so the row stays `running` forever and blocks future retrains via the concurrency gate. Manual escape hatch is `psql -c "UPDATE model_training_runs SET status='failed', error='manual cleanup' WHERE status='running' AND started_at < NOW() - INTERVAL '1 hour'"` (tracked in known-issues; auto-detection deferred).
+**Retrain script writeback** (`scripts/retrain_image_triage.py --run-id <uuid>`): the optional `--run-id` flag tells the script to UPDATE the row on completion — `status='succeeded'` plus `num_training_rows`, `num_positive_rows`, `model_path`, `report_path`, `completed_at`. A top-level try/except flips the row to `status='failed', error=<exc>` on any Python exception. **SIGKILL/OOM still leak past Python** — the signal handler is bypassed entirely — but the retrain endpoint sweeps stale rows on every attempt (gh-392): `UPDATE model_training_runs SET status='failed', error='auto-cleanup: stale running row (>1h, gh-392)' WHERE model_type='image_relevance' AND status='running' AND started_at < NOW() - INTERVAL '1 hour'` runs before the concurrency check. So a leaked row from a SIGKILL'd subprocess no longer permanently blocks future retrains — at worst the operator waits an hour and re-clicks. The same SQL is the manual escape hatch if you don't want to wait (scope to a specific id: `WHERE id = '<uuid>'`).
 
 **Render disk ephemerality**: the retrain writes to `data/image_model/`. On Render that disk is wiped on every deploy. Today this is harmless because `USE_LEARNED_TRIAGE=false` in prod (the model isn't loaded). The moment that flag flips on, retrains performed via the UI will silently disappear on the next deploy — persist artifacts to R2 first (tracked in known-issues).
 
@@ -71,6 +71,24 @@ Three rules in v1; a metric may fire multiple. Output is sorted by severity DESC
 Constants live at the top of the helper module (`EXCL_PCT_LOW`, `EXCL_PCT_HIGH`, `EXCL_NGRAM_MIN`, `EXCL_SOURCE_FIELDS`, `OVERLAP_COUNT_LOW`, `OVERLAP_COUNT_HIGH`, `FP_REJECT_FLOOR`, `FP_PCT_LOW`, `FP_PCT_HIGH`). Adding a fourth rule is a Python edit only — append a `_rule_<name>(...)` helper and call it from `compute_recommendations`.
 
 The helper handles `psycopg`'s `Decimal` return for `pct_of_decisions NUMERIC(5,2)` via `float()` coercion at the boundary. Empty inputs return `{}` — the existing `_stub_analytics_helpers` test fixtures rely on this no-op behavior.
+
+### Recommendation decisions
+
+Each Suggested-actions card renders three buttons (Accept / Dismiss / Defer) plus an optional reviewer-note textarea. Clicks persist to `text_pattern_recommendation_decisions` via two endpoints:
+
+- `POST /api/v2/extraction/recommendation-decisions` — upsert on `(metric_id, rule, decision_key, reviewer_id)`. Body: `{metric_id, rule, decision_key, decision, reviewer_id, reviewer_note?}`. `decision ∈ {accepted, dismissed, deferred}`. Returns the upserted row.
+- `DELETE /api/v2/extraction/recommendation-decisions/<uuid:decision_id>` — owner-scoped undo. Returns 404 when the row is missing OR exists but belongs to a different reviewer (so admins don't accidentally undo each other's decisions).
+
+Both endpoints are gated by `_require_reviewer_id` + `require_admin` (`src/web/middleware.py`). The admin gate reads a comma-separated allowlist from env var `ADMIN_USER_IDS` and returns HTTP 403 `{error: "admin_required"}` when missing or unmatched. **Transitional** — to be replaced by `src/auth/middleware.py::require(<permission>)` against `auth_users.role` once Stage A2 of the auth rollout lands (`docs/architecture/auth-rollout-implementation-plan.md`). Migration is one-line per call site.
+
+`decision_key` is the stable identifier across analysis reruns:
+- `exclusion_pattern` → the phrase (e.g. `"accounts receivable"`)
+- `keyword_overlap` → the target metric_id (e.g. `"cm_active_customers_total"`)
+- `fp_filter_gap` → literal `"wrong_value"`
+
+The recommendation helper (`compute_recommendations`) takes an optional third `decisions` arg (default `None`) — when provided, each rec dict gains a `decision` field looked up by `(metric_id, rule, decision_key)`. The DB reader returns rows ordered DESC by `updated_at`, so when multiple reviewers have decided the same rec, the freshest decision wins (helper uses `setdefault`).
+
+`pr_number` and `pr_url` columns on the table stay NULL through PR 1 (bookkeeping-only). They populate in PR 2 when an `exclusion_pattern` accept opens an auto-PR. Don't read them yet.
 
 ## Image-confirmation reviewer notes
 
