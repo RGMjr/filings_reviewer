@@ -38,6 +38,7 @@ Core system architecture and design specifications.
 | **[data-model.md](architecture/data-model.md)** | Database schema, table specifications, relationships | Developers, Analysts |
 | **[extraction-pipeline.md](architecture/extraction-pipeline.md)** | Extraction pipeline stages, components, interfaces | Developers |
 | **[llm-integration.md](architecture/llm-integration.md)** | OpenAI GPT-4o-mini integration, costs, prompts | Developers |
+| **[auth-rollout-implementation-plan.md](architecture/auth-rollout-implementation-plan.md)** | Stage-by-stage PR plan for the review-UI authorization rollout | Developers, DevOps |
 
 ### Requirements (Business Needs)
 
