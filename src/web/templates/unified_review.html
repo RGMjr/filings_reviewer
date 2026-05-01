@@ -181,6 +181,9 @@
           {% if image_auto_rejected is defined and image_auto_rejected > 0 %}
           <span class="badge bg-warning text-dark">{{ image_auto_rejected }} auto-rejected</span>
           {% endif %}
+          {% if image_auto_reject_candidates is defined and image_auto_reject_candidates > 0 %}
+          <span class="badge bg-secondary ms-1" title="Pending images scored as tier-3 — likely no relevant metrics. Review to confirm or override.">{{ image_auto_reject_candidates }} candidates</span>
+          {% endif %}
           {% endif %}
           <a href="{{ next_filing_url }}" class="btn btn-sm btn-outline-secondary ms-2">
             Next filing <span class="kbd ms-1">F</span>
@@ -799,6 +802,9 @@
                     {% elif candidate.detection_tier == 'seed_list' %}S
                     {% else %}?{% endif %}
                   </span>
+                  {% if candidate.auto_reject_candidate %}
+                  <span class="arc-badge" title="Auto-reject candidate (tier 3)">~</span>
+                  {% endif %}
                 </div>
               </div>
             </a>
@@ -844,6 +850,9 @@
               {% endif %}
               {% else %}
               <span class="badge bg-warning text-dark">Pending</span>
+              {% endif %}
+              {% if current_image.auto_reject_candidate %}
+              <span class="badge bg-secondary ms-1" title="Auto-reject candidate: tier-3 image, likely no relevant metrics. Review to confirm or override.">Auto-reject candidate</span>
               {% endif %}
             </div>
           </div>

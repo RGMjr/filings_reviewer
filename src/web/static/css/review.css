@@ -1302,6 +1302,18 @@
     color: white;
 }
 
+/* Auto-reject candidate indicator on thumbnail strip */
+.arc-badge {
+    display: inline-block;
+    padding: 0.125rem 0.3rem;
+    border-radius: 0.25rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    background-color: #adb5bd;
+    color: #000;
+    margin-left: 0.2rem;
+}
+
 /* Image Tier Badge (larger, in main display) */
 .image-tier-badge {
     font-size: 0.75rem;
