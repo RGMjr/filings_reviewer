@@ -192,6 +192,8 @@ def filing_list():
 @review_unified_bp.route("/stats")
 def stats():
     """Display aggregate review statistics for both text and image review."""
+    from src.web.routes.api_unified import _retrain_thresholds
+
     db = get_db()
     text_data = db.get_v2_review_stats()
     image_overall = db.get_image_decision_overall_v2()
@@ -213,6 +215,25 @@ def stats():
     recent_image_additions = db.get_recent_image_additions(limit=10)
     recent_image_corrections = db.get_recent_image_corrections(limit=10)
 
+    # Phase 3: button activation logic. Active iff thresholds are met AND no
+    # retrain is currently running. The endpoint enforces the same gates
+    # server-side (this is just UX).
+    threshold_total, threshold_positive = _retrain_thresholds()
+    running_rows = db.query(
+        """
+        SELECT id FROM model_training_runs
+         WHERE model_type = 'image_relevance' AND status = 'running'
+         LIMIT 1
+        """
+    )
+    retrain_running = bool(running_rows)
+    running_run_id = str(running_rows[0]["id"]) if running_rows else None
+    button_active = (
+        not retrain_running
+        and image_decisions_since["total"] >= threshold_total
+        and image_decisions_since["positive"] >= threshold_positive
+    )
+
     return render_template(
         "unified_stats.html",
         per_company=text_data["per_company"],
@@ -230,6 +251,11 @@ def stats():
         recent_text_additions=recent_text_additions,
         recent_image_additions=recent_image_additions,
         recent_image_corrections=recent_image_corrections,
+        threshold_total=threshold_total,
+        threshold_positive=threshold_positive,
+        retrain_running=retrain_running,
+        running_run_id=running_run_id,
+        button_active=button_active,
     )
 
 

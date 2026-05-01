@@ -59,7 +59,7 @@ def _empty_text_data() -> dict:
 
 
 def _stub_analytics_helpers(mock_db) -> None:
-    """Set safe defaults for the Phase-2 Summary-tab helpers.
+    """Set safe defaults for the Phase-2 + Phase-3 Summary-tab helpers.
 
     The Jinja template iterates these and reads `.length` / `.created_at`,
     so an unset MagicMock returns a non-iterable that crashes the render.
@@ -76,6 +76,10 @@ def _stub_analytics_helpers(mock_db) -> None:
     mock_db.get_recent_text_additions.return_value = []
     mock_db.get_recent_image_additions.return_value = []
     mock_db.get_recent_image_corrections.return_value = []
+    # Phase 3: stats() now calls db.query() directly to check whether a retrain
+    # is currently running. Default to "none running" so button gating depends
+    # only on the threshold counters.
+    mock_db.query.return_value = []
 
 
 def test_stats_renders_empty(client, mock_db):
@@ -107,9 +111,11 @@ def test_stats_renders_empty(client, mock_db):
     assert "Image Relevance Classifier" in body
     assert "Recent Activity" in body
     assert 'id="summary-stats"' in body
-    # Update Image Classifier button is rendered inert in Phase 2.
+    # Update Image Classifier button — Phase 3 button, disabled below threshold.
     assert "Update Image Classifier" in body
-    assert "Disabled" in body
+    # With 0 decisions and the default 100/10 threshold, the button is disabled
+    # and surfaces a "need N more" helper.
+    assert "more total decisions" in body
     # Empty-state alert in the images tab pane
     assert "No image review decisions yet" in body
 

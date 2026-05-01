@@ -7,11 +7,15 @@ manually adding metric facts that the pipeline missed.
 """
 
 import logging
+import os
+import subprocess
+import sys
 import uuid as _uuid
+from pathlib import Path
 from typing import Any
 
 import psycopg
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from src.shared.keyword_config import _load_config
 from src.web.app import get_db
@@ -22,6 +26,16 @@ logger = logging.getLogger(__name__)
 
 register_api_auth(api_unified_bp)
 register_timing(api_unified_bp)
+
+# Project root, used to locate the retrain script and place its log file.
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_RETRAIN_SCRIPT = _PROJECT_ROOT / "scripts" / "retrain_image_triage.py"
+
+# Image-classifier retrain thresholds. Both must be exceeded for the UI button
+# to activate AND for the endpoint to accept a retrain request. Configurable
+# so we can loosen them in early-data mode and tighten as the corpus grows.
+DEFAULT_RETRAIN_THRESHOLD_TOTAL = 100
+DEFAULT_RETRAIN_THRESHOLD_POSITIVE = 10
 
 # Valid V2 decisions
 V2_DECISION_TYPES = ("accept", "reject", "correct")
@@ -1094,6 +1108,199 @@ def delete_image_metric_confirmation(confirmation_id):
             exc_info=True,
         )
         return jsonify({"error": "internal server error"}), 500
+
+
+# =============================================================================
+# Image classifier retrain (Phase 3 of Metric Analytics rollout)
+# =============================================================================
+
+
+def _retrain_thresholds() -> tuple[int, int]:
+    """Read MODEL_UPDATE_THRESHOLD_* from env, falling back to defaults."""
+    try:
+        total = int(os.environ.get("MODEL_UPDATE_THRESHOLD_TOTAL", DEFAULT_RETRAIN_THRESHOLD_TOTAL))
+    except ValueError:
+        total = DEFAULT_RETRAIN_THRESHOLD_TOTAL
+    try:
+        positive = int(
+            os.environ.get("MODEL_UPDATE_THRESHOLD_POSITIVE", DEFAULT_RETRAIN_THRESHOLD_POSITIVE)
+        )
+    except ValueError:
+        positive = DEFAULT_RETRAIN_THRESHOLD_POSITIVE
+    return total, positive
+
+
+def _spawn_retrain_runner(run_id: str, *, model_type: str, database_url: str) -> bool:
+    """Spawn the retrain script as a detached subprocess.
+
+    Mirrors src/web/routes/ingest.py::_spawn_ingest_runner. Fire-and-forget;
+    the subprocess writes status back to model_training_runs via --run-id.
+
+    Returns False only when the OS-level Popen call raises. On Render this
+    is best-effort — if the gunicorn worker dies before Popen returns, the
+    row stays 'running' until manual cleanup (tracked in known-issues).
+    """
+    if not current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
+        return True
+
+    log_dir = _PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"retrain_{run_id}.log"
+    log_fh = open(log_path, "ab")
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                str(_RETRAIN_SCRIPT),
+                "--run-id",
+                run_id,
+                "--model-type",
+                model_type,
+                "--database-url",
+                database_url,
+            ],
+            start_new_session=True,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            cwd=str(_PROJECT_ROOT),
+        )
+        logger.info("Spawned retrain runner for run_id=%s (model_type=%s)", run_id, model_type)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to spawn retrain runner for run_id=%s: %s", run_id, exc)
+        return False
+    finally:
+        log_fh.close()
+
+
+@api_unified_bp.route("/models/image-classifier/retrain", methods=["POST"])
+def trigger_image_classifier_retrain():
+    """Kick off a retrain of data/image_model/relevance_model.joblib.
+
+    Gates:
+      - Reviewer name required (matches per-decision-write contract).
+      - Threshold gate: at least N total + M positive new image decisions
+        since the last succeeded run (env: MODEL_UPDATE_THRESHOLD_*).
+      - Concurrency gate: rejects if a 'running' row already exists.
+
+    On success: INSERTs a model_training_runs row, spawns the retrain script
+    detached, and returns 202 + {run_id, status: 'running'}. The status
+    endpoint is the canonical place to poll for completion.
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    model_type = data.get("model_type", "logistic")
+    if model_type not in ("logistic", "gbt"):
+        return jsonify({"error": "invalid_model_type", "allowed": ["logistic", "gbt"]}), 400
+
+    db = get_db()
+
+    # Concurrency gate — never let two retrains race on the same model artifact.
+    running_rows = db.query(
+        """
+        SELECT id FROM model_training_runs
+         WHERE model_type = 'image_relevance' AND status = 'running'
+         LIMIT 1
+        """
+    )
+    if running_rows:
+        return (
+            jsonify(
+                {
+                    "error": "retrain_already_running",
+                    "running_run_id": str(running_rows[0]["id"]),
+                }
+            ),
+            409,
+        )
+
+    # Threshold gate — re-check server-side so a curl can't bypass the disabled UI.
+    last_run_rows = db.query(
+        """
+        SELECT completed_at FROM model_training_runs
+         WHERE model_type = 'image_relevance' AND status = 'succeeded'
+         ORDER BY completed_at DESC
+         LIMIT 1
+        """
+    )
+    since_ts = last_run_rows[0]["completed_at"] if last_run_rows else None
+    counts = db.count_image_decisions_since(since_ts)
+    threshold_total, threshold_positive = _retrain_thresholds()
+    if counts["total"] < threshold_total or counts["positive"] < threshold_positive:
+        return (
+            jsonify(
+                {
+                    "error": "below_threshold",
+                    "counts": counts,
+                    "thresholds": {"total": threshold_total, "positive": threshold_positive},
+                }
+            ),
+            409,
+        )
+
+    # INSERT the row first, then spawn — if Popen fails, we mark the row failed
+    # so the UI's retrain_running flag clears on the next page load.
+    run_id = str(_uuid.uuid4())
+    database_url = os.environ.get("DATABASE_URL", "")
+    db.execute(
+        """
+        INSERT INTO model_training_runs
+            (id, model_type, status, triggered_by)
+        VALUES
+            (%(id)s, 'image_relevance', 'running', %(triggered_by)s)
+        """,
+        {"id": run_id, "triggered_by": reviewer_id},
+    )
+
+    spawned = _spawn_retrain_runner(run_id, model_type=model_type, database_url=database_url)
+    if not spawned:
+        db.execute(
+            """
+            UPDATE model_training_runs
+               SET status = 'failed',
+                   error  = 'subprocess_spawn_failed',
+                   completed_at = NOW()
+             WHERE id = %(id)s
+            """,
+            {"id": run_id},
+        )
+        return jsonify({"error": "subprocess_spawn_failed", "run_id": run_id}), 500
+
+    return jsonify({"run_id": run_id, "status": "running"}), 202
+
+
+@api_unified_bp.route("/models/training/<uuid:run_id>/status", methods=["GET"])
+def get_training_run_status(run_id):
+    """Return current status of a model_training_runs row.
+
+    Used by the UI to poll a retrain to completion. Browsers polling from
+    same-origin bypass the API-key check via Origin/Referer match (see
+    .claude/rules/web.md, "API auth").
+    """
+    db = get_db()
+    rows = db.query(
+        """
+        SELECT id, model_type, status, started_at, completed_at,
+               num_training_rows, num_positive_rows,
+               model_path, report_path, triggered_by, error
+          FROM model_training_runs
+         WHERE id = %(id)s
+        """,
+        {"id": str(run_id)},
+    )
+    if not rows:
+        return jsonify({"error": "not_found"}), 404
+    row = dict(rows[0])
+    # UUID and timestamp objects need explicit serialization for jsonify.
+    row["id"] = str(row["id"])
+    if row.get("started_at"):
+        row["started_at"] = row["started_at"].isoformat()
+    if row.get("completed_at"):
+        row["completed_at"] = row["completed_at"].isoformat()
+    return jsonify(row), 200
 
 
 # =============================================================================
