@@ -436,8 +436,8 @@ Allowlist-first, auto-create-on-first-login:
 Initial users and alias mappings must be seeded by script or SQL before rollout:
 
 - `rgmarkey@gmail.com` → role `admin`
+- `rob.markey@cmasb.org` → role `admin` (break-glass path if `rgmarkey@gmail.com` is unavailable on cutover day)
 - `mayujoiner@gmail.com` → role `reviewer`
-- **`[DECISION]` second admin** — TBD second admin email, role `admin`. Required so the system has a break-glass path if `rgmarkey@gmail.com` is unavailable on cutover day. User must fill in before Stage A applies.
 
 Initial legacy alias mappings:
 
@@ -600,7 +600,7 @@ The following must be audited (actor, action, target, before state, after state,
   - Render env groups must not define `AUTH_DEV_BYPASS`.
   - A unit test loads the production config and verifies the boot-time guard rejects the unsafe combination.
 - Tests must include role-aware fixtures for `admin`, `reviewer`, and `viewer`.
-- **Staging environment.** `[DECISION]` — confirm whether a staging environment exists separate from production. If yes, each stage flip (B → C, C → D) must validate in staging before prod. If no, this is documented as accepted risk in the cutover gate.
+- **Staging environment.** No separate staging environment exists; this is documented as accepted risk in the cutover gate. Stage flips (B → C, C → D) are validated in production behind feature flags, with the emergency-fallback flag and bounded legacy-session window providing the rollback path. Local dev (with `AUTH_DEV_BYPASS=1`) and CI-driven integration tests are the pre-flip validation surface.
 
 ## Implementation Guidance
 
@@ -739,4 +739,4 @@ Each outcome ties to a verification-checklist item.
 - Exact table and column names are left to developers, but the data responsibilities above are mandatory.
 - If developers retain any API-key-based operational access, it must be intentionally segregated from human browser auth.
 - Image-serving endpoints are no longer a public exception; if any operational need surfaces, address it via signed time-bound URLs rather than a public carve-out.
-- `[DECISION]` markers (second admin email, staging-environment policy) must be resolved before Stage A applies.
+- All previously open `[DECISION]` markers (second admin email, staging-environment policy) are resolved as of 2026-05-01; see `Initial Seed Data` and `Development and Test Environment Strategy → Staging environment`.
