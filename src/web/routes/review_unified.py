@@ -199,6 +199,20 @@ def stats():
     image_tier = db.get_image_decisions_by_tier_v2()
     image_rejections = db.get_image_rejection_reasons_by_tier_v2()
 
+    # Phase 2: model-update anchor + decision counters + recent activity.
+    # The "since" timestamp comes from the most recent succeeded image-classifier
+    # retrain. When no run has completed yet, ts=None and the counters become
+    # "decisions ever" — informational, not a retrain trigger.
+    last_run = db.get_last_training_run("image_relevance")
+    since_ts = last_run.get("completed_at") if last_run else None
+    image_decisions_since = db.count_image_decisions_since(since_ts)
+    text_decisions_since = db.count_text_decisions_since(since_ts)
+
+    recent_text_corrections = db.get_recent_text_corrections(limit=10)
+    recent_text_additions = db.get_recent_text_additions(limit=10)
+    recent_image_additions = db.get_recent_image_additions(limit=10)
+    recent_image_corrections = db.get_recent_image_corrections(limit=10)
+
     return render_template(
         "unified_stats.html",
         per_company=text_data["per_company"],
@@ -209,6 +223,13 @@ def stats():
         image_tier=image_tier,
         image_rejections=image_rejections,
         rejection_reason_labels=IMAGE_REJECTION_REASON_LABELS,
+        last_training_run=last_run,
+        image_decisions_since=image_decisions_since,
+        text_decisions_since=text_decisions_since,
+        recent_text_corrections=recent_text_corrections,
+        recent_text_additions=recent_text_additions,
+        recent_image_additions=recent_image_additions,
+        recent_image_corrections=recent_image_corrections,
     )
 
 
