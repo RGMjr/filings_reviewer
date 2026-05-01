@@ -264,6 +264,10 @@ def stats():
         text_metric_summary = []
         text_phrase_findings = []
 
+    from src.web.text_pattern_recommendations import compute_recommendations
+
+    text_recommendations = compute_recommendations(text_metric_summary, text_phrase_findings)
+
     return render_template(
         "unified_stats.html",
         per_company=text_data["per_company"],
@@ -296,6 +300,7 @@ def stats():
         text_analysis_button_active=text_analysis_button_active,
         text_metric_summary=text_metric_summary,
         text_phrase_findings=text_phrase_findings,
+        text_recommendations=text_recommendations,
     )
 
 

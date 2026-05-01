@@ -56,6 +56,22 @@ The script writes findings to three tables — it does NOT mutate `v2_review_dec
 
 **View persistence**: the new "Text Patterns" tab (`#patterns-tab` → `#patterns-stats`) does not currently persist to localStorage. If you add a key for it, follow the `cmasb:` namespace convention documented under "View persistence (localStorage)" below.
 
+### Recommendation rules
+
+The Patterns-tab expanded row also renders a **Suggested actions** callout above the per-decision-type phrase columns. Recommendations are computed at render time by `src/web/text_pattern_recommendations.py::compute_recommendations(summaries, findings)` from the same DB rows the table iterates — no schema change, no separate analysis pass. This keeps rule thresholds tweakable without rerunning the script.
+
+Three rules in v1; a metric may fire multiple. Output is sorted by severity DESC then rule name ASC. Each recommendation dict carries `rule`, `severity` (`high` / `medium`), `title`, `evidence`, `action`.
+
+| Rule | Trigger | Severity bands |
+|---|---|---|
+| **`exclusion_pattern`** | A `text_decision_phrase_findings` row with `decision_type='reject'`, `source_field IN ('rejection_reason', 'segment_text')`, `phrase_ngram_size >= 2`, `pct_of_decisions >= 30` | high if `pct >= 50`, else medium |
+| **`keyword_overlap`** | A `top_correction_targets` entry with `count >= 5` | high if `count >= 10`, else medium |
+| **`fp_filter_gap`** | `rejection_categories['wrong_value'] / reject_count >= 0.5` AND `reject_count >= 5` | high if ratio `>= 0.7`, else medium |
+
+Constants live at the top of the helper module (`EXCL_PCT_LOW`, `EXCL_PCT_HIGH`, `EXCL_NGRAM_MIN`, `EXCL_SOURCE_FIELDS`, `OVERLAP_COUNT_LOW`, `OVERLAP_COUNT_HIGH`, `FP_REJECT_FLOOR`, `FP_PCT_LOW`, `FP_PCT_HIGH`). Adding a fourth rule is a Python edit only — append a `_rule_<name>(...)` helper and call it from `compute_recommendations`.
+
+The helper handles `psycopg`'s `Decimal` return for `pct_of_decisions NUMERIC(5,2)` via `float()` coercion at the boundary. Empty inputs return `{}` — the existing `_stub_analytics_helpers` test fixtures rely on this no-op behavior.
+
 ## Image-confirmation reviewer notes
 
 `v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.
