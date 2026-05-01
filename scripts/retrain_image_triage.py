@@ -29,6 +29,7 @@ Operator notes:
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
 import os
 import subprocess
@@ -60,6 +61,96 @@ def _run(cmd: list[str], *, dry_run: bool) -> None:
     if result.returncode != 0:
         logger.error("Command failed (exit %d): %s", result.returncode, pretty)
         sys.exit(result.returncode)
+
+
+def _count_training_rows(csv_path: str) -> tuple[int, int]:
+    """Return (total_rows, positive_rows) for the export CSV.
+
+    Positive = decision == 'relevant' (matches the export-script label
+    convention at scripts/export_image_training_data.py:70).
+    """
+    if not Path(csv_path).exists():
+        return 0, 0
+    total = 0
+    positive = 0
+    with open(csv_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            total += 1
+            if row.get("decision") == "relevant":
+                positive += 1
+    return total, positive
+
+
+def _update_run_status(
+    database_url: str | None,
+    run_id: str,
+    *,
+    status: str,
+    error: str | None = None,
+    num_training_rows: int | None = None,
+    num_positive_rows: int | None = None,
+    model_path: str | None = None,
+    report_path: str | None = None,
+) -> None:
+    """Write status/metrics back to a model_training_runs row.
+
+    Errors here are swallowed — the script's primary job is the retrain, and
+    a DB write failure shouldn't mask the original outcome. Logs the failure
+    so an operator can reconcile manually.
+    """
+    if not database_url:
+        logger.warning("No database_url available; skipping run-id status update.")
+        return
+    try:
+        # Local import keeps the CLI snappy when --run-id is unset.
+        import psycopg  # type: ignore[import-untyped]
+
+        with psycopg.connect(database_url) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE model_training_runs
+                   SET status            = %(status)s,
+                       error             = %(error)s,
+                       num_training_rows = %(num_training_rows)s,
+                       num_positive_rows = %(num_positive_rows)s,
+                       model_path        = %(model_path)s,
+                       report_path       = %(report_path)s,
+                       completed_at      = NOW()
+                 WHERE id = %(run_id)s
+                """,
+                {
+                    "run_id": run_id,
+                    "status": status,
+                    "error": error,
+                    "num_training_rows": num_training_rows,
+                    "num_positive_rows": num_positive_rows,
+                    "model_path": model_path,
+                    "report_path": report_path,
+                },
+            )
+            conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to update model_training_runs row %s: %s", run_id, exc)
+
+
+def _finalize_run(args: argparse.Namespace) -> None:
+    """Write status='succeeded' + metrics on a clean run."""
+    if args.dry_run:
+        # Dry-run produced no artifact; mark succeeded with zero rows so the row
+        # doesn't sit forever, but skip path/metric fields.
+        _update_run_status(args.database_url, args.run_id, status="succeeded")
+        return
+    total, positive = _count_training_rows(args.output_csv)
+    _update_run_status(
+        args.database_url,
+        args.run_id,
+        status="succeeded",
+        num_training_rows=total,
+        num_positive_rows=positive,
+        model_path=args.output_model,
+        report_path=args.output_report,
+    )
 
 
 def main() -> None:
@@ -112,6 +203,17 @@ def main() -> None:
         default="all",
         help="Which source to export for training data (default: all).",
     )
+    parser.add_argument(
+        "--run-id",
+        type=str,
+        default=None,
+        help=(
+            "Optional model_training_runs.id (UUID). When set, the script writes "
+            "status/metrics/error back to that row on completion or failure. "
+            "Used by the web-triggered retrain endpoint; CLI invocations should "
+            "leave this unset."
+        ),
+    )
     args = parser.parse_args()
 
     configure_logging(level="INFO")
@@ -119,6 +221,40 @@ def main() -> None:
     if not args.database_url and args.source in ("sec", "all"):
         logger.error("No database URL available. Set $TEST_DATABASE_URL or pass --database-url.")
         sys.exit(1)
+
+    # If a run-id was supplied, wrap the orchestration in try/except so a Python
+    # exception flips the row to status='failed'. SIGKILL/OOM still leak (the
+    # script never re-enters Python after the signal) — those need manual psql
+    # cleanup; tracked in docs/known-issues/.
+    if args.run_id:
+        try:
+            _orchestrate(args)
+        except SystemExit as exc:
+            # _run() calls sys.exit(rc) on subprocess failure — surface as failed.
+            _update_run_status(
+                args.database_url,
+                args.run_id,
+                status="failed",
+                error=f"subprocess exited with code {exc.code}",
+            )
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _update_run_status(
+                args.database_url,
+                args.run_id,
+                status="failed",
+                error=str(exc),
+            )
+            raise
+        else:
+            _finalize_run(args)
+        return
+
+    _orchestrate(args)
+
+
+def _orchestrate(args: argparse.Namespace) -> None:
+    """Run the export + train pipeline. Caller wraps in try/except for run-id mode."""
 
     # ------------------------------------------------------------------
     # Step 1: Export training data from live DB

@@ -44,9 +44,11 @@
      ===================================================================== #}
   <div class="tab-pane fade show active" id="summary-stats" role="tabpanel" aria-labelledby="summary-tab">
 
-    {# Image-classifier model status card. The "Update Image Classifier" button
-       is rendered inert in Phase 2 — Phase 3 wires it to a retrain endpoint
-       gated by FILINGS_API_KEY + threshold checks (server-side enforced). #}
+    {# Image-classifier model status card. The button submits to
+       POST /api/v2/models/image-classifier/retrain via static/js/analytics.js;
+       browser AJAX bypasses the API-key check via Origin/Referer match.
+       Server-side threshold + concurrency guards enforce the same gates the
+       UI surfaces here (the disabled button is UX, not the safety boundary). #}
     <div class="row mb-4">
       <div class="col-12">
         <div class="card border-info">
@@ -68,22 +70,39 @@
                 </p>
                 <p class="mb-0 small">
                   <strong>Image decisions since last update:</strong>
-                  {{ image_decisions_since.total or 0 }}
-                  <span class="text-success">({{ image_decisions_since.positive or 0 }} positive</span>
-                  / <span class="text-danger">{{ image_decisions_since.negative or 0 }} negative</span>)
+                  {{ image_decisions_since.total or 0 }} / {{ threshold_total }}
+                  <span class="text-success">({{ image_decisions_since.positive or 0 }} positive / {{ threshold_positive }}</span>,
+                  <span class="text-danger">{{ image_decisions_since.negative or 0 }} negative</span>)
                 </p>
                 <p class="mb-0 small text-muted">
                   Text decisions since same anchor: {{ text_decisions_since or 0 }}
                   (informational — text extraction is rule-based, no retrain pipeline).
                 </p>
+                <div id="retrain-status" class="small mt-2"
+                     {% if retrain_running %}data-running-id="{{ running_run_id }}"{% endif %}>
+                  {% if retrain_running %}
+                  <span class="text-warning">⏳ Retrain in progress — polling for completion…</span>
+                  {% endif %}
+                </div>
               </div>
               <div class="col-md-5 text-md-end mt-3 mt-md-0">
-                <button class="btn btn-primary" disabled
-                        title="Threshold + retrain endpoint ship in Phase 3">
+                <button id="btn-update-image-classifier"
+                        class="btn btn-primary"
+                        {% if not button_active %}disabled{% endif %}
+                        data-threshold-total="{{ threshold_total }}"
+                        data-threshold-positive="{{ threshold_positive }}">
                   Update Image Classifier
                 </button>
                 <div class="text-muted small mt-1">
-                  Disabled — wired in Phase 3
+                  {% if retrain_running %}
+                    Retrain already running — waiting on it to finish.
+                  {% elif image_decisions_since.total < threshold_total %}
+                    Need {{ threshold_total - image_decisions_since.total }} more total decisions.
+                  {% elif image_decisions_since.positive < threshold_positive %}
+                    Need {{ threshold_positive - image_decisions_since.positive }} more positive decisions.
+                  {% else %}
+                    Ready — clicking will start a retrain.
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -813,4 +832,8 @@
   </div> {# end images-stats tab pane #}
 
 </div> {# end tab-content #}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
 {% endblock %}
