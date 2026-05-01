@@ -72,6 +72,24 @@ Constants live at the top of the helper module (`EXCL_PCT_LOW`, `EXCL_PCT_HIGH`,
 
 The helper handles `psycopg`'s `Decimal` return for `pct_of_decisions NUMERIC(5,2)` via `float()` coercion at the boundary. Empty inputs return `{}` — the existing `_stub_analytics_helpers` test fixtures rely on this no-op behavior.
 
+### Recommendation decisions
+
+Each Suggested-actions card renders three buttons (Accept / Dismiss / Defer) plus an optional reviewer-note textarea. Clicks persist to `text_pattern_recommendation_decisions` via two endpoints:
+
+- `POST /api/v2/extraction/recommendation-decisions` — upsert on `(metric_id, rule, decision_key, reviewer_id)`. Body: `{metric_id, rule, decision_key, decision, reviewer_id, reviewer_note?}`. `decision ∈ {accepted, dismissed, deferred}`. Returns the upserted row.
+- `DELETE /api/v2/extraction/recommendation-decisions/<uuid:decision_id>` — owner-scoped undo. Returns 404 when the row is missing OR exists but belongs to a different reviewer (so admins don't accidentally undo each other's decisions).
+
+Both endpoints are gated by `_require_reviewer_id` + `require_admin` (`src/web/middleware.py`). The admin gate reads a comma-separated allowlist from env var `ADMIN_USER_IDS` and returns HTTP 403 `{error: "admin_required"}` when missing or unmatched. **Transitional** — to be replaced by `src/auth/middleware.py::require(<permission>)` against `auth_users.role` once Stage A2 of the auth rollout lands (`docs/architecture/auth-rollout-implementation-plan.md`). Migration is one-line per call site.
+
+`decision_key` is the stable identifier across analysis reruns:
+- `exclusion_pattern` → the phrase (e.g. `"accounts receivable"`)
+- `keyword_overlap` → the target metric_id (e.g. `"cm_active_customers_total"`)
+- `fp_filter_gap` → literal `"wrong_value"`
+
+The recommendation helper (`compute_recommendations`) takes an optional third `decisions` arg (default `None`) — when provided, each rec dict gains a `decision` field looked up by `(metric_id, rule, decision_key)`. The DB reader returns rows ordered DESC by `updated_at`, so when multiple reviewers have decided the same rec, the freshest decision wins (helper uses `setdefault`).
+
+`pr_number` and `pr_url` columns on the table stay NULL through PR 1 (bookkeeping-only). They populate in PR 2 when an `exclusion_pattern` accept opens an auto-PR. Don't read them yet.
+
 ## Image-confirmation reviewer notes
 
 `v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.

@@ -214,5 +214,160 @@
             const runningId = textStatusEl.dataset.runningId;
             if (runningId) pollTextAnalysisStatus(runningId);
         }
+
+        // ----------------------------------------------------------------
+        // Recommendation decisions: Accept / Dismiss / Defer / Undo
+        // Event-delegated so the handlers also work for cards rendered
+        // after the initial load (e.g. after a future re-render).
+        // ----------------------------------------------------------------
+        document.addEventListener("click", function (e) {
+            const decideBtn = e.target.closest(".rec-decide-btn");
+            if (decideBtn) {
+                handleRecommendationDecide(decideBtn);
+                return;
+            }
+            const undoBtn = e.target.closest(".rec-undo-btn");
+            if (undoBtn) {
+                handleRecommendationUndo(undoBtn);
+                return;
+            }
+            const noteToggle = e.target.closest(".rec-note-toggle-btn");
+            if (noteToggle) {
+                const card = noteToggle.closest(".rec-card");
+                if (!card) return;
+                const wrap = card.querySelector(".rec-note-wrap");
+                if (wrap) wrap.classList.toggle("d-none");
+                return;
+            }
+        });
     });
+
+    // ----------------------------------------------------------------
+    // Recommendation decision handlers
+    // ----------------------------------------------------------------
+
+    function handleRecommendationDecide(btn) {
+        const reviewer = window.requireReviewerName ? window.requireReviewerName() : null;
+        if (!reviewer) return;
+
+        const card = btn.closest(".rec-card");
+        if (!card) return;
+        const note = (card.querySelector(".rec-note-input")?.value || "").trim();
+        const payload = {
+            metric_id: card.dataset.metricId,
+            rule: card.dataset.rule,
+            decision_key: card.dataset.decisionKey,
+            decision: btn.dataset.decision,
+            reviewer_id: reviewer,
+        };
+        if (note) payload.reviewer_note = note;
+
+        // Disable buttons while in flight to prevent double-click duplicates.
+        card.querySelectorAll(".rec-decide-btn, .rec-note-toggle-btn").forEach((b) => {
+            b.disabled = true;
+        });
+
+        fetch("/api/v2/extraction/recommendation-decisions", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        })
+            .then(async (r) => {
+                const body = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    const msg = body.error === "admin_required"
+                        ? "Admin access required for recommendation decisions."
+                        : (body.error || `HTTP ${r.status}`);
+                    alert(`Could not record decision: ${msg}`);
+                    card.querySelectorAll(".rec-decide-btn, .rec-note-toggle-btn").forEach((b) => {
+                        b.disabled = false;
+                    });
+                    return;
+                }
+                renderDecidedCard(card, body);
+            })
+            .catch((err) => {
+                alert(`Network error: ${err.message}`);
+                card.querySelectorAll(".rec-decide-btn, .rec-note-toggle-btn").forEach((b) => {
+                    b.disabled = false;
+                });
+            });
+    }
+
+    function handleRecommendationUndo(btn) {
+        const reviewer = window.requireReviewerName ? window.requireReviewerName() : null;
+        if (!reviewer) return;
+
+        const card = btn.closest(".rec-card");
+        if (!card) return;
+        const decisionId = btn.dataset.decisionId;
+        btn.disabled = true;
+
+        fetch(`/api/v2/extraction/recommendation-decisions/${decisionId}`, {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reviewer_id: reviewer }),
+        })
+            .then(async (r) => {
+                const body = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    const msg = body.error === "not_found_or_not_owner"
+                        ? "Decision not found or owned by another reviewer."
+                        : (body.error || `HTTP ${r.status}`);
+                    alert(`Could not undo decision: ${msg}`);
+                    btn.disabled = false;
+                    return;
+                }
+                // Reload the page to re-render the rec in its undecided state
+                // alongside any other server-side state that may have shifted
+                // (e.g. PR-related fields in PR 2). Cheap and reliable.
+                window.location.reload();
+            })
+            .catch((err) => {
+                alert(`Network error: ${err.message}`);
+                btn.disabled = false;
+            });
+    }
+
+    function renderDecidedCard(card, decisionRow) {
+        // Replace the action area with a "Decided by ..." line + Undo button.
+        // Mirrors the server-rendered shape for r.decision in unified_stats.html
+        // so the visual is consistent without a full reload.
+        const actionArea = card.querySelector(".btn-group");
+        const noteWrap = card.querySelector(".rec-note-wrap");
+        if (actionArea) actionArea.remove();
+        if (noteWrap) noteWrap.remove();
+
+        const decisionLabel = decisionRow.decision;
+        const badgeClass =
+            decisionLabel === "accepted"
+                ? "success"
+                : decisionLabel === "deferred"
+                    ? "secondary"
+                    : "dark";
+        const noteHTML = decisionRow.reviewer_note
+            ? ` — <span class="fst-italic">"${escapeHtml(decisionRow.reviewer_note)}"</span>`
+            : "";
+
+        const div = document.createElement("div");
+        div.className = "mt-1 small";
+        div.innerHTML =
+            `<span class="badge bg-${badgeClass}">${decisionLabel}</span> ` +
+            `by ${escapeHtml(decisionRow.reviewer_id)}${noteHTML} ` +
+            `<button type="button" class="btn btn-link btn-sm p-0 ms-2 rec-undo-btn" ` +
+            `data-decision-id="${decisionRow.id}">Undo</button>`;
+        card.appendChild(div);
+        card.classList.add("rec-card--decided", "text-muted");
+    }
+
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
 })();

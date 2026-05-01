@@ -1080,13 +1080,53 @@
                         <span class="badge bg-secondary ms-1">{{ recs|length }}</span>
                       </strong>
                       {% for r in recs %}
-                      <div class="mb-2">
-                        <span class="badge bg-{{ 'danger' if r.severity == 'high' else 'warning text-dark' }} me-1">
-                          {{ r.severity }}
-                        </span>
-                        <strong>{{ r.title }}</strong>
-                        <div class="text-muted">{{ r.evidence }}</div>
-                        <div><em>{{ r.action }}</em></div>
+                      {# rec-card: data attributes drive the JS click handlers
+                         in static/js/analytics.js. Decision state, when set,
+                         dims the card and swaps the action buttons for an
+                         Undo affordance. #}
+                      <div class="rec-card mb-3 {% if r.decision %}rec-card--decided text-muted{% endif %}"
+                           data-metric-id="{{ s.metric_id }}"
+                           data-rule="{{ r.rule }}"
+                           data-decision-key="{{ r.decision_key }}">
+                        <div>
+                          <span class="badge bg-{{ 'danger' if r.severity == 'high' else 'warning text-dark' }} me-1">
+                            {{ r.severity }}
+                          </span>
+                          <strong>{{ r.title }}</strong>
+                        </div>
+                        <div class="text-muted small">{{ r.evidence }}</div>
+                        <div class="small"><em>{{ r.action }}</em></div>
+                        {% if r.decision %}
+                          {% set d = r.decision %}
+                          <div class="mt-1 small">
+                            <span class="badge bg-{{ 'success' if d.decision == 'accepted' else ('secondary' if d.decision == 'deferred' else 'dark') }}">
+                              {{ d.decision }}
+                            </span>
+                            by {{ d.reviewer_id }}
+                            {% if d.reviewer_note %}
+                            — <span class="fst-italic">"{{ d.reviewer_note }}"</span>
+                            {% endif %}
+                            <button type="button"
+                                    class="btn btn-link btn-sm p-0 ms-2 rec-undo-btn"
+                                    data-decision-id="{{ d.id }}">Undo</button>
+                          </div>
+                        {% else %}
+                          <div class="btn-group btn-group-sm mt-1" role="group" aria-label="Decision">
+                            <button type="button" class="btn btn-outline-success rec-decide-btn"
+                                    data-decision="accepted">✓ Accept</button>
+                            <button type="button" class="btn btn-outline-danger rec-decide-btn"
+                                    data-decision="dismissed">✗ Dismiss</button>
+                            <button type="button" class="btn btn-outline-secondary rec-decide-btn"
+                                    data-decision="deferred">⏸ Defer</button>
+                            <button type="button" class="btn btn-outline-secondary rec-note-toggle-btn"
+                                    title="Add a note">📝</button>
+                          </div>
+                          <div class="rec-note-wrap mt-1 d-none">
+                            <textarea class="form-control form-control-sm rec-note-input"
+                                      maxlength="1000" rows="2"
+                                      placeholder="Optional note (≤1000 chars)"></textarea>
+                          </div>
+                        {% endif %}
                       </div>
                       {% endfor %}
                     </div>

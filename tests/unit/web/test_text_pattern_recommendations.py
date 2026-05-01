@@ -266,3 +266,115 @@ class TestEmpty:
         # No summary for cm_z → rule should not run on it.
         out = compute_recommendations([_summary("cm_x")], [_finding(metric_id="cm_z")])
         assert "cm_z" not in out
+
+
+# ---------------------------------------------------------------------------
+# decision_key field on rec output (PR 1 prep for decision-merge)
+# ---------------------------------------------------------------------------
+
+
+class TestDecisionKey:
+    def test_exclusion_pattern_key_is_phrase(self):
+        out = compute_recommendations([_summary()], [_finding(phrase="accounts receivable")])
+        excl = [r for r in out["cm_x"] if r["rule"] == "exclusion_pattern"][0]
+        assert excl["decision_key"] == "accounts receivable"
+
+    def test_keyword_overlap_key_is_target_metric(self):
+        s = _summary(top_correction_targets=[{"target_metric_id": "cm_y", "count": 12}])
+        out = compute_recommendations([s], [])
+        ovl = [r for r in out["cm_x"] if r["rule"] == "keyword_overlap"][0]
+        assert ovl["decision_key"] == "cm_y"
+
+    def test_fp_filter_gap_key_is_literal(self):
+        s = _summary(reject=10, rejection_categories={"wrong_value": 7})
+        out = compute_recommendations([s], [])
+        gap = [r for r in out["cm_x"] if r["rule"] == "fp_filter_gap"][0]
+        assert gap["decision_key"] == "wrong_value"
+
+
+# ---------------------------------------------------------------------------
+# Decision merging — `decisions` arg attaches matching decision rows
+# ---------------------------------------------------------------------------
+
+
+class TestDecisionMerging:
+    def test_omitted_decisions_arg_leaves_decision_none(self):
+        out = compute_recommendations([_summary()], [_finding()])
+        rec = out["cm_x"][0]
+        assert rec["decision"] is None
+
+    def test_empty_decisions_list_leaves_decision_none(self):
+        out = compute_recommendations([_summary()], [_finding()], [])
+        rec = out["cm_x"][0]
+        assert rec["decision"] is None
+
+    def test_matching_decision_attaches(self):
+        decision = {
+            "id": "d1",
+            "metric_id": "cm_x",
+            "rule": "exclusion_pattern",
+            "decision_key": "accounts receivable",
+            "decision": "accepted",
+            "reviewer_id": "RGM",
+            "reviewer_note": None,
+            "pr_number": None,
+            "pr_url": None,
+            "updated_at": "2026-05-01T20:00:00+00:00",
+        }
+        out = compute_recommendations([_summary()], [_finding()], [decision])
+        rec = [r for r in out["cm_x"] if r["rule"] == "exclusion_pattern"][0]
+        assert rec["decision"] is not None
+        assert rec["decision"]["decision"] == "accepted"
+        assert rec["decision"]["reviewer_id"] == "RGM"
+
+    def test_decision_for_different_key_does_not_attach(self):
+        decision = {
+            "id": "d2",
+            "metric_id": "cm_x",
+            "rule": "exclusion_pattern",
+            "decision_key": "different phrase",
+            "decision": "dismissed",
+            "reviewer_id": "RGM",
+            "reviewer_note": None,
+            "pr_number": None,
+            "pr_url": None,
+            "updated_at": "2026-05-01T20:00:00+00:00",
+        }
+        out = compute_recommendations([_summary()], [_finding()], [decision])
+        rec = [r for r in out["cm_x"] if r["rule"] == "exclusion_pattern"][0]
+        assert rec["decision"] is None
+
+    def test_first_decision_in_list_wins_when_keys_collide(self):
+        # The DB reader returns rows ordered DESC by updated_at, so the
+        # caller passes the freshest row first. compute_recommendations
+        # uses `setdefault` to honor that — first wins.
+        decisions = [
+            {
+                "id": "d-fresh",
+                "metric_id": "cm_x",
+                "rule": "exclusion_pattern",
+                "decision_key": "accounts receivable",
+                "decision": "accepted",
+                "reviewer_id": "RGM",
+                "reviewer_note": None,
+                "pr_number": None,
+                "pr_url": None,
+                "updated_at": "2026-05-01T20:00:00+00:00",
+            },
+            {
+                "id": "d-old",
+                "metric_id": "cm_x",
+                "rule": "exclusion_pattern",
+                "decision_key": "accounts receivable",
+                "decision": "dismissed",
+                "reviewer_id": "OTHER",
+                "reviewer_note": None,
+                "pr_number": None,
+                "pr_url": None,
+                "updated_at": "2026-04-01T20:00:00+00:00",
+            },
+        ]
+        out = compute_recommendations([_summary()], [_finding()], decisions)
+        rec = [r for r in out["cm_x"] if r["rule"] == "exclusion_pattern"][0]
+        assert rec["decision"]["id"] == "d-fresh"
+        assert rec["decision"]["reviewer_id"] == "RGM"
