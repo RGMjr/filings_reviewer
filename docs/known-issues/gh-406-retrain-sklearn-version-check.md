@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-01
 updated: 2026-05-01
 gh_issue: 406
+pr_refs:
+  - 420
 note: silent unpickle failure on Render when local-venv sklearn major drifts from requirements.lock pin (1.8.0)
 ---
 
