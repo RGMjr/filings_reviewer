@@ -266,7 +266,12 @@ def stats():
 
     from src.web.text_pattern_recommendations import compute_recommendations
 
-    text_recommendations = compute_recommendations(text_metric_summary, text_phrase_findings)
+    text_recommendation_decisions = db.get_recommendation_decisions(
+        [s["metric_id"] for s in text_metric_summary] or None
+    )
+    text_recommendations = compute_recommendations(
+        text_metric_summary, text_phrase_findings, text_recommendation_decisions
+    )
 
     return render_template(
         "unified_stats.html",

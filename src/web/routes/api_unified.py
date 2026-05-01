@@ -19,7 +19,12 @@ from flask import Blueprint, current_app, jsonify, request
 
 from src.shared.keyword_config import _load_config
 from src.web.app import get_db
-from src.web.middleware import insert_audit_log_entry, register_api_auth, register_timing
+from src.web.middleware import (
+    insert_audit_log_entry,
+    register_api_auth,
+    register_timing,
+    require_admin,
+)
 
 api_unified_bp = Blueprint("api_unified", __name__, url_prefix="/api/v2")
 logger = logging.getLogger(__name__)
@@ -1472,6 +1477,106 @@ def get_text_analysis_run_status(run_id):
     if row.get("completed_at"):
         row["completed_at"] = row["completed_at"].isoformat()
     return jsonify(row), 200
+
+
+# =============================================================================
+# Recommendation decisions (admin-only Accept/Dismiss/Defer on Suggested actions)
+# =============================================================================
+
+
+_RECOMMENDATION_RULES = ("exclusion_pattern", "keyword_overlap", "fp_filter_gap")
+_RECOMMENDATION_DECISIONS = ("accepted", "dismissed", "deferred")
+_REVIEWER_NOTE_MAX_CHARS = 1000
+
+
+def _serialize_recommendation_decision(row: dict) -> dict:
+    """JSON-friendly shape for a decision row."""
+    out = dict(row)
+    out["id"] = str(out["id"])
+    if out.get("created_at"):
+        out["created_at"] = out["created_at"].isoformat()
+    if out.get("updated_at"):
+        out["updated_at"] = out["updated_at"].isoformat()
+    return out
+
+
+@api_unified_bp.route("/extraction/recommendation-decisions", methods=["POST"])
+@require_admin
+def upsert_recommendation_decision():
+    """Record an admin's Accept/Dismiss/Defer click on a Suggested-actions row.
+
+    Upserts on (metric_id, rule, decision_key, reviewer_id) so a same-
+    reviewer change-of-mind replaces the prior decision in place.
+
+    Body:
+        {
+          "metric_id": str,
+          "rule": "exclusion_pattern" | "keyword_overlap" | "fp_filter_gap",
+          "decision_key": str,
+          "decision": "accepted" | "dismissed" | "deferred",
+          "reviewer_id": str,        # required by _require_reviewer_id + require_admin
+          "reviewer_note": str?      # optional, <= 1000 chars
+        }
+
+    Returns 200 + the upserted row.
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    metric_id = (data.get("metric_id") or "").strip()
+    rule = (data.get("rule") or "").strip()
+    decision_key = (data.get("decision_key") or "").strip()
+    decision = (data.get("decision") or "").strip()
+    reviewer_note = data.get("reviewer_note")
+    if isinstance(reviewer_note, str):
+        reviewer_note = reviewer_note.strip() or None
+    elif reviewer_note is not None:
+        return jsonify({"error": "reviewer_note must be a string"}), 400
+
+    errors = {}
+    if not metric_id:
+        errors["metric_id"] = "required"
+    if rule not in _RECOMMENDATION_RULES:
+        errors["rule"] = f"must be one of {list(_RECOMMENDATION_RULES)}"
+    if not decision_key:
+        errors["decision_key"] = "required"
+    if decision not in _RECOMMENDATION_DECISIONS:
+        errors["decision"] = f"must be one of {list(_RECOMMENDATION_DECISIONS)}"
+    if reviewer_note is not None and len(reviewer_note) > _REVIEWER_NOTE_MAX_CHARS:
+        errors["reviewer_note"] = f"must be <= {_REVIEWER_NOTE_MAX_CHARS} chars"
+    if errors:
+        return jsonify({"error": "validation_failed", "fields": errors}), 400
+
+    db = get_db()
+    row = db.upsert_recommendation_decision(
+        metric_id=metric_id,
+        rule=rule,
+        decision_key=decision_key,
+        decision=decision,
+        reviewer_id=reviewer_id,
+        reviewer_note=reviewer_note,
+    )
+    return jsonify(_serialize_recommendation_decision(row)), 200
+
+
+@api_unified_bp.route("/extraction/recommendation-decisions/<uuid:decision_id>", methods=["DELETE"])
+@require_admin
+def delete_recommendation_decision(decision_id):
+    """Undo a recommendation decision. Reviewer-scoped — admins can't undo
+    each other's decisions; the row only deletes when reviewer_id matches.
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    db = get_db()
+    deleted = db.delete_recommendation_decision(str(decision_id), reviewer_id)
+    if not deleted:
+        return jsonify({"error": "not_found_or_not_owner"}), 404
+    return jsonify({"ok": True, "id": str(decision_id)}), 200
 
 
 # =============================================================================
