@@ -257,7 +257,12 @@ def test_parse_form_criteria_single_year_multi_select(app):
 def test_filter_options_endpoint_no_filters_returns_three_axes(client):
     """GET /api/v2/ingest/filter-options without query params returns all-time
     counts on all three axes (total + pending), derived from the mocked DB rows."""
-    from src.universe.onboarding import FormTypeCount, IndustryCount, YearCount
+    from src.universe.onboarding import (
+        OTHER_INDUSTRY_KEY,
+        FormTypeCount,
+        IndustryCount,
+        YearCount,
+    )
 
     with (
         patch(
@@ -275,6 +280,12 @@ def test_filter_options_endpoint_no_filters_returns_three_axes(client):
                     key="commercial_banking", label="Commercial Banking", total=12, pending=12
                 ),
             ],
+        ),
+        patch(
+            "src.web.routes.api_ingest.query_universe_other_count",
+            return_value=IndustryCount(
+                key=OTHER_INDUSTRY_KEY, label="Other (uncategorised)", total=32, pending=28
+            ),
         ),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
@@ -295,12 +306,34 @@ def test_filter_options_endpoint_no_filters_returns_three_axes(client):
     assert data["industries"] == [
         {"key": "biotech", "label": "Biotech", "total": 28, "pending": 3},
         {"key": "commercial_banking", "label": "Commercial Banking", "total": 12, "pending": 12},
+        {
+            "key": OTHER_INDUSTRY_KEY,
+            "label": "Other (uncategorised)",
+            "total": 32,
+            "pending": 28,
+        },
     ]
     assert data["form_types"] == [
         {"key": "s1f1", "label": "S-1 / F-1 (IPO filings)", "total": 467, "pending": 5},
         {"key": "10k", "label": "10-K (Annual reports)", "total": 0, "pending": 0},
         {"key": "8k", "label": "8-K (Current reports)", "total": 0, "pending": 0},
     ]
+
+
+def _stub_other_count():
+    """Return a patch context for query_universe_other_count returning a zero row.
+
+    Tests that don't care about the Other tile still need the call stubbed
+    because the live function would issue a real DB query.
+    """
+    from src.universe.onboarding import OTHER_INDUSTRY_KEY, IndustryCount
+
+    return patch(
+        "src.web.routes.api_ingest.query_universe_other_count",
+        return_value=IndustryCount(
+            key=OTHER_INDUSTRY_KEY, label="Other (uncategorised)", total=0, pending=0
+        ),
+    )
 
 
 def test_filter_options_endpoint_year_param_passes_through(client):
@@ -322,6 +355,7 @@ def test_filter_options_endpoint_year_param_passes_through(client):
             "src.web.routes.api_ingest.query_universe_industry_counts",
             side_effect=fake_industry_counts,
         ),
+        _stub_other_count(),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
             return_value=[],
@@ -352,6 +386,7 @@ def test_filter_options_endpoint_industry_param_resolves_to_sic(client):
             "src.web.routes.api_ingest.query_universe_industry_counts",
             return_value=[IndustryCount(key="biotech", label="Biotech", total=3, pending=3)],
         ),
+        _stub_other_count(),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
             return_value=[],
@@ -381,6 +416,7 @@ def test_filter_options_endpoint_unknown_industry_silently_ignored(client):
             "src.web.routes.api_ingest.query_universe_industry_counts",
             return_value=[],
         ),
+        _stub_other_count(),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
             return_value=[],
@@ -418,6 +454,7 @@ def test_filter_options_endpoint_form_type_param_resolves_bundle(client):
             "src.web.routes.api_ingest.query_universe_industry_counts",
             side_effect=fake_industry_counts,
         ),
+        _stub_other_count(),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
             return_value=[],
@@ -449,6 +486,7 @@ def test_filter_options_endpoint_multiple_form_types_union(client):
             "src.web.routes.api_ingest.query_universe_industry_counts",
             return_value=[IndustryCount(key="biotech", label="Biotech", total=1, pending=0)],
         ),
+        _stub_other_count(),
         patch(
             "src.web.routes.api_ingest.query_universe_form_type_counts",
             return_value=[],
@@ -622,6 +660,79 @@ def test_ingest_preview_company_only_passes_validation(client):
     # Success renders the preview template — confirm we didn't get the form
     # re-render 400.
     assert resp.status_code == 200
+
+
+def test_ingest_preview_other_alone_passes_validation(client):
+    """Selecting only the __other__ sentinel satisfies validation and threads
+    include_other=True into discover()."""
+    from src.universe.onboarding import OTHER_INDUSTRY_KEY, DiscoveryResult
+
+    mock_db = MagicMock()
+    captured_query: dict = {}
+
+    def fake_discover(db, query):
+        captured_query["query"] = query
+        return DiscoveryResult(new=[], already_extracted=[], gaps=[])
+
+    with (
+        patch("src.web.routes.ingest.get_db", return_value=mock_db),
+        patch("src.web.routes.ingest.discover", side_effect=fake_discover),
+    ):
+        resp = client.post(
+            "/ingest/preview",
+            data={
+                "year": "2015",
+                "reviewer_name": "Rob",
+                "industries": [OTHER_INDUSTRY_KEY],
+                "form_types": "s1f1",
+            },
+        )
+    assert resp.status_code == 200
+    q = captured_query["query"]
+    assert q.include_other is True
+    # mapped_sic_codes is the union of every YAML industry's SICs.
+    assert len(q.mapped_sic_codes) > 0
+
+
+def test_ingest_preview_resolved_json_includes_other_fields(client):
+    """The audit-trail resolved_json hidden field captures include_other +
+    mapped_sic_codes so the v2_ingest_batches.resolved_query row reflects
+    the user's selection."""
+    from src.universe.onboarding import OTHER_INDUSTRY_KEY, DiscoveryResult
+
+    mock_db = MagicMock()
+
+    with (
+        patch("src.web.routes.ingest.get_db", return_value=mock_db),
+        patch(
+            "src.web.routes.ingest.discover",
+            return_value=DiscoveryResult(new=[], already_extracted=[], gaps=[]),
+        ),
+    ):
+        resp = client.post(
+            "/ingest/preview",
+            data={
+                "year": "2015",
+                "reviewer_name": "Rob",
+                "industries": [OTHER_INDUSTRY_KEY],
+                "form_types": "s1f1",
+            },
+        )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # The hidden input has name="resolved_json" — extract its value attr.
+    import re
+
+    match = re.search(r'name="resolved_json"\s+value="([^"]+)"', body)
+    assert match, "resolved_json hidden field not rendered"
+    # HTML-entity decode for & → &amp; etc. (json may contain quotes that
+    # Jinja html-escapes).
+    import html as _html
+
+    payload = json.loads(_html.unescape(match.group(1)))
+    assert payload["include_other"] is True
+    assert isinstance(payload["mapped_sic_codes"], list)
+    assert len(payload["mapped_sic_codes"]) > 0
 
 
 # ---------------------------------------------------------------------------
