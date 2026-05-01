@@ -49,6 +49,7 @@ _SEVERITY_RANK = {"high": 0, "medium": 1}
 def compute_recommendations(
     summaries: list[dict[str, Any]],
     findings: list[dict[str, Any]],
+    decisions: list[dict[str, Any]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Map metric_id -> list of recommendation dicts.
 
@@ -60,10 +61,20 @@ def compute_recommendations(
         {
           "rule": "exclusion_pattern" | "keyword_overlap" | "fp_filter_gap",
           "severity": "high" | "medium",
+          "decision_key": str,    # stable identifier across reruns
           "title": str,
           "evidence": str,
           "action": str,
+          "decision": dict | None,  # populated when `decisions` arg matches
         }
+
+    When ``decisions`` is provided (a list of recommendation-decision rows
+    from `db.get_recommendation_decisions()`), each rec gets a ``decision``
+    field looked up by ``(metric_id, rule, decision_key)``. The decisions
+    list may contain multiple reviewers' rows for the same key — the
+    most-recent one (by ``updated_at``) wins. Skipping/omitting the arg
+    leaves ``decision`` as ``None`` on every rec, preserving the prior
+    contract.
     """
     if not summaries and not findings:
         return {}
@@ -74,6 +85,15 @@ def compute_recommendations(
     for f in findings:
         findings_by_metric[f["metric_id"]].append(f)
 
+    # Index decisions by (metric_id, rule, decision_key); keep the row with
+    # the latest updated_at when multiple reviewers have decided. The DB
+    # reader returns rows ordered DESC by updated_at within each key, so
+    # the first row we see is the freshest — only insert if absent.
+    decision_index: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for d in decisions or []:
+        key = (d["metric_id"], d["rule"], d["decision_key"])
+        decision_index.setdefault(key, d)
+
     out: dict[str, list[dict[str, Any]]] = {}
     for s in summaries:
         metric_id = s["metric_id"]
@@ -82,6 +102,8 @@ def compute_recommendations(
         recs.extend(_rule_keyword_overlap(metric_id, s))
         recs.extend(_rule_fp_filter_gap(metric_id, s))
         if recs:
+            for r in recs:
+                r["decision"] = decision_index.get((metric_id, r["rule"], r["decision_key"]))
             recs.sort(key=lambda r: (_SEVERITY_RANK[r["severity"]], r["rule"]))
             out[metric_id] = recs
     return out
@@ -110,6 +132,7 @@ def _rule_exclusion_pattern(
             {
                 "rule": "exclusion_pattern",
                 "severity": severity,
+                "decision_key": phrase,
                 "title": f'Add exclusion pattern matching "{phrase}"',
                 "evidence": (
                     f'"{phrase}" appears in {count} rejects ({pct:.1f}%) '
@@ -139,6 +162,7 @@ def _rule_keyword_overlap(metric_id: str, summary: dict[str, Any]) -> list[dict[
             {
                 "rule": "keyword_overlap",
                 "severity": severity,
+                "decision_key": target_metric,
                 "title": f"Review keyword overlap with {target_metric}",
                 "evidence": (f"Reviewers corrected {metric_id} → {target_metric} {count} times."),
                 "action": (
@@ -167,6 +191,7 @@ def _rule_fp_filter_gap(metric_id: str, summary: dict[str, Any]) -> list[dict[st
         {
             "rule": "fp_filter_gap",
             "severity": severity,
+            "decision_key": "wrong_value",
             "title": "Check FP filter for value-extraction bug",
             "evidence": (
                 f"{wrong_value} of {reject_count} rejects ({pct * 100:.1f}%) "

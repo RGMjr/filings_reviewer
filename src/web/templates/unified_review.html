@@ -60,7 +60,7 @@
   var KEYS = {
     TAB:          'cmasb:review:tab',          // "text" | "images"
     TEXT_FILTER:  'cmasb:review:text_filter',  // {status, metric, sort}
-    IMAGE_FILTER: 'cmasb:review:image_filter'  // {status}
+    IMAGE_FILTER: 'cmasb:review:image_filter'  // {status, sort}
   };
   var VALID_TABS = ['text', 'images'];
   var url = new URL(window.location.href);
@@ -88,8 +88,12 @@
   }
   if (tab === 'images') {
     var imgStatus = params.get('image_status');
-    if (imgStatus) {
-      localStorage.setItem(KEYS.IMAGE_FILTER, JSON.stringify({ status: imgStatus }));
+    var imgSort   = params.get('image_sort');
+    if (imgStatus || imgSort) {
+      localStorage.setItem(KEYS.IMAGE_FILTER, JSON.stringify({
+        status: imgStatus || 'all',
+        sort:   imgSort   || 'relevance'
+      }));
     }
   }
 
@@ -111,11 +115,11 @@
       if (savedText.sort   && savedText.sort !== 'confidence_desc') { params.set('sort', savedText.sort); dirty = true; }
     }
   }
-  if (tab === 'images' && !params.has('image_status')) {
+  if (tab === 'images' && !params.has('image_status') && !params.has('image_sort')) {
     var savedImg = getJSON(KEYS.IMAGE_FILTER);
-    if (savedImg && savedImg.status && savedImg.status !== 'all') {
-      params.set('image_status', savedImg.status);
-      dirty = true;
+    if (savedImg) {
+      if (savedImg.status && savedImg.status !== 'all')      { params.set('image_status', savedImg.status); dirty = true; }
+      if (savedImg.sort   && savedImg.sort   !== 'relevance') { params.set('image_sort',   savedImg.sort);   dirty = true; }
     }
   }
 
@@ -252,6 +256,11 @@
           {{ status|capitalize }}
         </option>
         {% endfor %}
+      </select>
+      <label class="visually-hidden" for="imgSortFilter">Sort</label>
+      <select name="image_sort" id="imgSortFilter" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+        <option value="relevance" {% if image_filters.sort == 'relevance' %}selected{% endif %}>Recommended</option>
+        <option value="model_score" {% if image_filters.sort == 'model_score' %}selected{% endif %}>Model score (high first)</option>
       </select>
     </form>
   </div>
@@ -726,6 +735,7 @@
      data-img-id="{{ current_image.img_id if current_image else '' }}"
      data-candidates='{{ all_image_candidates | tojson }}'
      data-image-status="{{ image_filters.status }}"
+     data-image-sort="{{ image_filters.sort or 'relevance' }}"
      data-decision-id="{{ current_image.image_decision_id if current_image and current_image.image_decision_id else '' }}">
 
   {% if not image_candidates or image_candidates|length == 0 %}
@@ -769,7 +779,7 @@
           <div class="list-group list-group-flush">
             {% for candidate in image_candidates %}
             {% set is_current = current_image and candidate.img_id == current_image.img_id %}
-            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, img_id=candidate.img_id, image_status=image_filters.status, tab='images') }}"
+            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, img_id=candidate.img_id, image_status=image_filters.status, image_sort=image_filters.sort if image_filters.sort and image_filters.sort != 'relevance' else None, tab='images') }}"
                class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.image_review_state in ('relevant', 'no_relevant') else '' }}"
                data-img-id="{{ candidate.img_id }}"
                data-image-review-state="{{ candidate.image_review_state or 'pending' }}"
@@ -804,6 +814,9 @@
                   </span>
                   {% if candidate.auto_reject_candidate %}
                   <span class="arc-badge" title="Auto-reject candidate (tier 3)">~</span>
+                  {% endif %}
+                  {% if image_filters.sort == 'model_score' and candidate._model_score is not none %}
+                  <span class="badge bg-info text-dark ms-1" style="font-size:0.65rem;" title="Model relevance score">{{ '%.2f'|format(candidate._model_score) }}</span>
                   {% endif %}
                 </div>
               </div>

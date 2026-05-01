@@ -90,6 +90,10 @@ def _stub_analytics_helpers(mock_db) -> None:
     mock_db.is_text_analysis_running.return_value = (False, None)
     mock_db.get_text_decision_metric_summary.return_value = []
     mock_db.get_text_decision_phrase_findings.return_value = []
+    # Recommendation decisions (PR 1 of the auto-PR rollout). Default empty
+    # so recs render with their action buttons; tests that exercise the
+    # decided-state path stub a non-empty list explicitly.
+    mock_db.get_recommendation_decisions.return_value = []
 
 
 def test_stats_renders_empty(client, mock_db):
@@ -259,6 +263,7 @@ def test_stats_summary_renders_recent_activity(client, mock_db):
     mock_db.is_text_analysis_running.return_value = (False, None)
     mock_db.get_text_decision_metric_summary.return_value = []
     mock_db.get_text_decision_phrase_findings.return_value = []
+    mock_db.get_recommendation_decisions.return_value = []
 
     resp = client.get("/v2/review/stats")
     assert resp.status_code == 200
@@ -345,6 +350,103 @@ def test_patterns_tab_renders_recommendation_alert(client, mock_db):
     assert "accounts receivable" in body
     # Severity badge for medium (45.20 < 50 threshold).
     assert "medium" in body
+    # Action buttons present (no decision yet).
+    assert "rec-decide-btn" in body
+    assert "Accept" in body and "Dismiss" in body and "Defer" in body
+
+
+def test_patterns_tab_renders_decided_recommendation(client, mock_db):
+    """When a decision row exists for a rec, the card renders the dimmed
+    decided state with reviewer attribution + Undo button instead of the
+    Accept/Dismiss/Defer buttons.
+    """
+    import uuid as _uuid
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 0,
+        "relevant_count": 0,
+        "not_relevant_count": 0,
+        "relevant_pct": 0.0,
+        "not_relevant_pct": 0.0,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 0,
+        "pending_count": 0,
+        "reviewed_count": 0,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 0.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {"wrong_metric": 18, "wrong_value": 13},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "rejection_reason",
+            "occurrence_count": 14,
+            "pct_of_decisions": 45.20,
+            "examples": [],
+        }
+    ]
+    decision_id = _uuid.uuid4()
+    mock_db.get_recommendation_decisions.return_value = [
+        {
+            "id": decision_id,
+            "metric_id": "cm_new_customers_acquired",
+            "rule": "exclusion_pattern",
+            "decision_key": "accounts receivable",
+            "decision": "accepted",
+            "reviewer_id": "RGM",
+            "reviewer_note": "looks right",
+            "pr_number": None,
+            "pr_url": None,
+            "created_at": ts,
+            "updated_at": ts,
+        }
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Decided-state badge + reviewer attribution.
+    assert "rec-card--decided" in body
+    assert "accepted" in body
+    assert "by RGM" in body
+    assert "looks right" in body
+    # Undo button visible.
+    assert "rec-undo-btn" in body
+    assert str(decision_id) in body
+    # Action buttons NOT present for the decided rec.
+    assert "rec-decide-btn" not in body
 
 
 def test_stats_does_not_swallow_db_errors(app, mock_db):

@@ -19,7 +19,12 @@ from flask import Blueprint, current_app, jsonify, request
 
 from src.shared.keyword_config import _load_config
 from src.web.app import get_db
-from src.web.middleware import insert_audit_log_entry, register_api_auth, register_timing
+from src.web.middleware import (
+    insert_audit_log_entry,
+    register_api_auth,
+    register_timing,
+    require_admin,
+)
 
 api_unified_bp = Blueprint("api_unified", __name__, url_prefix="/api/v2")
 logger = logging.getLogger(__name__)
@@ -309,7 +314,14 @@ def bulk_reject_image_candidates():
         return jsonify({"error": "bulk-reject limited to 50 images per request"}), 400
 
     image_status = data.get("image_status") or None
-    view_filters = {"status": image_status} if image_status else None
+    image_sort = data.get("image_sort") or None
+    view_filters: dict[str, Any] | None = None
+    if image_status or image_sort:
+        view_filters = {}
+        if image_status:
+            view_filters["status"] = image_status
+        if image_sort:
+            view_filters["sort"] = image_sort
 
     results = []
     last_filing_id = None
@@ -426,7 +438,14 @@ def bulk_undo_image_candidates():
         return jsonify({"error": "bulk-undo limited to 50 images per request"}), 400
 
     image_status = data.get("image_status") or None
-    view_filters = {"status": image_status} if image_status else None
+    image_sort = data.get("image_sort") or None
+    view_filters: dict[str, Any] | None = None
+    if image_status or image_sort:
+        view_filters = {}
+        if image_status:
+            view_filters["status"] = image_status
+        if image_sort:
+            view_filters["sort"] = image_sort
 
     results = []
     last_filing_id = None
@@ -555,8 +574,13 @@ def skip_image_candidate(img_id):
                 view_filters = data["view_filters"]
         if view_filters is None:
             qs_status = request.args.get("image_status")
-            if qs_status:
-                view_filters = {"status": qs_status}
+            qs_sort = request.args.get("image_sort")
+            if qs_status or qs_sort:
+                view_filters = {}
+                if qs_status:
+                    view_filters["status"] = qs_status
+                if qs_sort:
+                    view_filters["sort"] = qs_sort
         next_cand = _get_next_image_candidate_info(
             db, filing_id, img_id_str, view_filters=view_filters
         )
@@ -617,8 +641,11 @@ def unskip_image_candidate(img_id):
 
         qs = f"img_id={img_id_str}&tab=images"
         image_status = request.args.get("image_status")
+        image_sort = request.args.get("image_sort")
         if image_status:
             qs += f"&image_status={image_status}"
+        if image_sort and image_sort != "relevance":
+            qs += f"&image_sort={image_sort}"
         return jsonify(
             {
                 "status": "success",
@@ -1216,6 +1243,26 @@ def trigger_image_classifier_retrain():
 
     db = get_db()
 
+    # Stale-row sweep (gh-392). The retrain script wraps its work in a
+    # try/except that flips the row to status='failed' on any Python
+    # exception — but SIGKILL/OOM bypass that path entirely (Python never
+    # re-enters), leaving the row 'running' forever and permanently
+    # blocking the concurrency gate below. Auto-mark rows older than
+    # 1 hour as failed so the next button-click is never stuck waiting
+    # for a process that no longer exists. The interval matches the
+    # documented manual escape hatch in .claude/rules/web.md.
+    db.execute(
+        """
+        UPDATE model_training_runs
+           SET status = 'failed',
+               error  = 'auto-cleanup: stale running row (>1h, gh-392)',
+               completed_at = NOW()
+         WHERE model_type = 'image_relevance'
+           AND status = 'running'
+           AND started_at < NOW() - INTERVAL '1 hour'
+        """
+    )
+
     # Concurrency gate — never let two retrains race on the same model artifact.
     running_rows = db.query(
         """
@@ -1475,6 +1522,106 @@ def get_text_analysis_run_status(run_id):
 
 
 # =============================================================================
+# Recommendation decisions (admin-only Accept/Dismiss/Defer on Suggested actions)
+# =============================================================================
+
+
+_RECOMMENDATION_RULES = ("exclusion_pattern", "keyword_overlap", "fp_filter_gap")
+_RECOMMENDATION_DECISIONS = ("accepted", "dismissed", "deferred")
+_REVIEWER_NOTE_MAX_CHARS = 1000
+
+
+def _serialize_recommendation_decision(row: dict) -> dict:
+    """JSON-friendly shape for a decision row."""
+    out = dict(row)
+    out["id"] = str(out["id"])
+    if out.get("created_at"):
+        out["created_at"] = out["created_at"].isoformat()
+    if out.get("updated_at"):
+        out["updated_at"] = out["updated_at"].isoformat()
+    return out
+
+
+@api_unified_bp.route("/extraction/recommendation-decisions", methods=["POST"])
+@require_admin
+def upsert_recommendation_decision():
+    """Record an admin's Accept/Dismiss/Defer click on a Suggested-actions row.
+
+    Upserts on (metric_id, rule, decision_key, reviewer_id) so a same-
+    reviewer change-of-mind replaces the prior decision in place.
+
+    Body:
+        {
+          "metric_id": str,
+          "rule": "exclusion_pattern" | "keyword_overlap" | "fp_filter_gap",
+          "decision_key": str,
+          "decision": "accepted" | "dismissed" | "deferred",
+          "reviewer_id": str,        # required by _require_reviewer_id + require_admin
+          "reviewer_note": str?      # optional, <= 1000 chars
+        }
+
+    Returns 200 + the upserted row.
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    metric_id = (data.get("metric_id") or "").strip()
+    rule = (data.get("rule") or "").strip()
+    decision_key = (data.get("decision_key") or "").strip()
+    decision = (data.get("decision") or "").strip()
+    reviewer_note = data.get("reviewer_note")
+    if isinstance(reviewer_note, str):
+        reviewer_note = reviewer_note.strip() or None
+    elif reviewer_note is not None:
+        return jsonify({"error": "reviewer_note must be a string"}), 400
+
+    errors = {}
+    if not metric_id:
+        errors["metric_id"] = "required"
+    if rule not in _RECOMMENDATION_RULES:
+        errors["rule"] = f"must be one of {list(_RECOMMENDATION_RULES)}"
+    if not decision_key:
+        errors["decision_key"] = "required"
+    if decision not in _RECOMMENDATION_DECISIONS:
+        errors["decision"] = f"must be one of {list(_RECOMMENDATION_DECISIONS)}"
+    if reviewer_note is not None and len(reviewer_note) > _REVIEWER_NOTE_MAX_CHARS:
+        errors["reviewer_note"] = f"must be <= {_REVIEWER_NOTE_MAX_CHARS} chars"
+    if errors:
+        return jsonify({"error": "validation_failed", "fields": errors}), 400
+
+    db = get_db()
+    row = db.upsert_recommendation_decision(
+        metric_id=metric_id,
+        rule=rule,
+        decision_key=decision_key,
+        decision=decision,
+        reviewer_id=reviewer_id,
+        reviewer_note=reviewer_note,
+    )
+    return jsonify(_serialize_recommendation_decision(row)), 200
+
+
+@api_unified_bp.route("/extraction/recommendation-decisions/<uuid:decision_id>", methods=["DELETE"])
+@require_admin
+def delete_recommendation_decision(decision_id):
+    """Undo a recommendation decision. Reviewer-scoped — admins can't undo
+    each other's decisions; the row only deletes when reviewer_id matches.
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    db = get_db()
+    deleted = db.delete_recommendation_decision(str(decision_id), reviewer_id)
+    if not deleted:
+        return jsonify({"error": "not_found_or_not_owner"}), 404
+    return jsonify({"ok": True, "id": str(decision_id)}), 200
+
+
+# =============================================================================
 # Helper Functions (from api_v2.py)
 # =============================================================================
 
@@ -1596,6 +1743,7 @@ def _get_next_pending_fact(
 
 
 _VALID_IMAGE_STATUSES = ("pending", "reviewed", "skipped", "auto_rejected")
+_VALID_IMAGE_SORTS = ("relevance", "model_score", "tier", "position")
 
 
 _AUDIT_IMAGE_STATUSES = frozenset(("reviewed", "skipped", "auto_rejected"))
@@ -1627,14 +1775,35 @@ def _get_next_image_candidate_info(
     raw_status = view_filters.get("status")
     db_status = raw_status if raw_status in _VALID_IMAGE_STATUSES else None
 
+    raw_sort = view_filters.get("sort")
+    image_sort = raw_sort if raw_sort in _VALID_IMAGE_SORTS else "relevance"
+    # 'model_score' isn't a SQL sort — fetch in 'relevance' order, then re-sort
+    # in Python below to match the route's display order exactly.
+    db_sort = "relevance" if image_sort == "model_score" else image_sort
+
     candidates = db.get_image_review_candidates_for_filing_v2(
         filing_id=filing_id,
         status=db_status,
-        sort_by="relevance",
+        sort_by=db_sort,
         limit=1000,
     )
     if not candidates:
         return None
+
+    if image_sort == "model_score":
+        from src.shared.image_features import predict_relevance, v2_row_to_features_input
+
+        for c in candidates:
+            native_row = {
+                "nearby_text": c.get("preceding_text"),
+                "width": c.get("image_width"),
+                "height": c.get("image_height"),
+                "relevance_score": c.get("cohort_confidence"),
+                "classification": c.get("classification"),
+                "filename": c.get("filename"),
+            }
+            c["_model_score"] = predict_relevance(v2_row_to_features_input(native_row))
+        candidates.sort(key=lambda c: (c["_model_score"] is None, -(c["_model_score"] or 0.0)))
 
     current_idx = None
     for i, c in enumerate(candidates):
@@ -1653,6 +1822,8 @@ def _get_next_image_candidate_info(
                     qs = f"img_id={next_id}&tab=images"
                     if db_status:
                         qs += f"&image_status={db_status}"
+                    if image_sort != "relevance":
+                        qs += f"&image_sort={image_sort}"
                     return {"img_id": next_id, "url": f"/v2/review/{filing_id}?{qs}"}
         return None
 
@@ -1688,10 +1859,13 @@ def _get_next_image_candidate_info(
         return None
 
     # Preserve the active image_status filter on the next URL so the strip
-    # the reviewer lands on shows the same scope.
+    # the reviewer lands on shows the same scope. Same for image_sort so the
+    # next page's queue order matches what the reviewer was just looking at.
     qs = f"img_id={next_id}&tab=images"
     if db_status:
         qs += f"&image_status={db_status}"
+    if image_sort != "relevance":
+        qs += f"&image_sort={image_sort}"
     return {
         "img_id": next_id,
         "url": f"/v2/review/{filing_id}?{qs}",
