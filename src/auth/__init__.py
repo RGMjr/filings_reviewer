@@ -1,9 +1,10 @@
 # src/auth — Authentication and authorization package.
 # Stage A (foundation): permission catalog + require() middleware (A2),
-# session management (A3), and dev-bypass guard (A6).
-# CSRF (A4) and OAuth (A5) land in subsequent PRs.
+# session management (A3), CSRF middleware (A4), and dev-bypass guard (A6).
+# OAuth (A5) lands in a subsequent PR.
 #
 # Public re-exports for convenience:
+from src.auth.csrf import csrf_protect
 from src.auth.middleware import require
 from src.auth.permissions import (
     ALL_PERMISSIONS,
@@ -25,6 +26,7 @@ from src.auth.sessions import SessionUser, create_session, lookup_session, revok
 __all__ = [
     # Middleware
     "require",
+    "csrf_protect",
     # Permission constants
     "ALL_PERMISSIONS",
     "AUDIT_READ",

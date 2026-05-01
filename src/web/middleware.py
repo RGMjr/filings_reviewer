@@ -24,6 +24,35 @@ from flask import Blueprint, current_app, g, jsonify, request, session
 logger = logging.getLogger(__name__)
 
 
+def _is_same_origin() -> bool:
+    """
+    Return True if the request originates from the same host as the server.
+
+    Checks Origin header first (reliable for POST fetch() calls; scheme-independent
+    comparison handles HTTPS-terminating proxies where Flask sees http:// but the
+    browser sends https://). Falls back to Referer header (sent for GET and
+    same-origin navigations; browsers omit Origin for same-origin no-CORS
+    GET/HEAD requests).
+
+    Returns False if both headers are absent or point to a different host.
+    """
+    # Origin header check (scheme-independent host comparison).
+    origin = request.headers.get("Origin", "")
+    if origin and origin.split("://", 1)[-1] == request.host:
+        return True
+
+    # Referer fallback (scheme-independent host comparison — under
+    # HTTPS-terminating proxies like Render, the Referer is https:// while
+    # request.host_url is http://, so a startswith match would miss).
+    referer = request.headers.get("Referer", "")
+    if referer:
+        referer_host = urllib.parse.urlsplit(referer).netloc
+        if referer_host and referer_host == request.host:
+            return True
+
+    return False
+
+
 def _verify_api_key() -> Any:
     """
     Core API-key check. Returns None to pass, or a Flask response tuple
@@ -34,23 +63,8 @@ def _verify_api_key() -> Any:
         return None
 
     # Allow browser fetch calls from the same server (same-origin AJAX).
-    # Check Origin first (reliable for POST fetch() calls; scheme-independent comparison
-    # handles HTTPS-terminating proxies where Flask sees http:// but browser sends https://).
-    origin = request.headers.get("Origin", "")
-    if origin and origin.split("://", 1)[-1] == request.host:
+    if _is_same_origin():
         return None
-
-    # Fallback: Referer header (sent for GET and same-origin navigations).
-    # Browsers omit Origin for same-origin no-CORS GET/HEAD requests, so this
-    # branch is the only same-origin signal for those. Compare hosts directly
-    # (scheme-independent) for parity with the Origin check above — under
-    # HTTPS-terminating proxies (Render) the page Referer is https:// while
-    # request.host_url is http://, so a startswith match would miss.
-    referer = request.headers.get("Referer", "")
-    if referer:
-        referer_host = urllib.parse.urlsplit(referer).netloc
-        if referer_host and referer_host == request.host:
-            return None
 
     api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
     expected_key = current_app.config.get("API_KEY")
