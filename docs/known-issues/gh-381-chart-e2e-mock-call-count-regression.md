@@ -13,6 +13,8 @@ touches:
 discovered: 2026-05-01
 updated: 2026-05-01
 gh_issue: 381
+pr_refs:
+  - 417
 note: OCRExtractionStage now calls analyze_image twice per CHART asset; mock test expects one. Likely tied to PR #360 per-site vision env split.
 ---
 
