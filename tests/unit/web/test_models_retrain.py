@@ -124,6 +124,64 @@ class TestRetrainGuards:
         mock_db.count_image_decisions_since.assert_not_called()
 
 
+class TestStaleRowSweep:
+    """gh-392: a 'running' row older than 1 hour gets auto-flipped to 'failed'
+    before the concurrency check, so a SIGKILL/OOM-leaked row does not
+    permanently block future retrains via the concurrency gate."""
+
+    def test_sweep_runs_before_concurrency_check(self, client, mock_db):
+        """Cleanup UPDATE must fire on every retrain attempt — not gated on
+        whether anything is currently 'running'. This is what unblocks a
+        previously-stuck row."""
+        mock_db.count_image_decisions_since.return_value = _at_threshold()
+        with patch("src.web.routes.api_unified.subprocess.Popen"):
+            resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
+        assert resp.status_code == 202
+        # First execute is the sweep.
+        sweep_call = mock_db.execute.call_args_list[0]
+        sql = sweep_call.args[0]
+        assert "UPDATE model_training_runs" in sql
+        assert "auto-cleanup" in sql
+
+    def test_sweep_scoped_to_image_relevance_only(self, client, mock_db):
+        """Other model_type values (future ML models) must not be touched."""
+        mock_db.count_image_decisions_since.return_value = _at_threshold()
+        with patch("src.web.routes.api_unified.subprocess.Popen"):
+            client.post(_RETRAIN, json=_VALID_REVIEWER)
+        sweep_sql = mock_db.execute.call_args_list[0].args[0]
+        assert "model_type = 'image_relevance'" in sweep_sql
+
+    def test_sweep_scoped_to_running_status_and_one_hour(self, client, mock_db):
+        """Sweep must only touch rows with status='running' AND old enough.
+        Prevents accidentally clobbering a freshly-spawned retrain that
+        happens to overlap with a button-click."""
+        mock_db.count_image_decisions_since.return_value = _at_threshold()
+        with patch("src.web.routes.api_unified.subprocess.Popen"):
+            client.post(_RETRAIN, json=_VALID_REVIEWER)
+        sweep_sql = mock_db.execute.call_args_list[0].args[0]
+        assert "status = 'running'" in sweep_sql
+        assert "INTERVAL '1 hour'" in sweep_sql
+        assert "started_at <" in sweep_sql
+
+    def test_sweep_runs_even_when_below_threshold(self, client, mock_db):
+        """Idempotency: cleanup runs first, even if the threshold gate
+        rejects this attempt. Means the next *valid* attempt sees a clean
+        slate (no leaked row from a prior failed attempt). The behaviour
+        also degrades safely — a stale row is cleared regardless of why
+        the operator clicked."""
+        # Below-threshold counts → 409, but the sweep should still have run.
+        mock_db.count_image_decisions_since.return_value = {
+            "total": 50,
+            "positive": 5,
+            "negative": 45,
+        }
+        resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
+        assert resp.status_code == 409
+        # Sweep ran exactly once before short-circuit.
+        assert mock_db.execute.call_count == 1
+        assert "UPDATE model_training_runs" in mock_db.execute.call_args_list[0].args[0]
+
+
 class TestRetrainSpawn:
     def test_above_threshold_inserts_row_and_returns_run_id(self, client, mock_db):
         mock_db.count_image_decisions_since.return_value = _at_threshold()
@@ -136,10 +194,13 @@ class TestRetrainSpawn:
         run_id = body["run_id"]
         # Valid UUID.
         uuid.UUID(run_id)
-        # Row was INSERTed with the right id + reviewer.
-        mock_db.execute.assert_called_once()
-        args, kwargs = mock_db.execute.call_args
-        sql, params = args[0], args[1]
+        # Two execute calls: stale-row sweep (gh-392) + INSERT.
+        assert mock_db.execute.call_count == 2
+        sweep_call = mock_db.execute.call_args_list[0]
+        assert "UPDATE model_training_runs" in sweep_call.args[0]
+        assert "auto-cleanup" in sweep_call.args[0]
+        insert_call = mock_db.execute.call_args_list[1]
+        sql, params = insert_call.args[0], insert_call.args[1]
         assert "INSERT INTO model_training_runs" in sql
         assert params["id"] == run_id
         assert params["triggered_by"] == "RGM"
@@ -161,9 +222,9 @@ class TestRetrainSpawn:
         assert resp.status_code == 500
         body = resp.get_json()
         assert body["error"] == "subprocess_spawn_failed"
-        # Two execute calls: INSERT row, then UPDATE → status='failed'.
-        assert mock_db.execute.call_count == 2
-        update_call = mock_db.execute.call_args_list[1]
+        # Three execute calls: stale-row sweep + INSERT row + UPDATE→failed.
+        assert mock_db.execute.call_count == 3
+        update_call = mock_db.execute.call_args_list[2]
         assert "UPDATE model_training_runs" in update_call.args[0]
         assert "subprocess_spawn_failed" in update_call.args[0]
 
