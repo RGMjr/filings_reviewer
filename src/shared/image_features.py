@@ -22,7 +22,9 @@ Expected row dict keys (common format):
 from __future__ import annotations
 
 import logging
+import os
 import re
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
@@ -36,8 +38,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _MODEL_LOCK = threading.Lock()
-_MODEL_CACHE: dict[str, Any] = {}  # path → loaded pipeline (or sentinel None)
+_MODEL_CACHE: dict[str, Any] = {}  # cache-key → loaded pipeline (or sentinel)
 _MODEL_ABSENT: object = object()  # sentinel: model file was not found
+# Cached "active run_id" resolved from the latest_run_id pointer. Set once per
+# worker per cold start, reused for the worker's lifetime to avoid one R2 GET
+# per predict call. Workers naturally rotate on Render deploy / cron run, so
+# the staleness window is bounded — see docs/known-issues/gh-391 closure.
+_ACTIVE_RUN_ID: str | None = None
+_ACTIVE_RUN_ID_RESOLVED = False
 
 DEFAULT_MODEL_PATH = (
     Path(__file__).resolve().parent.parent.parent
@@ -47,13 +55,137 @@ DEFAULT_MODEL_PATH = (
 )
 
 
-def _load_model(model_path: Path | None = None) -> Any | None:
-    """Load (and cache) the sklearn pipeline from disk.
+def _materialize_from_storage(run_id: str) -> Path | None:
+    """Ensure the per-run joblib exists locally; return its path or None on failure.
 
-    Returns the fitted pipeline, or None if the file is missing or fails to
-    load.  The result is cached per resolved path so subsequent calls are
-    free of I/O.
+    Uses ``data/image_model/_cache/<run_id>/relevance_model.joblib`` as the
+    materialization target. Run-id-keyed filenames sidestep races between
+    concurrent gunicorn workers writing the same cache path. Atomic via
+    tempfile + os.replace.
+
+    Storage failures (ClientError, EndpointConnectionError, FileNotFoundError)
+    are caught and return None — the caller treats that as "model absent" and
+    falls back to the heuristic.
     """
+    from src.infra.model_storage import get_model_storage, model_key_for_run
+    from src.infra.paths import model_cache_dir
+
+    target_dir = model_cache_dir() / "_cache" / run_id
+    target = target_dir / "relevance_model.joblib"
+    if target.exists():
+        return target
+
+    storage = get_model_storage()
+    model_key = model_key_for_run(run_id, "relevance_model.joblib")
+    try:
+        data = storage.get_bytes(model_key)
+    except FileNotFoundError:
+        logger.warning(
+            "Pointer references run_id=%s but %s is missing in storage", run_id, model_key
+        )
+        return None
+    except Exception as exc:  # noqa: BLE001 — boto3 surfaces many exception types
+        logger.warning("Failed to fetch %s from storage: %s", model_key, exc)
+        return None
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    # Write to a sibling tempfile and rename — concurrent loaders never see a
+    # half-written joblib.
+    with tempfile.NamedTemporaryFile(
+        dir=target_dir, prefix=".relevance_model.", suffix=".joblib.tmp", delete=False
+    ) as tmp:
+        tmp.write(data)
+        tmp_path = Path(tmp.name)
+    os.replace(tmp_path, target)
+    logger.info("Materialized %s -> %s (%d bytes)", model_key, target, len(data))
+    return target
+
+
+def _resolve_active_run_id() -> str | None:
+    """Read latest_run_id from storage; cached for the worker's lifetime.
+
+    First call per worker reads the pointer; subsequent calls return the cached
+    value. Reset via :func:`_reset_active_run_id_cache` (tests only). Workers
+    rotate on Render deploy / cron run, bounding staleness — see gh-391.
+    """
+    global _ACTIVE_RUN_ID, _ACTIVE_RUN_ID_RESOLVED
+    if _ACTIVE_RUN_ID_RESOLVED:
+        return _ACTIVE_RUN_ID
+
+    from src.infra.model_storage import LATEST_POINTER_KEY, get_model_storage
+
+    storage = get_model_storage()
+    try:
+        run_id: str | None = storage.get_bytes(LATEST_POINTER_KEY).decode("utf-8").strip()
+    except FileNotFoundError:
+        logger.debug("No %s pointer in storage — falling back to heuristic", LATEST_POINTER_KEY)
+        run_id = None
+    except Exception as exc:  # noqa: BLE001
+        # Don't memoize transient errors — a future call should retry.
+        logger.warning("Failed to read %s: %s", LATEST_POINTER_KEY, exc)
+        return None
+
+    _ACTIVE_RUN_ID = run_id
+    _ACTIVE_RUN_ID_RESOLVED = True
+    return run_id
+
+
+def _reset_active_run_id_cache() -> None:
+    """Clear the cached pointer resolution. Tests only."""
+    global _ACTIVE_RUN_ID, _ACTIVE_RUN_ID_RESOLVED
+    _ACTIVE_RUN_ID = None
+    _ACTIVE_RUN_ID_RESOLVED = False
+
+
+def _load_joblib_into_cache(local_path: Path, cache_key: str) -> Any | None:
+    """joblib.load + cache write + sentinel-on-failure. Caller holds _MODEL_LOCK."""
+    try:
+        import joblib  # optional heavy import; only at prediction time
+
+        pipeline = joblib.load(local_path)
+        _MODEL_CACHE[cache_key] = pipeline
+        logger.info("Loaded image relevance model from %s", local_path)
+        return pipeline
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to load image relevance model from %s: %s", local_path, exc)
+        _MODEL_CACHE[cache_key] = _MODEL_ABSENT
+        return None
+
+
+def _load_model(model_path: Path | None = None) -> Any | None:
+    """Load (and cache) the sklearn pipeline.
+
+    Resolution order:
+
+    1. Explicit ``model_path`` always loads from local disk (test fixtures
+       and ad-hoc CLI use this path).
+    2. With ``R2_BUCKET`` set, read the ``latest_run_id.txt`` pointer from
+       storage, materialize the per-run joblib to
+       ``data/image_model/_cache/<run_id>/relevance_model.joblib``, load.
+    3. Otherwise fall back to ``DEFAULT_MODEL_PATH`` on local disk
+       (pre-gh-391 behavior, dev mode).
+
+    Returns the fitted pipeline, or None if the model is absent or fails to
+    load — callers fall back to the heuristic. Cached per resolved key so
+    subsequent calls are free of I/O.
+    """
+    use_storage = model_path is None and os.environ.get("R2_BUCKET") is not None
+
+    if use_storage:
+        run_id = _resolve_active_run_id()
+        if run_id is None:
+            return None
+        cache_key = f"r2:{run_id}"
+        with _MODEL_LOCK:
+            if cache_key in _MODEL_CACHE:
+                cached = _MODEL_CACHE[cache_key]
+                return None if cached is _MODEL_ABSENT else cached
+            local_path = _materialize_from_storage(run_id)
+            if local_path is None:
+                _MODEL_CACHE[cache_key] = _MODEL_ABSENT
+                return None
+            return _load_joblib_into_cache(local_path, cache_key)
+
     resolved = str((model_path or DEFAULT_MODEL_PATH).resolve())
     with _MODEL_LOCK:
         if resolved in _MODEL_CACHE:
@@ -66,17 +198,7 @@ def _load_model(model_path: Path | None = None) -> Any | None:
             )
             _MODEL_CACHE[resolved] = _MODEL_ABSENT
             return None
-        try:
-            import joblib  # optional heavy import; only at prediction time
-
-            pipeline = joblib.load(path)
-            _MODEL_CACHE[resolved] = pipeline
-            logger.info("Loaded image relevance model from %s", resolved)
-            return pipeline
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to load image relevance model from %s: %s", resolved, exc)
-            _MODEL_CACHE[resolved] = _MODEL_ABSENT
-            return None
+        return _load_joblib_into_cache(path, resolved)
 
 
 def predict_relevance(features: dict, *, model_path: Path | None = None) -> float | None:

@@ -26,7 +26,14 @@ Powers the **Update Image Classifier** button on `/v2/review/stats` (Metric Anal
 
 **Retrain script writeback** (`scripts/retrain_image_triage.py --run-id <uuid>`): the optional `--run-id` flag tells the script to UPDATE the row on completion — `status='succeeded'` plus `num_training_rows`, `num_positive_rows`, `model_path`, `report_path`, `completed_at`. A top-level try/except flips the row to `status='failed', error=<exc>` on any Python exception. **SIGKILL/OOM still leak past Python** — the signal handler is bypassed entirely — but the retrain endpoint sweeps stale rows on every attempt (gh-392): `UPDATE model_training_runs SET status='failed', error='auto-cleanup: stale running row (>1h, gh-392)' WHERE model_type='image_relevance' AND status='running' AND started_at < NOW() - INTERVAL '1 hour'` runs before the concurrency check. So a leaked row from a SIGKILL'd subprocess no longer permanently blocks future retrains — at worst the operator waits an hour and re-clicks. The same SQL is the manual escape hatch if you don't want to wait (scope to a specific id: `WHERE id = '<uuid>'`).
 
-**Render disk ephemerality**: the retrain writes to `data/image_model/`. On Render that disk is wiped on every deploy. Today this is harmless because `USE_LEARNED_TRIAGE=false` in prod (the model isn't loaded). The moment that flag flips on, retrains performed via the UI will silently disappear on the next deploy — persist artifacts to R2 first (tracked in known-issues).
+**Artifact persistence**: post-gh-391 the retrain wrapper uploads
+`relevance_model.joblib` + report + training CSV to R2 under
+`models/image_relevance/<run_id>/...` and writes a `latest_run_id.txt` pointer
+that the loader reads on cold start. `model_training_runs.model_path` /
+`report_path` columns now hold opaque storage keys, not absolute filesystem
+paths — see `.claude/rules/infrastructure.md#model-artifact-storage`. Render
+deploys no longer wipe retrains; `USE_LEARNED_TRIAGE=true` is safe to enable
+once the persistence path has been verified end-to-end in staging.
 
 Threshold env vars are surfaced to the template by `review_unified.stats()` so the helper text on the disabled button reads "Need N more total decisions" / "Need M more positive decisions". The `button_active` flag combines `not retrain_running AND total >= threshold_total AND positive >= threshold_positive`.
 

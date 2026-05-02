@@ -111,3 +111,37 @@ def test_load_model_caches_absent_result(tmp_path: Path) -> None:
     resolved = str(missing.resolve())
     assert resolved in image_features._MODEL_CACHE
     assert image_features._MODEL_CACHE[resolved] is image_features._MODEL_ABSENT
+
+
+def test_explicit_model_path_bypasses_storage_under_r2_bucket(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for gh-391: an explicit model_path must short-circuit the R2 branch.
+
+    Test fixtures pass a tmp joblib via model_path; if R2_BUCKET happens to be set
+    in the environment (e.g. integration test contamination, accidental leak), the
+    loader must still read from the explicit path, not attempt a storage lookup.
+    """
+    monkeypatch.setenv("R2_BUCKET", "should-not-be-touched")
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://example.com")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "test")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "test")
+
+    model_path = tmp_path / "relevance_model.joblib"
+    model_path.write_bytes(b"sentinel")
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.predict_proba.return_value = np.array([[0.2, 0.8]])
+
+    # Patch get_model_storage so any accidental call surfaces as an explicit
+    # failure — the explicit-path branch must never reach this.
+    with patch("src.infra.model_storage.get_model_storage") as mock_storage_factory:
+        mock_storage_factory.side_effect = AssertionError(
+            "explicit model_path should bypass storage abstraction"
+        )
+        with patch("joblib.load", return_value=mock_pipeline):
+            result = predict_relevance(_sample_features(), model_path=model_path)
+
+    assert result == pytest.approx(0.8)
+    # Cache key in the local-FS branch is the resolved string path, not "r2:<run_id>".
+    assert str(model_path.resolve()) in image_features._MODEL_CACHE

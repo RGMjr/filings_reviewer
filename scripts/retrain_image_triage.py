@@ -20,8 +20,22 @@ Operator notes:
     - Defaults to $TEST_DATABASE_URL (local Docker) so you must pass
       --database-url explicitly for production Neon (or set DATABASE_URL to the
       prod URL and pass --use-env-database-url).
-    - The trained artifact is written to data/image_model/relevance_model.joblib,
-      which src/shared/image_features.predict_relevance() loads at runtime.
+    - When R2_BUCKET is set (prod / staging), the wrapper uploads the joblib
+      + report + training CSV to ``models/image_relevance/<run_id>/...`` and
+      writes a ``models/image_relevance/latest_run_id.txt`` pointer last; the
+      loader (src/shared/image_features._load_model) reads the pointer on cold
+      start. Local dev (R2_BUCKET unset) writes only to data/image_model/ as
+      before. See .claude/rules/infrastructure.md#model-artifact-storage.
+    - model_training_runs.model_path / report_path columns hold opaque storage
+      keys post-gh-391 (e.g. ``models/image_relevance/<uuid>/relevance_model.joblib``),
+      not absolute filesystem paths.
+    - Single-writer to ``latest_run_id.txt`` is guaranteed for web-triggered
+      retrains by the concurrency gate in api_unified.py. CLI users invoking
+      this script directly bypass that gate; do not run two retrains against
+      the same R2 bucket concurrently.
+    - The trained artifact is also written to data/image_model/relevance_model.joblib
+      locally as scratch (subprocess output target); when R2 is the source of
+      truth the loader reads from R2, not from this file.
     - Set USE_LEARNED_TRIAGE=true in the environment to activate the model gate
       in the extraction pipeline.
 """
@@ -48,6 +62,56 @@ TRAIN_SCRIPT = ROOT / "scripts" / "train_image_relevance_model.py"
 DEFAULT_CSV = ROOT / "data" / "image_model" / "training_data.csv"
 DEFAULT_MODEL = ROOT / "data" / "image_model" / "relevance_model.joblib"
 DEFAULT_REPORT = ROOT / "data" / "image_model" / "model_report.txt"
+
+
+def _storage_keys_for_run(run_id: str) -> dict[str, str]:
+    """Return per-run storage keys. Stable shape for both backends."""
+    from src.infra.model_storage import model_key_for_run
+
+    return {
+        "model_key": model_key_for_run(run_id, "relevance_model.joblib"),
+        "report_key": model_key_for_run(run_id, "model_report.txt"),
+        "csv_key": model_key_for_run(run_id, "training_data.csv"),
+    }
+
+
+def _upload_artifacts(
+    run_id: str,
+    *,
+    model_path: str,
+    report_path: str,
+    csv_path: str,
+) -> dict[str, str]:
+    """Upload the three artifacts and the latest_run_id pointer (pointer last).
+
+    Returns the storage-key dict so the caller can write the per-run keys back
+    to model_training_runs. Errors propagate so the orchestrator's try/except
+    flips the run row to status='failed'. The pointer is uploaded last so a
+    partial-upload failure leaves the previous pointer valid.
+    """
+    # Local import keeps the wrapper snappy on --dry-run / --help paths.
+    from src.infra.model_storage import LATEST_POINTER_KEY, get_model_storage
+
+    storage = get_model_storage()
+    keys = _storage_keys_for_run(run_id)
+
+    uploads: list[tuple[str, Path, str]] = [
+        (keys["model_key"], Path(model_path), "application/octet-stream"),
+        (keys["report_key"], Path(report_path), "text/plain"),
+        (keys["csv_key"], Path(csv_path), "text/csv"),
+    ]
+    for key, path, content_type in uploads:
+        # Trust read_bytes() to raise FileNotFoundError with a clear traceback
+        # — pre-checking with path.exists() is TOCTOU and adds nothing.
+        data = path.read_bytes()
+        logger.info("Uploading %s -> %s (%d bytes)", path, key, len(data))
+        storage.put_bytes(key, data, content_type=content_type)
+
+    # Pointer last — a half-uploaded artifact set must not become "latest".
+    logger.info("Updating %s -> %s", LATEST_POINTER_KEY, run_id)
+    storage.put_bytes(LATEST_POINTER_KEY, run_id.encode("utf-8"), content_type="text/plain")
+
+    return keys
 
 
 def _run(cmd: list[str], *, dry_run: bool) -> None:
@@ -135,21 +199,34 @@ def _update_run_status(
 
 
 def _finalize_run(args: argparse.Namespace) -> None:
-    """Write status='succeeded' + metrics on a clean run."""
+    """Upload artifacts to storage, then write status='succeeded' + metrics.
+
+    The DB row's model_path / report_path columns receive opaque storage keys
+    (not local filesystem paths) — see .claude/rules/infrastructure.md#model-artifact-storage.
+    Pointer write happens inside _upload_artifacts so a failure there raises
+    before the DB row is finalized; the orchestrator's try/except then flips
+    status='failed'.
+    """
     if args.dry_run:
         # Dry-run produced no artifact; mark succeeded with zero rows so the row
         # doesn't sit forever, but skip path/metric fields.
         _update_run_status(args.database_url, args.run_id, status="succeeded")
         return
     total, positive = _count_training_rows(args.output_csv)
+    keys = _upload_artifacts(
+        args.run_id,
+        model_path=args.output_model,
+        report_path=args.output_report,
+        csv_path=args.output_csv,
+    )
     _update_run_status(
         args.database_url,
         args.run_id,
         status="succeeded",
         num_training_rows=total,
         num_positive_rows=positive,
-        model_path=args.output_model,
-        report_path=args.output_report,
+        model_path=keys["model_key"],
+        report_path=keys["report_key"],
     )
 
 
