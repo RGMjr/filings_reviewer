@@ -183,3 +183,33 @@ Check for conflicting labels in the new decisions (same image labeled both relev
 
 **`DATABASE_URL` not set**
 SEC decisions will not be exported. Set `DATABASE_URL` in `.env` and re-run Step 2.
+
+---
+
+## UI-triggered retrains (queue + worker, gh-400)
+
+The "Update Image Classifier" button on `/v2/review/stats` enqueues a `model_training_runs` row and the `filings-onboarding-runner` Render worker drains it. The web POST never owns the lifetime of the work — Render container recycles can no longer SIGKILL a retrain mid-run because the work runs on a long-lived worker process, not on a gunicorn web worker.
+
+| Mode | Trigger | INSERT status | Spawn | Where work runs |
+|------|---------|---------------|-------|-----------------|
+| Prod (`RETRAIN_SPAWN_SUBPROCESS=false`, set in `render.yaml`) | UI button | `'queued'` | none | `filings-onboarding-runner` worker |
+| Dev/test (`RETRAIN_SPAWN_SUBPROCESS=true`, default) | UI button or curl | `'running'` | detached `subprocess.Popen` | gunicorn web worker (subprocess) |
+| CLI (always) | `python3 scripts/retrain_image_triage.py …` | n/a | n/a | the shell that ran the script |
+
+The `GET /api/v2/models/training/<uuid>/status` poll endpoint surfaces `queued`, `running`, `succeeded`, or `failed`; the UI treats `queued` and `running` identically as "in flight".
+
+### Debugging a stuck retrain
+
+1. **Read the row.** `psql -c "SELECT id, status, started_at, run_lock_until, error FROM model_training_runs WHERE id = '<uuid>'"`.
+2. **`status='queued'` and `run_lock_until` NULL/past.** The worker has not picked the row up. Check Render dashboard → `filings-onboarding-runner` → Logs for the most recent `Entering watch mode` line and any tracebacks. If the worker is down, restart it.
+3. **`status='running'` and `run_lock_until` in the future.** Worker is actively running the script — do nothing. Tail the per-run log in `logs/retrain_<run_id>.log` on the worker if available.
+4. **`status='running'` and `run_lock_until` past.** Worker died mid-run. The web-side gh-392 sweep flips this to `failed` on the next button-click; manual reset:
+   ```sql
+   UPDATE model_training_runs
+      SET status = 'failed',
+          error  = 'manual cleanup',
+          completed_at = NOW(),
+          run_lock_until = NULL
+    WHERE id = '<uuid>';
+   ```
+5. **Click again.** With the row no longer at `queued`/`running`, the concurrency gate clears and the next click enqueues a fresh row.

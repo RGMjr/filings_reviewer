@@ -1181,12 +1181,11 @@ def _spawn_retrain_runner(run_id: str, *, model_type: str, database_url: str) ->
     Mirrors src/web/routes/ingest.py::_spawn_ingest_runner. Fire-and-forget;
     the subprocess writes status back to model_training_runs via --run-id.
 
-    Returns False only when the OS-level Popen call raises. On Render this
-    is best-effort — if the gunicorn worker dies before Popen returns, the
-    row stays 'running' until manual cleanup (tracked in known-issues).
+    Returns False only when the OS-level Popen call raises. Only called in
+    dev/test (RETRAIN_SPAWN_SUBPROCESS=true); production enqueues a
+    status='queued' row instead and the filings-onboarding-runner worker
+    drains it (gh-400).
     """
-    if not current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
-        return True
 
     log_dir = _PROJECT_ROOT / "logs"
     log_dir.mkdir(exist_ok=True)
@@ -1226,11 +1225,13 @@ def trigger_image_classifier_retrain():
       - Reviewer name required (matches per-decision-write contract).
       - Threshold gate: at least N total + M positive new image decisions
         since the last succeeded run (env: MODEL_UPDATE_THRESHOLD_*).
-      - Concurrency gate: rejects if a 'running' row already exists.
+      - Concurrency gate: rejects if a 'queued' or 'running' row exists.
 
-    On success: INSERTs a model_training_runs row, spawns the retrain script
-    detached, and returns 202 + {run_id, status: 'running'}. The status
-    endpoint is the canonical place to poll for completion.
+    On success: INSERTs a model_training_runs row and either spawns the retrain
+    script detached (dev/test, RETRAIN_SPAWN_SUBPROCESS=true) or returns 202 +
+    {run_id, status: 'queued'} for the filings-onboarding-runner worker to
+    drain (prod, gh-400). The status endpoint is the canonical place to poll
+    for completion in either mode.
     """
     data = request.get_json(silent=True) or {}
     reviewer_id, gate_reject = _require_reviewer_id(data)
@@ -1263,11 +1264,16 @@ def trigger_image_classifier_retrain():
         """
     )
 
-    # Concurrency gate — never let two retrains race on the same model artifact.
+    # Concurrency gate — never let two retrains race. Counts both 'queued'
+    # (worker has not picked it up yet) and 'running' (worker has claimed it,
+    # or dev-mode subprocess is in flight), so a second click never silently
+    # piles up behind a still-pending run (gh-400).
     running_rows = db.query(
         """
-        SELECT id FROM model_training_runs
-         WHERE model_type = 'image_relevance' AND status = 'running'
+        SELECT id, status FROM model_training_runs
+         WHERE model_type = 'image_relevance'
+           AND status IN ('queued', 'running')
+         ORDER BY started_at
          LIMIT 1
         """
     )
@@ -1306,8 +1312,13 @@ def trigger_image_classifier_retrain():
             409,
         )
 
-    # INSERT the row first, then spawn — if Popen fails, we mark the row failed
-    # so the UI's retrain_running flag clears on the next page load.
+    # gh-400: in prod (RETRAIN_SPAWN_SUBPROCESS=false) the row goes in as
+    # 'queued' and the filings-onboarding-runner worker claims it. In dev/test
+    # the row goes in as 'running' and we spawn the script directly so the
+    # existing local workflow keeps working without a worker process.
+    spawn_subprocess = current_app.config.get("RETRAIN_SPAWN_SUBPROCESS", True)
+    initial_status = "running" if spawn_subprocess else "queued"
+
     run_id = str(_uuid.uuid4())
     database_url = os.environ.get("DATABASE_URL", "")
     db.execute(
@@ -1315,10 +1326,13 @@ def trigger_image_classifier_retrain():
         INSERT INTO model_training_runs
             (id, model_type, status, triggered_by)
         VALUES
-            (%(id)s, 'image_relevance', 'running', %(triggered_by)s)
+            (%(id)s, 'image_relevance', %(status)s, %(triggered_by)s)
         """,
-        {"id": run_id, "triggered_by": reviewer_id},
+        {"id": run_id, "status": initial_status, "triggered_by": reviewer_id},
     )
+
+    if not spawn_subprocess:
+        return jsonify({"run_id": run_id, "status": "queued"}), 202
 
     spawned = _spawn_retrain_runner(run_id, model_type=model_type, database_url=database_url)
     if not spawned:

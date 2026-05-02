@@ -2,13 +2,13 @@
 
 Covers:
   - POST /api/v2/models/image-classifier/retrain — threshold gate, concurrency
-    gate, reviewer-id gate, subprocess spawn, model-type validation.
+    gate (queued + running), reviewer-id gate, subprocess spawn, queued-mode
+    behaviour, model-type validation.
   - GET  /api/v2/models/training/<uuid>/status — 404 path, 200 path.
 
-Subprocess spawning is suppressed via the INGEST_SPAWN_SUBPROCESS=False
-config flag (the same flag the ingest tests use). The test still asserts
-that `subprocess.Popen` would be called with the right cmdline by patching
-it at the api_unified module path.
+The default `app` fixture sets RETRAIN_SPAWN_SUBPROCESS=True so the dev/test
+"spawn locally" path is exercised; tests that need to verify queued-mode
+behaviour (gh-400 worker pattern) flip the flag to False.
 """
 
 from __future__ import annotations
@@ -28,8 +28,10 @@ def app():
     app.config["TESTING"] = True
     app.config["DATABASE_URL"] = "postgresql://test"
     app.config["_db_pool"] = None
-    # Disable real subprocess spawn — `_spawn_retrain_runner` short-circuits.
-    app.config["INGEST_SPAWN_SUBPROCESS"] = False
+    # Default: dev/test spawn-locally path. Tests patch subprocess.Popen so
+    # nothing actually runs. Tests that exercise prod queued-mode flip this
+    # to False explicitly.
+    app.config["RETRAIN_SPAWN_SUBPROCESS"] = True
     return app
 
 
@@ -113,7 +115,7 @@ class TestRetrainGuards:
         assert resp.status_code == 409
 
     def test_running_retrain_returns_409(self, client, mock_db):
-        mock_db.query.return_value = [{"id": uuid.uuid4()}]
+        mock_db.query.return_value = [{"id": uuid.uuid4(), "status": "running"}]
         mock_db.count_image_decisions_since.return_value = _at_threshold()
         resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
         assert resp.status_code == 409
@@ -122,6 +124,26 @@ class TestRetrainGuards:
         assert "running_run_id" in body
         # Concurrency gate must short-circuit before threshold work.
         mock_db.count_image_decisions_since.assert_not_called()
+
+    def test_queued_retrain_returns_409(self, client, mock_db):
+        """gh-400: a 'queued' row (worker hasn't picked it up yet) must also
+        block a new POST so two clicks don't pile up parallel retrains."""
+        mock_db.query.return_value = [{"id": uuid.uuid4(), "status": "queued"}]
+        mock_db.count_image_decisions_since.return_value = _at_threshold()
+        resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["error"] == "retrain_already_running"
+        assert "running_run_id" in body
+
+    def test_concurrency_gate_sql_includes_queued(self, client, mock_db):
+        """The SQL filter must cover both 'queued' and 'running' (gh-400)."""
+        mock_db.count_image_decisions_since.return_value = _at_threshold()
+        with patch("src.web.routes.api_unified.subprocess.Popen"):
+            client.post(_RETRAIN, json=_VALID_REVIEWER)
+        # First db.query call is the concurrency gate.
+        gate_sql = mock_db.query.call_args_list[0].args[0]
+        assert "status IN ('queued', 'running')" in gate_sql
 
 
 class TestStaleRowSweep:
@@ -134,7 +156,11 @@ class TestStaleRowSweep:
         whether anything is currently 'running'. This is what unblocks a
         previously-stuck row."""
         mock_db.count_image_decisions_since.return_value = _at_threshold()
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
         assert resp.status_code == 202
         # First execute is the sweep.
@@ -146,7 +172,11 @@ class TestStaleRowSweep:
     def test_sweep_scoped_to_image_relevance_only(self, client, mock_db):
         """Other model_type values (future ML models) must not be touched."""
         mock_db.count_image_decisions_since.return_value = _at_threshold()
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             client.post(_RETRAIN, json=_VALID_REVIEWER)
         sweep_sql = mock_db.execute.call_args_list[0].args[0]
         assert "model_type = 'image_relevance'" in sweep_sql
@@ -156,7 +186,11 @@ class TestStaleRowSweep:
         Prevents accidentally clobbering a freshly-spawned retrain that
         happens to overlap with a button-click."""
         mock_db.count_image_decisions_since.return_value = _at_threshold()
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             client.post(_RETRAIN, json=_VALID_REVIEWER)
         sweep_sql = mock_db.execute.call_args_list[0].args[0]
         assert "status = 'running'" in sweep_sql
@@ -184,15 +218,20 @@ class TestStaleRowSweep:
 
 class TestRetrainSpawn:
     def test_above_threshold_inserts_row_and_returns_run_id(self, client, mock_db):
+        """Default fixture has RETRAIN_SPAWN_SUBPROCESS=True (dev/test spawn-locally)."""
         mock_db.count_image_decisions_since.return_value = _at_threshold()
-        with patch("src.web.routes.api_unified.subprocess.Popen") as mock_popen:
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen") as mock_popen,
+            # `open(log_path, "ab")` is real on disk — make it a no-op.
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
         # 202 Accepted — kicked off, not yet complete.
         assert resp.status_code == 202
         body = resp.get_json()
         assert body["status"] == "running"
         run_id = body["run_id"]
-        # Valid UUID.
         uuid.UUID(run_id)
         # Two execute calls: stale-row sweep (gh-392) + INSERT.
         assert mock_db.execute.call_count == 2
@@ -203,14 +242,13 @@ class TestRetrainSpawn:
         sql, params = insert_call.args[0], insert_call.args[1]
         assert "INSERT INTO model_training_runs" in sql
         assert params["id"] == run_id
+        assert params["status"] == "running"
         assert params["triggered_by"] == "RGM"
-        # INGEST_SPAWN_SUBPROCESS=False short-circuits before Popen.
-        mock_popen.assert_not_called()
+        # Spawn path is exercised.
+        mock_popen.assert_called_once()
 
-    def test_spawn_failure_marks_row_failed(self, client, mock_db, app):
+    def test_spawn_failure_marks_row_failed(self, client, mock_db):
         mock_db.count_image_decisions_since.return_value = _at_threshold()
-        # Re-enable the real spawn path so Popen is reached, then make it raise.
-        app.config["INGEST_SPAWN_SUBPROCESS"] = True
         with (
             patch("src.web.routes.api_unified.subprocess.Popen") as mock_popen,
             # `open(log_path, "ab")` is real on disk — make it a no-op.
@@ -227,6 +265,33 @@ class TestRetrainSpawn:
         update_call = mock_db.execute.call_args_list[2]
         assert "UPDATE model_training_runs" in update_call.args[0]
         assert "subprocess_spawn_failed" in update_call.args[0]
+
+
+class TestRetrainQueuedMode:
+    """gh-400: when RETRAIN_SPAWN_SUBPROCESS=false (prod), the endpoint
+    enqueues a status='queued' row and returns immediately. The
+    filings-onboarding-runner worker drains the queue."""
+
+    def test_queued_mode_inserts_queued_row_and_skips_spawn(self, client, mock_db, app):
+        app.config["RETRAIN_SPAWN_SUBPROCESS"] = False
+        mock_db.count_image_decisions_since.return_value = _at_threshold()
+        with patch("src.web.routes.api_unified.subprocess.Popen") as mock_popen:
+            resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
+        assert resp.status_code == 202
+        body = resp.get_json()
+        assert body["status"] == "queued"
+        run_id = body["run_id"]
+        uuid.UUID(run_id)
+        # Two execute calls: stale-row sweep + INSERT (no UPDATE on spawn-failure path).
+        assert mock_db.execute.call_count == 2
+        insert_call = mock_db.execute.call_args_list[1]
+        sql, params = insert_call.args[0], insert_call.args[1]
+        assert "INSERT INTO model_training_runs" in sql
+        assert params["id"] == run_id
+        assert params["status"] == "queued"
+        assert params["triggered_by"] == "RGM"
+        # Critical: subprocess MUST NOT spawn in queued mode.
+        mock_popen.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -291,14 +356,22 @@ class TestThresholdConfig:
             "positive": 2,
             "negative": 13,
         }
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
         assert resp.status_code == 202
 
     def test_invalid_env_falls_back_to_default(self, client, mock_db, monkeypatch):
         monkeypatch.setenv("MODEL_UPDATE_THRESHOLD_TOTAL", "not-a-number")
         mock_db.count_image_decisions_since.return_value = _at_threshold()
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_RETRAIN, json=_VALID_REVIEWER)
         # Falls back to default 100; counts (150, 25) clear it → 202.
         assert resp.status_code == 202

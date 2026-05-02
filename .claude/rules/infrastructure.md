@@ -26,7 +26,7 @@ Cloud PostgreSQL format: `postgresql://user:password@host.neon.tech/dbname?sslmo
 `render.yaml` defines 5 services, all pinned to Ohio region via `region: ohio`:
 - `filings-reviewer` — web service (URL: `filings-reviewer.onrender.com`)
 - `filings-extraction` — cron, daily 6am UTC (`batch_v2_extraction.py --status fetched --workers 2 --limit 50`)
-- `filings-onboarding-runner` — background worker (`src.universe.onboarding_runner --watch`)
+- `filings-onboarding-runner` — background worker (`src.universe.onboarding_runner --watch`); drains both `v2_ingest_batches` and the `model_training_runs` retrain queue (gh-400, retrain rows are prioritized so UI-triggered retrains don't wait behind a long onboarding batch)
 - `filings-nightly-sweep` — cron, daily 6am UTC (autonomous KNOWN_ISSUES sweeper; gated by `SWEEP_FORCE=1` in env group `filings-claude-secrets`)
 - `filings-metabase` — web service, self-hosted Metabase for BI/analytics (`metabase/metabase` image, H2 app DB on persistent disk, `autoDeploy: false`; see `docs/operations/analytics-ui-runbook.md`)
 
