@@ -84,7 +84,7 @@ verification SQL.
 
 Per-site model knobs are documented in `docs/operations/vision-model-selection.md`.
 Triage sites (`process_full_page_scan`, `_prescan_ambiguous_images`) default
-to Gemini (`gemini-2.0-flash`) regardless of `VISION_PROVIDER`. The
+to Gemini (`gemini-2.5-flash-lite`) regardless of `VISION_PROVIDER`. The
 two-stage chart-read site defaults to Haiku-4.5 with a Sonnet fallback
 that rescues low-confidence chart responses (PR 3). Cost is observed via
 `PipelineResult.vision_spend_usd_by_site`; fallback rate via

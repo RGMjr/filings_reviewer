@@ -9,8 +9,8 @@ One-page reference for which model each vision call site uses, what env var cont
 | 1 | Table OCR | OCRExtraction | `process_table_image` | `VISION_MODEL_OCR` (two_stage) / `VISION_PROVIDER`+`VISION_MODEL_OCR` (legacy) | `gemini-2.5-flash-lite` (two_stage) / `gpt-4o` (legacy) | ≤5 calls/filing |
 | 2 | Chart OCR fast | OCRExtraction | `process_chart` (first pass) | `VISION_MODEL_OCR` (two_stage only) | `gemini-2.5-flash-lite` | 5–15 calls/filing |
 | 3 | Chart read premium | OCRExtraction | `process_chart` (second pass) | `VISION_MODEL_CHART` (two_stage) / inherits VISION_PROVIDER (legacy) | `claude-haiku-4-5-20251001` (two_stage), Sonnet fallback on conf<0.7 / `gpt-4o` (legacy) | 5–15 calls/filing, $0.25 budget cap |
-| 4 | Full-page OCR | OCRExtraction | `process_full_page_scan` | `VISION_PROVIDER_FULL_PAGE_OCR`, `VISION_MODEL_FULL_PAGE_OCR` | `gemini` / `gemini-2.0-flash` | ≤30 calls/filing on full-page-scan filings |
-| 5 | Prescan | OCRExtraction | `_prescan_ambiguous_images` | `VISION_PROVIDER_PRESCAN`, `VISION_MODEL_PRESCAN` | `gemini` / `gemini-2.0-flash` | ≤10 calls/filing |
+| 4 | Full-page OCR | OCRExtraction | `process_full_page_scan` | `VISION_PROVIDER_FULL_PAGE_OCR`, `VISION_MODEL_FULL_PAGE_OCR` | `gemini` / `gemini-2.5-flash-lite` | ≤30 calls/filing on full-page-scan filings |
+| 5 | Prescan | OCRExtraction | `_prescan_ambiguous_images` | `VISION_PROVIDER_PRESCAN`, `VISION_MODEL_PRESCAN` | `gemini` / `gemini-2.5-flash-lite` | ≤10 calls/filing |
 | 6 | Metric classify | ImageClassify | `analyze_image_for_metric_classification` | `VISION_CLASSIFY_PROVIDER`, `VISION_CLASSIFY_MODEL` | `gemini` / `gemini-2.5-flash-lite` | 10–40 calls/filing when ENABLE_METRIC_CLASSIFY=true |
 
 ## Routing modes

@@ -191,7 +191,7 @@ _VALID_CHART_HINTS = frozenset({"bar", "line", "pie", "area", "stacked_bar", "sc
 # Per-provider default models
 _PROVIDER_DEFAULT_MODELS: dict[str, dict[str, str]] = {
     "openai": {"ocr": "gpt-4o", "chart": "gpt-4o"},
-    "gemini": {"ocr": "gemini-2.0-flash", "chart": "gemini-2.5-pro-preview-05-06"},
+    "gemini": {"ocr": "gemini-2.5-flash-lite", "chart": "gemini-2.5-pro-preview-05-06"},
     "anthropic": {"ocr": "claude-sonnet-4-6", "chart": "claude-sonnet-4-6"},
 }
 

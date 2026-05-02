@@ -211,9 +211,9 @@ class PipelineConfig:
     # recall/triage with no precision requirement, so they default to a cheap
     # Gemini model regardless of VISION_PROVIDER.
     vision_full_page_ocr_provider: str = "gemini"
-    vision_full_page_ocr_model: str = "gemini-2.0-flash"
+    vision_full_page_ocr_model: str = "gemini-2.5-flash-lite"
     vision_prescan_provider: str = "gemini"
-    vision_prescan_model: str = "gemini-2.0-flash"
+    vision_prescan_model: str = "gemini-2.5-flash-lite"
 
     # Chart-read fallback (PR 3). Default chart-read uses Haiku-4.5 for cost;
     # low-confidence chart responses re-call the fallback model (Sonnet) so
