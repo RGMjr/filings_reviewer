@@ -46,6 +46,11 @@ class Config:
     # NOTE: env var is read at class-definition time (module import). Use config_override or
     # monkeypatch.setattr(Config, 'INGEST_SPAWN_SUBPROCESS', ...) in tests, not setenv.
     INGEST_SPAWN_SUBPROCESS = os.environ.get("INGEST_SPAWN_SUBPROCESS", "true").lower() == "true"
+    # gh-400: same gate semantics for image-classifier retrains. False in prod so the
+    # web POST enqueues a model_training_runs row with status='queued' and the
+    # filings-onboarding-runner worker drains it; spawn-from-gunicorn is fragile under
+    # Render container recycle.
+    RETRAIN_SPAWN_SUBPROCESS = os.environ.get("RETRAIN_SPAWN_SUBPROCESS", "true").lower() == "true"
 
 
 class DevelopmentConfig(Config):

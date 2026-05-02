@@ -47,6 +47,10 @@ from dotenv import load_dotenv
 from src.infra.db import DatabaseAdapter
 from src.infra.logging_config import configure_logging
 from src.infra.sec_client import SECClient
+from src.ml.retrain_runner import (
+    claim_next_queued_retrain,
+    run_retrain,
+)
 from src.universe.onboarding import (
     FORM_TYPE_BUNDLES,
     FilingEvent,
@@ -641,11 +645,20 @@ def main() -> int:
     # --watch mode
     logger.info("Entering watch mode (poll_interval=%ds).", args.poll_interval)
     while not _shutdown_requested:
+        # Drain image-classifier retrains first (gh-400). UI users polling a
+        # retrain are blocked on the row's status field; getting them off
+        # 'queued' takes precedence over draining onboarding batches, which
+        # are themselves long-running but not UI-blocking.
+        retrain_row = claim_next_queued_retrain(db)
+        if retrain_row is not None:
+            run_retrain(db, retrain_row)
+            continue
+
         batch_row = claim_next_queued_batch(db)
         if batch_row is not None:
             run_one(db, batch_row)
         else:
-            logger.debug("No queued batches; sleeping %ds.", args.poll_interval)
+            logger.debug("No queued work; sleeping %ds.", args.poll_interval)
             time.sleep(args.poll_interval)
 
     logger.info("Shutdown requested — exiting watch loop.")
