@@ -8,14 +8,20 @@ create_app() before any Flask config is loaded, so a misconfigured
 production deploy fails fast at startup rather than silently allowing
 unrestricted access.
 
-Once A3 (session management) lands, dev_bypass_user() should import
-SessionUser from src.auth.sessions rather than using the local dataclass.
+dev_bypass_user() returns a real ``SessionUser`` (the same dataclass the
+OAuth path produces) so downstream consumers — the require() decorator,
+audit-log writers, role checks — see one shape for both code paths.
 """
 
 import os
 import sys
-import types
-from dataclasses import dataclass, field
+
+from src.auth.sessions import SessionUser
+
+# Stable UUID assigned to the dev-bypass synthetic user. Constant so audit
+# rows from local dev runs collate cleanly (instead of a different random
+# UUID per process). Not a real ``auth_users`` row — never insert it.
+DEV_BYPASS_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 
 def is_dev_bypass_enabled() -> bool:
@@ -41,40 +47,18 @@ def verify_dev_bypass_safe() -> None:
         raise RuntimeError(msg)
 
 
-# ---------------------------------------------------------------------------
-# Placeholder SessionUser for dev-bypass local/test use.
-# TODO(A3): replace this with an import from src.auth.sessions once that
-# module ships.  Keep the field names aligned with whatever A3 defines so
-# callers need only update the import line.
-# ---------------------------------------------------------------------------
+def dev_bypass_user() -> SessionUser:
+    """Return a synthetic admin-role ``SessionUser`` for local dev / tests.
 
-
-@dataclass
-class _DevBypassUser:
-    """Synthetic admin user injected when AUTH_DEV_BYPASS=1 in development."""
-
-    user_id: str = "dev-bypass"
-    email: str = "dev@localhost"
-    name: str = "Dev Bypass User"
-    roles: list[str] = field(default_factory=lambda: ["admin"])
-    is_authenticated: bool = True
-
-
-def dev_bypass_user() -> types.SimpleNamespace:
+    Only valid when ``is_dev_bypass_enabled()`` is True; callers are
+    responsible for that check. The returned dataclass has the same shape
+    as the OAuth-flow user, so any code reading ``g.user.role`` etc. works
+    against either path without a special case.
     """
-    Return a synthetic admin-role user for local development / tests.
-
-    This is only valid when is_dev_bypass_enabled() is True; callers are
-    responsible for that check.  The returned object is a SimpleNamespace
-    so downstream code can read attributes without importing a specific class.
-
-    Once A3 lands, this function should return a proper SessionUser instance.
-    """
-    user = _DevBypassUser()
-    return types.SimpleNamespace(
-        user_id=user.user_id,
-        email=user.email,
-        name=user.name,
-        roles=user.roles,
-        is_authenticated=user.is_authenticated,
+    return SessionUser(
+        id=DEV_BYPASS_USER_ID,
+        email="dev@localhost",
+        display_name="Dev Bypass User",
+        role="admin",
+        account_status="active",
     )

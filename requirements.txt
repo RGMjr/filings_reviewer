@@ -79,6 +79,11 @@ google-genai>=1.0.0
 # Pinned >=0.87.0 for CVE-2026-34450 and CVE-2026-34452 (fixed in 0.87.0).
 anthropic>=0.87.0
 
+# Google ID-token validation for the OAuth login flow (PR-A5).
+# Provides google.oauth2.id_token.verify_oauth2_token used by
+# src/auth/oidc_validate.py to validate signature, aud, and exp.
+google-auth>=2.27,<3
+
 # Token counting - For cost tracking and context management
 tiktoken>=0.5.0
 

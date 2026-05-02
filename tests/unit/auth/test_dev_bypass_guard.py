@@ -2,7 +2,13 @@
 
 import pytest
 
-from src.auth.dev_bypass import dev_bypass_user, is_dev_bypass_enabled, verify_dev_bypass_safe
+from src.auth.dev_bypass import (
+    DEV_BYPASS_USER_ID,
+    dev_bypass_user,
+    is_dev_bypass_enabled,
+    verify_dev_bypass_safe,
+)
+from src.auth.sessions import SessionUser
 
 # ---------------------------------------------------------------------------
 # is_dev_bypass_enabled
@@ -93,18 +99,27 @@ def test_error_message_mentions_app_env(monkeypatch: pytest.MonkeyPatch) -> None
 # ---------------------------------------------------------------------------
 
 
+def test_dev_bypass_user_returns_session_user() -> None:
+    user = dev_bypass_user()
+    assert isinstance(user, SessionUser)
+
+
 def test_dev_bypass_user_has_admin_role() -> None:
     user = dev_bypass_user()
-    assert "admin" in user.roles
+    assert user.role == "admin"
 
 
-def test_dev_bypass_user_is_authenticated() -> None:
+def test_dev_bypass_user_account_status_active() -> None:
     user = dev_bypass_user()
-    assert user.is_authenticated is True
+    assert user.account_status == "active"
 
 
-def test_dev_bypass_user_has_expected_attrs() -> None:
+def test_dev_bypass_user_has_stable_id() -> None:
     user = dev_bypass_user()
-    assert hasattr(user, "user_id")
-    assert hasattr(user, "email")
-    assert hasattr(user, "name")
+    assert user.id == DEV_BYPASS_USER_ID
+
+
+def test_dev_bypass_user_has_expected_email_and_name() -> None:
+    user = dev_bypass_user()
+    assert user.email == "dev@localhost"
+    assert user.display_name == "Dev Bypass User"

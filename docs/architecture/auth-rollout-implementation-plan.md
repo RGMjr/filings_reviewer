@@ -140,37 +140,48 @@ Realistic timing: with the May-10 deadline (10 days from 2026-05-01), Wave 1 sho
 
 ### A5 — Google OAuth flow
 
-**Scope.** Login entrypoint, callback handler, allowlist check, auto-provision, session creation. Gated by `google_login_enabled` (default false).
+**Scope.** Login entrypoint, callback handler, allowlist check, auto-provision, session creation. Gated by `google_login_enabled` (default false). Also folds in three Wave-2 carry-overs that are load-bearing for A5: `load_session_user` registration in `create_app()`, `dev_bypass_user()` returning a real `SessionUser`, and missing `AUTH_SESSION_*` env-template entries.
 
 **Files (new).**
-- `src/auth/oauth.py` — Authorization-Code-with-PKCE flow.
-- `src/auth/oidc_validate.py` — ID-token validation per spec.
-- `src/web/routes/auth.py` — `/auth/login`, `/auth/callback`, `/auth/logout`. Blueprint registered conditionally on `google_login_enabled`.
-- `tests/integration/auth/test_oauth_flow.py`
-- `requirements.txt` — add `google-auth` (or `Authlib`).
+- `src/auth/oauth.py` — Authorization-Code-with-PKCE flow (PKCE, state/nonce gen, auth-URL builder, code exchange).
+- `src/auth/oidc_validate.py` — ID-token validation (signature/aud/exp via `google-auth`, then iss/nonce/email_verified application checks).
+- `src/auth/feature_flags.py` — generic `is_enabled(key)` reader with 5 s TTL cache; mirrors A4's `_read_enforcement_flag` SQL pattern.
+- `src/web/routes/auth.py` — `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/denied`. Blueprint registered conditionally on `google_login_enabled` at app boot.
+- `src/web/templates/auth/login.html`, `src/web/templates/auth/denied.html`, `src/web/templates/errors/403.html`.
+- `tests/integration/auth/conftest.py`, `tests/integration/auth/test_oauth_flow.py`.
+- `tests/unit/auth/test_oauth_url_validation.py`, `tests/unit/auth/test_oidc_validate.py`, `tests/unit/auth/test_feature_flags.py`.
 
 **Files (modified).**
-- `src/web/app.py` — register the new blueprint. (**Conflict surface.**)
-- `.env.template` — `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `AUTH_SESSION_SECRET`.
-- `CLAUDE.md` — env vars section.
+- `src/web/app.py` — register `load_session_user` (Wave-2 carry-over) before `csrf_protect`; conditionally register `auth_bp` after blueprints. (**Conflict surface.**)
+- `src/auth/dev_bypass.py` — return a real `SessionUser` (Wave-2 carry-over).
+- `tests/unit/auth/test_dev_bypass_guard.py` — assertion update for the new return type.
+- `.env.template` — add `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, `AUTH_SESSION_COOKIE_NAME`, `AUTH_SESSION_INACTIVITY_HOURS`, `AUTH_SESSION_ABSOLUTE_DAYS`. (No `AUTH_SESSION_SECRET` — Flask reuses the existing `SECRET_KEY` env var for the OAuth-flow signed-cookie session; one signing key, one source.)
+- `requirements.txt` — add `google-auth>=2.27,<3` (already in `requirements.lock` transitively via `google-genai`).
+- `CLAUDE.md` — auth-tables note updated for first-login auto-provisioning.
 
 **Validation requirements (from spec §OAuth Implementation Requirements).**
-- ID-token signature against Google JWKS.
+- ID-token signature against Google JWKS (via `google.oauth2.id_token.verify_oauth2_token`; the `Request` transport is cached at module level so JWKS fetches are amortized).
 - `iss`, `aud == client_id`, `exp`, `nonce`, `email_verified == true`.
-- `state` parameter validated.
+- `state` parameter validated against the value stashed at `/auth/login`.
 - Scopes `openid email profile` only.
 - Trust ID-token claims; no `userinfo` refetch.
 
 **Auto-provision.**
-- Successful login + allowlist match → upsert `auth_users` row from claims; set `first_login_at` if NULL, always update `last_login_at`.
-- Allowlist miss → deny + log audit event with reason `not_allowlisted`.
-- `email_verified=false` → deny + log audit event with reason `email_unverified`.
+- Successful login + allowlist match → upsert `auth_users` row using `ON CONFLICT (normalized_email) DO UPDATE` (NOT `google_sub`, which is nullable on seeded rows). Sets `google_sub` only when the existing row's value was NULL; refreshes `display_name`; sets `first_login_at` only if NULL; always updates `last_login_at`.
+- Allowlist miss → deny + audit `auth.login_denied` with reason `not_allowlisted`. User-visible page wording is identical to `email_unverified` to avoid leaking which accounts are allowlisted.
+- `email_verified=false` → deny + audit `auth.login_denied` with reason `email_unverified`.
+
+**Runtime semantics.**
+- The conditional blueprint registration is read once at app boot. A flag flip via `feature_flags` requires a deploy/restart to take effect — Stage B's flip is paired with a deploy anyway.
+- The Flask framework session (signed by `SECRET_KEY`) holds short-lived per-flow values (`state`/`nonce`/`code_verifier`) between `/auth/login` and `/auth/callback`. The long-lived `auth_session` cookie (set by A3's `set_session_cookie`) holds the opaque session id and is unrelated.
+- CSRF middleware (A4) already exempts paths under `/auth/`, so the OAuth callback is not blocked when `auth_enforcement_enabled` flips on later.
 
 **Verification.**
-- Integration tests for: success, not-allowlisted, email-unverified, state-mismatch, expired-token, replayed-state.
-- Login event audit rows present with correct reason codes.
+- Integration tests for: success, not-allowlisted, email-unverified, state-mismatch, invalid-id-token, callback-without-code, disabled-user-with-allowlist, pending-allowlist-entry, logout. All run with stubbed Google client (no real network).
+- Unit tests for: `_validate_next` (open-redirect bypass attempts), `validate_id_token` (per-claim failure modes), `is_enabled` (cache hit/miss/expiry), updated `dev_bypass_user` assertions.
+- Login event audit rows present in `admin_audit_log` with correct `action_type`/`error` codes.
 
-**Verification-checklist items satisfied.** "Google login works in production"; "non-allowlisted Google account is denied correctly"; "`email_verified=false` Google account is denied correctly"; OAuth-failure audit reasons.
+**Verification-checklist items satisfied.** "Google login works in production"; "non-allowlisted Google account is denied correctly"; "`email_verified=false` Google account is denied correctly"; OAuth-failure audit reasons; "Account-mismatch and unverified-email messages do not leak which accounts are allowlisted".
 
 ### A6 — Production dev-bypass startup guard
 
