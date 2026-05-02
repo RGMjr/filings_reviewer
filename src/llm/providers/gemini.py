@@ -4,7 +4,7 @@ Uses the ``google-genai`` SDK (``google.genai``) with ``GOOGLE_API_KEY``
 environment variable authentication.  No GCP project or Vertex AI dependency.
 
 Default models:
-  OCR  : ``gemini-2.0-flash`` (fast, cheap)
+  OCR  : ``gemini-2.5-flash-lite`` (fast, cheap)
   Chart: ``gemini-2.5-pro-preview-05-06`` (high-quality reasoning)
 
 The ``VISION_MODEL_OCR`` / ``VISION_MODEL_CHART`` env vars override these
@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 _MODEL_PRICING: dict[str, tuple[float, float]] = {
     "gemini-2.5-pro-preview-05-06": (1.25, 10.00),
     "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.0-flash": (0.10, 0.40),
     "gemini-2.0-flash-lite": (0.075, 0.30),
     "gemini-1.5-pro": (1.25, 5.00),
@@ -76,11 +77,11 @@ class GeminiVisionProvider(VisionProvider):
     No GCP project / Application Default Credentials required.
     """
 
-    def __init__(self, model: str = "gemini-2.0-flash") -> None:
+    def __init__(self, model: str = "gemini-2.5-flash-lite") -> None:
         """Initialize the Gemini vision provider.
 
         Args:
-            model: Gemini model identifier. Defaults to ``gemini-2.0-flash``
+            model: Gemini model identifier. Defaults to ``gemini-2.5-flash-lite``
                 for cost-effective OCR work.
         """
         self.model = model

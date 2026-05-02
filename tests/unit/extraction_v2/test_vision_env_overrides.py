@@ -105,12 +105,12 @@ class TestDefaultConfig:
     def test_full_page_ocr_defaults_to_gemini(self) -> None:
         cfg = PipelineConfig()
         assert cfg.vision_full_page_ocr_provider == "gemini"
-        assert cfg.vision_full_page_ocr_model == "gemini-2.0-flash"
+        assert cfg.vision_full_page_ocr_model == "gemini-2.5-flash-lite"
 
     def test_prescan_defaults_to_gemini(self) -> None:
         cfg = PipelineConfig()
         assert cfg.vision_prescan_provider == "gemini"
-        assert cfg.vision_prescan_model == "gemini-2.0-flash"
+        assert cfg.vision_prescan_model == "gemini-2.5-flash-lite"
 
 
 # ---------------------------------------------------------------------------
@@ -122,10 +122,10 @@ class TestEnvOverrides:
     def test_vision_model_full_page_ocr_env_flows_into_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("VISION_MODEL_FULL_PAGE_OCR", "gemini-2.5-flash-lite")
+        monkeypatch.setenv("VISION_MODEL_FULL_PAGE_OCR", "gemini-2.0-flash-lite")
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         pipeline = V2Pipeline()
-        assert pipeline.config.vision_full_page_ocr_model == "gemini-2.5-flash-lite"
+        assert pipeline.config.vision_full_page_ocr_model == "gemini-2.0-flash-lite"
 
     def test_vision_provider_prescan_env_flows_into_config(
         self, monkeypatch: pytest.MonkeyPatch
@@ -276,7 +276,7 @@ class TestEnvRestore:
             lambda self: None,
         )
 
-        _build_cheap_ocr_client("gemini", "gemini-2.0-flash")
+        _build_cheap_ocr_client("gemini", "gemini-2.5-flash-lite")
 
         assert os.environ.get("VISION_PROVIDER") == "openai"
         assert os.environ.get("VISION_MODEL_OCR") == "gpt-4o"
@@ -292,7 +292,7 @@ class TestEnvRestore:
             lambda self: None,
         )
 
-        _build_cheap_ocr_client("gemini", "gemini-2.0-flash")
+        _build_cheap_ocr_client("gemini", "gemini-2.5-flash-lite")
 
         assert "VISION_PROVIDER" not in os.environ
         assert "VISION_MODEL_OCR" not in os.environ
