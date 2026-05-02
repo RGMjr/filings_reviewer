@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Access denied{% endblock %}
+
+{% block content %}
+<div class="text-center py-5" style="max-width: 540px; margin: 0 auto;">
+    <h1 class="h3 mb-3">Access denied</h1>
+
+    {# `not_allowlisted` and `email_unverified` deliberately share copy
+       so the page does not leak which Google accounts are allowlisted.
+       Other reasons can be more specific because they reveal nothing
+       about allowlist membership. #}
+    {% if reason == 'not_allowlisted' or reason == 'email_unverified' %}
+        <p class="text-muted">
+            We couldn't sign you in with that Google account.
+            If you believe this is wrong, contact a reviewer admin to confirm
+            your account is approved and your email address is verified with Google.
+        </p>
+    {% elif reason == 'account_disabled' %}
+        <p class="text-muted">
+            This account has been disabled. Contact a reviewer admin if you
+            believe this is in error.
+        </p>
+    {% elif reason == 'oauth_state_mismatch' %}
+        <p class="text-muted">
+            The login attempt could not be verified. Please try signing in again.
+        </p>
+    {% elif reason == 'oauth_id_token_invalid' %}
+        <p class="text-muted">
+            The Google response could not be verified. Please try signing in again.
+        </p>
+    {% else %}
+        <p class="text-muted">
+            Something went wrong while signing you in. Please try again.
+        </p>
+    {% endif %}
+
+    <a href="{{ url_for('auth.login') }}" class="btn btn-secondary mt-3">
+        Try again
+    </a>
+</div>
+{% endblock %}

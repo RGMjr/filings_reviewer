@@ -309,6 +309,26 @@ def create_app(
     # Register blueprints (routes will be added in later tasks)
     _register_blueprints(app)
 
+    # Conditionally register the auth blueprint (A5) on the
+    # ``google_login_enabled`` feature flag. Read once at app boot — runtime
+    # flag flips require a deploy/restart to take effect, which Stage B's
+    # rollout pairs with a deploy anyway.
+    from src.auth.feature_flags import is_enabled
+
+    if is_enabled("google_login_enabled"):
+        from src.web.routes.auth import auth_bp
+
+        app.register_blueprint(auth_bp)
+        logger.info("Auth blueprint registered (google_login_enabled=true)")
+
+    # ``load_session_user`` populates ``flask.g.user`` from the auth_session
+    # cookie on every request. Registered before ``csrf_protect`` so g.user
+    # is available to the CSRF check (and to any future authz check).
+    # No-op for anonymous traffic — sets g.user=None and returns immediately.
+    from src.auth.load_user import load_session_user
+
+    app.before_request(load_session_user)
+
     # Register CSRF protection middleware (A4).
     # No-op when auth_enforcement_enabled flag is off or missing (safe default).
     from src.auth.csrf import csrf_protect
@@ -355,49 +375,61 @@ def _register_health_check(app: Flask) -> None:
 
                 health = check_pool_health(pool)
                 if health.is_healthy:
-                    return jsonify(
-                        {
-                            "status": "healthy",
-                            "database": "connected",
-                            "pool_stats": {
-                                "total_connections": health.total_connections,
-                                "idle_connections": health.idle_connections,
-                                "active_connections": health.active_connections,
-                                "test_query_elapsed": health.test_query_elapsed,
-                            },
-                        }
-                    ), 200
+                    return (
+                        jsonify(
+                            {
+                                "status": "healthy",
+                                "database": "connected",
+                                "pool_stats": {
+                                    "total_connections": health.total_connections,
+                                    "idle_connections": health.idle_connections,
+                                    "active_connections": health.active_connections,
+                                    "test_query_elapsed": health.test_query_elapsed,
+                                },
+                            }
+                        ),
+                        200,
+                    )
                 else:
-                    return jsonify(
-                        {
-                            "status": "unhealthy",
-                            "database": "error",
-                            "message": health.error,
-                        }
-                    ), 503
+                    return (
+                        jsonify(
+                            {
+                                "status": "unhealthy",
+                                "database": "error",
+                                "message": health.error,
+                            }
+                        ),
+                        503,
+                    )
             else:
                 # No pool, try direct connection
                 db = DatabaseAdapter(current_app.config["DATABASE_URL"])
                 with db.get_connection() as conn:
                     conn.execute("SELECT 1")
 
-                return jsonify(
-                    {
-                        "status": "healthy",
-                        "database": "connected",
-                        "pool_stats": None,
-                    }
-                ), 200
+                return (
+                    jsonify(
+                        {
+                            "status": "healthy",
+                            "database": "connected",
+                            "pool_stats": None,
+                        }
+                    ),
+                    200,
+                )
 
         except Exception as e:
             logger.error(f"Health check failed: {e}")
-            return jsonify(
-                {
-                    "status": "unhealthy",
-                    "database": "error",
-                    "message": "Database connection failed",
-                }
-            ), 503
+            return (
+                jsonify(
+                    {
+                        "status": "unhealthy",
+                        "database": "error",
+                        "message": "Database connection failed",
+                    }
+                ),
+                503,
+            )
 
 
 def _register_blueprints(app: Flask) -> None:
