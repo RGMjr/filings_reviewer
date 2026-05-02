@@ -3,7 +3,7 @@ id: 405
 source: gh
 slug: chart-classifier-overflag
 title: Investigate over-flagging by chart classifier (image_features model coefficient signal)
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: —
@@ -11,7 +11,7 @@ touches: []
 discovered: 2026-05-01
 updated: 2026-05-01
 gh_issue: 405
-note: relevance model's strongest negative coefficient is is_chart_classification (-2.178), implying upstream chart labels are mostly noise after human review
+note: investigation complete — relevance model absorbs the signal correctly; see docs/analysis/gh-405-chart-classifier-overflag-audit.md
 ---
 
 ### Problem
