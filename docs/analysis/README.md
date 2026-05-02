@@ -33,6 +33,15 @@ Product decision memo on how to handle the missing `chart_type` signal in `v2_im
 
 ---
 
+### gh-405-chart-classifier-overflag-audit.md
+
+**Status**: Complete — recommends closing gh-405
+**Date**: 2026-05-01
+
+Audit of `_is_chart()` over-flagging behavior triggered by the `is_chart_classification: -2.178` coefficient in the retrained relevance model. Reproduces the coefficient (1,499 samples, AUC 0.829), decomposes chart-classification by gate origin, and concludes the relevance model already absorbs the over-flag signal correctly — no rule change recommended.
+
+---
+
 ### metric-value-evaluation.md
 
 **Status**: Reference
@@ -75,4 +84,4 @@ Completed tasks, superseded reports, and research spikes are in `docs/archive/an
 
 ---
 
-**Last Updated**: 2026-04-27
+**Last Updated**: 2026-05-01
