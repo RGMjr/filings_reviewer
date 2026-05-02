@@ -179,7 +179,62 @@ remove them after the soak window.
 `R2FilingStorage.put_bytes` refuses to write unless
 `FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` is in the process environment, mirroring
 `R2Storage.put_bytes`. Reads (`get_bytes`, `exists`) remain open. The same env
-var gates both image and filing R2 writes.
+var gates image, filing, and model R2 writes.
+
+## Model Artifact Storage
+
+Image-relevance retrain artifacts (model joblib + training CSV + report)
+persist via `src/infra/model_storage.py` — same pattern as image and filing
+storage, parallel surface. Two backends selected at runtime via `R2_BUCKET`:
+
+- **Local filesystem** (default, dev/test): `LocalFilesystemModelStorage`
+  rooted at `<repo>/data/image_model/`.
+- **Cloudflare R2** (prod): `R2ModelStorage` shares the bucket with image and
+  filing bytes; key prefix `models/` separates from `pipeline/` (image cache),
+  `filings/` (filing HTML), and `ingestion/` (per-filing image cache).
+
+Keys (under prefix `models/image_relevance/`):
+
+```
+models/image_relevance/<run_id>/relevance_model.joblib
+models/image_relevance/<run_id>/model_report.txt
+models/image_relevance/<run_id>/training_data.csv
+models/image_relevance/latest_run_id.txt   # bare UUID string, single writer
+```
+
+`model_training_runs.model_path` and `report_path` store opaque storage keys
+post-gh-391 (e.g. `models/image_relevance/<uuid>/relevance_model.joblib`), not
+absolute filesystem paths. The columns are display-only — the loader
+(`src/shared/image_features._load_model`) does NOT read them; it goes straight
+to `latest_run_id.txt` to find the active model. Pre-cutover rows whose
+`model_path` is an absolute path remain readable as opaque text; no backfill
+is required.
+
+**Writer-side.** `scripts/retrain_image_triage.py::_finalize_run` uploads the
+three per-run artifacts via the storage abstraction and then writes
+`latest_run_id.txt` *last* (so a partial-upload failure leaves the previous
+pointer valid). Single-writer is guaranteed for web-triggered retrains by the
+concurrency gate in `src/web/routes/api_unified.py::trigger_image_classifier_retrain`
+— a `model_type='image_relevance' AND status='running'` row blocks a second
+attempt with HTTP 409. CLI users invoking the script directly bypass that
+gate; document, do not enforce.
+
+**Reader-side.** When `R2_BUCKET` is set, `_load_model(model_path=None)` reads
+the pointer key, uses the contained run-id as the in-memory cache key, and
+materializes the joblib bytes to `data/image_model/_cache/<run_id>/relevance_model.joblib`
+(atomic via tempfile + `os.replace`) before `joblib.load`. Run-id-keyed
+filenames sidestep concurrent-worker write races. When `R2_BUCKET` is unset,
+the loader uses `data/image_model/relevance_model.joblib` from local disk
+directly — identical behavior to pre-gh-391. Storage failures
+(`ClientError` / `EndpointConnectionError`) are caught and return `None` so
+extraction falls back to the heuristic instead of crashing.
+
+### Prod-write guard
+
+`R2ModelStorage.put_bytes` refuses to write unless
+`FILINGS_REVIEWER_ALLOW_PROD_WRITES=1` is in the process environment, mirroring
+the image and filing backends. Reads remain open. The same env var gates all
+three R2 write paths.
 
 ## SEC EDGAR Integration
 
