@@ -85,6 +85,39 @@ class TestTriggerGuards:
         mock_db.count_text_decisions_since.assert_not_called()
 
 
+class TestStaleRowSweep:
+    """A 'running' row older than 1 hour gets auto-flipped to 'failed' before
+    the concurrency check, so a SIGKILL/OOM-leaked row does not permanently
+    block future analyses. Mirrors gh-392 for the image-retrain sibling."""
+
+    def test_sweep_runs_before_concurrency_check(self, client, mock_db):
+        mock_db.count_text_decisions_since.return_value = 100
+        with patch("src.web.routes.api_unified.subprocess.Popen"):
+            resp = client.post(_TRIGGER, json=_VALID_REVIEWER)
+        assert resp.status_code == 202
+        sweep_sql = mock_db.execute.call_args_list[0].args[0]
+        assert "UPDATE text_decision_analysis_runs" in sweep_sql
+        assert "auto-cleanup" in sweep_sql
+
+    def test_sweep_scoped_to_running_status_and_one_hour(self, client, mock_db):
+        mock_db.count_text_decisions_since.return_value = 100
+        with patch("src.web.routes.api_unified.subprocess.Popen"):
+            client.post(_TRIGGER, json=_VALID_REVIEWER)
+        sweep_sql = mock_db.execute.call_args_list[0].args[0]
+        assert "status = 'running'" in sweep_sql
+        assert "INTERVAL '1 hour'" in sweep_sql
+        assert "started_at <" in sweep_sql
+
+    def test_sweep_runs_even_when_below_threshold(self, client, mock_db):
+        mock_db.count_text_decisions_since.return_value = 10
+        resp = client.post(_TRIGGER, json=_VALID_REVIEWER)
+        assert resp.status_code == 409
+        assert resp.get_json()["error"] == "below_threshold"
+        # Sweep ran exactly once before short-circuit.
+        assert mock_db.execute.call_count == 1
+        assert "UPDATE text_decision_analysis_runs" in mock_db.execute.call_args_list[0].args[0]
+
+
 class TestTriggerSpawn:
     def test_above_threshold_inserts_row_and_returns_run_id(self, client, mock_db):
         mock_db.count_text_decisions_since.return_value = 100
@@ -95,9 +128,13 @@ class TestTriggerSpawn:
         assert body["status"] == "running"
         run_id = body["run_id"]
         uuid.UUID(run_id)  # valid uuid
-        mock_db.execute.assert_called_once()
-        args, _ = mock_db.execute.call_args
-        sql, params = args[0], args[1]
+        # Two execute calls: stale-row sweep + INSERT.
+        assert mock_db.execute.call_count == 2
+        sweep_call = mock_db.execute.call_args_list[0]
+        assert "UPDATE text_decision_analysis_runs" in sweep_call.args[0]
+        assert "auto-cleanup" in sweep_call.args[0]
+        insert_call = mock_db.execute.call_args_list[1]
+        sql, params = insert_call.args[0], insert_call.args[1]
         assert "INSERT INTO text_decision_analysis_runs" in sql
         assert params["id"] == run_id
         assert params["triggered_by"] == "RGM"
@@ -130,8 +167,9 @@ class TestTriggerSpawn:
         assert resp.status_code == 500
         body = resp.get_json()
         assert body["error"] == "subprocess_spawn_failed"
-        assert mock_db.execute.call_count == 2
-        update_call = mock_db.execute.call_args_list[1]
+        # Three execute calls: stale-row sweep + INSERT row + UPDATE→failed.
+        assert mock_db.execute.call_count == 3
+        update_call = mock_db.execute.call_args_list[2]
         assert "UPDATE text_decision_analysis_runs" in update_call.args[0]
         assert "subprocess_spawn_failed" in update_call.args[0]
 
