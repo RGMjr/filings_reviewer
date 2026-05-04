@@ -3,15 +3,17 @@ id: 426
 source: gh
 slug: export-without-retrain-stale-model
 title: Export-without-retrain leaves data/image_model/relevance_model.joblib stale
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: —
 touches: []
 discovered: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-04
 gh_issue: 426
-note: re-running export_image_training_data.py without retrain leaves the deployed joblib lagging the CSV; benign while USE_LEARNED_TRIAGE=false, becomes a silent staleness bug the moment that flag flips on
+pr_refs:
+  - 446
+note: resolved by PR #446 (Option C — stderr banner at end of export, suppressed when retrain_image_triage.py sets RETRAIN_CHAINED=1)
 ---
 
 ### Problem
