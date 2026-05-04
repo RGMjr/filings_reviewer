@@ -2,12 +2,21 @@
 Shared Flask middleware for the review application.
 
 Provides reusable before_request/after_request hooks for:
-- API key authentication
+- API key authentication (non-browser callers via ``Authorization: ApiKey``
+  or ``X-API-Key`` header — same-origin browser bypass removed in PR-C1)
 - Admin gate (transitional — will be replaced by role lookup against
   auth_users when Stage A2 of the auth rollout lands; see
   docs/architecture/auth-rollout-implementation-plan.md)
 - Request timing
 - Audit log insertion
+
+PR-C1 change: the same-origin browser bypass (``_is_same_origin()`` early
+return inside ``_verify_api_key``) has been removed.  Browser traffic now
+authenticates exclusively via session cookie (``require()`` decorators from
+``src.auth.middleware``).  Non-browser callers authenticate via the
+``X-API-Key`` / ``Authorization: ApiKey`` header path, which is preserved.
+The ``register_api_auth`` blueprint-wide hook has also been removed; routes
+that need per-endpoint API-key checks can still use ``require_api_key``.
 """
 
 import functools
@@ -15,7 +24,6 @@ import hmac
 import logging
 import os
 import time
-import urllib.parse
 from collections.abc import Callable
 from typing import Any
 
@@ -24,49 +32,30 @@ from flask import Blueprint, current_app, g, jsonify, request, session
 logger = logging.getLogger(__name__)
 
 
-def _is_same_origin() -> bool:
-    """
-    Return True if the request originates from the same host as the server.
-
-    Checks Origin header first (reliable for POST fetch() calls; scheme-independent
-    comparison handles HTTPS-terminating proxies where Flask sees http:// but the
-    browser sends https://). Falls back to Referer header (sent for GET and
-    same-origin navigations; browsers omit Origin for same-origin no-CORS
-    GET/HEAD requests).
-
-    Returns False if both headers are absent or point to a different host.
-    """
-    # Origin header check (scheme-independent host comparison).
-    origin = request.headers.get("Origin", "")
-    if origin and origin.split("://", 1)[-1] == request.host:
-        return True
-
-    # Referer fallback (scheme-independent host comparison — under
-    # HTTPS-terminating proxies like Render, the Referer is https:// while
-    # request.host_url is http://, so a startswith match would miss).
-    referer = request.headers.get("Referer", "")
-    if referer:
-        referer_host = urllib.parse.urlsplit(referer).netloc
-        if referer_host and referer_host == request.host:
-            return True
-
-    return False
-
-
 def _verify_api_key() -> Any:
     """
     Core API-key check. Returns None to pass, or a Flask response tuple
     (body, status) to reject. Callable from a before_request hook or a
     per-route decorator.
+
+    Authenticates non-browser callers via:
+      - ``X-API-Key: <key>`` header
+      - ``?api_key=<key>`` query parameter
+      - ``Authorization: ApiKey <key>`` header
+
+    The same-origin browser bypass has been removed (PR-C1). Browser traffic
+    authenticates via session cookie through ``require()`` decorators.
     """
     if not current_app.config.get("API_KEY_REQUIRED", True):
         return None
 
-    # Allow browser fetch calls from the same server (same-origin AJAX).
-    if _is_same_origin():
-        return None
-
+    # Accept Authorization: ApiKey <key> in addition to X-API-Key header.
     api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
+    if not api_key:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("ApiKey "):
+            api_key = auth_header[len("ApiKey ") :]
+
     expected_key = current_app.config.get("API_KEY")
 
     if not expected_key:
@@ -86,19 +75,6 @@ def _verify_api_key() -> Any:
         return jsonify({"status": "error", "message": "Invalid API key"}), 401
 
     return None
-
-
-def register_api_auth(bp: Blueprint) -> None:
-    """
-    Register API key authentication as a before_request hook on a blueprint.
-
-    Checks the X-API-Key header. Returns 401 if missing or invalid.
-    Skips authentication if API_KEY_REQUIRED is False (development mode).
-    """
-
-    @bp.before_request
-    def _check_api_key():
-        return _verify_api_key()
 
 
 def require_api_key(view: Callable) -> Callable:

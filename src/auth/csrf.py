@@ -18,11 +18,37 @@ from __future__ import annotations
 
 import logging
 import time
+import urllib.parse
 from typing import Any
 
 from flask import jsonify, request
 
 logger = logging.getLogger(__name__)
+
+
+def _is_same_origin() -> bool:
+    """Return True if the request originates from the same host as the server.
+
+    Checks Origin first (reliable for POST fetch() calls; scheme-independent
+    so HTTPS-terminating proxies don't mask same-origin), then Referer (sent
+    for GET and same-origin navigations; browsers omit Origin for same-origin
+    no-CORS GET/HEAD requests).
+
+    Moved here from src/web/middleware.py in PR-C1 — CSRF is now the only
+    caller. The previous use as an API-key bypass was removed.
+    """
+    origin = request.headers.get("Origin", "")
+    if origin and origin.split("://", 1)[-1] == request.host:
+        return True
+
+    referer = request.headers.get("Referer", "")
+    if referer:
+        referer_host = urllib.parse.urlsplit(referer).netloc
+        if referer_host and referer_host == request.host:
+            return True
+
+    return False
+
 
 # ---------------------------------------------------------------------------
 # Module-level flag cache: (value: bool, cached_at: float) | None
@@ -105,9 +131,7 @@ def csrf_protect() -> Any:
     if sec_fetch_site == "same-origin":
         return None
 
-    # Fallback: Origin / Referer host comparison (same logic as API-key bypass).
-    from src.web.middleware import _is_same_origin
-
+    # Fallback: Origin / Referer host comparison.
     if _is_same_origin():
         return None
 

@@ -21,7 +21,6 @@ from src.shared.keyword_config import _load_config
 from src.web.app import get_db
 from src.web.middleware import (
     insert_audit_log_entry,
-    register_api_auth,
     register_timing,
     require_admin,
 )
@@ -29,7 +28,10 @@ from src.web.middleware import (
 api_unified_bp = Blueprint("api_unified", __name__, url_prefix="/api/v2")
 logger = logging.getLogger(__name__)
 
-register_api_auth(api_unified_bp)
+# register_api_auth removed (PR-C1): blueprint-wide API-key hook replaced by
+# per-route require() decorators. Browser traffic authenticates via session
+# cookie; non-browser callers use X-API-Key / Authorization: ApiKey header
+# on endpoints that still accept it.
 register_timing(api_unified_bp)
 
 # Project root, used to locate the retrain script and place its log file.
