@@ -26,6 +26,10 @@ from flask import (
     url_for,
 )
 
+from src.auth.middleware import require
+from src.auth.permissions import (
+    PROTECTED_READ,
+)
 from src.infra.db import DatabaseAdapter, infer_tab_from_filing
 from src.review.models import (
     IMAGE_CHART_TYPE_LABELS,
@@ -128,12 +132,14 @@ def _log_request_complete(response):
 
 
 @review_unified_bp.route("/")
+@require(PROTECTED_READ)
 def index():
     """Redirect /v2/review/ to filing list."""
     return redirect(url_for("review_unified.filing_list"))
 
 
 @review_unified_bp.route("/filings")
+@require(PROTECTED_READ)
 def filing_list():
     """Display unified filing list."""
     db = get_db()
@@ -196,6 +202,7 @@ def filing_list():
 
 
 @review_unified_bp.route("/stats")
+@require(PROTECTED_READ)
 def stats():
     """Display aggregate review statistics for both text and image review."""
     from src.web.routes.api_unified import _retrain_thresholds, _text_analysis_threshold
@@ -314,6 +321,7 @@ def stats():
 
 
 @review_unified_bp.route("/<int:filing_id>")
+@require(PROTECTED_READ)
 def review_filing(filing_id: int):
     """Combined text + image review interface for a filing."""
     db = get_db()
@@ -658,6 +666,7 @@ def review_filing(filing_id: int):
 
 
 @review_unified_bp.route("/next-filing")
+@require(PROTECTED_READ)
 def next_filing():
     """Redirect to the next filing with pending text facts."""
     db = get_db()
@@ -749,6 +758,7 @@ def next_filing():
 
 @review_unified_bp.route("/image_crop/<img_id>")
 @require_api_key
+@require(PROTECTED_READ)
 def image_crop(img_id: str) -> Response:
     """
     Serve a chart image (full or cropped) stored on disk.

@@ -17,6 +17,22 @@ from src.auth.middleware import require
 from src.auth.permissions import DECISION_UNDO_ANY, DECISION_WRITE
 from src.auth.sessions import SessionUser
 
+
+@pytest.fixture(autouse=True)
+def _force_enforcement_on(monkeypatch):
+    """Force ``auth_enforcement_enabled`` to True for these tests.
+
+    PR-C1 made require() flag-aware: the decorator is a no-op when the flag
+    is False (default in unit tests with no DB). These tests pin the
+    enforcement-on contract — flag-off behavior lives in
+    ``test_require_flag_aware.py``.
+    """
+    monkeypatch.setattr(
+        "src.auth.feature_flags.is_enabled",
+        lambda key: True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

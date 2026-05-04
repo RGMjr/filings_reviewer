@@ -31,7 +31,8 @@ from flask import g, request
 
 from src.auth.cookies import get_session_id_from_request
 from src.auth.dev_bypass import dev_bypass_user, is_dev_bypass_enabled
-from src.auth.sessions import lookup_session
+from src.auth.enforcement import enforcement_started_at
+from src.auth.sessions import SessionUser, lookup_session
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +62,105 @@ def load_session_user() -> None:
         return
 
     try:
-        g.user = lookup_session(session_id)
+        session_user = lookup_session(session_id)
     except Exception:
         # Never let a session-lookup failure break a request.
         logger.exception("load_session_user: unexpected error during lookup")
         g.user = None
+        return
+
+    if session_user is None:
+        g.user = None
+        return
+
+    # 4-hour legacy-session bound (spec §Cutover Rules → Existing Open Pages
+    # at Enforcement Time).  When auth_enforcement_enabled flips to true,
+    # sessions created BEFORE the flip are forcibly invalidated 4 hours after
+    # the flip, regardless of activity.
+    g.user = _apply_legacy_session_bound(session_user, session_id)
+
+
+_LEGACY_SESSION_GRACE_SECONDS = 4 * 3600  # 4 hours in seconds
+
+
+def _apply_legacy_session_bound(user: SessionUser, session_id: str) -> SessionUser | None:
+    """Return *user* unchanged, or None if the 4-hour legacy-session bound applies.
+
+    The bound only applies when:
+    1. ``auth_enforcement_enabled`` is currently active (has a timestamp).
+    2. The session's ``created_at`` predates the enforcement flip.
+    3. More than 4 hours have elapsed since the enforcement flip.
+
+    When all three hold, the session is treated as expired and the user is
+    forced to re-authenticate.  The session row is NOT deleted — the next
+    ``require()`` check will redirect to login.
+
+    Args:
+        user: The ``SessionUser`` resolved from the session cookie.
+        session_id: The raw session id (for log correlation).
+
+    Returns:
+        The original *user* when the bound does not apply, ``None`` otherwise.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    started_at = enforcement_started_at()
+    if started_at is None:
+        # Enforcement not yet active — no bound to apply.
+        return user
+
+    now = datetime.now(tz=UTC)
+    grace_expires_at = started_at + timedelta(seconds=_LEGACY_SESSION_GRACE_SECONDS)
+
+    if now <= grace_expires_at:
+        # Still within the 4-hour grace window — session remains valid.
+        return user
+
+    # We need the session's created_at to determine whether it predates the flip.
+    # Fetch it directly; failure is treated as "session is valid" (fail-open) to
+    # avoid locking users out due to a DB hiccup.
+    try:
+        import os
+
+        import psycopg
+        from psycopg.rows import dict_row
+
+        db_url = os.environ.get("DATABASE_URL", "")
+        if not db_url:
+            return user
+
+        with psycopg.connect(db_url, row_factory=dict_row) as conn:
+            row = conn.execute(
+                "SELECT created_at FROM auth_sessions WHERE id = %s",
+                (session_id,),
+            ).fetchone()
+
+        if row is None:
+            # Session row gone — treat as expired (already handled by lookup_session).
+            return None
+
+        created_at: datetime = row["created_at"]
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+
+        if created_at >= started_at:
+            # Session was created after the enforcement flip — not a legacy session.
+            return user
+
+        # Session predates the enforcement flip AND 4h grace has elapsed.
+        logger.info(
+            "Legacy session %s rejected: created_at=%s predates enforcement flip at %s "
+            "(grace expired at %s)",
+            session_id[:8],
+            created_at.isoformat(),
+            started_at.isoformat(),
+            grace_expires_at.isoformat(),
+        )
+        return None
+
+    except Exception:
+        logger.exception(
+            "load_session_user: error checking legacy-session bound for %s, failing open",
+            session_id[:8],
+        )
+        return user

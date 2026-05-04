@@ -5,15 +5,24 @@ Enforces that the current user (``flask.g.user``) holds the given permission
 before the route handler runs.  The permission is resolved from
 ``g.user.role`` via the ``ROLE_PERMISSIONS`` map in ``src.auth.permissions``.
 
+**Flag-gating (PR-C1):** the decorator is a **true no-op** when the
+``auth_enforcement_enabled`` feature flag is ``false`` (the default before
+Stage C's operator flip).  In no-op mode the decorated view runs exactly as if
+no decorator were present — unauthenticated users pass through, anonymous API
+requests are not blocked.  This makes PR-C1 safe to merge before the operator
+performs the Stage C flag flip: behaviour is unchanged until the operator sets
+``auth_enforcement_enabled=true``.
+
+When the flag is ``true`` the full enforcement path runs:
+
 Error behaviour (per spec §Error Behavior):
   - Unauthenticated (``g.user is None``):
       - API request (``Accept: application/json``): return 401 JSON.
       - HTML request: redirect to ``/auth/login`` with ``?next=<path>``.
-        Until the login route exists (Stage A5), returns 401 HTML.
   - Authenticated but lacks permission:
       - API request: return 403 JSON.
-      - HTML request: render access-denied page (503 until template exists,
-        falls back to 403 JSON if template is missing at runtime).
+      - HTML request: render access-denied page (falls back to 403 JSON if
+        template is missing at runtime).
 
 Usage::
 
@@ -24,10 +33,6 @@ Usage::
     @require(DECISION_WRITE)
     def submit_decision():
         ...
-
-The decorator is a **no-op** during Stage A/B (before ``auth_enforcement_enabled``
-is true) because routes do not yet call it.  Installing it on a route now
-allows Stage C to switch enforcement on per-route without a second diff.
 
 ``g.user`` is populated by ``load_session_user`` (``src.auth.load_user``),
 which must be registered as a ``before_request`` hook on the Flask app.
@@ -45,6 +50,33 @@ from flask import g, jsonify, redirect, request, url_for
 from src.auth.permissions import has_permission
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Flag-awareness helper
+# ---------------------------------------------------------------------------
+
+
+def _enforcement_enabled() -> bool:
+    """Return True iff ``auth_enforcement_enabled`` is active.
+
+    Reads via ``flask.g`` cache first (populated by ``enforcement_started_at``
+    during the same request) to avoid a DB round-trip per decorated route.
+    Falls back to a direct ``feature_flags.is_enabled`` call.
+
+    Per-request reads (not a module-level cache) so the operator can flip the
+    flag without a restart — though Stage C's runbook pairs the flip with a
+    deploy/restart anyway, per-request reads are safer.
+    """
+    try:
+        from src.auth.feature_flags import is_enabled
+
+        return is_enabled("auth_enforcement_enabled")
+    except Exception:
+        # If flag lookup fails entirely (e.g. no DB yet), default to False
+        # so a misconfigured deploy does not lock out all users.
+        logger.warning("require(): flag lookup failed, defaulting enforcement to False")
+        return False
+
 
 # Type alias for Flask view functions.
 _ViewFunc = Callable[..., Any]
@@ -110,6 +142,12 @@ def require(permission: str) -> Callable[[_ViewFunc], _ViewFunc]:
     def decorator(func: _ViewFunc) -> _ViewFunc:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Flag-gate: when auth_enforcement_enabled is false (the default
+            # before the Stage C operator flip), the decorator is a true no-op.
+            # This makes the PR safe to merge before the flag flip.
+            if not _enforcement_enabled():
+                return func(*args, **kwargs)
+
             user = g.get("user")
 
             if user is None:

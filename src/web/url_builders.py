@@ -29,7 +29,7 @@ def _parse_presentation_accession(accession: str) -> tuple[str, str, str] | None
     """
     if not accession or not accession.startswith("presentation:"):
         return None
-    parts = accession[len("presentation:"):].split("/")
+    parts = accession[len("presentation:") :].split("/")
     if len(parts) != 3:
         return None
     cik, acc, filename = parts
@@ -66,10 +66,7 @@ def resolve_sec_filing_url(filing: Mapping[str, object]) -> str | None:
         cik_padded, acc, filename = parsed
         cik_stripped = _strip_leading_zeros(cik_padded) or "0"
         acc_no_dashes = acc.replace("-", "")
-        return (
-            f"https://www.sec.gov/Archives/edgar/data/"
-            f"{cik_stripped}/{acc_no_dashes}/{filename}"
-        )
+        return f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{acc_no_dashes}/{filename}"
 
     cik = filing.get("cik")
     if isinstance(cik, str) and cik and isinstance(accession, str) and accession:

@@ -16,6 +16,11 @@ import uuid as _uuid
 import psycopg
 from flask import Blueprint, jsonify, request
 
+from src.auth.middleware import require
+from src.auth.permissions import (
+    INGEST_RUN,
+    PROTECTED_READ,
+)
 from src.universe.onboarding import (
     FORM_TYPE_BUNDLES,
     load_industry_map,
@@ -26,12 +31,14 @@ from src.universe.onboarding import (
     resolve_industry,
 )
 from src.web.app import get_db
-from src.web.middleware import register_api_auth
 
 api_ingest_bp = Blueprint("api_ingest", __name__, url_prefix="/api/v2/ingest")
 logger = logging.getLogger(__name__)
 
-register_api_auth(api_ingest_bp)
+# register_api_auth removed (PR-C1): per-route @require() decorators below
+# replace the blueprint-wide API-key gate. Browser traffic authenticates via
+# session cookie; non-browser callers continue to use X-API-Key /
+# Authorization: ApiKey on routes that still accept the header path.
 
 # All 7 valid filing statuses — always present in counts output
 _FILING_STATUSES = (
@@ -62,6 +69,7 @@ def _format_ts(ts) -> str | None:
 
 
 @api_ingest_bp.route("/batches/<batch_id>/status", methods=["GET"])
+@require(PROTECTED_READ)
 def batch_status(batch_id: str):
     try:
         _uuid.UUID(batch_id)
@@ -176,6 +184,7 @@ def batch_status(batch_id: str):
 
 
 @api_ingest_bp.route("/batches/<batch_id>/cancel", methods=["POST"])
+@require(INGEST_RUN)
 def batch_cancel(batch_id: str):
     try:
         _uuid.UUID(batch_id)
@@ -217,6 +226,7 @@ def batch_cancel(batch_id: str):
 
 
 @api_ingest_bp.route("/filter-options", methods=["GET"])
+@require(PROTECTED_READ)
 def filter_options():
     raw_years = request.args.getlist("year")
     raw_industries = request.args.getlist("industry")

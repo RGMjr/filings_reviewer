@@ -9,6 +9,12 @@ import logging
 
 from flask import Blueprint, abort, jsonify, render_template, request
 
+from src.auth.middleware import require
+from src.auth.permissions import (
+    DECISION_UNDO_OWN,
+    DECISION_WRITE,
+    PROTECTED_READ,
+)
 from src.web.pres_image_store import (
     get_edgar_url,
     get_filing_keys,
@@ -54,6 +60,7 @@ def _progress_from_candidates(key: str, candidates: list[dict], decisions: dict)
 
 
 @review_pres_images_bp.route("/")
+@require(PROTECTED_READ)
 def index():
     """List all presentation filings available for image review."""
     keys = get_filing_keys()
@@ -86,6 +93,7 @@ def index():
 
 
 @review_pres_images_bp.route("/<key>")
+@require(PROTECTED_READ)
 def review_filing(key: str):
     """Image review interface for one filing."""
     candidates = load_candidates(key)
@@ -133,6 +141,7 @@ def review_filing(key: str):
 
 
 @review_pres_images_bp.route("/<key>/<img_id>/decide", methods=["POST"])
+@require(DECISION_WRITE)
 def decide(key: str, img_id: str):
     """Save a review decision."""
     data = request.get_json(force=True)
@@ -152,6 +161,7 @@ def decide(key: str, img_id: str):
 
 
 @review_pres_images_bp.route("/<key>/<img_id>/decide", methods=["DELETE"])
+@require(DECISION_UNDO_OWN)
 def undo(key: str, img_id: str):
     """Undo a review decision."""
     undo_decision(key, img_id)

@@ -13,6 +13,10 @@ import os
 
 from flask import Blueprint, Response, abort
 
+from src.auth.middleware import require
+from src.auth.permissions import (
+    PROTECTED_READ,
+)
 from src.infra.sec_client import SECClient
 from src.web.app import get_db
 
@@ -22,6 +26,7 @@ image_cache_bp = Blueprint("image_cache", __name__)
 
 
 @image_cache_bp.route("/images/cache/<cik>/<accession_no>/<filename>")
+@require(PROTECTED_READ)
 def serve_cached_image(cik: str, accession_no: str, filename: str):
     """
     Serve an image from the PostgreSQL image cache.
