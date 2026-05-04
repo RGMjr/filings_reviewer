@@ -3,15 +3,17 @@ id: 419
 source: gh
 slug: predict-relevance-silent-load-error
 title: predict_relevance() silently swallows joblib load errors — runtime failure indistinguishable from model absent
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: —
 touches: []
 discovered: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-04
 gh_issue: 419
-note: _load_model() catches all exceptions and returns None; corrupt or unloadable artifact degrades silently to heuristic
+pr_refs:
+  - 425
+note: src/shared/image_features._materialize_from_storage now distinguishes FileNotFoundError (warning) from other load failures (logged at WARNING/ERROR), shipped as part of PR #425's R2 model-storage rewrite. Silent degradation path is closed.
 ---
 
 ### Problem

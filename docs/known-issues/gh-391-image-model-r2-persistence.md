@@ -3,15 +3,17 @@ id: 391
 source: gh
 slug: image-model-r2-persistence
 title: Persist data/image_model/ artifacts to R2 (Render disk is ephemeral)
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: —
 touches: []
 discovered: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-04
 gh_issue: 391
-note: UI-triggered retrains land on ephemeral disk; will silently disappear on next deploy once USE_LEARNED_TRIAGE flips on
+pr_refs:
+  - 425
+note: src/infra/model_storage.py shipped via PR #425; retrain uploads artifacts to R2 and _load_model() reads via models/image_relevance/latest_run_id.txt pointer when R2_BUCKET is set. UI-triggered retrains now persist across deploys.
 ---
 
 ### Problem
