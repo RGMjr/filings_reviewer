@@ -67,8 +67,8 @@ services:
         value: gemini-2.5-flash-lite  # 2026-04-23 bake-off winner
       - key: VISION_CLASSIFY_THRESHOLD
         value: "0.5"
-      - key: GEMINI_API_KEY
-        sync: false  # Set manually in Render dashboard
+      - key: GOOGLE_API_KEY
+        sync: false  # Set manually in Render dashboard. NOTE: src/llm/providers/gemini.py reads GOOGLE_API_KEY (google-genai SDK convention), not GEMINI_API_KEY.
       - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
         value: "1"  # R2Storage.put_bytes guard — required; cron writes chart images via ocr_extraction.py
       - key: USE_LEARNED_TRIAGE
@@ -105,8 +105,8 @@ services:
         value: gemini-2.5-flash-lite  # 2026-04-23 bake-off winner
       - key: VISION_CLASSIFY_THRESHOLD
         value: "0.5"
-      - key: GEMINI_API_KEY
-        sync: false  # gh-469: must be set manually in Render dashboard for filings-onboarding-runner
+      - key: GOOGLE_API_KEY
+        sync: false  # gh-469: must be set manually in Render dashboard. NOTE: src/llm/providers/gemini.py reads GOOGLE_API_KEY (google-genai SDK convention), not GEMINI_API_KEY.
 
   # Autonomous nightly sweeper for known-issue fragments in docs/known-issues/.
   # Reads frontmatter, picks up to 3 non-colliding safe/review issues, and
