@@ -221,11 +221,14 @@ Realistic timing: with the May-10 deadline (10 days from 2026-05-01), Wave 1 sho
 
 ### A8 — Readiness report script
 
+**Status:** ✓ shipped 2026-05-04 — Stage A is complete.
+
 **Scope.** Cutover-readiness CLI report per spec §Readiness Reporting.
 
 **Files (new).**
 - `scripts/auth_readiness_report.py` — prints allowlisted users + roles + first/last login + unresolved alias mappings + flag state (incl. `expires_at`) + dev-bypass guard verification.
 - `tests/integration/auth/test_readiness_report.py`
+- `docs/operations/auth-stage-b-runbook.md` — operator runbook for the Stage-B activation flip; bundled with A8 so the script's `--check` semantics and the runbook's pre-flip gate ship together.
 
 **Files (modified).**
 - `CLAUDE.md` — admin operations section.
@@ -237,6 +240,8 @@ Realistic timing: with the May-10 deadline (10 days from 2026-05-01), Wave 1 sho
 **Verification-checklist items satisfied.** "Readiness report works" (Stage B acceptance).
 
 ## Stage B — Shadow Mode: PR catalog
+
+`auth_readiness_report.py` (shipped in A8) is the operator's pre-flip gate; see `docs/operations/auth-stage-b-runbook.md`.
 
 ### B1 — Flag flip and burn-in
 
