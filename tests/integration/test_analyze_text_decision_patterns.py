@@ -55,7 +55,12 @@ def cli():
 def _seed_corpus(db, *, cik="0009980001", accession="0009980001-24-000001"):
     """Seed companies, filings, v2_segments, v2_metric_facts, v2_review_decisions.
 
-    Returns (filing_id, fact_id, segment_id) for the seeded rows.
+    Creates two facts on the same metric, each with one reject decision sharing
+    similar rejection_reason text — the n-gram miner needs MIN_OCCURRENCES=2
+    matches across distinct decisions, and ``v2_review_decisions_unique_fact``
+    forbids two decisions on a single fact, so two facts are required.
+
+    Returns (filing_id, fact_ids, segment_id) where fact_ids is a list[str].
     """
     from tests.integration.conftest import (
         create_test_company_and_filing,
@@ -79,18 +84,22 @@ def _seed_corpus(db, *, cik="0009980001", accession="0009980001-24-000001"):
     )
     segment_id = segment_rows[0]["segment_id"]
 
-    # Fact pointing to that segment via source_locator->>'segment_id'.
-    fact_id = create_test_v2_fact(
-        db,
-        filing_id,
-        canonical_metric_id="cm_net_revenue_retention",
-        value_raw="110%",
-        source_locator={"segment_id": segment_id},
-    )
-
-    # Two reject decisions so n-gram counts meet MIN_OCCURRENCES=2 and
-    # MIN_PCT=10 thresholds.
-    for _ in range(2):
+    # Two facts on the same metric, distinguished by period to satisfy
+    # ``idx_v2_metric_facts_identity_unique`` (the index covers
+    # filing_id+metric+period+unit+scope+cohort+customer_type+source_type).
+    # Both rejected with overlapping rejection_reason tokens so the n-gram
+    # miner clears MIN_OCCURRENCES=2 / MIN_PCT=10.
+    fact_ids: list[str] = []
+    for raw_value, year in (("110%", 2023), ("115%", 2024)):
+        fact_id = create_test_v2_fact(
+            db,
+            filing_id,
+            canonical_metric_id="cm_net_revenue_retention",
+            value_raw=raw_value,
+            period_start=f"{year}-01-01",
+            period_end=f"{year}-12-31",
+            source_locator={"segment_id": segment_id},
+        )
         create_test_v2_decision(
             db,
             fact_id,
@@ -98,8 +107,9 @@ def _seed_corpus(db, *, cik="0009980001", accession="0009980001-24-000001"):
             rejection_reason="wrong metric extracted from retention table",
             rejection_category="wrong_metric",
         )
+        fact_ids.append(fact_id)
 
-    return filing_id, fact_id, segment_id
+    return filing_id, fact_ids, segment_id
 
 
 def _truncate_analysis_tables(db) -> None:
@@ -207,7 +217,7 @@ def test_second_run_anchor_limits_to_new_decisions(clean_db, cli):
     3. Run second pass → num_decisions_analyzed == 1 (only the new decision).
     """
     _truncate_analysis_tables(clean_db)
-    filing_id, fact_id, _ = _seed_corpus(clean_db)
+    filing_id, _fact_ids, segment_id = _seed_corpus(clean_db)
 
     db_url = __import__("os").environ["TEST_DATABASE_URL"]
     args = Namespace(
@@ -220,12 +230,25 @@ def test_second_run_anchor_limits_to_new_decisions(clean_db, cli):
     # First run — consumes the 2 seeded decisions.
     cli._orchestrate(args)
 
-    # Insert a NEW decision *after* the run completes (created_at = now()).
-    from tests.integration.conftest import create_test_v2_decision
+    # Add a third fact (the seeded ones already have decisions; the
+    # v2_review_decisions_unique_fact constraint forbids reusing them) and
+    # decision it AFTER the first run completes so created_at > anchor.
+    from tests.integration.conftest import create_test_v2_decision, create_test_v2_fact
 
+    new_fact_id = create_test_v2_fact(
+        clean_db,
+        filing_id,
+        canonical_metric_id="cm_net_revenue_retention",
+        value_raw="120%",
+        # 2025 period — disambiguates from the 2023 / 2024 facts seeded above
+        # under ``idx_v2_metric_facts_identity_unique``.
+        period_start="2025-01-01",
+        period_end="2025-12-31",
+        source_locator={"segment_id": segment_id},
+    )
     create_test_v2_decision(
         clean_db,
-        fact_id,
+        new_fact_id,
         decision="reject",
         rejection_reason="incorrect extraction caused by wrong parsing",
         rejection_category="wrong_value",
