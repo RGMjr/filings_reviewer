@@ -3,15 +3,19 @@ id: 398
 source: gh
 slug: integration-test-for-text-pattern-script
 title: "Add integration test for scripts/analyze_text_decision_patterns.py"
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: —
 touches: []
 discovered: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-04
 gh_issue: 398
-note: DB-touching script needs tests/integration/test_<script>.py per scripts.md
+pr_refs:
+  - 450
+  - 454
+  - 459
+note: Integration test for analyze_text_decision_patterns.py shipped in PR #450; hotfixes #454 (seed two facts to satisfy v2_review_decisions_unique_fact) and #459 (use db.execute for INSERT-without-RETURNING) followed.
 ---
 
 ### Problem

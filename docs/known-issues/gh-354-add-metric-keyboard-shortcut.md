@@ -3,7 +3,7 @@ id: 354
 source: gh
 slug: add-metric-keyboard-shortcut
 title: Add keyboard shortcut for "Add metric the classifier missed" button
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: XS
@@ -12,9 +12,11 @@ touches:
   - src/web/templates/unified_review.html
   - .claude/rules/web.md
 discovered: 2026-04-29
-updated: 2026-04-29
+updated: 2026-05-04
 gh_issue: 354
-note: User-noted gap surfaced during gh-352; every other image-tab action has a kbd binding except + Add metric.
+pr_refs:
+  - 447
+note: Shift+A keyboard shortcut shipped in PR #447 — image-level keydown handler triggers #btn-add-missed-detected-metric.click(), kbd badge added to button, .claude/rules/web.md table updated.
 ---
 
 ### Problem

@@ -3,15 +3,17 @@ id: 389
 source: gh
 slug: phase2-analytics-integration-tests
 title: Add integration tests for Phase-2 Metric Analytics helpers
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: —
 touches: []
 discovered: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-04
 gh_issue: 389
-note: 7 new db.py helpers landed with unit tests only; add integration tests against TEST_DATABASE_URL
+pr_refs:
+  - 449
+note: Integration tests for Phase-2 analytics helpers (get_last_training_run, get_recent_text_corrections/_additions, get_recent_image_corrections/_additions) shipped in PR #449.
 ---
 
 ### Problem
