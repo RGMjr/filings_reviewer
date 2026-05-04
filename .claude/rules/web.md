@@ -182,6 +182,7 @@ The unified review page (`unified_review.html`) binds shortcuts on both tabs. Cr
 | `X`        | Reject all (no relevant metrics) — fires regardless of row focus, triggers `#btn-reject-all-metrics` click |
 | `Shift+R`  | Reject all (deprecated alias for `X`, kept for muscle memory) |
 | `Shift+U`  | Re-open a fully-reviewed image (only effective when `#btn-reopen-image` is rendered) |
+| `Shift+A`  | Open "Add metric the classifier missed" panel and focus the metric search input (`#add-missed-detected-input`); plain `A` is per-row accept so a chord is required |
 | `M`        | Submit decisions and mark image complete — triggers `#btn-submit-and-finalize` click |
 
 **Image tab — per-metric row** (when `state.focusedRow` is set):

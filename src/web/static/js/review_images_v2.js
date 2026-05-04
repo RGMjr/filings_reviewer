@@ -95,6 +95,20 @@
             return;
         }
 
+        // Shift+A — open the "Add metric the classifier missed" panel and
+        // focus the metric search input. Plain 'A' is the per-row accept
+        // binding, so we need the chord to avoid collision.
+        if (event.shiftKey && (event.key === 'A' || event.key === 'a')) {
+            const btn = document.getElementById('btn-add-missed-detected-metric');
+            if (btn) {
+                event.preventDefault();
+                btn.click();
+                const input = document.getElementById('add-missed-detected-input');
+                if (input) input.focus();
+            }
+            return;
+        }
+
         // M — submit decisions and mark image complete. Fires regardless of
         // per-metric row focus (M is unbound at the per-row level). Triggers
         // the button click since submitDecisions lives in the per-metric IIFE.
