@@ -255,6 +255,8 @@ Realistic timing: with the May-10 deadline (10 days from 2026-05-01), Wave 1 sho
 
 ### C1 — Switch routes to centralized authorization
 
+**Status:** ✓ shipped 2026-05-04 (pending merge of `claude/auth-pr-c1-route-migration`).
+
 **Scope.** Replace the existing API-key `before_request` hook on `/api/v2/*` with `require(<permission>)` decorators on each route. Same for `/v2/review/*`, `/ingest/*`, `/api/ingest/*`, `/review/pres-images/*`, and image-serving endpoints. The same-origin API-key bypass is removed in this PR.
 
 **Files (modified).** Most route modules under `src/web/routes/`.
@@ -266,22 +268,26 @@ Realistic timing: with the May-10 deadline (10 days from 2026-05-01), Wave 1 sho
 
 **Verification-checklist items satisfied.** "Role restrictions behave correctly"; "Same-origin API-key bypass is gone from `/api/v2/*` after `auth_enforcement_enabled=true`"; "Image-serving endpoints honor auth"; "URL-redirect bypass attempts rejected"; "Role-escalation attempt rejected".
 
-### C2 — Backfill apply step + flag flip
+### C2 — Backfill apply step + operator runbook
 
-**Scope.** Run the legacy-alias backfill apply step (sets `user_id` on historical rows for `RGM` / `Mayu` aliases). Verify via readiness report. Flip `auth_enforcement_enabled=true`.
+**Status:** ✓ shipped 2026-05-04 (pending merge of `claude/auth-pr-c2-backfill-and-runbook`).
+
+**Scope.** Legacy-alias backfill script (`--preview` / `--apply --confirm`) and Stage-C operator runbook. The actual flag flip (`auth_enforcement_enabled=true`) is an operator action following the runbook, not a code change.
 
 **Files (new).**
 - `scripts/backfill_legacy_reviewer_aliases.py` (preview + apply modes; idempotent).
 - `tests/integration/auth/test_backfill.py`
+- `docs/operations/auth-stage-c-runbook.md`
 
-**Files (modified).** None for the apply itself; the flag flip is a feature_flags row.
+**Files (modified).** `CLAUDE.md` (admin-operations index), `docs/architecture/auth-rollout-implementation-plan.md` (this file).
 
 **Verification.**
 - Preview report matches expected counts before apply.
-- Apply is idempotent.
-- After flag flip, legacy sessions are forcibly invalidated within 4 hours (negative-path: stale-session test).
+- Apply is idempotent (second run updates 0 rows).
+- Unmapped reviewer_id values are untouched.
+- Audit log row written per invocation.
 
-**Verification-checklist items satisfied.** "Legacy backfill preview report is correct"; "Legacy backfill apply step is idempotent"; "Stale-session-after-disable rejected"; Stage C acceptance.
+**Verification-checklist items satisfied.** "Legacy backfill preview report is correct"; "Legacy backfill apply step is idempotent"; Stage C acceptance (flag flip operator step covered by `docs/operations/auth-stage-c-runbook.md`).
 
 ## Stage D — Legacy Retirement
 
