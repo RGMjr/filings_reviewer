@@ -903,6 +903,7 @@ class V2PersistenceAdapter:
                 classification, relevance_score,
                 ocr_text, ocr_table_id, chart_type, chart_data,
                 processed, confidence, requires_manual,
+                predicted_relevance,
                 detected_keywords, detected_metrics, created_at
             )
             VALUES (
@@ -912,6 +913,7 @@ class V2PersistenceAdapter:
                 %(classification)s, %(relevance_score)s,
                 %(ocr_text)s, %(ocr_table_id)s, %(chart_type)s, %(chart_data)s,
                 %(processed)s, %(confidence)s, %(requires_manual)s,
+                %(predicted_relevance)s,
                 %(detected_keywords)s, %(detected_metrics)s, NOW()
             )
             ON CONFLICT (filing_id, filename) DO UPDATE SET
@@ -931,6 +933,7 @@ class V2PersistenceAdapter:
                 processed = EXCLUDED.processed,
                 confidence = EXCLUDED.confidence,
                 requires_manual = EXCLUDED.requires_manual,
+                predicted_relevance = COALESCE(EXCLUDED.predicted_relevance, v2_image_assets.predicted_relevance),
                 detected_keywords = EXCLUDED.detected_keywords,
                 detected_metrics = EXCLUDED.detected_metrics
             RETURNING img_id
@@ -957,6 +960,7 @@ class V2PersistenceAdapter:
                 "processed": image.processed,
                 "confidence": image.confidence,
                 "requires_manual": image.requires_manual_capture,
+                "predicted_relevance": image.predicted_relevance,
                 "detected_keywords": match_nearby_text(
                     ((image.nearby_text or "") + " " + (image.ocr_text or "")).strip()
                 )

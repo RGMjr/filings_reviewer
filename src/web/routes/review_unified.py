@@ -51,7 +51,9 @@ V2_SORT_OPTIONS = ("confidence_desc", "confidence_asc", "metric", "period")
 
 # Image-tab sort options. The DB function only knows the three legacy values
 # ('relevance', 'tier', 'position'); 'model_score' is computed in Python after
-# the SELECT (predicted_relevance is NULL in prod since USE_LEARNED_TRIAGE=false).
+# the SELECT. predicted_relevance is populated by the extraction pipeline
+# post-gh-478; the score-on-render path below remains as belt-and-suspenders
+# for legacy NULL rows pending backfill via scripts/score_image_candidates.py.
 IMAGE_SORT_OPTIONS = ("relevance", "model_score", "tier", "position")
 IMAGE_SORT_DEFAULT = "relevance"
 
@@ -517,9 +519,11 @@ def review_filing(filing_id: int):
             limit=1000,
         )
 
-        # Score-on-render: predicted_relevance is NULL in prod, so the SQL
-        # 'relevance' sort silently degrades to relevance_score DESC. Compute
-        # model score in Python from row metadata (no R2 fetch — pipeline
+        # Score-on-render fallback: post-gh-478 the pipeline populates
+        # predicted_relevance, but legacy rows ingested before the fix have
+        # NULL until scripts/score_image_candidates.py backfills them. Compute
+        # model score in Python from row metadata so the model_score sort
+        # works on both populated and NULL rows (no R2 fetch — pipeline
         # cached per worker in image_features.py).
         if image_sort == "model_score":
             from src.shared.image_features import predict_relevance, v2_row_to_features_input
