@@ -13,6 +13,8 @@ touches:
 discovered: '2026-05-04'
 updated: '2026-05-04'
 gh_issue: 469
+pr_refs:
+  - 471
 note: PRs #444 and #462 missed that filings-onboarding-runner runs process_filing inline during ingest; new image flags need to be mirrored or ingest-path filings get NULL predicted_relevance and zero v2_image_classifications rows
 ---
 
