@@ -114,6 +114,8 @@ Rules for any DB-touching command in this repo:
 | `VISION_PROVIDER_PRESCAN` | Optional | Provider for the image-level keyword pre-scan site (default `gemini`). Independent of `VISION_PROVIDER`. |
 | `VISION_MODEL_PRESCAN` | Optional | Model for the keyword pre-scan site (default `gemini-2.5-flash-lite`). |
 | `GEMINI_API_KEY` | With `VISION_CLASSIFY_PROVIDER=gemini` | Google AI Studio key for Gemini vision calls. Set manually in Render. |
+| `USE_LEARNED_TRIAGE` | Optional | Feature gate for the learned image-relevance triage in `src/extraction_v2/stages/image_triage.py`. Default `false`; **set to `true` on `filings-extraction` in prod as of 2026-05-04 (gh-442)**. When on, `predict_relevance()` is called per-image and `v2_image_assets.predicted_relevance` is populated; images scoring below `LEARNED_TRIAGE_MIN` are dropped from OCR/Vision. Reads model via the R2 pointer at `models/image_relevance/latest_run_id.txt`. |
+| `LEARNED_TRIAGE_MIN` | With `USE_LEARNED_TRIAGE=true` | Minimum model score required for an image to pass the gate. Default `0.4`; **prod uses `0.32`** (gh-442) — slightly below the current `cba5e60f` model's ~80%-recall threshold (0.341). |
 | `FILINGS_REVIEWER_ALLOW_PROD_WRITES` | Required for `R2Storage.put_bytes` | Must be set to `"1"` for any process that writes image bytes to R2. Refused otherwise. Reads (`get_bytes`, `exists`) are unaffected. Set on Render services that run extraction/ingestion (`filings-reviewer`, `filings-extraction`, `filings-onboarding-runner`); leave unset on local dev to prevent accidental prod writes when prod creds are sourced for one-off CLI work. |
 
 ## Image Storage
