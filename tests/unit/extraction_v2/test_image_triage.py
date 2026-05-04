@@ -1180,3 +1180,140 @@ class TestA1ReorderBehavior:
         )
         result = stage.classify_image(asset)
         assert result == ImageClassification.TABLE_IMAGE
+
+
+class TestTriageGateEagerLoadStatusLog:
+    """One-shot eager-load status log fired on first triage stage run per worker.
+
+    The eager-load surfaces silent degradation at pipeline construction time
+    rather than waiting for the first per-image predict call. The flag is
+    module-level (`image_triage._LOGGED_TRIAGE_MODEL_STATUS`) so it persists
+    across `ImageTriageStage` instances within a worker process — that's
+    intentional (one log per worker cold-start, not per filing). Tests must
+    reset both the flag and `image_features._MODEL_CACHE` to keep order
+    independence.
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_module_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Reset the once-per-worker flag and the model cache around every test."""
+        from src.extraction_v2.stages import image_triage
+        from src.shared import image_features
+
+        monkeypatch.setattr(image_triage, "_LOGGED_TRIAGE_MODEL_STATUS", False)
+        # Wipe the model cache so a previous test's load doesn't satisfy this one.
+        image_features._MODEL_CACHE.clear()
+        # Make sure no R2 path is exercised — _load_model resolves to disk.
+        monkeypatch.delenv("R2_BUCKET", raising=False)
+        yield
+        image_features._MODEL_CACHE.clear()
+
+    def _empty_context(self):
+        from pathlib import Path
+
+        from src.extraction_v2.pipeline import PipelineContext
+
+        context = PipelineContext(
+            filing_id=1,
+            html_path=Path("/tmp/test.html"),
+            config=None,  # type: ignore
+        )
+        context.images = []
+        return context
+
+    def test_triage_gate_logs_error_once_when_model_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """USE_LEARNED_TRIAGE=true + missing model → exactly one ERROR per worker."""
+        import logging
+
+        from src.extraction_v2.stages import image_triage
+        from src.shared import image_features
+
+        monkeypatch.setattr(image_triage, "_USE_LEARNED_TRIAGE", True)
+        # Point the loader at a non-existent file so _load_model returns None silently.
+        monkeypatch.setattr(image_features, "DEFAULT_MODEL_PATH", tmp_path / "no_such_model.joblib")
+
+        with caplog.at_level(logging.INFO, logger="src.extraction_v2.stages.image_triage"):
+            ImageTriageStage().process(self._empty_context())
+
+        triage_errors = [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.ERROR and r.name == "src.extraction_v2.stages.image_triage"
+        ]
+        assert len(triage_errors) == 1, (
+            f"Expected exactly one ERROR from image_triage, got "
+            f"{[(r.levelname, r.message) for r in caplog.records]}"
+        )
+        assert "USE_LEARNED_TRIAGE=true" in triage_errors[0].message
+
+        # Second .process() on a fresh stage instance — the flag is module-level
+        # so no additional ERROR record should fire.
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="src.extraction_v2.stages.image_triage"):
+            ImageTriageStage().process(self._empty_context())
+
+        assert [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.ERROR and r.name == "src.extraction_v2.stages.image_triage"
+        ] == [], "Eager-load ERROR must fire only once per worker process"
+
+    def test_triage_gate_logs_info_once_when_model_loads(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """USE_LEARNED_TRIAGE=true + loadable model → INFO log, no ERROR."""
+        import logging
+        from unittest.mock import MagicMock, patch
+
+        from src.extraction_v2.stages import image_triage
+        from src.shared import image_features
+
+        monkeypatch.setattr(image_triage, "_USE_LEARNED_TRIAGE", True)
+        # Provide a real existing path; patch joblib.load to return a fake pipeline.
+        model_file = tmp_path / "model.joblib"
+        model_file.write_bytes(b"placeholder")
+        monkeypatch.setattr(image_features, "DEFAULT_MODEL_PATH", model_file)
+
+        fake_pipeline = MagicMock(name="fake_pipeline")
+
+        with caplog.at_level(logging.INFO, logger="src.extraction_v2.stages.image_triage"):
+            with patch("joblib.load", return_value=fake_pipeline):
+                ImageTriageStage().process(self._empty_context())
+
+        triage_records = [
+            r for r in caplog.records if r.name == "src.extraction_v2.stages.image_triage"
+        ]
+        info_records = [r for r in triage_records if r.levelno == logging.INFO]
+        error_records = [r for r in triage_records if r.levelno >= logging.ERROR]
+
+        assert error_records == [], (
+            f"No ERROR expected when model loads; got {[r.message for r in error_records]}"
+        )
+        assert any(
+            "image relevance model loaded successfully" in r.message for r in info_records
+        ), f"Expected INFO load-success log; got {[r.message for r in info_records]}"
+
+    def test_triage_gate_silent_when_flag_off(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """USE_LEARNED_TRIAGE=false → no eager-load log of any level."""
+        import logging
+
+        from src.extraction_v2.stages import image_triage
+
+        monkeypatch.setattr(image_triage, "_USE_LEARNED_TRIAGE", False)
+
+        with caplog.at_level(logging.DEBUG, logger="src.extraction_v2.stages.image_triage"):
+            ImageTriageStage().process(self._empty_context())
+
+        gate_messages = [
+            r.message
+            for r in caplog.records
+            if r.name == "src.extraction_v2.stages.image_triage"
+            and "USE_LEARNED_TRIAGE" in r.message
+        ]
+        assert gate_messages == [], (
+            f"Eager-load helper must be a no-op when the gate flag is off; got: {gate_messages}"
+        )

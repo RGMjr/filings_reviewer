@@ -145,8 +145,10 @@ def _load_joblib_into_cache(local_path: Path, cache_key: str) -> Any | None:
       dev environment with no trained model). Returns None silently — the caller
       falls back to heuristic scoring.
     - Any other exception (corrupt joblib, sklearn version mismatch, etc.): logs
-      a WARNING so operators can detect silent production degradation, then returns
-      None so the heuristic fallback still runs.
+      an ERROR so operators can detect silent production degradation, then returns
+      None so the heuristic fallback still runs. The cache is poisoned with the
+      _MODEL_ABSENT sentinel until the next worker restart, so the message hints
+      at that recovery path.
     """
     try:
         import joblib  # optional heavy import; only at prediction time
@@ -160,12 +162,13 @@ def _load_joblib_into_cache(local_path: Path, cache_key: str) -> Any | None:
         # or was never present. Silent fallback — not an operator-actionable event.
         _MODEL_CACHE[cache_key] = _MODEL_ABSENT
         return None
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Failed to load image relevance model from %s: %s — falling back to heuristic",
+    except Exception as exc:  # noqa: BLE001 — joblib surfaces many exception types
+        logger.error(
+            "Failed to load image relevance model from %s (%s): %s — "
+            "predictions will fall back to heuristic until next worker restart",
             local_path,
+            type(exc).__name__,
             exc,
-            exc_info=True,
         )
         _MODEL_CACHE[cache_key] = _MODEL_ABSENT
         return None

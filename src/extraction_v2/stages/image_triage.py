@@ -46,6 +46,36 @@ logger = logging.getLogger(__name__)
 _USE_LEARNED_TRIAGE: bool = os.environ.get("USE_LEARNED_TRIAGE", "false").lower() == "true"
 _LEARNED_TRIAGE_MIN: float = float(os.environ.get("LEARNED_TRIAGE_MIN", "0.4"))
 
+# Set on first triage stage run per worker process to emit a one-shot
+# load-status log. Persists across `ImageTriageStage` instances within a worker
+# (intentional — one log per worker cold-start, not per filing). Tests reset it.
+_LOGGED_TRIAGE_MODEL_STATUS: bool = False
+
+
+def _log_triage_model_status_once() -> None:
+    """Eager-load the relevance model on first stage run. One log line per worker process.
+
+    Surfaces silent degradation at pipeline construction time rather than waiting
+    for the first per-image predict call. The cached `_load_model()` ensures the
+    actual per-image call inside the loop is free.
+
+    No-op when `USE_LEARNED_TRIAGE` is false — operators who haven't opted into
+    the gate don't get noise from it.
+    """
+    global _LOGGED_TRIAGE_MODEL_STATUS
+    if _LOGGED_TRIAGE_MODEL_STATUS or not _USE_LEARNED_TRIAGE:
+        return
+    _LOGGED_TRIAGE_MODEL_STATUS = True
+    from src.shared.image_features import _load_model
+
+    if _load_model() is None:
+        logger.error(
+            "USE_LEARNED_TRIAGE=true but image relevance model could not be loaded; "
+            "every image will fall back to heuristic scoring until next worker restart."
+        )
+    else:
+        logger.info("USE_LEARNED_TRIAGE=true; image relevance model loaded successfully")
+
 
 class ImageTriageStage:
     """
@@ -668,6 +698,12 @@ class ImageTriageStage:
         """
         # Import here to avoid circular import
         from src.extraction_v2.pipeline import PipelineStage, StageResult
+
+        # One-shot eager-load + status log on first stage run per worker.
+        # Runs even when context.images is empty so the operator signal fires
+        # for every worker that crosses the triage gate, not just those that
+        # process a non-empty filing first.
+        _log_triage_model_status_once()
 
         start_time = datetime.now(UTC)
         errors: list[str] = []
