@@ -113,6 +113,57 @@ def test_load_model_caches_absent_result(tmp_path: Path) -> None:
     assert image_features._MODEL_CACHE[resolved] is image_features._MODEL_ABSENT
 
 
+def test_load_model_missing_file_returns_none_silently(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Missing model file (FileNotFoundError from joblib.load) returns None without WARNING.
+
+    The expected first-boot / dev-environment case: no model trained yet.
+    Operators should not receive noise for this condition.
+    """
+    import logging
+
+    model_path = tmp_path / "missing.joblib"
+    # File does not exist.
+    assert not model_path.exists()
+
+    with caplog.at_level(logging.WARNING, logger="src.shared.image_features"):
+        result = predict_relevance(_sample_features(), model_path=model_path)
+
+    assert result is None
+    # No WARNING log should have been emitted for a simple missing-file case.
+    warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warning_records == [], (
+        f"Expected no WARNING for missing model file, got: {[r.message for r in warning_records]}"
+    )
+
+
+def test_load_joblib_corrupt_bytes_emits_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Corrupt / unloadable joblib artifact returns None AND emits a WARNING.
+
+    This distinguishes a real production failure (corrupt artifact, sklearn
+    version mismatch) from the benign missing-file case so operators see it.
+    """
+    import logging
+
+    model_path = tmp_path / "corrupt.joblib"
+    # Write garbage bytes that joblib cannot deserialise.
+    model_path.write_bytes(b"\x00\x01\x02corrupt garbage not a joblib")
+
+    with caplog.at_level(logging.WARNING, logger="src.shared.image_features"):
+        result = predict_relevance(_sample_features(), model_path=model_path)
+
+    assert result is None
+    warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warning_records) >= 1, "Expected at least one WARNING for corrupt joblib"
+    # Message should mention the path so operators know which artifact failed.
+    assert any(str(model_path) in r.message for r in warning_records), (
+        f"WARNING message should reference the model path; got: {[r.message for r in warning_records]}"
+    )
+
+
 def test_explicit_model_path_bypasses_storage_under_r2_bucket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

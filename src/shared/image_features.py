@@ -138,7 +138,16 @@ def _reset_active_run_id_cache() -> None:
 
 
 def _load_joblib_into_cache(local_path: Path, cache_key: str) -> Any | None:
-    """joblib.load + cache write + sentinel-on-failure. Caller holds _MODEL_LOCK."""
+    """joblib.load + cache write + sentinel-on-failure. Caller holds _MODEL_LOCK.
+
+    Two failure modes are handled differently:
+    - FileNotFoundError: model artifact is simply absent (expected on first boot /
+      dev environment with no trained model). Returns None silently — the caller
+      falls back to heuristic scoring.
+    - Any other exception (corrupt joblib, sklearn version mismatch, etc.): logs
+      a WARNING so operators can detect silent production degradation, then returns
+      None so the heuristic fallback still runs.
+    """
     try:
         import joblib  # optional heavy import; only at prediction time
 
@@ -146,8 +155,18 @@ def _load_joblib_into_cache(local_path: Path, cache_key: str) -> Any | None:
         _MODEL_CACHE[cache_key] = pipeline
         logger.info("Loaded image relevance model from %s", local_path)
         return pipeline
+    except FileNotFoundError:
+        # Model file vanished between the existence check and the load (TOCTOU),
+        # or was never present. Silent fallback — not an operator-actionable event.
+        _MODEL_CACHE[cache_key] = _MODEL_ABSENT
+        return None
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to load image relevance model from %s: %s", local_path, exc)
+        logger.warning(
+            "Failed to load image relevance model from %s: %s — falling back to heuristic",
+            local_path,
+            exc,
+            exc_info=True,
+        )
         _MODEL_CACHE[cache_key] = _MODEL_ABSENT
         return None
 
