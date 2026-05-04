@@ -71,6 +71,10 @@ services:
         sync: false  # Set manually in Render dashboard
       - key: FILINGS_REVIEWER_ALLOW_PROD_WRITES
         value: "1"  # R2Storage.put_bytes guard — required; cron writes chart images via ocr_extraction.py
+      - key: USE_LEARNED_TRIAGE
+        value: "true"  # gh-442: gate extraction on learned image-relevance model (R2 pointer in models/image_relevance/latest_run_id.txt)
+      - key: LEARNED_TRIAGE_MIN
+        value: "0.32"  # gh-442: tuned slightly below cba5e60f model's 80%-recall threshold (0.341); P=0.094 / R~0.82
 
   - type: worker
     name: filings-onboarding-runner
