@@ -1,44 +1,44 @@
 Image Relevance Model Report
 ========================================
 
-Training samples: 808
-  Relevant: 85 (10.5%)
-  Not relevant: 723 (89.5%)
+Training samples: 1614
+  Relevant: 80 (5.0%)
+  Not relevant: 1534 (95.0%)
 
 Cross-validated metrics (5-fold stratified):
-  AUC-ROC:               0.824
-  Avg precision (AP):    0.554
-  Precision @ 80% recall: 0.205
-  Precision @ 90% recall: 0.167
-  Precision @ 95% recall: 0.126
-  Score threshold for ~80% recall: 0.323
+  AUC-ROC:               0.821
+  Avg precision (AP):    0.399
+  Precision @ 80% recall: 0.087
+  Precision @ 90% recall: 0.067
+  Precision @ 95% recall: 0.064
+  Score threshold for ~80% recall: 0.285
 
 Baseline (current tier_1_cohort system):
-  Precision: 0.211
-  Recall:    0.600
-  Coverage:  242/808 candidates reviewed
+  Precision: 0.174
+  Recall:    0.475
+  Coverage:  219/1614 candidates reviewed
 
 Model type: logistic
 
 Feature coefficients:
-  text_cohort_terms                  : +2.270
-  text_retention_terms               : +0.784
-  cohort_confidence                  : -0.661
-  image_area_clipped                 : -0.480
-  text_medium                        : -0.468
-  text_growth_terms                  : +0.388
-  is_unknown_classification          : -0.362
-  text_short                         : +0.314
-  text_temporal_terms                : +0.310
-  keyword_count                      : +0.292
-  log_keyword_count                  : +0.238
-  is_source_sec                      : +0.188
-  is_tier_1                          : +0.154
-  text_unit_econ_terms               : +0.153
-  is_chart_classification            : +0.142
-  text_long                          : +0.071
-  filename_has_chart_hint            : -0.032
-  is_tier_2                          : +0.030
-  is_table_image_classification      : +0.030
-  cohort_keyword_nearby              : +0.020
+  is_chart_classification            : -2.237
+  cohort_confidence                  : +2.042
+  is_table_image_classification      : -1.194
+  text_unit_econ_terms               : +0.880
+  is_tier_1                          : +0.736
+  cohort_keyword_nearby              : -0.701
+  is_unknown_classification          : -0.564
+  text_cohort_terms                  : +0.550
+  text_temporal_terms                : +0.500
+  text_retention_terms               : +0.441
+  log_keyword_count                  : +0.390
+  filename_has_chart_hint            : +0.375
+  text_medium                        : -0.365
+  is_tier_2                          : +0.334
+  is_source_sec                      : -0.280
+  text_short                         : +0.237
+  image_area_clipped                 : -0.185
+  text_growth_terms                  : -0.165
+  keyword_count                      : -0.118
+  text_long                          : +0.068
   has_dimensions                     : +0.000
