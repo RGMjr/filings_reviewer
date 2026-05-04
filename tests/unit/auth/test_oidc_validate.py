@@ -71,6 +71,19 @@ class TestValidateIdToken:
             )
         assert excinfo.value.reason == "oauth_id_token_invalid"
 
+    def test_wrong_aud_raises_invalid(self, stub_verify):
+        # google-auth raises ValueError("Could not verify token signature")
+        # on aud mismatch — pins behavior against silent library regressions.
+        stub_verify(ValueError("Could not verify token signature"))
+
+        with pytest.raises(OidcValidationError) as excinfo:
+            validate_id_token(
+                "fake-token",
+                client_id=CLIENT_ID,
+                expected_nonce=EXPECTED_NONCE,
+            )
+        assert excinfo.value.reason == "oauth_id_token_invalid"
+
     def test_unknown_issuer_raises_invalid(self, stub_verify):
         stub_verify(_good_claims(iss="https://evil.com"))
 

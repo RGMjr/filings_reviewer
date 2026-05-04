@@ -30,6 +30,7 @@ import logging
 from flask import g, request
 
 from src.auth.cookies import get_session_id_from_request
+from src.auth.dev_bypass import dev_bypass_user, is_dev_bypass_enabled
 from src.auth.sessions import lookup_session
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,10 @@ def load_session_user() -> None:
     """
     # Idempotency guard: don't overwrite a value set by a test or earlier call.
     if "user" in g:
+        return
+
+    if is_dev_bypass_enabled():
+        g.user = dev_bypass_user()
         return
 
     session_id = get_session_id_from_request(request)

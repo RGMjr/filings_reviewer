@@ -82,7 +82,7 @@ def _audit_rows(db, action_type: str | None = None) -> list[dict]:
         return db.query(
             """
             SELECT actor_user_id::text AS actor_user_id, actor_email,
-                   action_type, success, error
+                   action_type, target_entity, success, error
             FROM admin_audit_log
             WHERE action_type = %(at)s
             ORDER BY id ASC
@@ -92,7 +92,7 @@ def _audit_rows(db, action_type: str | None = None) -> list[dict]:
     return db.query(
         """
         SELECT actor_user_id::text AS actor_user_id, actor_email,
-               action_type, success, error
+               action_type, target_entity, success, error
         FROM admin_audit_log
         ORDER BY id ASC
         """
@@ -159,6 +159,7 @@ class TestHappyPath:
         assert audit[0]["success"] is True
         assert audit[0]["error"] is None
         assert audit[0]["actor_email"] == "alice@example.com"
+        assert audit[0]["target_entity"] == "alice@example.com"
 
     def test_login_uppercase_email_normalises(
         self,
@@ -324,18 +325,28 @@ class TestDenials:
         )
         stub_google_oauth(claims=good_claims)
 
+        # Capture last_login_at before the denied attempt (NULL on fresh row).
+        pre_last_login = auth_db.query(
+            "SELECT last_login_at FROM auth_users WHERE normalized_email = 'alice@example.com'"
+        )[0]["last_login_at"]
+
         _start_login(oauth_client)
         response = _callback(oauth_client)
 
         assert "account_disabled" in response.headers["Location"]
-        # Even after upsert, account_status stays 'disabled'.
-        rows = auth_db.query("SELECT account_status FROM auth_users")
+        # account_status still disabled; upsert must not have run.
+        rows = auth_db.query(
+            "SELECT account_status, last_login_at FROM auth_users WHERE normalized_email = 'alice@example.com'"
+        )
         assert rows[0]["account_status"] == "disabled"
+        # last_login_at must not be bumped by a denied attempt (Fix 2).
+        assert rows[0]["last_login_at"] == pre_last_login
         # No auth_sessions row created.
         sessions = auth_db.query("SELECT 1 FROM auth_sessions")
         assert sessions == []
         audit = _audit_rows(auth_db, action_type="auth.login_denied")
         assert audit[0]["error"] == "account_disabled"
+        assert audit[0]["target_entity"] == "alice@example.com"
 
     def test_callback_without_code_denied(
         self,
