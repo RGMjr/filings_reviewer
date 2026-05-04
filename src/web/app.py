@@ -313,9 +313,20 @@ def create_app(
     # ``google_login_enabled`` feature flag. Read once at app boot — runtime
     # flag flips require a deploy/restart to take effect, which Stage B's
     # rollout pairs with a deploy anyway.
+    #
+    # The flag-read goes through ``DatabaseAdapter`` via ``get_db()``, which
+    # touches ``current_app`` — that requires an active Flask app context.
+    # ``create_app()`` runs without one, so we have to push one explicitly for
+    # the boot-time check. Without this wrap, ``is_enabled`` raises
+    # ``RuntimeError: Working outside of application context``, the broad
+    # ``except`` in ``_read_flag_from_db`` swallows it, and the flag silently
+    # reads False forever — the auth blueprint never registers.
     from src.auth.feature_flags import is_enabled
 
-    if is_enabled("google_login_enabled"):
+    with app.app_context():
+        google_login_on = is_enabled("google_login_enabled")
+
+    if google_login_on:
         from src.web.routes.auth import auth_bp
 
         app.register_blueprint(auth_bp)
