@@ -105,12 +105,36 @@ def _read_detected_metrics(db: DatabaseAdapter, filing_id: int, filename: str):
             return row["detected_metrics"]
 
 
-def _new_image(filename: str, metrics: list[DetectedMetric]) -> ImageAsset:
+def _read_predicted_relevance(db: DatabaseAdapter, filing_id: int, filename: str) -> float | None:
+    with db.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT predicted_relevance
+                  FROM v2_image_assets
+                 WHERE filing_id = %s AND filename = %s
+                """,
+                (filing_id, filename),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            value = row["predicted_relevance"]
+            return float(value) if value is not None else None
+
+
+def _new_image(
+    filename: str,
+    metrics: list[DetectedMetric] | None = None,
+    *,
+    predicted_relevance: float | None = None,
+) -> ImageAsset:
     return ImageAsset(
         img_id=str(uuid.uuid4()),
         filename=filename,
         classification=ImageClassification.CHART,
-        detected_metrics=metrics,
+        detected_metrics=metrics if metrics is not None else [],
+        predicted_relevance=predicted_relevance,
     )
 
 
@@ -185,3 +209,72 @@ class TestDetectedMetricsPersistence:
             {"metric_id": "cm_gross_margin_by_cohort", "score": 0.91},
             {"metric_id": "cm_revenue_by_cohort", "score": 0.85},
         ]
+
+
+class TestPredictedRelevancePersistence:
+    """Round-trip ImageAsset.predicted_relevance through Postgres (gh-478).
+
+    The column existed (sql/28) and the upstream image_triage stage wrote it onto
+    the in-memory asset, but persistence dropped it: 0/2,395 prod rows had a
+    non-NULL score. These tests lock the round-trip and the sticky-NULL
+    semantics of the ON CONFLICT clause.
+    """
+
+    def test_persists_predicted_relevance_round_trip(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        image = _new_image("score_basic.png", predicted_relevance=0.65)
+        persistence_adapter.persist_images([image], test_filing_id)
+
+        stored = _read_predicted_relevance(db_adapter, test_filing_id, "score_basic.png")
+        # Column is NUMERIC(5,4); pytest.approx absorbs the rounding.
+        assert stored == pytest.approx(0.65, abs=1e-4)
+
+    def test_null_predicted_relevance_round_trips_as_null(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        image = _new_image("score_null.png", predicted_relevance=None)
+        persistence_adapter.persist_images([image], test_filing_id)
+
+        stored = _read_predicted_relevance(db_adapter, test_filing_id, "score_null.png")
+        assert stored is None
+
+    def test_reextraction_with_score_overwrites(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        first = _new_image("score_overwrite.png", predicted_relevance=0.65)
+        persistence_adapter.persist_images([first], test_filing_id)
+
+        second = _new_image("score_overwrite.png", predicted_relevance=0.42)
+        persistence_adapter.persist_images([second], test_filing_id)
+
+        stored = _read_predicted_relevance(db_adapter, test_filing_id, "score_overwrite.png")
+        assert stored == pytest.approx(0.42, abs=1e-4)
+
+    def test_reextraction_with_none_preserves_existing_score(
+        self,
+        persistence_adapter: V2PersistenceAdapter,
+        db_adapter: DatabaseAdapter,
+        test_filing_id: int,
+    ):
+        # Sticky-against-NULL guard: re-extraction with USE_LEARNED_TRIAGE=false
+        # leaves predicted_relevance unset on the in-memory asset. The COALESCE
+        # in ON CONFLICT must preserve the previously-cached score rather than
+        # null it out (mirrors the file_path legacy-103 pattern).
+        first = _new_image("score_sticky.png", predicted_relevance=0.65)
+        persistence_adapter.persist_images([first], test_filing_id)
+
+        second = _new_image("score_sticky.png", predicted_relevance=None)
+        persistence_adapter.persist_images([second], test_filing_id)
+
+        stored = _read_predicted_relevance(db_adapter, test_filing_id, "score_sticky.png")
+        assert stored == pytest.approx(0.65, abs=1e-4)

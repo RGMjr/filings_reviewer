@@ -341,3 +341,96 @@ class TestImagePersistSQL:
         assert params["detected_keywords"] is None, (
             f"Empty matcher result must collapse to None (SQL NULL), got {params['detected_keywords']!r}"
         )
+
+    def test_predicted_relevance_in_insert_columns(self) -> None:
+        """predicted_relevance must appear in the INSERT column list and VALUES (gh-478).
+
+        The image_triage stage writes the learned-triage score onto ImageAsset
+        but persistence dropped it for months — 0/2,395 prod rows had a non-NULL
+        score. The column must be in both the column list and the VALUES clause
+        so the upsert actually carries the value to Postgres.
+        """
+        adapter = _make_adapter()
+        cur = _make_cursor()
+        image = _make_image_asset()
+
+        with patch("src.extraction_v2.persistence.match_nearby_text", return_value=["kw"]):
+            adapter._persist_images_in_tx(cur, [image], filing_id=1)
+
+        sql_calls = [
+            call
+            for call in cur.execute.call_args_list
+            if "INSERT INTO v2_image_assets" in str(call)
+        ]
+        assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
+        sql_text = sql_calls[0].args[0]
+
+        # Column list is paren-free, so the simple non-greedy regex is safe here;
+        # VALUES contains psycopg `%(name)s` placeholders whose `(...)` confuses
+        # nested-paren matching, so check that placeholder against the raw SQL.
+        insert_match = re.search(
+            r"INSERT INTO v2_image_assets\s*\((.*?)\)\s*VALUES",
+            sql_text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        assert insert_match, "Could not find INSERT column list in upsert SQL"
+        assert "predicted_relevance" in insert_match.group(1), (
+            "predicted_relevance must be in INSERT column list (gh-478)"
+        )
+        assert "%(predicted_relevance)s" in sql_text, (
+            "predicted_relevance must have a %(name)s placeholder in VALUES (gh-478)"
+        )
+
+    def test_predicted_relevance_coalesced_on_conflict(self) -> None:
+        """ON CONFLICT must COALESCE predicted_relevance against the existing row (gh-478).
+
+        Sticky-against-NULL mirrors file_path (legacy-103). When
+        USE_LEARNED_TRIAGE=false, the upstream image_triage stage does not set
+        predicted_relevance, so a re-extraction with the gate disabled would
+        otherwise null out a previously-cached score. COALESCE preserves it.
+        """
+        adapter = _make_adapter()
+        cur = _make_cursor()
+        image = _make_image_asset()
+
+        with patch("src.extraction_v2.persistence.match_nearby_text", return_value=["kw"]):
+            adapter._persist_images_in_tx(cur, [image], filing_id=1)
+
+        sql_calls = [
+            call
+            for call in cur.execute.call_args_list
+            if "INSERT INTO v2_image_assets" in str(call)
+        ]
+        assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
+        sql_text = sql_calls[0].args[0]
+
+        assert (
+            "predicted_relevance = COALESCE(EXCLUDED.predicted_relevance, "
+            "v2_image_assets.predicted_relevance)"
+        ) in sql_text, (
+            "predicted_relevance on ON CONFLICT must COALESCE so a NULL inbound "
+            "(USE_LEARNED_TRIAGE=false) does not overwrite an existing cached score (gh-478)."
+        )
+
+    def test_predicted_relevance_forwarded_to_params(self) -> None:
+        """ImageAsset.predicted_relevance must round-trip into the params dict (gh-478)."""
+        adapter = _make_adapter()
+        cur = _make_cursor()
+        image = _make_image_asset()
+        image.predicted_relevance = 0.6543
+
+        with patch("src.extraction_v2.persistence.match_nearby_text", return_value=["kw"]):
+            adapter._persist_images_in_tx(cur, [image], filing_id=1)
+
+        sql_calls = [
+            call
+            for call in cur.execute.call_args_list
+            if "INSERT INTO v2_image_assets" in str(call)
+        ]
+        assert sql_calls, "Expected at least one INSERT INTO v2_image_assets execute call"
+        params = sql_calls[0].args[1]
+
+        assert params["predicted_relevance"] == 0.6543, (
+            f"params['predicted_relevance'] must forward ImageAsset.predicted_relevance "
+            f"unchanged, got {params['predicted_relevance']!r}"
+        )
