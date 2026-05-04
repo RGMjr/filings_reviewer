@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
 import sys
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -57,7 +59,6 @@ def test_check_sklearn_version_allow_mismatch_warns_not_exits(
     script: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr("sklearn.__version__", "0.0.0-mock")
-    import logging
 
     with caplog.at_level(logging.WARNING, logger="retrain_image_triage"):
         script.check_sklearn_version(allow_mismatch=True)
@@ -65,3 +66,63 @@ def test_check_sklearn_version_allow_mismatch_warns_not_exits(
     assert any("--allow-version-mismatch" in record.message for record in caplog.records), (
         "Expected warning mentioning --allow-version-mismatch"
     )
+
+
+def test_read_pinned_sklearn_version_returns_none_when_lock_file_missing(
+    script: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
+    # Point the script's __file__ into a tmp dir that has no requirements.lock.
+    monkeypatch.setattr(script, "__file__", str(tmp_path / "scripts" / "retrain_image_triage.py"))
+
+    with caplog.at_level(logging.WARNING, logger="retrain_image_triage"):
+        result = script._read_pinned_sklearn_version()
+
+    assert result is None
+    assert any("requirements.lock" in r.message for r in caplog.records), (
+        "Expected warning mentioning requirements.lock"
+    )
+
+
+def test_check_sklearn_version_noop_when_pin_unknown(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(script, "_read_pinned_sklearn_version", lambda: None)
+    # Must not raise or call sys.exit when pinned version is unknown.
+    script.check_sklearn_version()
+
+
+def test_check_sklearn_version_in_run_id_branch_writes_failed_on_mismatch(
+    script: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When check_sklearn_version raises inside the run-id try/except, _update_run_status
+    is called with status='failed' and a non-empty error string (gh-437)."""
+    monkeypatch.setattr(script, "_read_pinned_sklearn_version", lambda: "99.99.99")
+    monkeypatch.setattr("sklearn.__version__", "0.0.0-mock")
+    monkeypatch.setattr(script, "configure_logging", lambda **_kw: None)
+
+    captured: list[dict] = []
+
+    def fake_update(
+        database_url: str, run_id: str, *, status: str, error: str | None = None, **_kw: object
+    ) -> None:
+        captured.append({"status": status, "error": error})
+
+    monkeypatch.setattr(script, "_update_run_status", fake_update)
+    monkeypatch.setattr(script, "_orchestrate", lambda _args: None)  # should not be reached
+
+    test_argv = [
+        "retrain_image_triage.py",
+        "--run-id",
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "--database-url",
+        "postgresql://test",
+        "--source",
+        "all",
+    ]
+    with patch("sys.argv", test_argv):
+        with pytest.raises(SystemExit):
+            script.main()
+
+    assert captured, "Expected _update_run_status to be called on version-check failure"
+    assert captured[0]["status"] == "failed"
+    assert captured[0]["error"], "Expected non-empty error string in failed row"

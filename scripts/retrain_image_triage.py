@@ -230,10 +230,22 @@ def _finalize_run(args: argparse.Namespace) -> None:
     )
 
 
-def _read_pinned_sklearn_version() -> str:
-    """Read the sklearn pin from requirements.lock (single source of truth)."""
+def _read_pinned_sklearn_version() -> str | None:
+    """Read the sklearn pin from requirements.lock (single source of truth).
+
+    Returns None when requirements.lock is absent so callers can skip the check
+    rather than hard-failing (gh-437: file was bind-mounted in builder only).
+    """
     lock_path = Path(__file__).resolve().parent.parent / "requirements.lock"
-    for line in lock_path.read_text().splitlines():
+    try:
+        text = lock_path.read_text()
+    except FileNotFoundError:
+        logger.warning(
+            "requirements.lock not present at %s — skipping sklearn version check (gh-437)",
+            lock_path,
+        )
+        return None
+    for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("scikit-learn==") and not stripped.startswith("#"):
             return stripped.split("==", 1)[1].split()[0]
@@ -248,6 +260,8 @@ def check_sklearn_version(*, allow_mismatch: bool = False) -> None:
     import sklearn  # noqa: PLC0415
 
     pinned = _read_pinned_sklearn_version()
+    if pinned is None:
+        return  # requirements.lock absent; warning already logged by reader
     installed = sklearn.__version__
     if installed == pinned:
         return
@@ -337,7 +351,6 @@ def main() -> None:
     args = parser.parse_args()
 
     configure_logging(level="INFO")
-    check_sklearn_version(allow_mismatch=args.allow_version_mismatch)
 
     if not args.database_url and args.source in ("sec", "all"):
         logger.error("No database URL available. Set $TEST_DATABASE_URL or pass --database-url.")
@@ -349,6 +362,10 @@ def main() -> None:
     # cleanup; tracked in docs/known-issues/.
     if args.run_id:
         try:
+            # gh-437: inside try/except so startup failures (missing file, version
+            # mismatch) write a meaningful error to the DB row instead of relying
+            # on retrain_runner's generic 'retrain_subprocess_died_no_status'.
+            check_sklearn_version(allow_mismatch=args.allow_version_mismatch)
             _orchestrate(args)
         except SystemExit as exc:
             # _run() calls sys.exit(rc) on subprocess failure — surface as failed.
