@@ -214,7 +214,6 @@ def stats():
     last_run = db.get_last_training_run("image_relevance")
     since_ts = last_run.get("completed_at") if last_run else None
     image_decisions_since = db.count_image_decisions_since(since_ts)
-    text_decisions_since = db.count_text_decisions_since(since_ts)
 
     recent_text_corrections = db.get_recent_text_corrections(limit=10)
     recent_text_additions = db.get_recent_text_additions(limit=10)
@@ -291,7 +290,6 @@ def stats():
         rejection_reason_labels=IMAGE_REJECTION_REASON_LABELS,
         last_training_run=last_run,
         image_decisions_since=image_decisions_since,
-        text_decisions_since=text_decisions_since,
         recent_text_corrections=recent_text_corrections,
         recent_text_additions=recent_text_additions,
         recent_image_additions=recent_image_additions,

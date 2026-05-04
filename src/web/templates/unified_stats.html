@@ -80,10 +80,6 @@
                   <span class="text-success">({{ image_decisions_since.positive or 0 }} positive / {{ threshold_positive }}</span>,
                   <span class="text-danger">{{ image_decisions_since.negative or 0 }} negative</span>)
                 </p>
-                <p class="mb-0 small text-muted">
-                  Text decisions since same anchor: {{ text_decisions_since or 0 }}
-                  (informational — text extraction is rule-based, no retrain pipeline).
-                </p>
                 <div id="retrain-status" class="small mt-2"
                      {% if retrain_running %}data-running-id="{{ running_run_id }}"{% endif %}>
                   {% if retrain_running %}
