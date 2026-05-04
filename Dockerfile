@@ -58,6 +58,11 @@ COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser scripts/ ./scripts/
 COPY --chown=appuser:appuser sql/ ./sql/
 COPY --chown=appuser:appuser config/ ./config/
+# gh-437: required by scripts/retrain_image_triage.py's sklearn version check
+# (gh-406). Bind-mount in builder is not enough — the runtime image must
+# contain the file so the worker can compare installed sklearn against the
+# pinned version at script startup.
+COPY --chown=appuser:appuser requirements.lock ./requirements.lock
 # Image-relevance model artifact, loaded by src/shared/image_features.py to
 # power the "Model score" sort on the image-review queue. Stopgap until
 # gh-391 (R2 artifact persistence) — until then the joblib must ride in the
