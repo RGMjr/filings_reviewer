@@ -2,6 +2,10 @@
 """
 Export image training data for relevance model development.
 
+If you intend to refresh the deployed model, use ``scripts/retrain_image_triage.py``
+(which chains export + train); running this script alone regenerates the CSV but
+leaves ``relevance_model.joblib`` reflecting the prior CSV. See gh-426.
+
 Unifies human review decisions from two sources:
   - SEC filing image decisions (PostgreSQL DB via image_review_decisions)
   - Presentation image decisions (file-based, data/presentation_gold_standard/)
@@ -428,6 +432,24 @@ def main() -> None:
             counts["relevant"],
             100 * counts["relevant"] / counts["total"],
         )
+
+    # gh-426: nudge operators who run this script standalone — without a
+    # follow-up retrain, relevance_model.joblib drifts from the regenerated CSV.
+    # retrain_image_triage.py sets RETRAIN_CHAINED=1 to suppress the warning.
+    if os.environ.get("RETRAIN_CHAINED") != "1":
+        banner = "=" * 70
+        print("\n" + banner, file=sys.stderr)
+        print("WARNING: Export complete but model NOT retrained.", file=sys.stderr)
+        print(
+            "If you intend to update data/image_model/relevance_model.joblib, run:",
+            file=sys.stderr,
+        )
+        print("  python3 scripts/retrain_image_triage.py --database-url ...", file=sys.stderr)
+        print(
+            "Otherwise the on-disk CSV will be out of sync with the joblib (gh-426).",
+            file=sys.stderr,
+        )
+        print(banner, file=sys.stderr)
 
 
 if __name__ == "__main__":
