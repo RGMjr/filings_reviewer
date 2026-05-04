@@ -113,6 +113,73 @@ def test_load_model_caches_absent_result(tmp_path: Path) -> None:
     assert image_features._MODEL_CACHE[resolved] is image_features._MODEL_ABSENT
 
 
+def test_missing_file_logs_at_debug_not_error(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Missing model file (FileNotFoundError) returns None silently — no WARNING/ERROR.
+
+    The expected first-boot / dev-environment case: no model trained yet.
+    Operators should not receive noise for this condition.
+    """
+    import logging
+
+    model_path = tmp_path / "missing.joblib"
+    assert not model_path.exists()
+
+    with caplog.at_level(logging.DEBUG, logger="src.shared.image_features"):
+        result = predict_relevance(_sample_features(), model_path=model_path)
+
+    assert result is None
+    high_severity = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert high_severity == [], (
+        f"Expected no WARNING/ERROR for missing model file, got: "
+        f"{[(r.levelname, r.message) for r in high_severity]}"
+    )
+
+
+def test_load_failure_logs_at_error_with_exception_type(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Corrupt / unloadable joblib artifact returns None AND logs at ERROR.
+
+    Distinguishes a real production failure (corrupt artifact, sklearn version
+    mismatch) from the benign missing-file case. The message must include the
+    exception type name so log-grep can discriminate failure modes
+    (`UnpicklingError`, `ModuleNotFoundError`, `EOFError`, etc.).
+    """
+    import logging
+    from unittest.mock import patch
+
+    model_path = tmp_path / "corrupt.joblib"
+    # File must exist so resolution doesn't short-circuit on stat — we patch
+    # joblib.load itself to raise a deterministic exception type the test
+    # can assert on. Real production failures may surface as different
+    # types depending on the corruption; the contract under test is that
+    # *whatever* the type is, it appears in the log message.
+    model_path.write_bytes(b"placeholder")
+
+    boom = EOFError("simulated truncated joblib")
+
+    with caplog.at_level(logging.ERROR, logger="src.shared.image_features"):
+        with patch("joblib.load", side_effect=boom):
+            result = predict_relevance(_sample_features(), model_path=model_path)
+
+    assert result is None
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(error_records) == 1, (
+        f"Expected exactly one ERROR record, got "
+        f"{[(r.levelname, r.message) for r in caplog.records]}"
+    )
+    msg = error_records[0].message
+    # Plan rationale: log-grep discriminability — type token must be in the message.
+    assert "EOFError" in msg, f"ERROR message should name the exception type; got: {msg!r}"
+    assert str(model_path) in msg, f"ERROR message should reference the path; got: {msg!r}"
+    # Operator-facing recovery hint — distinguishes from transient-network errors.
+    assert "worker restart" in msg, (
+        f"ERROR message should include worker-restart recovery hint; got: {msg!r}"
+    )
+
+
 def test_explicit_model_path_bypasses_storage_under_r2_bucket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
