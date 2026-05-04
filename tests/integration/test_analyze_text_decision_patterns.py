@@ -283,7 +283,7 @@ def test_success_path_writes_summary_findings_and_updates_run(clean_db, cli):
     db_url = __import__("os").environ["TEST_DATABASE_URL"]
     # Pre-insert the run row ourselves (simulates web-triggered invocation).
     pre_inserted_run_id = str(uuid.uuid4())
-    clean_db.query(
+    clean_db.execute(
         """
         INSERT INTO text_decision_analysis_runs (id, status, triggered_by)
         VALUES (%(id)s, 'running', 'test')
@@ -328,7 +328,7 @@ def test_exception_path_flips_status_to_failed(clean_db, cli):
 
     db_url = __import__("os").environ["TEST_DATABASE_URL"]
     pre_inserted_run_id = str(uuid.uuid4())
-    clean_db.query(
+    clean_db.execute(
         """
         INSERT INTO text_decision_analysis_runs (id, status, triggered_by)
         VALUES (%(id)s, 'running', 'test')
