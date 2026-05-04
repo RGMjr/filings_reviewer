@@ -409,6 +409,9 @@ def _orchestrate(args: argparse.Namespace) -> None:
     if args.database_url:
         export_cmd += ["--database-url", args.database_url]
 
+    # gh-426: signal to the export script that the train step will follow,
+    # so it suppresses its standalone-run staleness warning.
+    os.environ["RETRAIN_CHAINED"] = "1"
     _run(export_cmd, dry_run=args.dry_run)
 
     if not args.dry_run and not Path(args.output_csv).exists():
