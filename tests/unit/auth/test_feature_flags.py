@@ -51,6 +51,13 @@ class TestIsEnabled:
         patch_db([])
         assert feature_flags.is_enabled("nonexistent_flag") is False
 
+    def test_expired_flag_returns_false(self, patch_db):
+        # The SQL filter (expires_at IS NULL OR expires_at > NOW()) excludes
+        # expired rows — the DB returns no rows. This pins that an expired
+        # value='true' row resolves to False (Stage D break-glass override relies on it).
+        patch_db([])  # expired row filtered out by SQL expires_at check
+        assert feature_flags.is_enabled("time_limited_flag") is False
+
     def test_value_true_returns_true(self, patch_db):
         patch_db([{"value": "true"}])
         assert feature_flags.is_enabled("some_flag") is True

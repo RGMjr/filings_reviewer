@@ -22,6 +22,7 @@ from unittest.mock import patch
 import pytest
 from flask import Flask, g
 
+from src.auth.dev_bypass import DEV_BYPASS_USER_ID
 from src.auth.load_user import load_session_user
 from src.auth.sessions import SessionUser
 
@@ -167,3 +168,50 @@ class TestLoadSessionUserHook:
 
         assert captured["has_user"] is True
         assert captured["user_value"] is None
+
+    def test_dev_bypass_no_cookie_sets_bypass_user(self, app, monkeypatch):
+        """AUTH_DEV_BYPASS=1 with no cookie → g.user is the synthetic dev user."""
+        monkeypatch.setenv("AUTH_DEV_BYPASS", "1")
+        monkeypatch.delenv("AUTH_SESSION_COOKIE_NAME", raising=False)
+
+        captured = {}
+
+        with patch("src.auth.load_user.lookup_session") as mock_lookup:
+            with app.test_request_context("/whoami"):
+                load_session_user()
+                captured["user"] = g.get("user")
+
+        assert captured["user"] is not None
+        assert captured["user"].id == DEV_BYPASS_USER_ID
+        assert captured["user"].role == "admin"
+        mock_lookup.assert_not_called()
+
+    def test_dev_bypass_stale_cookie_bypass_wins(self, app, monkeypatch):
+        """AUTH_DEV_BYPASS=1 with a stale cookie → bypass wins, no DB lookup."""
+        monkeypatch.setenv("AUTH_DEV_BYPASS", "1")
+        monkeypatch.delenv("AUTH_SESSION_COOKIE_NAME", raising=False)
+
+        captured = {}
+
+        with patch("src.auth.load_user.lookup_session") as mock_lookup:
+            with app.test_request_context(
+                "/whoami",
+                headers={"Cookie": f"{_COOKIE_NAME}=stale-session-id"},
+            ):
+                load_session_user()
+                captured["user"] = g.get("user")
+
+        assert captured["user"].id == DEV_BYPASS_USER_ID
+        mock_lookup.assert_not_called()
+
+    def test_dev_bypass_unset_no_cookie_sets_user_none(self, client, monkeypatch):
+        """AUTH_DEV_BYPASS unset, no cookie → existing behavior, g.user is None."""
+        monkeypatch.delenv("AUTH_DEV_BYPASS", raising=False)
+        monkeypatch.delenv("AUTH_SESSION_COOKIE_NAME", raising=False)
+
+        with patch("src.auth.load_user.lookup_session") as mock_lookup:
+            response = client.get("/whoami")
+
+        assert response.status_code == 200
+        assert response.data == b"anonymous"
+        mock_lookup.assert_not_called()

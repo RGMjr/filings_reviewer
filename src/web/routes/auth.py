@@ -194,6 +194,10 @@ def _audit_login(
     """
     from src.web.app import get_db
 
+    # Email first per seed-script precedent; falls back to user_id for paths
+    # where the email is not yet known (state mismatch, pre-token-validation errors).
+    target_entity = actor_email or actor_user_id
+
     try:
         db = get_db()
         db.execute(
@@ -211,7 +215,7 @@ def _audit_login(
                 %(actor_user_id)s,
                 %(actor_email)s,
                 %(action_type)s,
-                NULL,
+                %(target_entity)s,
                 %(before_state)s::jsonb,
                 %(after_state)s::jsonb,
                 %(success)s,
@@ -222,6 +226,7 @@ def _audit_login(
                 "actor_user_id": actor_user_id,
                 "actor_email": actor_email,
                 "action_type": action_type,
+                "target_entity": target_entity,
                 "before_state": json.dumps(before_state) if before_state else None,
                 "after_state": json.dumps(after_state) if after_state else None,
                 "success": success,
@@ -557,24 +562,30 @@ def callback():
     )
     pre_row = pre_rows[0] if pre_rows else None
 
+    # Account-status check happens BEFORE upsert so a disabled user's
+    # last_login_at is not silently bumped on every denied attempt.
+    # Only applies when the row already exists (pre_row is not None); first-time
+    # logins by someone not yet in auth_users cannot be disabled yet.
+    if pre_row is not None and pre_row["account_status"] != "active":
+        _audit_login(
+            action_type=_ACTION_LOGIN_DENIED,
+            success=False,
+            error="account_disabled",
+            actor_user_id=pre_row["id"],
+            actor_email=normalized_email,
+        )
+        return _redirect_to_denied("account_disabled")
+
     user_row = _upsert_user(
         normalized_email=normalized_email,
         google_sub=google_sub,
         display_name=display_name,
         intended_role=access_entry["intended_role"],
     )
-
-    # Account-status check after upsert — the user might have been disabled
-    # after they were added to the allowlist.
-    if user_row["account_status"] != "active":
-        _audit_login(
-            action_type=_ACTION_LOGIN_DENIED,
-            success=False,
-            error="account_disabled",
-            actor_user_id=user_row["id"],
-            actor_email=normalized_email,
-        )
-        return _redirect_to_denied("account_disabled")
+    # NOTE: the ON CONFLICT SET clause in _upsert_user does NOT include
+    # account_status, so a row that was active pre-upsert is still active
+    # post-upsert. If account_status is ever added to the SET clause, the
+    # post-upsert denial check must be reinstated here.
 
     # Create the session row + cookie.
     from src.auth.sessions import create_session
