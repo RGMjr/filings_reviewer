@@ -3,15 +3,17 @@ id: 383
 source: gh
 slug: delete-orphan-v2-stats-templates
 title: Delete orphan legacy templates v2_stats.html and v2_filing_list.html
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: —
 touches: []
 discovered: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-04
 gh_issue: 383
-note: orphan templates not referenced anywhere; safe to delete in cleanup PR
+pr_refs:
+  - 448
+note: Orphan templates v2_stats.html and v2_filing_list.html deleted in PR #448 (zero references confirmed via grep before deletion).
 ---
 
 ### Problem
