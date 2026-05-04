@@ -84,15 +84,20 @@ def _seed_corpus(db, *, cik="0009980001", accession="0009980001-24-000001"):
     )
     segment_id = segment_rows[0]["segment_id"]
 
-    # Two facts on the same metric, both rejected with overlapping rejection_reason
-    # tokens so the n-gram miner clears MIN_OCCURRENCES=2 / MIN_PCT=10.
+    # Two facts on the same metric, distinguished by period to satisfy
+    # ``idx_v2_metric_facts_identity_unique`` (the index covers
+    # filing_id+metric+period+unit+scope+cohort+customer_type+source_type).
+    # Both rejected with overlapping rejection_reason tokens so the n-gram
+    # miner clears MIN_OCCURRENCES=2 / MIN_PCT=10.
     fact_ids: list[str] = []
-    for raw_value in ("110%", "115%"):
+    for raw_value, year in (("110%", 2023), ("115%", 2024)):
         fact_id = create_test_v2_fact(
             db,
             filing_id,
             canonical_metric_id="cm_net_revenue_retention",
             value_raw=raw_value,
+            period_start=f"{year}-01-01",
+            period_end=f"{year}-12-31",
             source_locator={"segment_id": segment_id},
         )
         create_test_v2_decision(
@@ -235,6 +240,10 @@ def test_second_run_anchor_limits_to_new_decisions(clean_db, cli):
         filing_id,
         canonical_metric_id="cm_net_revenue_retention",
         value_raw="120%",
+        # 2025 period — disambiguates from the 2023 / 2024 facts seeded above
+        # under ``idx_v2_metric_facts_identity_unique``.
+        period_start="2025-01-01",
+        period_end="2025-12-31",
         source_locator={"segment_id": segment_id},
     )
     create_test_v2_decision(
