@@ -174,16 +174,24 @@ def _create_filing(db) -> int:
 
 
 def _create_image_asset(db, filing_id: int) -> str:
-    """Create a minimal v2_image_assets row; return img_id as text."""
+    """Create a minimal v2_image_assets row; return img_id as text.
+
+    Unique-per-call filename so multiple tests sharing the same filing_id
+    (via the idempotent upsert_filing) don't trip the
+    (filing_id, filename) unique constraint.
+    """
+    import uuid
+
+    filename = f"chart_{uuid.uuid4().hex[:8]}.png"
     rows = db.query(
         """
         INSERT INTO v2_image_assets
             (filing_id, filename, dom_locator, classification)
         VALUES
-            (%(filing_id)s, 'chart_001.png', '#chart-1', 'chart')
+            (%(filing_id)s, %(filename)s, '#chart-1', 'chart')
         RETURNING img_id::text
         """,
-        {"filing_id": filing_id},
+        {"filing_id": filing_id, "filename": filename},
     )
     return rows[0]["img_id"]
 
