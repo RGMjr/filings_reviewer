@@ -60,7 +60,7 @@ services:
     envVars:
       - fromGroup: filings-shared-secrets
       - key: ENABLE_METRIC_CLASSIFY
-        value: "false"  # Tripod Leg B (#92): Vision-API metric classify. Flip to "true" after smoke-test.
+        value: "true"  # Tripod Leg B (#92): Vision-API metric classify. Flipped 2026-05-04 per gh-441 (smoke-tested).
       - key: VISION_CLASSIFY_PROVIDER
         value: gemini
       - key: VISION_CLASSIFY_MODEL
