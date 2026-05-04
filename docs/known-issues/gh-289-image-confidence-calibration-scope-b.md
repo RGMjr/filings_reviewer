@@ -3,7 +3,7 @@ id: 289
 source: gh
 slug: image-confidence-calibration-scope-b
 title: Scope B — image confidence calibration and coverage expansion
-status: partially-resolved
+status: resolved
 severity: medium
 autonomy: skip
 estimated: —
@@ -12,9 +12,11 @@ touches:
   - src/extraction_v2/chart/table_metric_classifier.py
   - src/extraction_v2/stages/chart_fact_bridge.py
 discovered: 2026-04-28
-updated: 2026-04-29
+updated: 2026-05-04
 gh_issue: 289
-note: Soft-normalization and _SUPPORTED_METRICS expansion shipped. Statistical calibration and LLM fusion deferred pending sufficient v2_image_metric_confirmations labels.
+pr_refs:
+  - 334
+note: Soft-normalization and _SUPPORTED_METRICS expansion shipped via PR #334. Statistical calibration and LLM fusion accepted as deferred pending sufficient v2_image_metric_confirmations labels — file as new gh-N if/when label volume warrants. GH issue closed 2026-04-29.
 ---
 
 ### Problem

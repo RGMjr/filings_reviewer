@@ -3,7 +3,7 @@ id: 428
 source: gh
 slug: relevance-model-artifact-stale
 title: Image relevance model artifact stale — disk joblib trained on 808 samples while CSV has 1,499
-status: open
+status: resolved
 severity: medium
 autonomy: review
 estimated: S
@@ -11,8 +11,11 @@ touches:
   - data/image_model/relevance_model.joblib
   - models/image_relevance/latest_run_id.txt
 discovered: '2026-05-02'
-updated: '2026-05-02'
+updated: '2026-05-04'
 gh_issue: 428
+pr_refs:
+  - 438
+note: PR #438 retrained on 1,614 samples; data/image_model/model_report.txt confirms num_training_rows=1614. Dev-disk artifact is current. Prod R2 pointer freshness is an operator action (trigger UI retrain after gh-437 fix shipped via PR #439) — track separately if it doesn't get triggered.
 ---
 
 ### Problem

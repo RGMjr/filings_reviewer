@@ -3,7 +3,7 @@ id: 437
 source: gh
 slug: retrain-runtime-missing-requirements-lock
 title: Retrain dies at startup — requirements.lock missing from runtime Docker image (gh-406 sklearn version check unreachable)
-status: open
+status: resolved
 severity: high
 autonomy: review
 estimated: S
@@ -15,7 +15,7 @@ updated: '2026-05-04'
 gh_issue: 437
 pr_refs:
   - 439
-note: every UI retrain attempt fails in ~40s with retrain_subprocess_died_no_status — sklearn version check (gh-406) reads /app/requirements.lock which is bind-mounted in builder only, never COPY'd into runtime image
+note: All three layered fixes shipped in PR #439 — Dockerfile runtime stage now COPYs requirements.lock; check_sklearn_version() runs inside the args.run_id try/except so failures write status='failed'; _read_pinned_sklearn_version() catches FileNotFoundError and degrades to a warning. GH issue closed 2026-05-04.
 ---
 
 ### Problem
