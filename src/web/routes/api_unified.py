@@ -17,6 +17,14 @@ from typing import Any
 import psycopg
 from flask import Blueprint, current_app, jsonify, request
 
+from src.auth.middleware import require
+from src.auth.permissions import (
+    DECISION_UNDO_OWN,
+    DECISION_WRITE,
+    INGEST_RUN,
+    METRIC_ADD_MISSED,
+    PROTECTED_READ,
+)
 from src.shared.keyword_config import _load_config
 from src.web.app import get_db
 from src.web.middleware import (
@@ -122,6 +130,7 @@ def _log_request_complete(response):
 
 
 @api_unified_bp.route("/decisions", methods=["POST"])
+@require(DECISION_WRITE)
 def create_decision():
     """
     Record a V2 review decision (accept/reject/correct).
@@ -247,6 +256,7 @@ def create_decision():
 
 
 @api_unified_bp.route("/decisions/<decision_id>", methods=["DELETE"])
+@require(DECISION_UNDO_OWN)
 def undo_decision(decision_id: str):
     """
     Undo (delete) a V2 review decision.
@@ -286,6 +296,7 @@ def undo_decision(decision_id: str):
 
 
 @api_unified_bp.route("/image-candidates/bulk-reject", methods=["POST"])
+@require(DECISION_WRITE)
 def bulk_reject_image_candidates():
     """
     Bulk "Reject all (no relevant metrics)" across multiple images.
@@ -410,6 +421,7 @@ def bulk_reject_image_candidates():
 
 
 @api_unified_bp.route("/image-candidates/bulk-undo", methods=["POST"])
+@require(DECISION_UNDO_OWN)
 def bulk_undo_image_candidates():
     """
     Bulk undo — reverts the most recent reviewer action on each selected image:
@@ -535,6 +547,7 @@ def bulk_undo_image_candidates():
 
 
 @api_unified_bp.route("/image-candidates/<uuid:img_id>/skip", methods=["POST"])
+@require(DECISION_WRITE)
 def skip_image_candidate(img_id):
     """
     Skip a V2 image without making a decision.
@@ -614,6 +627,7 @@ def skip_image_candidate(img_id):
 
 
 @api_unified_bp.route("/image-candidates/<uuid:img_id>/unskip", methods=["POST"])
+@require(DECISION_WRITE)
 def unskip_image_candidate(img_id):
     """
     Undo a skip — revert v2_image_assets.review_status back to 'pending'.
@@ -666,6 +680,7 @@ def unskip_image_candidate(img_id):
 
 
 @api_unified_bp.route("/image-candidates/<uuid:img_id>/reopen", methods=["POST"])
+@require(DECISION_UNDO_OWN)
 def reopen_image_candidate(img_id):
     """
     Re-open a reviewed image — flip review_status='reviewed' back to 'pending'.
@@ -733,6 +748,7 @@ def reopen_image_candidate(img_id):
 
 
 @api_unified_bp.route("/missed-metric", methods=["POST"])
+@require(METRIC_ADD_MISSED)
 def add_missed_metric():
     """
     Manually add a metric fact (the manual value-entry path).
@@ -862,6 +878,7 @@ _TIER_1_METRICS = frozenset(
 
 
 @api_unified_bp.route("/metrics/list", methods=["GET"])
+@require(PROTECTED_READ)
 def list_metrics():
     """
     Return the full list of active metrics for the metric-picker autocomplete.
@@ -903,6 +920,7 @@ _VALID_IMAGE_METRIC_DECISIONS = ("accept", "reject", "correct", "add", "skip")
 
 
 @api_unified_bp.route("/image-metric-confirmations", methods=["POST"])
+@require(DECISION_WRITE)
 def create_image_metric_confirmations():
     """
     Record per-metric confirmation decisions for a chart image.
@@ -1107,6 +1125,7 @@ def create_image_metric_confirmations():
 
 
 @api_unified_bp.route("/image-metric-confirmations/<uuid:confirmation_id>", methods=["DELETE"])
+@require(DECISION_UNDO_OWN)
 def delete_image_metric_confirmation(confirmation_id):
     """
     Undo a single per-metric confirmation. Deletes the confirmation row
@@ -1220,6 +1239,7 @@ def _spawn_retrain_runner(run_id: str, *, model_type: str, database_url: str) ->
 
 
 @api_unified_bp.route("/models/image-classifier/retrain", methods=["POST"])
+@require(INGEST_RUN)
 def trigger_image_classifier_retrain():
     """Kick off a retrain of data/image_model/relevance_model.joblib.
 
@@ -1354,6 +1374,7 @@ def trigger_image_classifier_retrain():
 
 
 @api_unified_bp.route("/models/training/<uuid:run_id>/status", methods=["GET"])
+@require(PROTECTED_READ)
 def get_training_run_status(run_id):
     """Return current status of a model_training_runs row.
 
@@ -1435,6 +1456,7 @@ def _spawn_text_analysis_runner(run_id: str, *, database_url: str) -> bool:
 
 
 @api_unified_bp.route("/extraction/analyze-text-decisions", methods=["POST"])
+@require(INGEST_RUN)
 def trigger_text_decision_analysis():
     """Kick off a text-decision pattern-analysis run.
 
@@ -1531,6 +1553,7 @@ def trigger_text_decision_analysis():
 
 
 @api_unified_bp.route("/extraction/analysis-runs/<uuid:run_id>/status", methods=["GET"])
+@require(PROTECTED_READ)
 def get_text_analysis_run_status(run_id):
     """Return current status of a text_decision_analysis_runs row."""
     db = get_db()
@@ -1578,6 +1601,7 @@ def _serialize_recommendation_decision(row: dict) -> dict:
 
 @api_unified_bp.route("/extraction/recommendation-decisions", methods=["POST"])
 @require_admin
+@require(INGEST_RUN)
 def upsert_recommendation_decision():
     """Record an admin's Accept/Dismiss/Defer click on a Suggested-actions row.
 
@@ -1639,6 +1663,7 @@ def upsert_recommendation_decision():
 
 @api_unified_bp.route("/extraction/recommendation-decisions/<uuid:decision_id>", methods=["DELETE"])
 @require_admin
+@require(INGEST_RUN)
 def delete_recommendation_decision(decision_id):
     """Undo a recommendation decision. Reviewer-scoped — admins can't undo
     each other's decisions; the row only deletes when reviewer_id matches.

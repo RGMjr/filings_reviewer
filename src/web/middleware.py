@@ -43,11 +43,29 @@ def _verify_api_key() -> Any:
       - ``?api_key=<key>`` query parameter
       - ``Authorization: ApiKey <key>`` header
 
-    The same-origin browser bypass has been removed (PR-C1). Browser traffic
-    authenticates via session cookie through ``require()`` decorators.
+    PR-C1 (transitional): the same-origin browser bypass remains active only
+    while ``auth_enforcement_enabled`` is FALSE. Once the operator flips the
+    flag, the bypass is gone and browser traffic must authenticate via
+    session cookie through ``@require()`` decorators. This keeps existing
+    embedded-image flows (e.g. ``<img src="/v2/review/image_crop/...">``)
+    working in the gap between C1 merge and the flag flip.
     """
     if not current_app.config.get("API_KEY_REQUIRED", True):
         return None
+
+    # Transitional same-origin bypass — only while enforcement is off.
+    try:
+        from src.auth.feature_flags import is_enabled
+
+        if not is_enabled("auth_enforcement_enabled"):
+            from src.auth.csrf import _is_same_origin
+
+            if _is_same_origin():
+                return None
+    except Exception:
+        # Flag lookup failure → treat as enforcement-on (skip bypass).
+        # Safer default: an attacker shouldn't get the bypass via a DB outage.
+        pass
 
     # Accept Authorization: ApiKey <key> in addition to X-API-Key header.
     api_key = request.headers.get("X-API-Key") or request.args.get("api_key")

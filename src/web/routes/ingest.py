@@ -33,6 +33,11 @@ from flask import (
     url_for,
 )
 
+from src.auth.middleware import require
+from src.auth.permissions import (
+    INGEST_RUN,
+    PROTECTED_READ,
+)
 from src.universe.onboarding import (
     FORM_TYPE_BUNDLES,
     OTHER_INDUSTRY_KEY,
@@ -292,6 +297,7 @@ def _render_ingest_form(form_state: dict[str, Any] | None = None, status: int = 
 
 
 @ingest_bp.route("/", methods=["GET"])
+@require(PROTECTED_READ)
 def ingest_form():
     return _render_ingest_form()
 
@@ -302,6 +308,7 @@ def ingest_form():
 
 
 @ingest_bp.route("/preview", methods=["POST"])
+@require(INGEST_RUN)
 def ingest_preview():
     raw = _parse_form_criteria()
 
@@ -382,6 +389,7 @@ def ingest_preview():
 
 
 @ingest_bp.route("/start", methods=["POST"])
+@require(INGEST_RUN)
 def ingest_start():
     reviewer_name = request.form.get("reviewer_name", "").strip()
     hard_warn_ack = request.form.get("hard_warn_ack") == "on"
@@ -554,6 +562,7 @@ _POPULATE_YEAR_MAX = 2030
 
 
 @ingest_bp.route("/populate", methods=["POST"])
+@require(INGEST_RUN)
 def populate():
     """Create a kind='populate' batch.
 
@@ -668,6 +677,7 @@ def populate():
 
 
 @ingest_bp.route("/history", methods=["GET"])
+@require(PROTECTED_READ)
 def ingest_history():
     reviewer_filter = request.args.get("reviewer", "").strip()
     status_filter = request.args.get("status", "").strip()
@@ -750,6 +760,7 @@ def ingest_history():
 
 
 @ingest_bp.route("/batch/<batch_id>", methods=["GET"])
+@require(PROTECTED_READ)
 def ingest_batch(batch_id: str):
     # Validate UUID format
     try:
@@ -885,6 +896,7 @@ WHERE batch_id = %(batch_id)s
 
 
 @ingest_bp.route("/batch/<batch_id>/resume", methods=["POST"])
+@require(INGEST_RUN)
 def ingest_resume(batch_id: str):
     """Re-queue cancelled+failed filings in a batch and re-spawn the runner.
 
@@ -962,6 +974,7 @@ def ingest_resume(batch_id: str):
 
 
 @ingest_bp.route("/batch/<batch_id>/reextract", methods=["POST"])
+@require(INGEST_RUN)
 def ingest_reextract(batch_id: str):
     """Force re-extraction of every filing in a complete batch.
 

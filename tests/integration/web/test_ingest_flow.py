@@ -255,14 +255,26 @@ class TestCancelApi:
 
 
 class TestAuth:
-    def test_status_rejects_cross_origin_without_key(self, client, batch_id):
+    """Auth contract for /api/v2/ingest/* endpoints.
+
+    PR-C1 replaced the blueprint-wide register_api_auth hook with per-route
+    @require() decorators that are flag-aware (no-op when
+    auth_enforcement_enabled=False, enforce when True). With the flag off
+    (default in tests), the API-key path is bypassed — these tests pin the
+    new behavior. The "flag on, role-gated" contract lives in
+    tests/integration/auth/test_route_enforcement.py.
+    """
+
+    def test_status_no_op_when_flag_off(self, client, batch_id):
+        """auth_enforcement_enabled=False → @require() no-ops, request passes."""
         r = client.get(
             f"/api/v2/ingest/batches/{batch_id}/status",
             headers={"Origin": "https://evil.example.com"},
         )
-        assert r.status_code == 401
+        assert r.status_code == 200
 
-    def test_status_allows_with_valid_key(self, client, batch_id):
+    def test_status_with_api_key_still_works(self, client, batch_id):
+        """API-key path remains a valid auth method for non-browser callers."""
         r = client.get(
             f"/api/v2/ingest/batches/{batch_id}/status",
             headers={"Origin": "https://evil.example.com", "X-API-Key": "test-key-xyz"},
