@@ -3,15 +3,15 @@ id: 415
 source: gh
 slug: docker-build-not-required-regression
 title: "Docker Build & Smoke should fail-closed (currently non-required, regressions sit on main)"
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: —
 touches: []
 discovered: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-04
 gh_issue: 415
-note: Dockerfile-vs-.dockerignore drift broke 4 PRs' CI silently because Docker Build isn't a required check
+note: Docker Build & Smoke promoted to required status check on main 2026-05-04 via PATCH to repos/RGMjr/filings_reviewer/branches/main/protection/required_status_checks. Required-checks list grew from 5 to 6. Documented in CLAUDE.md and .claude/rules/github-workflows.md. Auth-rollout deferral resolved — Docker Build was 12/13 success across recent PRs, no flake risk.
 ---
 
 ### Problem

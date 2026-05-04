@@ -15,8 +15,8 @@ Add the following condition to any job that uses repo secrets and isn't essentia
 if: github.actor != 'dependabot[bot]'
 ```
 
-Common candidates: `claude-review`, lint jobs that authenticate to private registries, AI-assisted review hooks. Required-status-check jobs (Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E) that must pass for *all* PRs should NOT skip dependabot — they should be configured to work without the secret instead.
+Common candidates: `claude-review`, lint jobs that authenticate to private registries, AI-assisted review hooks. Required-status-check jobs (Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E, Docker Build & Smoke) that must pass for *all* PRs should NOT skip dependabot — they should be configured to work without the secret instead.
 
 ## Required status checks
 
-Per project `CLAUDE.md`: `Lint`, `Unit Tests`, `Vulnerability Scan`, `Integration Tests`, `UI E2E (Playwright)`. Adding a new job that should be required must also be added to the branch-protection rule (out-of-band of this repo).
+Per project `CLAUDE.md`: `Lint`, `Unit Tests`, `Vulnerability Scan`, `Integration Tests`, `UI E2E (Playwright)`, `Docker Build & Smoke`. Adding a new job that should be required must also be added to the branch-protection rule (out-of-band of this repo).
