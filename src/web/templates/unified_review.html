@@ -949,6 +949,7 @@
                 and current_image.review_status in ('pending', 'reviewed') %}
           {% set active_metrics = current_image.predicted_metrics if current_image.predicted_metrics else (current_image.detected_metrics or []) %}
           {% set metrics_source = 'vision' if current_image.predicted_metrics else 'keywords' %}
+          {% set added_metrics_count = (current_image_confirmations or [])|selectattr('decision','equalto','add')|list|length %}
           <div class="card detected-metrics-card mt-3"
                id="detected-metrics-card"
                data-img-id="{{ current_image.img_id }}"
@@ -957,10 +958,21 @@
                data-classification-id="{{ current_image.classification_id or '' }}"
                data-confirmations='{{ (current_image_confirmations or [])|tojson }}'>
             <div class="card-header py-2 d-flex justify-content-between align-items-center">
-              <h6 class="mb-0">{% if metrics_source == 'vision' %}Predicted metrics (Vision){% else %}Detected metrics (Keywords){% endif %}</h6>
-              <span class="badge bg-secondary">
-                {{ active_metrics|length }} detected
-              </span>
+              <h6 class="mb-0">
+                {% if added_metrics_count > 0 %}Metrics (detected + user-added)
+                {% elif metrics_source == 'vision' %}Predicted metrics (Vision)
+                {% else %}Detected metrics (Keywords){% endif %}
+              </h6>
+              <div class="d-flex gap-1">
+                <span class="badge bg-secondary">
+                  {{ active_metrics|length }} detected
+                </span>
+                {% if added_metrics_count > 0 %}
+                <span class="badge bg-info">
+                  {{ added_metrics_count }} added
+                </span>
+                {% endif %}
+              </div>
             </div>
             <div class="card-body">
               <p class="small text-muted mb-2">

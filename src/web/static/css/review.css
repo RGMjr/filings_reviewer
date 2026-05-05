@@ -1723,3 +1723,17 @@
     display: flex;
     gap: 0.5rem;
 }
+
+/* =============================================================================
+   Detected metrics card — user-added rows
+   ============================================================================= */
+#detected-metrics-list .added-metric-row {
+    background-color: #cff4fc;
+    border-left: 3px solid #0dcaf0;
+}
+
+#detected-metrics-list .added-metric-row .metric-label::before {
+    content: "+ ";
+    color: #087990;
+    font-weight: 600;
+}
