@@ -64,6 +64,12 @@ python3 scripts/auth_readiness_report.py --check
 # expect: exit 0 (silent on success)
 ```
 
+> **Run from inside the production container.** `--check` reads `APP_ENV` and
+> `AUTH_DEV_BYPASS` from whichever environment executes the script. Running it
+> locally will show a `WARNING:` on stderr; the result may not reflect prod env vars.
+> Use the Render shell (`filings-reviewer → Shell`) or set the vars explicitly:
+> `APP_ENV=production AUTH_DEV_BYPASS="" python3 scripts/auth_readiness_report.py --check`
+
 If `--check` exits 1, read the `NOT READY:` lines on stderr and resolve before proceeding.
 
 ```bash
