@@ -482,74 +482,6 @@
       </div>
     </div>
 
-    {# Phase 4c: "Why Reviewers Reject" — categorical rejection-reason rollup
-       across all decisions ever recorded (lifetime totals, not since-anchor).
-       Bootstrap progress bars used for the simple bar-chart effect (no chart
-       library; same approach as the existing Confidence Band Distribution). #}
-    <div class="row mb-4">
-      <div class="col-12">
-        <h4 class="mb-3">Why Reviewers Reject</h4>
-      </div>
-
-      {# Text-fact rejection categories #}
-      <div class="col-lg-6 mb-3">
-        <div class="card h-100">
-          <div class="card-header">
-            <h6 class="mb-0">Text Facts <span class="badge bg-secondary ms-1">{{ text_rejection_rollup|length }}</span></h6>
-          </div>
-          <div class="card-body">
-            {% if text_rejection_rollup %}
-              {% set max_text_pct = (text_rejection_rollup|map(attribute='percent')|max) or 100 %}
-              {% for r in text_rejection_rollup %}
-              <div class="mb-2">
-                <div class="d-flex justify-content-between small">
-                  <span>{{ r.reason|replace('_', ' ')|title }}</span>
-                  <span class="text-muted">{{ r.count }} ({{ r.percent }}%)</span>
-                </div>
-                <div class="progress" style="height: 8px;">
-                  <div class="progress-bar bg-danger" role="progressbar"
-                       style="width: {{ ((r.percent / max_text_pct) * 100)|round(1) }}%"
-                       aria-valuenow="{{ r.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-              </div>
-              {% endfor %}
-            {% else %}
-            <p class="text-muted small mb-0">No text-fact rejections yet.</p>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-
-      {# Image-metric rejection reasons #}
-      <div class="col-lg-6 mb-3">
-        <div class="card h-100">
-          <div class="card-header">
-            <h6 class="mb-0">Image Metrics <span class="badge bg-secondary ms-1">{{ image_rejection_rollup|length }}</span></h6>
-          </div>
-          <div class="card-body">
-            {% if image_rejection_rollup %}
-              {% set max_img_pct = (image_rejection_rollup|map(attribute='percent')|max) or 100 %}
-              {% for r in image_rejection_rollup %}
-              <div class="mb-2">
-                <div class="d-flex justify-content-between small">
-                  <span>{{ rejection_reason_labels.get(r.reason, r.reason|replace('_', ' ')|title) }}</span>
-                  <span class="text-muted">{{ r.count }} ({{ r.percent }}%)</span>
-                </div>
-                <div class="progress" style="height: 8px;">
-                  <div class="progress-bar bg-danger" role="progressbar"
-                       style="width: {{ ((r.percent / max_img_pct) * 100)|round(1) }}%"
-                       aria-valuenow="{{ r.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-              </div>
-              {% endfor %}
-            {% else %}
-            <p class="text-muted small mb-0">No image-metric rejections yet.</p>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-
   </div> {# end summary-stats tab pane #}
 
   {# =====================================================================
@@ -1047,6 +979,272 @@
       </div>
     </div>
 
+    {# ---- Search + category filter bar (session-scoped; not localStorage) ---- #}
+    <div class="row mb-3" id="patterns-filter-bar">
+      <div class="col-md-5 mb-2">
+        <input type="text" class="form-control form-control-sm"
+               id="patterns-search-input"
+               placeholder="Search phrases or metric IDs…"
+               autocomplete="off">
+      </div>
+      <div class="col-md-4 mb-2">
+        <select class="form-select form-select-sm" id="patterns-category-filter" multiple size="1">
+          {% set all_cats = [] %}
+          {% for s in text_metric_summary %}
+            {% for cat in (s.rejection_categories or {}).keys() %}
+              {% if cat not in all_cats %}
+                {% set _ = all_cats.append(cat) %}
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+          {% for cat in all_cats | sort %}
+          <option value="{{ cat }}">{{ cat|replace('_',' ')|title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 mb-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary"
+                id="patterns-filter-clear">Clear filters</button>
+      </div>
+    </div>
+
+    {# ---- Panel 1: Category rollup (this run) ---- #}
+    <div class="row mb-3">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse" data-bs-target="#patterns-category-body"
+               style="cursor:pointer;" aria-expanded="true">
+            <h6 class="mb-0">
+              Category rollup (this run)
+              <span class="badge bg-secondary ms-1">{{ category_rollup|length }}</span>
+            </h6>
+            <span class="small text-muted">collapse ▾</span>
+          </div>
+          <div class="collapse show" id="patterns-category-body">
+            <div class="card-body">
+              {% if category_rollup %}
+              <div class="row g-2">
+                {% for c in category_rollup %}
+                <div class="col-md-6 col-lg-4">
+                  <div class="card h-100 border-{{ 'danger' if c.severity == 'high' else ('warning' if c.severity == 'medium' else 'secondary') }}">
+                    <div class="card-body py-2 px-3">
+                      <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                          {% if c.severity %}
+                          <span class="badge bg-{{ 'danger' if c.severity == 'high' else 'warning text-dark' }} me-1">{{ c.severity }}</span>
+                          {% endif %}
+                          <strong class="small">{{ c.label }}</strong>
+                        </div>
+                        <span class="badge bg-secondary ms-1">{{ c.count }} ({{ c.pct_of_rejects }}%)</span>
+                      </div>
+                      <div class="small text-muted mt-1">{{ c.action }}</div>
+                      {% if c.target_file %}
+                      <code class="small text-secondary d-block mt-1">{{ c.target_file }}</code>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <p class="text-muted small mb-0">No rejection-category data for this run.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ---- Panel 2: Cross-metric phrases ---- #}
+    {% set cross_excl_list = cross_metric_findings | selectattr("cross_metric_exclusion") | list %}
+    <div class="row mb-3">
+      <div class="col-12">
+        <div class="card" id="patterns-cross-metric">
+          <div class="card-header d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse" data-bs-target="#patterns-cross-body"
+               style="cursor:pointer;" aria-expanded="true">
+            <h6 class="mb-0">
+              Cross-metric phrases
+              <span class="badge bg-secondary ms-1">{{ cross_metric_findings|length }}</span>
+              {% if cross_excl_list %}
+              <span class="badge bg-warning text-dark ms-1">
+                {{ cross_excl_list|length }} exclusion {{ 'candidate' if cross_excl_list|length == 1 else 'candidates' }}
+              </span>
+              {% endif %}
+            </h6>
+            <span class="small text-muted">collapse ▾</span>
+          </div>
+          <div class="collapse show" id="patterns-cross-body">
+            {% if cross_metric_findings %}
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 small">
+                <thead class="table-light">
+                  <tr>
+                    <th>Phrase</th>
+                    <th>Type</th>
+                    <th class="text-end">Occurrences</th>
+                    <th class="text-end">Metrics</th>
+                    <th>Participating metrics</th>
+                    <th>Cross-metric rec.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                {% for f in cross_metric_findings %}
+                <tr class="patterns-cross-row" data-phrase="{{ f.phrase }}">
+                  <td><code>{{ f.phrase }}</code></td>
+                  <td>
+                    <span class="badge bg-{{ 'danger' if f.decision_type == 'reject' else ('info' if f.decision_type == 'correct' else 'success') }}">
+                      {{ f.decision_type }}
+                    </span>
+                  </td>
+                  <td class="text-end">{{ f.total_occurrence }}</td>
+                  <td class="text-end">{{ f.metric_count }}</td>
+                  <td>
+                    {% for m in f.metrics %}
+                    <a href="#patterns-metric-anchor-{{ m|replace('_', '-') }}"
+                       class="text-decoration-none small me-1"><code>{{ m }}</code></a>
+                    {% endfor %}
+                  </td>
+                  <td>
+                    {% if f.cross_metric_exclusion %}
+                    <span class="badge bg-{{ 'danger' if f.severity == 'high' else 'warning text-dark' }}">
+                      exclusion · {{ f.severity }}
+                    </span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body">
+              <p class="text-muted small mb-0">No phrase appears across 3+ metrics in this run.</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ---- Panel 3: Why Reviewers Reject (moved from Summary tab) ----
+       Toggle: "this run" uses category_rollup; "lifetime" uses text_rejection_rollup.
+       Toggle state persisted in localStorage key cmasb:patterns:reasons_scope. #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Why Reviewers Reject</h6>
+            <div class="btn-group btn-group-sm" role="group" id="patterns-reasons-scope-toggle">
+              <button type="button" class="btn btn-outline-secondary active"
+                      id="patterns-scope-run" data-scope="run">This run</button>
+              <button type="button" class="btn btn-outline-secondary"
+                      id="patterns-scope-lifetime" data-scope="lifetime">Lifetime</button>
+            </div>
+          </div>
+          <div class="card-body">
+            {# "This run" pane — text uses category_rollup; images use lifetime (no per-run breakdown) #}
+            <div id="patterns-reasons-run">
+              <div class="row">
+                <div class="col-lg-6 mb-3">
+                  <h6 class="small fw-semibold mb-2">Text Facts (this run)</h6>
+                  {% if category_rollup %}
+                    {% set run_cat_max = (category_rollup|map(attribute='pct_of_rejects')|max) or 100 %}
+                    {% for c in category_rollup %}
+                    <div class="mb-2">
+                      <div class="d-flex justify-content-between small">
+                        <span>{{ c.label }}</span>
+                        <span class="text-muted">{{ c.count }} ({{ c.pct_of_rejects }}%)</span>
+                      </div>
+                      <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-danger" role="progressbar"
+                             style="width: {{ ((c.pct_of_rejects / run_cat_max) * 100)|round(1) }}%"
+                             aria-valuenow="{{ c.pct_of_rejects }}" aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  {% else %}
+                  <p class="text-muted small mb-0">No rejection data for this run.</p>
+                  {% endif %}
+                </div>
+                <div class="col-lg-6 mb-3">
+                  <h6 class="small fw-semibold mb-2">Image Metrics (lifetime)</h6>
+                  {% if image_rejection_rollup %}
+                    {% set run_img_max = (image_rejection_rollup|map(attribute='percent')|max) or 100 %}
+                    {% for r in image_rejection_rollup %}
+                    <div class="mb-2">
+                      <div class="d-flex justify-content-between small">
+                        <span>{{ rejection_reason_labels.get(r.reason, r.reason|replace('_', ' ')|title) }}</span>
+                        <span class="text-muted">{{ r.count }} ({{ r.percent }}%)</span>
+                      </div>
+                      <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-danger" role="progressbar"
+                             style="width: {{ ((r.percent / run_img_max) * 100)|round(1) }}%"
+                             aria-valuenow="{{ r.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  {% else %}
+                  <p class="text-muted small mb-0">No image-metric rejections yet.</p>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {# "Lifetime" pane — text uses text_rejection_rollup (full corpus) #}
+            <div id="patterns-reasons-lifetime" style="display:none;">
+              <div class="row">
+                <div class="col-lg-6 mb-3">
+                  <h6 class="small fw-semibold mb-2">Text Facts (lifetime)</h6>
+                  {% if text_rejection_rollup %}
+                    {% set lt_txt_max = (text_rejection_rollup|map(attribute='percent')|max) or 100 %}
+                    {% for r in text_rejection_rollup %}
+                    <div class="mb-2">
+                      <div class="d-flex justify-content-between small">
+                        <span>{{ r.reason|replace('_', ' ')|title }}</span>
+                        <span class="text-muted">{{ r.count }} ({{ r.percent }}%)</span>
+                      </div>
+                      <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-danger" role="progressbar"
+                             style="width: {{ ((r.percent / lt_txt_max) * 100)|round(1) }}%"
+                             aria-valuenow="{{ r.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  {% else %}
+                  <p class="text-muted small mb-0">No text-fact rejections yet.</p>
+                  {% endif %}
+                </div>
+                <div class="col-lg-6 mb-3">
+                  <h6 class="small fw-semibold mb-2">Image Metrics (lifetime)</h6>
+                  {% if image_rejection_rollup %}
+                    {% set lt_img_max = (image_rejection_rollup|map(attribute='percent')|max) or 100 %}
+                    {% for r in image_rejection_rollup %}
+                    <div class="mb-2">
+                      <div class="d-flex justify-content-between small">
+                        <span>{{ rejection_reason_labels.get(r.reason, r.reason|replace('_', ' ')|title) }}</span>
+                        <span class="text-muted">{{ r.count }} ({{ r.percent }}%)</span>
+                      </div>
+                      <div class="progress" style="height: 8px;">
+                        <div class="progress-bar bg-danger" role="progressbar"
+                             style="width: {{ ((r.percent / lt_img_max) * 100)|round(1) }}%"
+                             aria-valuenow="{{ r.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  {% else %}
+                  <p class="text-muted small mb-0">No image-metric rejections yet.</p>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     {# Per-metric rollup. Sorted by reject volume DESC server-side. Each row
        expands to show the phrase findings + (for corrections) the top
        canonical→assigned target metrics for that group. #}
@@ -1087,7 +1285,10 @@
               </thead>
               <tbody>
               {% for s in text_metric_summary %}
-                <tr data-bs-toggle="collapse" data-bs-target="#patterns-row-{{ loop.index }}"
+                <tr id="patterns-metric-anchor-{{ s.metric_id|replace('_', '-') }}"
+                    data-bs-toggle="collapse" data-bs-target="#patterns-row-{{ loop.index }}"
+                    data-metric-id="{{ s.metric_id }}"
+                    data-dominant-category="{{ (s.rejection_categories or {}) | dictsort(by='value', reverse=True) | first | first if (s.rejection_categories or {}) else '' }}"
                     aria-expanded="false" style="cursor:pointer;">
                   <td><code class="small">{{ s.metric_id }}</code></td>
                   <td class="text-end">{{ s.total_decisions }}</td>
@@ -1124,6 +1325,13 @@
                         <span class="badge bg-secondary ms-1">{{ active_recs|length }}</span>
                       </strong>
                       {% for r in active_recs %}
+                      {% if r.rule == 'exclusion_pattern' and (r.decision_key, 'segment_text') in covered_phrases %}
+                      <div class="small text-muted mb-2 fst-italic ps-2 border-start border-secondary">
+                        <code>{{ r.decision_key }}</code>
+                        <span class="badge bg-secondary ms-1">rolled into cross-metric</span>
+                        <a href="#patterns-cross-metric" class="ms-1 small text-decoration-none">↑ see cross-metric panel</a>
+                      </div>
+                      {% else %}
                       {# rec-card: data attributes drive the JS click handlers
                          in static/js/analytics.js. Decision state, when set,
                          dims the card and swaps the action buttons for an
@@ -1177,6 +1385,7 @@
                           </div>
                         {% endif %}
                       </div>
+                      {% endif %}
                       {% endfor %}
                     </div>
                     {% endif %}
@@ -1259,6 +1468,13 @@
                                   {% endfor %}
                                 </span>
                                 {% endif %}
+                                {% set interp = interpretations.get((s.metric_id, f.phrase, source_field, decision_type), {}) %}
+                                {% if interp %}
+                                <div class="small text-secondary mt-1">
+                                  <em>{{ interp.interpretation }}</em>
+                                  — {{ interp.suggested_action }}
+                                </div>
+                                {% endif %}
                               </li>
                               {% endfor %}
                             </ul>
@@ -1307,4 +1523,129 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/analytics.js') }}"></script>
+<script>
+(function () {
+  'use strict';
+
+  // -------------------------------------------------------------------
+  // Why-Reviewers-Reject toggle — persisted in localStorage
+  // Key: cmasb:patterns:reasons_scope  ("run" | "lifetime")
+  // -------------------------------------------------------------------
+  var LS_SCOPE_KEY = 'cmasb:patterns:reasons_scope';
+
+  function applyReasonsScope(scope) {
+    var patternsTab = document.getElementById('patterns-stats');
+    if (!patternsTab) return;
+    var runPane = patternsTab.querySelector('#patterns-reasons-run');
+    var ltPane  = patternsTab.querySelector('#patterns-reasons-lifetime');
+    var btnRun  = patternsTab.querySelector('#patterns-scope-run');
+    var btnLt   = patternsTab.querySelector('#patterns-scope-lifetime');
+    if (!runPane || !ltPane) return;
+    if (scope === 'lifetime') {
+      runPane.style.display = 'none';
+      ltPane.style.display  = '';
+      if (btnRun) btnRun.classList.remove('active');
+      if (btnLt)  btnLt.classList.add('active');
+    } else {
+      runPane.style.display = '';
+      ltPane.style.display  = 'none';
+      if (btnRun) btnRun.classList.add('active');
+      if (btnLt)  btnLt.classList.remove('active');
+    }
+  }
+
+  // Restore saved scope on load.
+  var savedScope = localStorage.getItem(LS_SCOPE_KEY) || 'run';
+  applyReasonsScope(savedScope);
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('#patterns-stats #patterns-reasons-scope-toggle [data-scope]');
+    if (!btn) return;
+    var scope = btn.getAttribute('data-scope');
+    localStorage.setItem(LS_SCOPE_KEY, scope);
+    applyReasonsScope(scope);
+  });
+
+  // -------------------------------------------------------------------
+  // Search — session-scoped (not persisted)
+  // Filters cross-metric rows (.patterns-cross-row) by phrase text
+  // and per-metric summary rows by metric_id.
+  // -------------------------------------------------------------------
+  var searchInput = document.getElementById('patterns-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      applyPatternFilters();
+    });
+  }
+
+  // -------------------------------------------------------------------
+  // Category multi-select filter — session-scoped (not persisted)
+  // Dims per-metric rows whose dominant category isn't selected.
+  // -------------------------------------------------------------------
+  var catFilter = document.getElementById('patterns-category-filter');
+  if (catFilter) {
+    catFilter.addEventListener('change', function () {
+      applyPatternFilters();
+    });
+  }
+
+  // Clear button resets both filters.
+  var clearBtn = document.getElementById('patterns-filter-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function () {
+      if (searchInput) searchInput.value = '';
+      if (catFilter) {
+        for (var i = 0; i < catFilter.options.length; i++) {
+          catFilter.options[i].selected = false;
+        }
+      }
+      applyPatternFilters();
+    });
+  }
+
+  function applyPatternFilters() {
+    var patternsTab = document.getElementById('patterns-stats');
+    if (!patternsTab) return;
+
+    var query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    var selectedCats = [];
+    if (catFilter) {
+      for (var i = 0; i < catFilter.options.length; i++) {
+        if (catFilter.options[i].selected) {
+          selectedCats.push(catFilter.options[i].value);
+        }
+      }
+    }
+
+    // Filter cross-metric rows.
+    patternsTab.querySelectorAll('.patterns-cross-row').forEach(function (row) {
+      var phrase = (row.getAttribute('data-phrase') || '').toLowerCase();
+      var visible = !query || phrase.indexOf(query) !== -1;
+      row.style.display = visible ? '' : 'none';
+    });
+
+    // Filter per-metric summary rows (and their collapse targets).
+    patternsTab.querySelectorAll('tr[data-metric-id]').forEach(function (row) {
+      var metricId = (row.getAttribute('data-metric-id') || '').toLowerCase();
+      var domCat   = row.getAttribute('data-dominant-category') || '';
+
+      var matchSearch = !query || metricId.indexOf(query) !== -1;
+      var matchCat    = selectedCats.length === 0 || selectedCats.indexOf(domCat) !== -1;
+
+      var visible = matchSearch && matchCat;
+      row.style.opacity = visible ? '1' : '0.25';
+
+      // Also collapse/hide the detail row when not visible.
+      var collapseId = row.getAttribute('data-bs-target');
+      if (collapseId) {
+        var detail = patternsTab.querySelector(collapseId);
+        if (detail && !visible) {
+          detail.classList.remove('show');
+        }
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}
