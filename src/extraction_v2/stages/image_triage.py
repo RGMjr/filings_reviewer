@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------------------------------
 # Learned triage feature flags
 # ---------------------------------------------------------------------------
@@ -43,8 +44,18 @@ logger = logging.getLogger(__name__)
 # LEARNED_TRIAGE_MIN controls the minimum predicted score (default 0.4).
 # When false (default), or when the model is absent, existing heuristic
 # behavior is preserved exactly.
-_USE_LEARNED_TRIAGE: bool = os.environ.get("USE_LEARNED_TRIAGE", "false").lower() == "true"
-_LEARNED_TRIAGE_MIN: float = float(os.environ.get("LEARNED_TRIAGE_MIN", "0.4"))
+#
+# Reads happen per-call (not at module import) so env-var flips on a
+# long-running worker take effect on the next request — no restart needed.
+# Mirrors the `_env_truthy("ENABLE_METRIC_CLASSIFY")` pattern at
+# `src/extraction_v2/pipeline.py:502`. See gh-477.
+def _use_learned_triage() -> bool:
+    return os.environ.get("USE_LEARNED_TRIAGE", "false").lower() == "true"
+
+
+def _learned_triage_min() -> float:
+    return float(os.environ.get("LEARNED_TRIAGE_MIN", "0.4"))
+
 
 # Set on first triage stage run per worker process to emit a one-shot
 # load-status log. Persists across `ImageTriageStage` instances within a worker
@@ -63,7 +74,7 @@ def _log_triage_model_status_once() -> None:
     the gate don't get noise from it.
     """
     global _LOGGED_TRIAGE_MODEL_STATUS
-    if _LOGGED_TRIAGE_MODEL_STATUS or not _USE_LEARNED_TRIAGE:
+    if _LOGGED_TRIAGE_MODEL_STATUS or not _use_learned_triage():
         return
     _LOGGED_TRIAGE_MODEL_STATUS = True
     from src.shared.image_features import _load_model
@@ -644,7 +655,7 @@ class ImageTriageStage:
             # the asset and use it in place of the heuristic threshold check.
             # Falls back transparently to heuristic when model is absent.
             queued: bool
-            if _USE_LEARNED_TRIAGE:
+            if _use_learned_triage():
                 features = v2_row_to_features_input(
                     {
                         "nearby_text": asset.nearby_text,
@@ -658,7 +669,7 @@ class ImageTriageStage:
                 score = predict_relevance(features)
                 if score is not None:
                     asset.predicted_relevance = score
-                    queued = score >= _LEARNED_TRIAGE_MIN
+                    queued = score >= _learned_triage_min()
                 else:
                     # Model absent — fall back to heuristic
                     queued = asset.relevance_score >= self.MIN_RELEVANCE_FOR_PROCESSING
