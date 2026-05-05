@@ -43,27 +43,29 @@ class TestPublicPages:
 class TestApiAuth:
     """Verify API authentication is enforced in production mode.
 
-    Post-PR-C1: the blueprint-wide ``register_api_auth`` gate on /api/v2/* is
-    gone. Routes are gated by per-route ``@require(<perm>)`` decorators that
-    are flag-aware — no-op when ``auth_enforcement_enabled=False`` (default
-    pre-flip). These tests originally asserted that missing/invalid API keys
-    return 401, which only holds once the operator flips the flag via the
-    Stage-C runbook (``docs/operations/auth-stage-c-runbook.md``). Re-enable
-    the assertions after the flip and update them for the new contract
-    (missing session → 401; valid session → 200; etc.).
+    Post Stage-C flip (``auth_enforcement_enabled=true``), per-route
+    ``@require(<perm>)`` decorators read ``flask.g.user``. Non-browser callers
+    authenticate via ``Authorization: ApiKey <key>`` or ``X-API-Key``;
+    ``load_api_key_user`` (gh-483) populates ``g.user`` with a synthetic admin
+    service account on valid-key requests so ``@require()`` passes.
     """
 
     def test_api_rejects_missing_key(self, base_url: str, is_live: bool) -> None:
-        pytest.skip(
-            "Pre-flag-flip transition: /api/v2/* require() decorators are no-op "
-            "when auth_enforcement_enabled=False. Re-enable post Stage-C flip."
-        )
+        if not is_live:
+            pytest.skip("Auth enforcement tests only run against live deployment")
+        r = requests.post(f"{base_url}/api/v2/decisions", json={}, timeout=10)
+        assert r.status_code == 401, f"Expected 401 for missing key, got {r.status_code}"
 
     def test_api_rejects_invalid_key(self, base_url: str, is_live: bool) -> None:
-        pytest.skip(
-            "Pre-flag-flip transition: /api/v2/* require() decorators are no-op "
-            "when auth_enforcement_enabled=False. Re-enable post Stage-C flip."
+        if not is_live:
+            pytest.skip("Auth enforcement tests only run against live deployment")
+        r = requests.post(
+            f"{base_url}/api/v2/decisions",
+            json={},
+            headers={"X-API-Key": "not-the-real-key"},
+            timeout=10,
         )
+        assert r.status_code == 401, f"Expected 401 for invalid key, got {r.status_code}"
 
     def test_api_accepts_valid_key(self, base_url: str, api_key: str, is_live: bool) -> None:
         if not is_live:

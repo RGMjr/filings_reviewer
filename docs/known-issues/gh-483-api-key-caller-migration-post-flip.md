@@ -3,20 +3,23 @@ id: 483
 source: gh
 slug: api-key-caller-migration-post-flip
 title: "auth: API-key-caller migration plan for post-flip (Stage D adjacent)"
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: M
 touches:
-  - src/web/middleware.py
+  - src/auth/service_account.py
+  - src/auth/load_user.py
+  - src/web/app.py
+  - tests/unit/auth/test_load_api_key_user.py
   - tests/deployment/test_smoke.py
   - docs/operations/auth-stage-c-runbook.md
 discovered: 2026-05-04
-updated: 2026-05-04
+updated: 2026-05-05
 gh_issue: 483
 pr_refs:
   - 479
-note: post-flip, Authorization ApiKey callers lose access to /api/v2/* because @require() needs g.user which _verify_api_key does not populate; runbook claim that API-key callers still work is not yet true
+note: shipped Option A — load_api_key_user() before_request hook in src/auth/load_user.py synthesizes an admin SessionUser (src/auth/service_account.py) for valid-API-key requests so post-flip @require() decorators pass; runbook §4 claim is now accurate, smoke tests re-enabled
 ---
 
 ### Problem

@@ -336,9 +336,15 @@ def create_app(
     # cookie on every request. Registered before ``csrf_protect`` so g.user
     # is available to the CSRF check (and to any future authz check).
     # No-op for anonymous traffic — sets g.user=None and returns immediately.
-    from src.auth.load_user import load_session_user
+    from src.auth.load_user import load_api_key_user, load_session_user
 
     app.before_request(load_session_user)
+
+    # ``load_api_key_user`` (gh-483) bridges non-browser API-key callers to
+    # ``flask.g.user`` for the Stage-C ``@require()`` decorators. Runs
+    # immediately after ``load_session_user`` so a real session always wins
+    # over the synthetic admin service account.
+    app.before_request(load_api_key_user)
 
     # Register CSRF protection middleware (A4).
     # No-op when auth_enforcement_enabled flag is off or missing (safe default).
