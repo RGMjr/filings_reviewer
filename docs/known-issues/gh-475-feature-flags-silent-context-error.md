@@ -16,6 +16,7 @@ updated: 2026-05-05
 gh_issue: 475
 pr_refs:
   - 472
+  - 511
 note: broad except in feature_flags swallowed RuntimeError during Stage B activation; symptom fixed in #472, broader hazard remains
 ---
 
