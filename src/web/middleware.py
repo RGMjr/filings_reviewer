@@ -95,6 +95,27 @@ def _verify_api_key() -> Any:
     return None
 
 
+def register_api_auth(bp: Blueprint) -> None:
+    """Register the API-key before_request hook on a blueprint.
+
+    Transitional (PR-C1 → Stage-C flag flip): wires ``_verify_api_key`` as a
+    blueprint-scoped ``before_request`` hook so that non-browser callers must
+    supply a valid ``X-API-Key`` / ``Authorization: ApiKey`` header even while
+    ``auth_enforcement_enabled`` remains ``false``.  Once the operator flips
+    the flag, ``@require()`` decorators take over as the authoritative gate and
+    this hook becomes redundant (but harmless — ``_verify_api_key`` already
+    skips same-origin browser requests and is a no-op when ``API_KEY_REQUIRED``
+    is ``false``, which covers tests and dev).
+
+    Remove this call (and this function) after the Stage-C flag has been flipped
+    in production and the transition period for existing callers is over.
+    """
+
+    @bp.before_request
+    def _check_api_key():
+        return _verify_api_key()
+
+
 def require_api_key(view: Callable) -> Callable:
     """
     Per-route API-key guard. Use on individual view functions when the
