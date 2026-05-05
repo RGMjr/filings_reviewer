@@ -61,7 +61,32 @@
 
    - **Any other worktree path** (primary working tree, user-managed worktrees outside `.claude/worktrees/` and `$HOME/.claude-worktrees/`): skip silently. Never touched.
 
-6. **Report.** Output a concise summary:
+6. **Local-only: stale worker-prompt scan.** Skip entirely if step 1 reported `remote`.
+
+   Scan `docs/worker-prompts/PICK_*.md` for prompts whose target work has shipped. Only `PICK_*.md` files are in scope — bespoke prompts (`STAGEC_*`, `WAVE*_*`, etc.) are orchestrator handoffs and stay manual.
+
+   For each `PICK_*.md`, parse the filename to identify referenced issues:
+
+   - **`PICK_gh-<N>_<slug>.md`** (single issue) — candidate if `gh issue view <N> --json state -q .state` returns `CLOSED`.
+   - **`PICK_gh-<N>-<M>[-<...>]_<slug>.md`** (multi-issue, e.g. `PICK_gh-445-456_*.md`) — candidate only if **every** referenced issue is `CLOSED`. If any one is still open, keep.
+   - **`PICK_legacy-<NNN>_<slug>.md`** — candidate if `docs/known-issues/legacy-<NNN>-*.md` exists and its frontmatter `status:` field is `resolved`. If the fragment is missing or any other status (`open`, `partially-resolved`), keep.
+
+   Distinguish the two reference forms by the literal `gh-` vs `legacy-` prefix after `PICK_`. Do NOT use `gh issue view` for `legacy-*` files — those numbers do not map to GitHub issues.
+
+   Build a candidate list. If empty, report `stale worker-prompts: none` and proceed to step 7. Otherwise present:
+
+   ```
+   Stale worker-prompts (referenced work has shipped):
+     1. PICK_gh-<N>_<slug>.md — gh issue #<N> CLOSED
+     2. PICK_legacy-<NNN>_<slug>.md — fragment status=resolved
+     ...
+
+   Reply "approve" / "all" to delete all listed, "none" to skip, or list numbers to delete a subset.
+   ```
+
+   On approval, `rm` each listed file. **Do not** `git rm` even if the file happens to be tracked — defer that to a separate `/commit-proj` so the deletion lands in a reviewable PR. If any listed file is tracked (`git ls-files --error-unmatch <path>` succeeds), report it in the summary as `tracked stale worker-prompts (need /commit-proj): <list>` instead of deleting.
+
+7. **Report.** Output a concise summary:
    ```
    cleanup: mode=<local|remote>
      pruned remote-tracking refs: N
@@ -72,6 +97,8 @@
      removed empty scratch worktrees: <list or "none">
      kept internal/ccw worktrees: <list with one-word reason, or "none">
      skipped active agent worktrees: N (live pids)
+     deleted stale worker-prompts: <list or "none">
+     tracked stale worker-prompts (need /commit-proj): <list or "none">
    ```
 
 ## Safety rules
@@ -83,6 +110,7 @@
 - For ccw and non-agent internal worktrees, auto-remove only on two dispositions: (a) branch has a merged PR per step 3, or (b) branch name starts with `scratch/` AND the worktree has zero unique commits beyond `origin/main`. Every other case skips with a reported reason.
 - Worktrees whose path is neither under `.claude/worktrees/` nor under `$HOME/.claude-worktrees/<repo>/` are never touched — they're user-managed.
 - Do not prune branches via step 4 that are still checked out in any linked worktree — step 5 removes the worktree and branch together.
+- Worker-prompt deletion (step 6) requires user confirmation; never auto-delete. Tracked files are reported, not removed — they require a `/commit-proj` PR. Bespoke prompts (`STAGEC_*`, `WAVE*_*`, etc.) are out of scope and never listed.
 
 ## Out of scope
 
