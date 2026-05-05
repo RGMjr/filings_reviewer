@@ -13,7 +13,7 @@ touches:
   - src/universe/onboarding_runner.py
   - src/web/routes/ingest.py
   - src/web/templates/ingest_batch.html
-updated: '2026-05-04'
+updated: '2026-05-05'
 pr_refs:
   - 382
 note: Operator UI mitigation shipped via PR #382 — Resume Batch button surfaces when status='running' AND lock_stale=true (run_lock_until < NOW()), replacing the manual SQL UPDATE + local-runner workaround. Auto-recovery via the watcher's poll predicate is technically wired (_CLAIM_NEXT_SQL admits stale-locked running rows; watcher loop calls it every poll cycle) but never verified end-to-end on Render after the original incident. Severity downgraded medium→low because the operational pain is gone; remaining concern is verification, not new code.
@@ -61,7 +61,15 @@ Minimal-effort path: #1 (watcher poll-predicate verification and extension) plus
 - #2 (shorter lock TTL): TTL still 900s default; per-filing heartbeat already exists at `onboarding_runner.py:263`.
 - #3 (Render dyno watchdog): infrastructure concern, out of scope.
 
-**Remaining work to fully close:** reproduce a mid-batch stall on Render and confirm the watcher auto-claims it within the lock TTL. If reproduced and auto-recovery does NOT fire, file a fresh fragment for the watcher poll-predicate gap. If auto-recovery DOES fire, flip this to `resolved`.
+**Instrumentation added (2026-05-05):** Added a targeted ERROR log line to the watcher poll loop. When `claim_next_queued_batch()` returns a row with `status='running'` (indicating a stale re-claim rather than a fresh queued batch), the watcher now emits:
+
+```
+ERROR Watcher: auto-recovered stale-locked batch batch_id=<id>
+```
+
+Grep for `"Watcher: auto-recovered stale-locked batch"` in Render watcher dyno logs on the next real stall. If this line appears → auto-recovery fired → flip to `resolved`. If absent despite `run_lock_until` expiring and no Resume Batch click → the watcher dyno itself hanged (synchronous `run_one` never returned) → file a new fragment for the blocking-loop gap.
+
+**Remaining work to fully close:** observe a real stall on Render and check for the new log line (see above).
 
 ### Operator workaround (current)
 

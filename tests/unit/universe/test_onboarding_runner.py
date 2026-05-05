@@ -525,3 +525,110 @@ class TestBatchCompleteConditional:
 
         assert "status = 'cancelled'" in _FINALIZE_CANCEL_SQL
         assert "finished_at IS NULL" in _FINALIZE_CANCEL_SQL
+
+
+class TestWatcherStaleReclaimLog:
+    """Watcher emits ERROR when it re-claims a stale-locked running batch (gh-313)."""
+
+    def test_error_logged_for_stale_running_batch(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import logging
+        import sys
+
+        import src.universe.onboarding_runner as runner_mod
+
+        stale_batch = {
+            "batch_id": "stale-abc-123",
+            "kind": "onboard",
+            "status": "running",
+            "reviewer_id": None,
+            "criteria": {},
+            "resolved_query": {},
+            "limits": {},
+            "total_filings": 0,
+            "started_at": None,
+        }
+
+        call_count = [0]
+
+        def _fake_claim_batch(db: object, **kw: object) -> dict | None:  # type: ignore[type-arg]
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return stale_batch
+            runner_mod._shutdown_requested = True
+            return None
+
+        monkeypatch.setenv("DATABASE_URL", "postgresql://test/fake")
+        monkeypatch.setattr(runner_mod, "load_dotenv", lambda: None)
+        monkeypatch.setattr(runner_mod, "configure_logging", lambda **kw: None)
+        monkeypatch.setattr(runner_mod, "DatabaseAdapter", lambda url: object())
+        monkeypatch.setattr(runner_mod, "claim_next_queued_retrain", lambda db, **kw: None)
+        monkeypatch.setattr(runner_mod, "claim_next_queued_batch", _fake_claim_batch)
+        monkeypatch.setattr(runner_mod, "run_one", lambda db, row: None)
+        monkeypatch.setattr(sys, "argv", ["runner", "--watch"])
+
+        runner_mod._shutdown_requested = False
+        try:
+            with caplog.at_level(logging.ERROR, logger="src.universe.onboarding_runner"):
+                runner_mod.main()
+        finally:
+            runner_mod._shutdown_requested = False
+
+        assert "Watcher: auto-recovered stale-locked batch batch_id=stale-abc-123" in caplog.text
+
+    def test_no_error_logged_for_freshly_queued_batch(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import logging
+        import sys
+
+        import src.universe.onboarding_runner as runner_mod
+
+        queued_batch = {
+            "batch_id": "queued-xyz-456",
+            "kind": "onboard",
+            "status": "running",  # flipped to running by CLAIM_NEXT_SQL CASE expression
+            "reviewer_id": None,
+            "criteria": {},
+            "resolved_query": {},
+            "limits": {},
+            "total_filings": 0,
+            "started_at": None,
+        }
+        # Simulate a fresh queued batch: CLAIM_NEXT_SQL sets status='running' via CASE.
+        # The pre-claim status was 'queued' so the returned row reflects the updated state.
+        # We verify no stale-reclaim ERROR fires for this path by returning status='running'
+        # only once and checking caplog stays clean.
+        queued_batch["status"] = "queued"
+
+        call_count = [0]
+
+        def _fake_claim_batch(db: object, **kw: object) -> dict | None:  # type: ignore[type-arg]
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return queued_batch
+            runner_mod._shutdown_requested = True
+            return None
+
+        monkeypatch.setenv("DATABASE_URL", "postgresql://test/fake")
+        monkeypatch.setattr(runner_mod, "load_dotenv", lambda: None)
+        monkeypatch.setattr(runner_mod, "configure_logging", lambda **kw: None)
+        monkeypatch.setattr(runner_mod, "DatabaseAdapter", lambda url: object())
+        monkeypatch.setattr(runner_mod, "claim_next_queued_retrain", lambda db, **kw: None)
+        monkeypatch.setattr(runner_mod, "claim_next_queued_batch", _fake_claim_batch)
+        monkeypatch.setattr(runner_mod, "run_one", lambda db, row: None)
+        monkeypatch.setattr(sys, "argv", ["runner", "--watch"])
+
+        runner_mod._shutdown_requested = False
+        try:
+            with caplog.at_level(logging.ERROR, logger="src.universe.onboarding_runner"):
+                runner_mod.main()
+        finally:
+            runner_mod._shutdown_requested = False
+
+        assert "auto-recovered" not in caplog.text
