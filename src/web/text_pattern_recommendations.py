@@ -270,6 +270,168 @@ def _rule_keyword_overlap(metric_id: str, summary: dict[str, Any]) -> list[dict[
     return recs
 
 
+def compute_cross_metric_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Aggregate phrase findings across metrics to surface shared signals.
+
+    Groups ``text_decision_phrase_findings`` rows by ``(phrase, decision_type,
+    source_field)`` across all metrics and returns rows with ``metric_count``
+    and a ``cross_metric_exclusion`` recommendation when the phrase fires the
+    new cross-metric rule:
+
+    - ``decision_type == 'reject'``
+    - ``source_field in EXCL_SOURCE_FIELDS`` (module-level constant — same
+      allowlist as ``_rule_exclusion_pattern``; do NOT hardcode a local copy)
+    - ``phrase_ngram_size >= EXCL_NGRAM_MIN``
+    - ``metric_count >= 3``
+
+    Severity: ``high`` when ``metric_count >= 5``, else ``medium``.
+
+    Returns rows ordered DESC by ``total_occurrence``.  Empty input → empty
+    list (mirrors the ``compute_recommendations`` empty contract).
+
+    **Cross-plan contract:** ``EXCL_SOURCE_FIELDS`` is read from the module
+    scope at call time.  Test stubs MUST monkeypatch
+    ``src.web.text_pattern_recommendations.EXCL_SOURCE_FIELDS`` (one site)
+    so both the per-metric ``exclusion_pattern`` rule and this function see
+    the same binding.  Do NOT introduce a per-rule local copy inside this
+    function.
+    """
+    if not findings:
+        return []
+
+    # Group by (phrase, decision_type, source_field).
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for f in findings:
+        key = (f["phrase"], f["decision_type"], f["source_field"])
+        if key not in groups:
+            groups[key] = {
+                "phrase": f["phrase"],
+                "decision_type": f["decision_type"],
+                "source_field": f["source_field"],
+                "phrase_ngram_size": int(f.get("phrase_ngram_size", 0)),
+                "total_occurrence": 0,
+                "metric_ids": set(),
+                "top_examples": [],
+            }
+        g = groups[key]
+        g["total_occurrence"] += int(f.get("occurrence_count", 0))
+        g["metric_ids"].add(f["metric_id"])
+        # Collect up to 5 examples across metrics.
+        for ex in f.get("examples") or []:
+            if len(g["top_examples"]) < 5:
+                g["top_examples"].append(ex)
+
+    rows: list[dict[str, Any]] = []
+    for g in groups.values():
+        metric_count = len(g["metric_ids"])
+        metrics_list = sorted(g["metric_ids"])
+
+        # Determine cross_metric_exclusion rule eligibility.
+        # EXCL_SOURCE_FIELDS is read from the module-level binding so
+        # monkeypatching at one site covers both per-metric and cross-metric.
+        fires_excl = (
+            g["decision_type"] == "reject"
+            and g["source_field"] in EXCL_SOURCE_FIELDS
+            and g["phrase_ngram_size"] >= EXCL_NGRAM_MIN
+            and metric_count >= 3
+        )
+        if fires_excl:
+            severity: str | None = "high" if metric_count >= 5 else "medium"
+        else:
+            severity = None
+
+        rows.append(
+            {
+                "phrase": g["phrase"],
+                "decision_type": g["decision_type"],
+                "source_field": g["source_field"],
+                "phrase_ngram_size": g["phrase_ngram_size"],
+                "total_occurrence": g["total_occurrence"],
+                "metric_count": metric_count,
+                "metrics": metrics_list,
+                "top_examples": g["top_examples"],
+                "cross_metric_exclusion": fires_excl,
+                "severity": severity,
+            }
+        )
+
+    rows.sort(key=lambda r: r["total_occurrence"], reverse=True)
+    return rows
+
+
+def interpret_finding_row(row: dict[str, Any]) -> dict[str, str]:
+    """Return a human-readable interpretation and suggested action for a phrase row.
+
+    Mapping covers five branches by ``(decision_type, source_field, ngram_size)``::
+
+        reject + rejection_reason + n>=2  → historical exclusion candidate
+            (pre-PR-509 runs; rejection_reason no longer mined after PR 4)
+        reject + segment_text + n>=2      → YAML exclusion / context filter
+        reject + segment_text + n=1       → single-word signal (too aggressive alone)
+        correct + segment_text (any n)    → sibling-metric routing signal
+        accept (any source)               → confirmed positive / keyword candidate
+
+    The ``rejection_reason`` branch is kept to cover historical findings rows
+    from pre-PR-509 runs that remain in ``text_decision_phrase_findings`` until
+    the next analysis run displaces them.  New runs after PR 4 (2026-05-05) do
+    not produce ``source_field='rejection_reason'`` rows.
+
+    Returns ``{"interpretation": str, "suggested_action": str}``.
+    """
+    decision_type = row.get("decision_type", "")
+    source_field = row.get("source_field", "")
+    ngram_size = int(row.get("phrase_ngram_size", 0))
+
+    if decision_type == "accept":
+        return {
+            "interpretation": "Confirmed positive signal.",
+            "suggested_action": "Keyword candidate — verify YAML coverage for this phrase.",
+        }
+
+    if decision_type == "correct":
+        return {
+            "interpretation": ("Phrase often appears when reviewers reroute to a sibling metric."),
+            "suggested_action": (
+                "See keyword_overlap recommendation or tighten YAML for this metric."
+            ),
+        }
+
+    if decision_type == "reject":
+        # Historical branch: rejection_reason source from pre-PR-509 runs.
+        # New analysis runs (post PR 4) do not produce source_field='rejection_reason'
+        # rows — this branch exists only to handle DB rows that predate the change.
+        if source_field == "rejection_reason" and ngram_size >= 2:
+            return {
+                "interpretation": ("Reviewer-cited reason (historical) — exclusion candidate."),
+                "suggested_action": (
+                    "Add to YAML exclusions or audit FP rule for this category. "
+                    "Note: rejection_reason is no longer mined after PR 4 (2026-05-05); "
+                    "these rows reflect pre-PR-4 analysis runs."
+                ),
+            }
+        if source_field == "segment_text" and ngram_size >= 2:
+            return {
+                "interpretation": ("Phrase appears in extracted text of rejected facts."),
+                "suggested_action": ("Consider YAML exclusion or context filter for this phrase."),
+            }
+        if source_field == "segment_text" and ngram_size == 1:
+            return {
+                "interpretation": (
+                    "Single-word reject signal — too aggressive for exclusion alone."
+                ),
+                "suggested_action": (
+                    "Review FP rules for this metric; a single word rarely "
+                    "justifies a blanket YAML exclusion."
+                ),
+            }
+
+    # Fallback for any future source/decision combinations.
+    return {
+        "interpretation": "Signal — review in context.",
+        "suggested_action": "Inspect the per-metric phrase table for details.",
+    }
+
+
 def _rule_fp_filter_gap(metric_id: str, summary: dict[str, Any]) -> list[dict[str, Any]]:
     """Surface metrics whose rejects are dominated by wrong_value."""
     reject_count = int(summary.get("reject_count") or 0)
