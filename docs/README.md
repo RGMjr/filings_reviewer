@@ -71,6 +71,7 @@ Instructions for setting up, running, and maintaining the system.
 | **[extraction-runbook.md](operations/extraction-runbook.md)** ⭐ | **Re-extraction, re-segmentation, candidate regeneration** | Developers, DevOps |
 | **[TICKER_ONBOARDING.md](operations/TICKER_ONBOARDING.md)** | Onboard SEC filings filtered by industry / year / form-type via `scripts/onboard_tickers.py` | Developers, DevOps |
 | **[gold-standard-runbook.md](operations/gold-standard-runbook.md)** | Gold standard validation, baseline update, regression workflow | Developers |
+| **[text-pattern-recommendations-runbook.md](operations/text-pattern-recommendations-runbook.md)** | Translate accepted Suggested-actions cards on `/v2/review/stats` into keyword / FP-filter PRs | Developers |
 | **[image-model-training-runbook.md](operations/image-model-training-runbook.md)** | Image relevance model: export → train → score pipeline | Developers |
 | **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
 | **[github-org-transfer.md](operations/github-org-transfer.md)** | Decision record + runbook: when/how to migrate from user repo to GitHub org (unlocks merge queue, teams, org rulesets) | DevOps |
