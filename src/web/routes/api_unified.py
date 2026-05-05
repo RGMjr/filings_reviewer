@@ -30,7 +30,6 @@ from src.web.app import get_db
 from src.web.middleware import (
     insert_audit_log_entry,
     register_timing,
-    require_admin,
 )
 
 api_unified_bp = Blueprint("api_unified", __name__, url_prefix="/api/v2")
@@ -1601,7 +1600,6 @@ def _serialize_recommendation_decision(row: dict) -> dict:
 
 
 @api_unified_bp.route("/extraction/recommendation-decisions", methods=["POST"])
-@require_admin
 @require(INGEST_RUN)
 def upsert_recommendation_decision():
     """Record an admin's Accept/Dismiss/Defer click on a Suggested-actions row.
@@ -1615,7 +1613,7 @@ def upsert_recommendation_decision():
           "rule": "exclusion_pattern" | "keyword_overlap" | "fp_filter_gap",
           "decision_key": str,
           "decision": "accepted" | "dismissed" | "deferred",
-          "reviewer_id": str,        # required by _require_reviewer_id + require_admin
+          "reviewer_id": str,        # required by _require_reviewer_id
           "reviewer_note": str?      # optional, <= 1000 chars
         }
 
@@ -1663,7 +1661,6 @@ def upsert_recommendation_decision():
 
 
 @api_unified_bp.route("/extraction/recommendation-decisions/<uuid:decision_id>", methods=["DELETE"])
-@require_admin
 @require(INGEST_RUN)
 def delete_recommendation_decision(decision_id):
     """Undo a recommendation decision. Reviewer-scoped — admins can't undo
