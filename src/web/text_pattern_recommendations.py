@@ -17,8 +17,11 @@ only knobs.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # --- Rule thresholds ---------------------------------------------------------
 # Single source of truth so a tweak is one edit + one PR. Documented in
@@ -50,6 +53,7 @@ def compute_recommendations(
     summaries: list[dict[str, Any]],
     findings: list[dict[str, Any]],
     decisions: list[dict[str, Any]] | None = None,
+    config_snapshot_hash: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Map metric_id -> list of recommendation dicts.
 
@@ -66,6 +70,7 @@ def compute_recommendations(
           "evidence": str,
           "action": str,
           "decision": dict | None,  # populated when `decisions` arg matches
+          "config_drift": bool,    # True when config changed since this run
         }
 
     When ``decisions`` is provided (a list of recommendation-decision rows
@@ -75,9 +80,28 @@ def compute_recommendations(
     most-recent one (by ``updated_at``) wins. Skipping/omitting the arg
     leaves ``decision`` as ``None`` on every rec, preserving the prior
     contract.
+
+    ``config_snapshot_hash`` is the hash stored on the analysis run row. When
+    it differs from the current hash (computed at call time from the live
+    config files), ``config_drift`` is set to ``True`` on every card so the
+    template can render a freshness badge. When ``config_snapshot_hash`` is
+    ``None`` (legacy runs from before this feature), ``config_drift`` is
+    ``False`` — legacy cards are never false-flagged.
     """
     if not summaries and not findings:
         return {}
+
+    # Compute config_drift: compare stored hash against current live hash.
+    # NULL stored hash (legacy run) → False so legacy cards are not flagged.
+    config_drift: bool = False
+    if config_snapshot_hash is not None:
+        try:
+            from src.extraction_v2.config_hash import compute_config_hash
+
+            current_hash = compute_config_hash()
+            config_drift = current_hash != config_snapshot_hash
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not compute config hash for drift check", exc_info=True)
 
     # Group findings by metric_id once so each rule's helper can scan
     # locally without re-iterating the full list.
@@ -104,6 +128,7 @@ def compute_recommendations(
         if recs:
             for r in recs:
                 r["decision"] = decision_index.get((metric_id, r["rule"], r["decision_key"]))
+                r["config_drift"] = config_drift
             recs.sort(key=lambda r: (_SEVERITY_RANK[r["severity"]], r["rule"]))
             out[metric_id] = recs
     return out

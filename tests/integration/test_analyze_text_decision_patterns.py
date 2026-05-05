@@ -363,3 +363,46 @@ def test_exception_path_flips_status_to_failed(clean_db, cli):
     )
     assert run["error"] is not None
     assert "simulated" in run["error"]
+
+
+@pytest.mark.skipif(
+    not __import__("os").getenv("TEST_DATABASE_URL"),
+    reason="TEST_DATABASE_URL not set",
+)
+def test_run_writes_config_snapshot_hash(clean_db, cli):
+    """_orchestrate writes config_snapshot_hash to the run row at run-start.
+
+    Asserts:
+    - The run row has a non-null config_snapshot_hash after a successful run.
+    - The stored hash matches compute_config_hash() called at assertion time
+      (the config files have not changed between the analysis run and the
+      assertion, so the hashes must be equal).
+    """
+    _truncate_analysis_tables(clean_db)
+    _seed_corpus(clean_db)
+
+    db_url = __import__("os").environ["TEST_DATABASE_URL"]
+    args = Namespace(
+        database_url=db_url,
+        run_id=None,
+        triggered_by="test",
+        max_decisions=None,
+    )
+    cli._orchestrate(args)
+
+    runs = _query_runs(clean_db)
+    assert len(runs) == 1, "Expected exactly one run row"
+    run = runs[0]
+    assert run["status"] == "succeeded"
+
+    stored_hash = run.get("config_snapshot_hash")
+    assert stored_hash is not None, "config_snapshot_hash must be non-null after a successful run"
+
+    # The config files have not changed, so the live hash must match the
+    # stored hash captured at run-start.
+    from src.extraction_v2.config_hash import compute_config_hash
+
+    assert stored_hash == compute_config_hash(), (
+        "Stored config_snapshot_hash does not match current compute_config_hash() — "
+        "either the hash was not written correctly or config files changed mid-test"
+    )

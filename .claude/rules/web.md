@@ -72,6 +72,10 @@ The Patterns-tab expanded row also renders a **Suggested actions** callout above
 
 Three rules in v1; a metric may fire multiple. Output is sorted by severity DESC then rule name ASC. Each recommendation dict carries `rule`, `severity` (`high` / `medium`), `title`, `evidence`, `action`.
 
+**Card-level metadata fields** (orthogonal to rule type — present on every card):
+
+- `config_drift: bool` — `True` when `config_snapshot_hash` stored on the analysis run row differs from the current `compute_config_hash()` value at render time. Signals that `config/metric_keywords.yaml` or `false_positive_filter.py` has changed since the run was captured; the template renders a "Config changed since this analysis" badge. `False` when the hashes match OR when `config_snapshot_hash` is `NULL` (legacy runs from before the hash feature — legacy cards are never false-flagged). Computed in `compute_recommendations(config_snapshot_hash=...)` and set on every rec dict in the same loop as `decision`.
+
 | Rule | Trigger | Severity bands |
 |---|---|---|
 | **`exclusion_pattern`** | A `text_decision_phrase_findings` row with `decision_type='reject'`, `source_field IN ('rejection_reason', 'segment_text')`, `phrase_ngram_size >= 2`, `pct_of_decisions >= 30` | high if `pct >= 50`, else medium |

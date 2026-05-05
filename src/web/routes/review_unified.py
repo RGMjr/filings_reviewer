@@ -284,8 +284,16 @@ def stats():
     text_recommendation_decisions = db.get_recommendation_decisions(
         [s["metric_id"] for s in text_metric_summary] or None
     )
+    # Pass the stored config hash so compute_recommendations can detect drift.
+    # None when no run exists or the run predates the config_snapshot_hash column.
+    stored_config_hash: str | None = (
+        last_text_analysis_run.get("config_snapshot_hash") if last_text_analysis_run else None
+    )
     text_recommendations = compute_recommendations(
-        text_metric_summary, text_phrase_findings, text_recommendation_decisions
+        text_metric_summary,
+        text_phrase_findings,
+        text_recommendation_decisions,
+        config_snapshot_hash=stored_config_hash,
     )
 
     return render_template(

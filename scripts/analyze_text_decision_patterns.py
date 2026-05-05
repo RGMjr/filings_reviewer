@@ -55,6 +55,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import psycopg
 from psycopg.rows import dict_row
 
+from src.extraction_v2.config_hash import compute_config_hash
 from src.infra.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -478,6 +479,21 @@ def _orchestrate(args: argparse.Namespace) -> None:
 
     with psycopg.connect(args.database_url, autocommit=False) as conn:
         run_id = _ensure_run_row(conn, run_id=args.run_id, triggered_by=args.triggered_by or "cli")
+
+        # Capture the config hash at run-start so the stats page can flag
+        # cards as stale when the keyword/FP-filter config changes after the run.
+        config_snapshot_hash = compute_config_hash()
+        with conn.cursor() as _cur:
+            _cur.execute(
+                """
+                UPDATE text_decision_analysis_runs
+                   SET config_snapshot_hash = %(hash)s
+                 WHERE id = %(run_id)s
+                """,
+                {"hash": config_snapshot_hash, "run_id": run_id},
+            )
+        conn.commit()
+        logger.info("Config snapshot hash: %s", config_snapshot_hash[:12])
 
         anchor = _resolve_anchor(conn)
         logger.info("Anchor for analysis: %s", anchor or "(lifetime, no prior succeeded run)")
