@@ -54,6 +54,12 @@
     /* Sticky-offset constant — matches the compact navbar (padding-y 0.25rem).
        Calibrate against DevTools if navbar styling changes. See KNOWN_ISSUES #41. */
     --navbar-height: 48px;
+
+    /* Approximate rendered height of .review-sticky-header (filing title row +
+       tab bar + filter bar + padding).  The bulk-action-bar uses this to stack
+       below the header instead of overlapping it (gh-464).  Calibrate in
+       DevTools if the header layout changes (e.g. pill-row wraps to two lines). */
+    --review-sticky-header-height: 130px;
 }
 
 /* Compact the primary navbar — shaves ~4px top + ~4px bottom vs Bootstrap default. */
@@ -1170,12 +1176,12 @@
     flex-shrink: 0;
 }
 
-/* Pin the bulk action bar so Undo / Reject stay visible (and on top of the
-   sticky review header at z-index 1010) while the reviewer scrolls the
-   thumbnail column. */
+/* Pin the bulk action bar so Undo / Reject stay visible while the reviewer
+   scrolls the thumbnail column.  top is offset past the sticky review header
+   (gh-464: both elements shared the same top, causing visual overlap). */
 #bulk-action-bar {
     position: sticky;
-    top: var(--navbar-height);
+    top: calc(var(--navbar-height) + var(--review-sticky-header-height));
     z-index: 1011;
     background: var(--bs-white, #fff);
 }
