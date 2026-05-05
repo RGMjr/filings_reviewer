@@ -964,8 +964,8 @@ class TestPromoteToFullPageScan:
 class TestLearnedTriageGate:
     """Tests for the USE_LEARNED_TRIAGE feature-flag gate (Wave B3 Stage 1).
 
-    The gate is a module-level flag evaluated at import, so tests patch the
-    module attribute directly rather than setting env and reloading.
+    Post gh-477, the gate is read per-call from `os.environ`, so tests use
+    `monkeypatch.setenv` rather than patching module attributes.
     """
 
     @pytest.fixture
@@ -986,10 +986,7 @@ class TestLearnedTriageGate:
         self, stage: ImageTriageStage, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """USE_LEARNED_TRIAGE=false (default): behavior matches heuristic path."""
-        monkeypatch.setattr(
-            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
-            False,
-        )
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "false")
 
         asset = self._make_chart_asset()
         result = stage.triage_images([asset])
@@ -1011,10 +1008,11 @@ class TestLearnedTriageGate:
         This is the critical fallback path — if the model artifact never ships
         or fails to load, the pipeline must not crash or silently drop images.
         """
-        monkeypatch.setattr(
-            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
-            True,
-        )
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "true")
+        # Force the local-disk resolution path; with R2_BUCKET set, _load_model
+        # would materialize the live model from storage and bypass the patched
+        # DEFAULT_MODEL_PATH below (see image_features._load_model:194).
+        monkeypatch.delenv("R2_BUCKET", raising=False)
         # Point the loader at a non-existent path so predict_relevance returns None.
         monkeypatch.setattr(
             "src.shared.image_features.DEFAULT_MODEL_PATH",
@@ -1046,10 +1044,7 @@ class TestLearnedTriageGate:
         asset should be queued regardless of its heuristic relevance_score and
         predicted_relevance should land on the asset.
         """
-        monkeypatch.setattr(
-            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
-            True,
-        )
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "true")
         monkeypatch.setattr(
             "src.extraction_v2.stages.image_triage.predict_relevance",
             lambda features: 0.8,
@@ -1067,10 +1062,7 @@ class TestLearnedTriageGate:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """USE_LEARNED_TRIAGE=true + predicted_relevance < LEARNED_TRIAGE_MIN: skip."""
-        monkeypatch.setattr(
-            "src.extraction_v2.stages.image_triage._USE_LEARNED_TRIAGE",
-            True,
-        )
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "true")
         # Default LEARNED_TRIAGE_MIN is 0.4; 0.2 is below threshold.
         monkeypatch.setattr(
             "src.extraction_v2.stages.image_triage.predict_relevance",
@@ -1084,6 +1076,34 @@ class TestLearnedTriageGate:
         # Asset was classified but not queued (below learned threshold).
         assert asset.classification == ImageClassification.CHART
         assert len(result) == 0
+
+    def test_env_var_change_after_stage_construction_takes_effect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Flipping USE_LEARNED_TRIAGE after import picks up on the next call (gh-477).
+
+        Pre-refactor the gate was read at module import, so a long-running worker
+        would never see a Render env-var flip until restart. This test pins the
+        per-call read by constructing the stage with the var unset, then flipping
+        it on AFTER construction, and asserting the next triage call exercises
+        the learned gate path.
+        """
+        monkeypatch.delenv("USE_LEARNED_TRIAGE", raising=False)
+        stage = ImageTriageStage()
+
+        # Flip the gate ON after the stage already exists.
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "true")
+        monkeypatch.setattr(
+            "src.extraction_v2.stages.image_triage.predict_relevance",
+            lambda features: 0.9,
+        )
+
+        asset = self._make_chart_asset()
+        result = stage.triage_images([asset])
+
+        # If the read were still module-scoped, predicted_relevance would stay None.
+        assert asset.predicted_relevance == 0.9
+        assert len(result) == 1
 
 
 # ============================================================================
@@ -1227,10 +1247,9 @@ class TestTriageGateEagerLoadStatusLog:
         """USE_LEARNED_TRIAGE=true + missing model → exactly one ERROR per worker."""
         import logging
 
-        from src.extraction_v2.stages import image_triage
         from src.shared import image_features
 
-        monkeypatch.setattr(image_triage, "_USE_LEARNED_TRIAGE", True)
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "true")
         # Point the loader at a non-existent file so _load_model returns None silently.
         monkeypatch.setattr(image_features, "DEFAULT_MODEL_PATH", tmp_path / "no_such_model.joblib")
 
@@ -1267,10 +1286,9 @@ class TestTriageGateEagerLoadStatusLog:
         import logging
         from unittest.mock import MagicMock, patch
 
-        from src.extraction_v2.stages import image_triage
         from src.shared import image_features
 
-        monkeypatch.setattr(image_triage, "_USE_LEARNED_TRIAGE", True)
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "true")
         # Provide a real existing path; patch joblib.load to return a fake pipeline.
         model_file = tmp_path / "model.joblib"
         model_file.write_bytes(b"placeholder")
@@ -1301,9 +1319,7 @@ class TestTriageGateEagerLoadStatusLog:
         """USE_LEARNED_TRIAGE=false → no eager-load log of any level."""
         import logging
 
-        from src.extraction_v2.stages import image_triage
-
-        monkeypatch.setattr(image_triage, "_USE_LEARNED_TRIAGE", False)
+        monkeypatch.setenv("USE_LEARNED_TRIAGE", "false")
 
         with caplog.at_level(logging.DEBUG, logger="src.extraction_v2.stages.image_triage"):
             ImageTriageStage().process(self._empty_context())
