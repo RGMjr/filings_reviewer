@@ -49,6 +49,49 @@
      SUMMARY TAB
      ===================================================================== #}
   <div class="tab-pane fade show active" id="summary-stats" role="tabpanel" aria-labelledby="summary-tab">
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card border-secondary">
+          <div class="card-body">
+            <h5 class="card-title mb-2">Metabase/Data Explorer Readiness</h5>
+            <p class="text-muted small mb-3">
+              Quick health check for analytics-facing views after schema changes.
+            </p>
+            <div class="row g-2 small">
+              <div class="col-md-4">
+                <strong>v_analytics_fact_wide:</strong>
+                {% if analytics_health.v_analytics_fact_wide is not none %}
+                  {{ analytics_health.v_analytics_fact_wide }} rows
+                {% else %}
+                  <span class="text-danger">missing view</span>
+                {% endif %}
+              </div>
+              <div class="col-md-4">
+                <strong>v_analytics_coverage_matrix:</strong>
+                {% if analytics_health.v_analytics_coverage_matrix is not none %}
+                  {{ analytics_health.v_analytics_coverage_matrix }} rows
+                {% else %}
+                  <span class="text-danger">missing view</span>
+                {% endif %}
+              </div>
+              <div class="col-md-4">
+                <strong>v_doc_metric_presence:</strong>
+                {% if analytics_health.v_doc_metric_presence is not none %}
+                  {{ analytics_health.v_doc_metric_presence }} rows
+                {% else %}
+                  <span class="text-warning">not deployed yet</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="mt-3">
+              <a class="btn btn-sm btn-outline-primary" href="{{ metabase_url }}" target="_blank" rel="noopener">
+                Open Data Explorer ↗
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     {# Image-classifier model status card. The button submits to
        POST /api/v2/models/image-classifier/retrain via static/js/analytics.js;
