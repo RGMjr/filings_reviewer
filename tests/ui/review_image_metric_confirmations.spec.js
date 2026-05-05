@@ -104,6 +104,23 @@ test.describe('Detected Metrics card — rendering', () => {
     await expect(acceptedRow).toHaveClass(/decided-accept/);
     await expect(acceptedRow.locator('.metric-state-indicator')).toContainText('Accepted');
   });
+
+  test('pre-seeded add confirmation renders an added-metric-row on load', async ({ page }) => {
+    await page.goto('/images-tab-detected-with-added');
+    const addedRow = page.locator(
+      '#detected-metrics-list .added-metric-row[data-added-metric="cm_lifetime_value_per_customer"]',
+    );
+    await expect(addedRow).toBeVisible();
+    await expect(addedRow).toContainText('cm_lifetime_value_per_customer');
+  });
+
+  test('header shows "M added" badge and inclusive title when an add confirmation exists', async ({ page }) => {
+    await page.goto('/images-tab-detected-with-added');
+    const header = page.locator('#detected-metrics-card .card-header');
+    await expect(header).toContainText('4 detected');
+    await expect(header).toContainText('1 added');
+    await expect(header).toContainText('Metrics (detected + user-added)');
+  });
 });
 
 // =========================================================================

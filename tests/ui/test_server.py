@@ -570,6 +570,34 @@ def review_images_tab_vision():
     )
 
 
+@app.route("/images-tab-detected-with-added")
+def review_images_tab_detected_with_added():
+    """Images tab with detected_metrics + a prior 'add' confirmation — verifies user-added metrics are visible on reopen."""
+    preseeded = [
+        {
+            "confirmation_id": "c-add-1",
+            "img_id": MOCK_IMAGE_CANDIDATE_WITH_DETECTED["img_id"],
+            "detected_metric_id": None,
+            "confirmed_metric_id": "cm_lifetime_value_per_customer",
+            "decision": "add",
+            "rejection_reason": None,
+            "reviewer_id": "test_reviewer",
+            "created_at": "2026-04-23T00:00:00+00:00",
+            "updated_at": "2026-04-23T00:00:00+00:00",
+        },
+    ]
+    return render_template(
+        "unified_review.html",
+        **_shared_template_vars(
+            active_tab="images",
+            current_image=MOCK_IMAGE_CANDIDATE_WITH_DETECTED,
+            image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            all_image_candidates=[MOCK_IMAGE_CANDIDATE_WITH_DETECTED],
+            current_image_confirmations=preseeded,
+        ),
+    )
+
+
 # ---- Cross-filing auto-advance routes ----
 
 MOCK_FACT_LAST_PENDING = {
