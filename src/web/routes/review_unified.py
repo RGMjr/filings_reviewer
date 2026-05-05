@@ -279,7 +279,12 @@ def stats():
         text_metric_summary = []
         text_phrase_findings = []
 
-    from src.web.text_pattern_recommendations import compute_recommendations
+    from src.web.text_decision_category_actions import compute_category_rollup
+    from src.web.text_pattern_recommendations import (
+        compute_cross_metric_findings,
+        compute_recommendations,
+        interpret_finding_row,
+    )
 
     text_recommendation_decisions = db.get_recommendation_decisions(
         [s["metric_id"] for s in text_metric_summary] or None
@@ -297,6 +302,20 @@ def stats():
     )
     all_recommendations = [r for recs in text_recommendations.values() for r in recs]
     archived_count = sum(1 for r in all_recommendations if r.get("is_stale"))
+
+    category_rollup = compute_category_rollup(text_metric_summary)
+    cross_metric_findings = compute_cross_metric_findings(text_phrase_findings)
+    covered_phrases = {
+        (f["phrase"], f["source_field"])
+        for f in cross_metric_findings
+        if f.get("cross_metric_exclusion")
+    }
+    interpretations = {
+        (f["metric_id"], f["phrase"], f["source_field"], f["decision_type"]): interpret_finding_row(
+            f
+        )
+        for f in text_phrase_findings
+    }
 
     return render_template(
         "unified_stats.html",
@@ -332,6 +351,10 @@ def stats():
         text_recommendations=text_recommendations,
         archived_count=archived_count,
         analytics_health=analytics_health,
+        category_rollup=category_rollup,
+        cross_metric_findings=cross_metric_findings,
+        covered_phrases=covered_phrases,
+        interpretations=interpretations,
     )
 
 

@@ -64,13 +64,13 @@ The script writes findings to three tables — it does NOT mutate `v2_review_dec
 
 **Drill-down links**: phrase findings link to `/v2/review/<filing_id>` (no fact-anchor — that route does not currently accept a fact-selection query parameter). Reviewers click through to the filing-level review page and locate the fact manually. Adding a `?fact_id=` anchor would require a non-trivial change to `unified_review.html`'s text-tab JS state restore and is deferred.
 
-**View persistence**: the new "Text Patterns" tab (`#patterns-tab` → `#patterns-stats`) does not currently persist to localStorage. If you add a key for it, follow the `cmasb:` namespace convention documented under "View persistence (localStorage)" below.
+**View persistence**: the Patterns tab persists the Why-Reviewers-Reject run/lifetime toggle under `cmasb:patterns:reasons_scope` (see "View persistence (localStorage)" below). Search and category filter on the Patterns tab are session-scoped only — not stored.
 
 ### Recommendation rules
 
 The Patterns-tab expanded row also renders a **Suggested actions** callout above the per-decision-type phrase columns. Recommendations are computed at render time by `src/web/text_pattern_recommendations.py::compute_recommendations(summaries, findings)` from the same DB rows the table iterates — no schema change, no separate analysis pass. This keeps rule thresholds tweakable without rerunning the script.
 
-Three rules in v1; a metric may fire multiple. Output is sorted by severity DESC then rule name ASC. Each recommendation dict carries `rule`, `severity` (`high` / `medium`), `title`, `evidence`, `action`.
+Four rules; a metric may fire multiple of the first three. Output is sorted by severity DESC then rule name ASC. Each recommendation dict carries `rule`, `severity` (`high` / `medium`), `title`, `evidence`, `action`.
 
 **Card-level metadata fields** (orthogonal to rule type — present on every card):
 
@@ -82,8 +82,9 @@ Three rules in v1; a metric may fire multiple. Output is sorted by severity DESC
 | **`exclusion_pattern`** | A `text_decision_phrase_findings` row with `decision_type='reject'`, `source_field = 'segment_text'`, `phrase_ngram_size >= 2`, `pct_of_decisions >= 30` | high if `pct >= 50`, else medium |
 | **`keyword_overlap`** | A `top_correction_targets` entry with `count >= 5` | high if `count >= 10`, else medium |
 | **`fp_filter_gap`** | `rejection_categories['wrong_value'] / reject_count >= 0.5` AND `reject_count >= 5` | high if ratio `>= 0.7`, else medium |
+| **`cross_metric_exclusion`** | A phrase-grouping row with `decision_type='reject'`, `source_field in EXCL_SOURCE_FIELDS`, `phrase_ngram_size >= EXCL_NGRAM_MIN`, appearing across `metric_count >= 3` metrics. Computed by `compute_cross_metric_findings` in `src/web/text_pattern_recommendations.py`. Render-only — does NOT participate in `text_pattern_recommendation_decisions`. Per-metric `exclusion_pattern` cards for covered phrases render as a "(rolled into cross-metric)" chip instead of the full card. | high if `metric_count >= 5`, else medium |
 
-Constants live at the top of the helper module (`EXCL_PCT_LOW`, `EXCL_PCT_HIGH`, `EXCL_NGRAM_MIN`, `EXCL_SOURCE_FIELDS`, `OVERLAP_COUNT_LOW`, `OVERLAP_COUNT_HIGH`, `FP_REJECT_FLOOR`, `FP_PCT_LOW`, `FP_PCT_HIGH`). Adding a fourth rule is a Python edit only — append a `_rule_<name>(...)` helper and call it from `compute_recommendations`.
+Constants live at the top of the helper module (`EXCL_PCT_LOW`, `EXCL_PCT_HIGH`, `EXCL_NGRAM_MIN`, `EXCL_SOURCE_FIELDS`, `OVERLAP_COUNT_LOW`, `OVERLAP_COUNT_HIGH`, `FP_REJECT_FLOOR`, `FP_PCT_LOW`, `FP_PCT_HIGH`). Adding a fifth per-metric rule is a Python edit only — append a `_rule_<name>(...)` helper and call it from `compute_recommendations`.
 
 The helper handles `psycopg`'s `Decimal` return for `pct_of_decisions NUMERIC(5,2)` via `float()` coercion at the boundary. Empty inputs return `{}` — the existing `_stub_analytics_helpers` test fixtures rely on this no-op behavior.
 
@@ -105,13 +106,26 @@ The recommendation helper (`compute_recommendations`) takes an optional third `d
 
 `pr_number` and `pr_url` columns on the table stay NULL through PR 1 (bookkeeping-only) — but bookkeeping-only **with a process backing it**. The manual procedure for translating an accepted decision into a config or FP-filter PR (reviewer criteria, weekly engineer cadence, per-rule edit guide, Tier-1 spot-check, gold-standard gating, aging policy) is in [`docs/operations/text-pattern-recommendations-runbook.md`](../../docs/operations/text-pattern-recommendations-runbook.md). They populate in PR 2 when an `exclusion_pattern` accept opens an auto-PR. Don't read them yet.
 
+### Category-level recommendations
+
+Run-scoped category rollup renders in the first collapsible panel above the per-metric rows on the Patterns tab. `CATEGORY_ACTIONS` in `src/web/text_decision_category_actions.py` maps each `rejection_category` enum value to a human-readable label, a concrete suggested action, and a target file path. `compute_category_rollup(summaries)` sums `rejection_categories` JSONB across all per-metric summary rows and returns rows ordered DESC by count, each with `{category, count, pct_of_rejects, label, action, target_file, severity}`.
+
+To edit the action text or severity thresholds for a category, modify `CATEGORY_ACTIONS` in `src/web/text_decision_category_actions.py` — no DB migration needed. New `rejection_category` values not in `CATEGORY_ACTIONS` get a fallback entry (`(20.0, 40.0)` severity thresholds, generic action text).
+
+**Decisions on category-level recommendation cards are NOT persisted.** Category cards are render-only and do not participate in the `text_pattern_recommendation_decisions` accept/dismiss/defer flow — categories are run-scoped aggregations without a stable per-card `decision_key`.
+
 ## Image-confirmation reviewer notes
 
 `v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.
 
-## Why Reviewers Reject — Summary panel
+## Why Reviewers Reject — Patterns panel
 
-`/v2/review/stats` Summary tab renders a categorical rollup of rejected decisions (lifetime totals, both sides). `db.get_rejection_reason_rollup(side, since=None)` reads `v2_review_decisions.rejection_category` for `side='text'` and `v2_image_metric_confirmations.rejection_reason` for `side='image'`. Returns `[{reason, count, percent}]` ordered DESC. Rendered as Bootstrap progress-bar rows (no chart library). The future LLM-summarized "Top Reviewer Themes" panel (deferred) will read `reviewer_notes` rather than the categorical rollup — the two panels are complementary.
+`/v2/review/stats` **Patterns tab** renders the "Why Reviewers Reject" panel (moved from the Summary tab in PR #518). The panel has a **[This run | Lifetime]** toggle persisted under localStorage key `cmasb:patterns:reasons_scope` (`"run"` | `"lifetime"`).
+
+- **This run**: text side uses `compute_category_rollup(text_metric_summary)` (the same data as Panel 1). Image side continues to use the lifetime rollup (`db.get_rejection_reason_rollup('image', since=None)`) — there is no per-run image breakdown.
+- **Lifetime**: both sides use `db.get_rejection_reason_rollup(side, since=None)`. `side='text'` reads `v2_review_decisions.rejection_category`; `side='image'` reads `v2_image_metric_confirmations.rejection_reason`. Returns `[{reason, count, percent}]` ordered DESC.
+
+Rendered as Bootstrap progress-bar rows (no chart library). The future LLM-summarized "Top Reviewer Themes" panel (deferred) will read `reviewer_notes` — the two panels are complementary.
 
 ## Conventions
 
@@ -143,9 +157,10 @@ The unified review UI persists filter/sort/tab state client-side via localStorag
 | `cmasb:filings:doc_type`    | filings list  | `"ipo" \| "earnings" \| "investor_day"` | `unified_filing_list.html` |
 | `cmasb:filings:per_page`    | filings list  | integer string                      | `unified_filing_list.html` |
 | `cmasb:filings:reviewers`   | filings list  | `string[]` JSON                     | `unified_filing_list.html` |
-| `cmasb:review:tab`          | review page   | `"text" \| "images"`                | `unified_review.html`    |
-| `cmasb:review:text_filter`  | review page   | `{status, metric, sort}` JSON       | `unified_review.html`    |
-| `cmasb:review:image_filter` | review page   | `{status, sort}` JSON               | `unified_review.html`    |
+| `cmasb:review:tab`               | review page   | `"text" \| "images"`                | `unified_review.html`    |
+| `cmasb:review:text_filter`       | review page   | `{status, metric, sort}` JSON       | `unified_review.html`    |
+| `cmasb:review:image_filter`      | review page   | `{status, sort}` JSON               | `unified_review.html`    |
+| `cmasb:patterns:reasons_scope`   | stats page    | `"run" \| "lifetime"`               | `unified_stats.html` (Patterns tab Why-Reviewers-Reject toggle — only durable Patterns preference; search and category filter are session-scoped) |
 
 **Pattern**: on page load, URL params win and are written to localStorage; if a param is absent and localStorage has a value, the page redirects once with the stored value applied. This pattern lets server routes stay stateless — do not add server-side session storage for view state. Do NOT rename `hideCompleted` → a `cmasb:` key; that would silently wipe existing users' saved preference.
 

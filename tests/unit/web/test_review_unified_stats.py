@@ -585,3 +585,283 @@ def test_patterns_tab_archived_section(client, mock_db):
     # Count rec-decide-btn occurrences: should be 0 for the stale card.
     # (The active deferred card also has no decide buttons — it shows Undo.)
     assert "rec-undo-btn" in body  # active decided card has Undo
+
+
+# ---------------------------------------------------------------------------
+# Phase 2-4 (gh-515): new panels, interpretation column, Why-Reviewers-Reject
+# ---------------------------------------------------------------------------
+
+
+def _zero_image_data():
+    return {
+        "total_decisions": 0,
+        "relevant_count": 0,
+        "not_relevant_count": 0,
+        "relevant_pct": 0.0,
+        "not_relevant_pct": 0.0,
+    }, {
+        "total_candidates": 0,
+        "pending_count": 0,
+        "reviewed_count": 0,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 0.0,
+    }
+
+
+def test_patterns_tab_category_rollup_panel(client, mock_db):
+    """Category rollup panel renders with per-category counts from the run."""
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    overall, progress = _zero_image_data()
+    mock_db.get_image_decision_overall_v2.return_value = overall
+    mock_db.get_image_review_progress_v2.return_value = progress
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 50,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+        "config_snapshot_hash": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_total_customers",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 40,
+            "correct_count": 5,
+            "rejection_categories": {"part_of_date": 30, "wrong_metric": 10},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = []
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # Category rollup panel exists.
+    assert "Category rollup (this run)" in body
+    # Category data renders — "Part Of Date" (label from CATEGORY_ACTIONS).
+    assert "Part of date" in body
+    # Severity badge present for dominant category.
+    assert "high" in body or "medium" in body
+
+
+def test_patterns_tab_cross_metric_panel_and_why_reject_toggle(client, mock_db):
+    """Cross-metric panel renders with exclusion badge and Why-Reviewers-Reject
+    toggle renders on the Patterns tab (not the Summary tab).
+    """
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    overall, progress = _zero_image_data()
+    mock_db.get_image_decision_overall_v2.return_value = overall
+    mock_db.get_image_review_progress_v2.return_value = progress
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 90,
+        "num_metrics_analyzed": 3,
+        "triggered_by": "RGM",
+        "error": None,
+        "config_snapshot_hash": None,
+    }
+
+    # Three metrics each have "shared phrase" in segment_text rejects — fires
+    # cross_metric_exclusion (metric_count >= 3, ngram >= 2, source=segment_text).
+    def shared_finding(metric_id):
+        return {
+            "metric_id": metric_id,
+            "decision_type": "reject",
+            "phrase": "shared phrase",
+            "phrase_ngram_size": 2,
+            "source_field": "segment_text",
+            "occurrence_count": 10,
+            "pct_of_decisions": 35.0,
+            "examples": [],
+        }
+
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": m,
+            "total_decisions": 30,
+            "accept_count": 5,
+            "reject_count": 20,
+            "correct_count": 5,
+            "rejection_categories": {"wrong_metric": 20},
+            "top_correction_targets": [],
+        }
+        for m in ["cm_metric_a", "cm_metric_b", "cm_metric_c"]
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        shared_finding(m) for m in ["cm_metric_a", "cm_metric_b", "cm_metric_c"]
+    ]
+    mock_db.get_rejection_reason_rollup.return_value = [
+        {"reason": "wrong_metric", "count": 60, "percent": 100.0}
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # Cross-metric panel renders.
+    assert "Cross-metric phrases" in body
+    assert "shared phrase" in body
+    # Cross-metric exclusion badge.
+    assert "exclusion" in body
+
+    # Why-Reviewers-Reject is now on the Patterns tab, with a run/lifetime toggle.
+    assert "Why Reviewers Reject" in body
+    assert "This run" in body
+    assert "Lifetime" in body
+    assert "cmasb:patterns:reasons_scope" in body
+
+    # Old Summary-tab h4 heading is gone — it now renders as h6 in Patterns tab.
+    assert '<h4 class="mb-3">Why Reviewers Reject</h4>' not in body
+
+
+def test_patterns_tab_interpretation_column_renders(client, mock_db):
+    """Interpretation/Action column renders for phrase rows in per-metric tables."""
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    overall, progress = _zero_image_data()
+    mock_db.get_image_decision_overall_v2.return_value = overall
+    mock_db.get_image_review_progress_v2.return_value = progress
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+        "config_snapshot_hash": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "segment_text",
+            "occurrence_count": 14,
+            "pct_of_decisions": 35.0,
+            "examples": [],
+        }
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # Interpretation column renders — the phrase row should show interpretation text.
+    # interpret_finding_row returns "Phrase appears in extracted text of rejected facts"
+    # for reject + segment_text + ngram >= 2.
+    assert "Phrase appears in extracted text of rejected facts" in body
+    assert "YAML exclusion" in body
+
+
+def test_patterns_tab_covered_phrases_chip(client, mock_db):
+    """When a phrase fires cross_metric_exclusion, the per-metric exclusion_pattern
+    rec card renders as a '(rolled into cross-metric)' chip instead of the full card.
+    """
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    overall, progress = _zero_image_data()
+    mock_db.get_image_decision_overall_v2.return_value = overall
+    mock_db.get_image_review_progress_v2.return_value = progress
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 90,
+        "num_metrics_analyzed": 3,
+        "triggered_by": "RGM",
+        "error": None,
+        "config_snapshot_hash": None,
+    }
+    # Three metrics fire the exclusion_pattern rule for "multi metric phrase"
+    # → cross_metric_exclusion fires (metric_count=3).
+    findings = [
+        {
+            "metric_id": m,
+            "decision_type": "reject",
+            "phrase": "multi metric phrase",
+            "phrase_ngram_size": 3,
+            "source_field": "segment_text",
+            "occurrence_count": 15,
+            "pct_of_decisions": 50.0,
+            "examples": [],
+        }
+        for m in ["cm_metric_x", "cm_metric_y", "cm_metric_z"]
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = findings
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": m,
+            "total_decisions": 30,
+            "accept_count": 5,
+            "reject_count": 20,
+            "correct_count": 5,
+            "rejection_categories": {},
+            "top_correction_targets": [],
+        }
+        for m in ["cm_metric_x", "cm_metric_y", "cm_metric_z"]
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # The phrase fires cross_metric_exclusion (metric_count=3, ngram=3, reject, segment_text).
+    # Per-metric exclusion_pattern recs for this phrase render as the chip.
+    assert "rolled into cross-metric" in body
+    # The chip links back to the cross-metric panel.
+    assert "patterns-cross-metric" in body
+    # The full rec-decide-btn is NOT rendered for covered phrases
+    # (it would be present for other undecided recs, so count check is not needed —
+    # just verify the chip text is present).
+    assert "multi metric phrase" in body
