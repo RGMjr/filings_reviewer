@@ -130,6 +130,17 @@ log "Syncing fragment status from merged pr_refs..."
 python3 scripts/sync_known_issue_status.py --verbose \
   || log "WARNING: sync_known_issue_status.py failed (exit $?) — continuing anyway"
 
+# --- 2c. Stalled-runs check ---
+# Query the three job tables for rows stuck at status='running' past the configured
+# thresholds and capture any Markdown alert text. Appended to the digest after step 5.
+# Non-fatal: a missing DATABASE_URL or DB error prints a warning and continues.
+STALL_SECTION=""
+STALL_SECTION="$(python3 scripts/check_stalled_runs.py 2>/tmp/stall_check_warn.txt)" || true
+if [[ -s /tmp/stall_check_warn.txt ]]; then
+  log "WARNING: stall check: $(cat /tmp/stall_check_warn.txt)"
+fi
+rm -f /tmp/stall_check_warn.txt
+
 # --- 3. Selector ---
 INCLUDE_REVIEW_FLAG=""
 [[ "$INCLUDE_REVIEW" == "1" ]] && INCLUDE_REVIEW_FLAG="--include-review"
@@ -281,6 +292,12 @@ python3 scripts/write_sweep_digest.py \
   --input "$OUTCOMES_FILE" \
   --run-start "$RUN_START_HHMM" \
   --run-duration "${DURATION_MIN}m"
+
+# Append stall-check findings captured in step 2c, if any.
+if [[ -n "$STALL_SECTION" && -f "$DIGEST_DIR/$DATE.md" ]]; then
+  printf '\n%s\n' "$STALL_SECTION" >> "$DIGEST_DIR/$DATE.md"
+  log "Appended stalled-runs section to digest ($(echo "$STALL_SECTION" | wc -l | tr -d ' ') lines)."
+fi
 
 # --- 6. PR the digest (docs-only, minimal flow) ---
 DIGEST_PATH="$DIGEST_DIR/$DATE.md"
