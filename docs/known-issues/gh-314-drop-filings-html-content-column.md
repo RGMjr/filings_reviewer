@@ -11,6 +11,8 @@ touches: ['sql/*', 'scripts/batch_v2_extraction.py']
 discovered: '2026-04-28'
 updated: '2026-05-05'
 gh_issue: 314
+pr_refs:
+  - 505
 note: 'Drop the DB-blob fallback after gh-300 (R2 storage) bakes for ≥30 days without incident. Schema migration + remove fallback branches in extraction scripts.'
 ---
 
