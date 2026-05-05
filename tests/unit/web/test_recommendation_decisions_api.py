@@ -1,13 +1,13 @@
 """Unit tests for the recommendation-decisions endpoints.
 
 Covers:
-  - POST /api/v2/extraction/recommendation-decisions — admin gate, reviewer gate,
+  - POST /api/v2/extraction/recommendation-decisions — permission gate, reviewer gate,
     field validation, upsert wiring, change-of-mind path.
   - DELETE /api/v2/extraction/recommendation-decisions/<uuid> — owner scope
-    (reviewer A can't undo reviewer B's decision via 404), admin gate.
+    (reviewer A can't undo reviewer B's decision via 404), permission gate.
 
-The admin gate is the new transitional `require_admin` decorator on
-`src.web.middleware`; tests set ADMIN_USER_IDS via monkeypatch.
+The permission gate is @require(INGEST_RUN) from src.auth.middleware; tests
+patch src.auth.feature_flags.is_enabled to control enforcement.
 """
 
 from __future__ import annotations
@@ -17,13 +17,15 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from flask import g
 
+from src.auth.sessions import SessionUser
 from src.web.app import create_app
 
 
 @pytest.fixture
 def app(monkeypatch):
-    monkeypatch.setenv("ADMIN_USER_IDS", "RGM,admin@example.com")
+    monkeypatch.setattr("src.auth.feature_flags.is_enabled", lambda key, **kwargs: False)
     app = create_app("testing")
     app.config["TESTING"] = True
     app.config["DATABASE_URL"] = "postgresql://test"
@@ -85,7 +87,7 @@ class TestPostGates:
         body = {k: v for k, v in _VALID_BODY.items() if k != "reviewer_id"}
         resp = client.post(_POST, json=body)
         assert resp.status_code == 403
-        assert resp.get_json()["error"] in {"admin_required", "reviewer_name_required"}
+        assert resp.get_json()["error"] == "reviewer_name_required"
         mock_db.upsert_recommendation_decision.assert_not_called()
 
     def test_blocklisted_reviewer_returns_403(self, client, mock_db):
@@ -93,19 +95,29 @@ class TestPostGates:
         assert resp.status_code == 403
         mock_db.upsert_recommendation_decision.assert_not_called()
 
-    def test_non_admin_returns_403(self, client, mock_db, monkeypatch):
-        monkeypatch.setenv("ADMIN_USER_IDS", "OTHER_ADMIN")
-        resp = client.post(_POST, json=_VALID_BODY)
+    def test_reviewer_role_returns_403(self, app, mock_db, monkeypatch):
+        monkeypatch.setattr("src.auth.feature_flags.is_enabled", lambda key, **kwargs: True)
+        reviewer_user = SessionUser(
+            id="00000000-0000-0000-0000-000000000002",
+            email="reviewer@example.com",
+            display_name="Reviewer",
+            role="reviewer",
+            account_status="active",
+        )
+
+        @app.before_request
+        def inject_reviewer():
+            g.user = reviewer_user
+
+        resp = app.test_client().post(_POST, json=_VALID_BODY)
         assert resp.status_code == 403
-        body = resp.get_json()
-        assert body["error"] == "admin_required"
         mock_db.upsert_recommendation_decision.assert_not_called()
 
-    def test_missing_admin_env_returns_403(self, client, mock_db, monkeypatch):
-        monkeypatch.delenv("ADMIN_USER_IDS", raising=False)
-        resp = client.post(_POST, json=_VALID_BODY)
-        assert resp.status_code == 403
-        assert resp.get_json()["error"] == "admin_required"
+    def test_unauthenticated_returns_401(self, app, mock_db, monkeypatch):
+        monkeypatch.setattr("src.auth.feature_flags.is_enabled", lambda key, **kwargs: True)
+        resp = app.test_client().post(_POST, json=_VALID_BODY)
+        assert resp.status_code == 401
+        mock_db.upsert_recommendation_decision.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -205,9 +217,21 @@ class TestDelete:
         assert resp.status_code == 404
         assert resp.get_json()["error"] == "not_found_or_not_owner"
 
-    def test_non_admin_returns_403(self, client, mock_db, monkeypatch):
-        monkeypatch.setenv("ADMIN_USER_IDS", "OTHER_ADMIN")
-        resp = client.delete(_delete_url(str(uuid.uuid4())), json={"reviewer_id": "RGM"})
+    def test_non_ingest_role_returns_403(self, app, mock_db, monkeypatch):
+        monkeypatch.setattr("src.auth.feature_flags.is_enabled", lambda key, **kwargs: True)
+        reviewer_user = SessionUser(
+            id="00000000-0000-0000-0000-000000000002",
+            email="reviewer@example.com",
+            display_name="Reviewer",
+            role="reviewer",
+            account_status="active",
+        )
+
+        @app.before_request
+        def inject_reviewer():
+            g.user = reviewer_user
+
+        resp = app.test_client().delete(_delete_url(str(uuid.uuid4())), json={"reviewer_id": "RGM"})
         assert resp.status_code == 403
         mock_db.delete_recommendation_decision.assert_not_called()
 

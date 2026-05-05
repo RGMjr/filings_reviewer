@@ -156,11 +156,7 @@ Spec Phase 1.2 proposes "reviewer and filing de-duplication controls" and Phase 
 proposes a `distinct_reviewer_count` field on phrase statistics. Phase 2.3 sets an
 acceptance criterion of "disagreement detection appears for all conflicting keys."
 
-The recommendation decision endpoints are gated by `require_admin`
-(`src/web/routes/api_unified.py`, the `_require_reviewer_id` + admin gate in
-`upsert_recommendation_decision`). The admin allowlist is configured via the
-`ADMIN_USER_IDS` environment variable (`.claude/rules/web.md`, Recommendation decisions
-section). In practice this has been a single-operator workflow. Reviewer normalization
+The recommendation decision endpoints are gated by `_require_reviewer_id` + `@require(INGEST_RUN)` (`src/web/routes/api_unified.py`). Only users with `admin` role hold the `ingest.run` permission. In practice this has been a single-operator workflow. Reviewer normalization
 that removes per-reviewer bias is a meaningful technique at ≥3 independent reviewers
 with diverging behavior. At 1-2 reviewers it reduces sample size without removing bias
 — the "bias" is the entire dataset.

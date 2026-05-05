@@ -4,9 +4,6 @@ Shared Flask middleware for the review application.
 Provides reusable before_request/after_request hooks for:
 - API key authentication (non-browser callers via ``Authorization: ApiKey``
   or ``X-API-Key`` header — same-origin browser bypass removed in PR-C1)
-- Admin gate (transitional — will be replaced by role lookup against
-  auth_users when Stage A2 of the auth rollout lands; see
-  docs/architecture/auth-rollout-implementation-plan.md)
 - Request timing
 - Audit log insertion
 
@@ -22,7 +19,6 @@ that need per-endpoint API-key checks can still use ``require_api_key``.
 import functools
 import hmac
 import logging
-import os
 import time
 from collections.abc import Callable
 from typing import Any
@@ -108,48 +104,6 @@ def require_api_key(view: Callable) -> Callable:
         rejection = _verify_api_key()
         if rejection is not None:
             return rejection
-        return view(*args, **kwargs)
-
-    return wrapper
-
-
-def require_admin(view: Callable) -> Callable:
-    """Gate a view to admin reviewers only.
-
-    Reads the comma-separated allowlist from env var ``ADMIN_USER_IDS``
-    and matches against ``reviewer_id`` from the JSON body, query string,
-    or ``X-Reviewer-Id`` header (in that order, mirroring the per-metric
-    image-confirmation contract). Returns HTTP 403 ``{error:
-    "admin_required"}`` when the env var is unset/empty or the reviewer
-    isn't on the list.
-
-    **Transitional.** This is a stop-gap admin gate until Stage A2 of
-    the auth rollout lands (`src/auth/middleware.py::require(<permission>)`,
-    role lookup against ``auth_users``). Migration is mechanical — swap
-    ``@require_admin`` for ``@require('<permission>')`` on each call site.
-    See ``docs/architecture/auth-rollout-implementation-plan.md``.
-    """
-
-    @functools.wraps(view)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        data = request.get_json(silent=True) or {}
-        reviewer = (
-            data.get("reviewer_id")
-            or request.args.get("reviewer_id")
-            or request.headers.get("X-Reviewer-Id")
-            or ""
-        ).strip()
-
-        admins_csv = os.environ.get("ADMIN_USER_IDS", "")
-        admins = frozenset(e.strip() for e in admins_csv.split(",") if e.strip())
-
-        if not admins or reviewer not in admins:
-            logger.warning(
-                "Admin-only endpoint blocked: reviewer=%r path=%s",
-                reviewer or "<missing>",
-                request.path,
-            )
-            return jsonify({"error": "admin_required"}), 403
         return view(*args, **kwargs)
 
     return wrapper

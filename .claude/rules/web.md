@@ -94,7 +94,7 @@ Each Suggested-actions card renders three buttons (Accept / Dismiss / Defer) plu
 - `POST /api/v2/extraction/recommendation-decisions` — upsert on `(metric_id, rule, decision_key, reviewer_id)`. Body: `{metric_id, rule, decision_key, decision, reviewer_id, reviewer_note?}`. `decision ∈ {accepted, dismissed, deferred}`. Returns the upserted row.
 - `DELETE /api/v2/extraction/recommendation-decisions/<uuid:decision_id>` — owner-scoped undo. Returns 404 when the row is missing OR exists but belongs to a different reviewer (so admins don't accidentally undo each other's decisions).
 
-Both endpoints are gated by `_require_reviewer_id` + `require_admin` (`src/web/middleware.py`). The admin gate reads a comma-separated allowlist from env var `ADMIN_USER_IDS` and returns HTTP 403 `{error: "admin_required"}` when missing or unmatched. **Transitional** — to be replaced by `src/auth/middleware.py::require(<permission>)` against `auth_users.role` once Stage A2 of the auth rollout lands (`docs/architecture/auth-rollout-implementation-plan.md`). Migration is one-line per call site.
+Both endpoints are gated by `_require_reviewer_id` + `@require(INGEST_RUN)` (`src/auth/middleware.py`). Only users with `admin` role hold the `ingest.run` permission.
 
 `decision_key` is the stable identifier across analysis reruns:
 - `exclusion_pattern` → the phrase (e.g. `"accounts receivable"`)
