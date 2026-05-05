@@ -206,6 +206,7 @@ def stats():
     image_progress = db.get_image_review_progress_v2()
     image_tier = db.get_image_decisions_by_tier_v2()
     image_rejections = db.get_image_rejection_reasons_by_tier_v2()
+    analytics_health = db.get_analytics_surface_health()
 
     # Phase 2: model-update anchor + decision counters + recent activity.
     # The "since" timestamp comes from the most recent succeeded image-classifier
@@ -312,6 +313,7 @@ def stats():
         text_metric_summary=text_metric_summary,
         text_phrase_findings=text_phrase_findings,
         text_recommendations=text_recommendations,
+        analytics_health=analytics_health,
     )
 
 

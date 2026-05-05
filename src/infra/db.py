@@ -1823,6 +1823,38 @@ class DatabaseAdapter:
             "confidence_bands": confidence_bands,
         }
 
+    def get_analytics_surface_health(self) -> dict:
+        """Return availability + row counts for analytics-facing views.
+
+        This helps detect schema drift after DB migrations land but Metabase
+        questions/dashboards have not yet been updated.
+        """
+        rows = self.query(
+            """
+            SELECT table_name
+            FROM information_schema.views
+            WHERE table_schema = 'public'
+              AND table_name IN (
+                'v_analytics_fact_wide',
+                'v_analytics_coverage_matrix',
+                'v_doc_metric_presence'
+              )
+            """
+        )
+        present = {r["table_name"] for r in rows}
+
+        def _count_if_present(view_name: str) -> int | None:
+            if view_name not in present:
+                return None
+            cnt = self.query(f"SELECT COUNT(*) AS n FROM {view_name}")
+            return int(cnt[0]["n"]) if cnt else 0
+
+        return {
+            "v_analytics_fact_wide": _count_if_present("v_analytics_fact_wide"),
+            "v_analytics_coverage_matrix": _count_if_present("v_analytics_coverage_matrix"),
+            "v_doc_metric_presence": _count_if_present("v_doc_metric_presence"),
+        }
+
     # =============================================================================
     # V2 Image Review Methods (read/write v2_image_assets + v2_image_review_decisions)
     # =============================================================================
