@@ -30,11 +30,9 @@ class FilingContent:
     Represents downloaded filing content.
 
     Pipeline contract: only ``html_path`` is load-bearing for downstream
-    extraction. ``IngestionStage`` reads HTML from disk via ``html_path``;
-    ``html_content`` (in-memory) and the ``filings.html_content`` DB column
-    are advisory and ignored by the V2 pipeline. To enrich what the
-    pipeline sees (e.g. appending exhibit HTML), write to the file at
-    ``html_path`` — do not rely on the in-memory or DB copies.
+    extraction. ``IngestionStage`` reads HTML from disk via ``html_path``.
+    To enrich what the pipeline sees (e.g. appending exhibit HTML), write to
+    the file at ``html_path``.
 
     ``html_storage_key`` (post-gh-315) is the opaque R2 storage key written
     to ``filings.html_storage_path``. It is always set on a successful fetch.
@@ -47,7 +45,6 @@ class FilingContent:
         html_path: Local path to HTML filing (pipeline-load-bearing)
         txt_path: Local path to complete text filing
         fetched_at: Timestamp when fetched
-        html_content: In-memory HTML; advisory, not read by pipeline
         html_storage_key: Opaque R2 storage key persisted to filings.html_storage_path
     """
 
@@ -56,7 +53,6 @@ class FilingContent:
     html_path: str
     txt_path: str | None = None
     fetched_at: datetime | None = None
-    html_content: str | None = None
     html_storage_key: str | None = None
 
 
@@ -347,7 +343,6 @@ class FilingFetcher:
         # Track resolved URL to persist to database
         resolved_url_for_db = None
 
-        html_text: str | None = None
         is_8k = filing_metadata.form_type.upper().startswith("8-K")
 
         try:
@@ -381,33 +376,28 @@ class FilingFetcher:
                     raise ValueError(f"Invalid filing content: {error_msg}")
 
                 html_path.write_text(response.text, encoding="utf-8")
-                html_text = response.text
                 logger.info(f"Saved HTML to {html_path}")
 
                 if is_8k:
-                    combined = self._maybe_append_exhibit_991(
+                    self._maybe_append_exhibit_991(
                         base_html=response.text,
                         html_path=html_path,
                         cik=cik,
                         accession_number=accession_number,
                         validate_combined=True,
                     )
-                    if combined is not None:
-                        html_text = combined
             else:
                 logger.debug(f"HTML already cached: {html_path}")
                 if is_8k:
                     existing = html_path.read_text(encoding="utf-8")
                     if _EXHIBIT_SEPARATOR not in existing:
-                        combined = self._maybe_append_exhibit_991(
+                        self._maybe_append_exhibit_991(
                             base_html=existing,
                             html_path=html_path,
                             cik=cik,
                             accession_number=accession_number,
                             validate_combined=False,
                         )
-                        if combined is not None:
-                            html_text = combined
 
             # Fetch TXT filing (if requested and URL available)
             # TXT files are optional - don't fail entire fetch if unavailable
@@ -455,7 +445,6 @@ class FilingFetcher:
                 html_path=str(html_path),
                 txt_path=txt_path_str,
                 fetched_at=datetime.now(),
-                html_content=html_text,
                 html_storage_key=html_storage_key,
             )
 
@@ -544,7 +533,6 @@ class FilingFetcher:
                     html_fetch_error = NULL,
                     processing_status = 'fetched',
                     sec_html_url = COALESCE(%(resolved_url)s, sec_html_url),
-                    html_content = COALESCE(%(html_content)s, html_content),
                     updated_at = now()
                 WHERE accession_number = %(accession)s
             """
@@ -556,7 +544,6 @@ class FilingFetcher:
                     "fetched_at": content.fetched_at,
                     "accession": content.accession_number,
                     "resolved_url": resolved_url,
-                    "html_content": content.html_content,
                 },
             )
             logger.debug(f"Updated database for {content.accession_number}")
@@ -617,18 +604,6 @@ class FilingFetcher:
         txt_path = storage_dir / "complete.txt"
 
         if not html_path.exists():
-            if self.db:
-                rows = self.db.query(
-                    "SELECT html_content FROM filings WHERE cik = %(cik)s AND accession_number = %(accession)s AND html_content IS NOT NULL",
-                    {"cik": cik, "accession": accession_number},
-                )
-                if rows:
-                    return FilingContent(
-                        cik=cik,
-                        accession_number=accession_number,
-                        html_path=str(html_path),
-                        html_content=rows[0]["html_content"],
-                    )
             return None
 
         return FilingContent(

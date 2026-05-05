@@ -223,7 +223,7 @@ def _process_filing_worker(
             except Exception as _r2_err:
                 _logger.warning(
                     f"Filing {filing_id}: R2 read failed for {html_path}: {_r2_err}; "
-                    f"falling through to disk/DB fallback"
+                    f"falling through to disk fallback"
                 )
                 # Treat as if html_path was never set so legacy fallback runs.
                 html_path = None
@@ -248,39 +248,13 @@ def _process_filing_worker(
                     f"Filing {filing_id}: no html_storage_path set; falling back to gold-standard path {resolved_path}"
                 )
 
-        # DB fallback: when disk file is absent (e.g. Render ephemeral filesystem),
-        # read html_content from the database column populated by FilingFetcher.
-        if not resolved_path.exists():
-            try:
-                _fallback_db = DatabaseAdapter(db_url)
-                rows = _fallback_db.query(
-                    "SELECT html_content FROM filings WHERE filing_id = %(filing_id)s AND html_content IS NOT NULL",
-                    {"filing_id": filing_id},
-                )
-                if rows and rows[0].get("html_content"):
-                    _tmp = tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".htm", delete=False, encoding="utf-8"
-                    )
-                    _tmp.write(rows[0]["html_content"])
-                    _tmp.close()
-                    _temp_html_path = _tmp.name
-                    resolved_path = _Path(_temp_html_path)
-                    _logger.info(
-                        f"Filing {filing_id}: disk file missing, using html_content from DB "
-                        f"({len(rows[0]['html_content'])} chars) -> {_temp_html_path}"
-                    )
-            except Exception as _db_err:
-                _logger.warning(
-                    f"Filing {filing_id}: disk file missing and DB fallback failed: {_db_err}"
-                )
-
         if not resolved_path.exists():
             return {
                 "filing_id": filing_id,
                 "success": False,
                 "fact_count": 0,
                 "definition_count": 0,
-                "error": f"HTML not found on disk and not in DB: {html_path}",
+                "error": f"HTML not found on disk: {html_path}",
                 "duration_ms": 0,
                 "retried": False,
             }

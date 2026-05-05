@@ -68,16 +68,14 @@ def _find_affected_filings(db: DatabaseAdapter) -> list[dict]:
             f.html_storage_path,
             f.form_type,
             f.filing_date,
-            f.processing_status,
-            LENGTH(f.html_content) AS html_content_len,
-            LEFT(f.html_content, %(sniff)s) AS html_content_head
+            f.processing_status
         FROM filings f
         JOIN companies c USING (company_id)
         WHERE f.sec_html_url LIKE %(pattern)s
           AND (f.cik IS NULL OR f.cik NOT IN ('0001725792', '1725792'))
         ORDER BY f.filing_id
         """,
-        {"pattern": _ISSUE_30_URL_PATTERN, "sniff": _SNIFF_BYTES},
+        {"pattern": _ISSUE_30_URL_PATTERN},
     )
     return rows
 
@@ -131,17 +129,6 @@ def _sniff_on_disk_html(storage_path: str | None) -> tuple[bool, str | None]:
     return any(marker in head for marker in _UBER_FINGERPRINTS), None
 
 
-def _sniff_html_content_column(head: bytes | memoryview | str | None) -> bool:
-    """Look for Uber markers in a snippet of filings.html_content."""
-    if head is None:
-        return False
-    if isinstance(head, (bytes, memoryview)):
-        blob = bytes(head)
-    else:
-        blob = head.encode("utf-8", errors="ignore")
-    return any(marker in blob for marker in _UBER_FINGERPRINTS)
-
-
 def _classify_path(row: dict) -> str:
     """Return 'A' (URL-only patch), 'B' (force-reextract),
     'B_coordinated' (one refetch, N row updates), or 'C' (defer)."""
@@ -186,8 +173,7 @@ def run_audit(db: DatabaseAdapter, sec: SECClient) -> dict:
             logger.warning("resolve_primary_document_url failed for %s: %s", fid, e)
 
         on_disk_is_uber, sniff_error = _sniff_on_disk_html(r["html_storage_path"])
-        column_is_uber = _sniff_html_content_column(r["html_content_head"])
-        html_content_is_uber = on_disk_is_uber or column_is_uber
+        html_content_is_uber = on_disk_is_uber
 
         cik_drift = _normalise_cik(r["filing_cik"]) != _normalise_cik(r["company_cik"])
 
@@ -214,9 +200,7 @@ def run_audit(db: DatabaseAdapter, sec: SECClient) -> dict:
             "resolve_error": resolve_error,
             "html_storage_path": r["html_storage_path"],
             "html_storage_path_shared_with": storage_path_shared_with,
-            "html_content_len": (int(r["html_content_len"]) if r["html_content_len"] else 0),
             "html_on_disk_is_uber": on_disk_is_uber,
-            "html_content_column_is_uber": column_is_uber,
             "html_content_is_uber": html_content_is_uber,
             "sniff_error": sniff_error,
             # Gold standard membership not directly queryable here — flagged as

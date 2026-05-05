@@ -49,7 +49,7 @@ PostgreSQL. V2 tables: `v2_documents`, `v2_segments`, `v2_metric_facts`, `v2_met
 
 Image bytes live in Cloudflare R2 (prod) / local filesystem (dev) via `src/infra/image_storage.py`, NOT in Postgres. `v2_image_assets.file_path` stores an opaque storage key (e.g. `pipeline/<cik>/<accession>/<filename>`) — see `.claude/rules/infrastructure.md#image-storage`.
 
-Filing HTML persists the same way via `src/infra/filing_storage.py` (gh-300). `filings.html_storage_path` stores an opaque storage key (e.g. `filings/<cik>/<accession>/primary.htm`). Post-gh-315, the fetcher writes R2 keys directly on every successful fetch; legacy filesystem paths from pre-gh-315 rows still resolve via the existing disk + `html_content` DB-blob fallback. See `.claude/rules/infrastructure.md#filing-html-storage`.
+Filing HTML persists the same way via `src/infra/filing_storage.py` (gh-300). `filings.html_storage_path` stores an opaque storage key (e.g. `filings/<cik>/<accession>/primary.htm`). Post-gh-315, the fetcher writes R2 keys directly on every successful fetch; extraction resolves via R2 key or legacy filesystem path (the `html_content` DB-blob fallback was dropped in gh-314). See `.claude/rules/infrastructure.md#filing-html-storage`.
 
 Image-relevance retrain artifacts (model joblib + report + training CSV) persist the same way via `src/infra/model_storage.py` (gh-391). `model_training_runs.model_path` / `report_path` store opaque storage keys (e.g. `models/image_relevance/<run_id>/relevance_model.joblib`); a `models/image_relevance/latest_run_id.txt` pointer drives the loader. See `.claude/rules/infrastructure.md#model-artifact-storage`.
 
