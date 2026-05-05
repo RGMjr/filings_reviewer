@@ -966,7 +966,23 @@ class TestLearnedTriageGate:
 
     Post gh-477, the gate is read per-call from `os.environ`, so tests use
     `monkeypatch.setenv` rather than patching module attributes.
+
+    `_MODEL_CACHE` in `src/shared/image_features` is module-scope and persists
+    across test instances in the same process — earlier tests that load a real
+    model artifact would otherwise satisfy the "model absent" precondition in
+    `test_gate_on_but_model_absent_falls_back_to_heuristic`. The autouse fixture
+    below wipes the cache before and after every test in this class to guarantee
+    order-independence (gh-445, gh-456).
     """
+
+    @pytest.fixture(autouse=True)
+    def reset_model_cache(self) -> None:
+        """Clear _MODEL_CACHE before and after each test to prevent cross-test pollution."""
+        from src.shared import image_features
+
+        image_features._MODEL_CACHE.clear()
+        yield
+        image_features._MODEL_CACHE.clear()
 
     @pytest.fixture
     def stage(self) -> ImageTriageStage:
