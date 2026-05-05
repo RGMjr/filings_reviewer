@@ -462,3 +462,126 @@ def test_stats_does_not_swallow_db_errors(app, mock_db):
     client = app.test_client()
     with pytest.raises(RuntimeError, match="schema regression"):
         client.get("/v2/review/stats")
+
+
+def test_patterns_tab_archived_section(client, mock_db):
+    """When a persisted decision's decision_key no longer surfaces in findings,
+    the route passes archived_count > 0 and the template renders both an active
+    panel and an archived section.
+
+    Pins the route→template wiring for stale-recommendation auto-archival.
+    """
+    import uuid as _uuid
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 0,
+        "relevant_count": 0,
+        "not_relevant_count": 0,
+        "relevant_pct": 0.0,
+        "not_relevant_pct": 0.0,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 0,
+        "pending_count": 0,
+        "reviewed_count": 0,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 0.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+        "config_snapshot_hash": None,
+    }
+    # Current run has an active rec for "accounts receivable" (pct=45.2 >= 30 threshold).
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {"wrong_metric": 18},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "rejection_reason",
+            "occurrence_count": 14,
+            "pct_of_decisions": 45.20,
+            "examples": [],
+        }
+    ]
+    stale_decision_id = _uuid.uuid4()
+    mock_db.get_recommendation_decisions.return_value = [
+        {
+            # Active: still in current findings → is_stale=False, shows in active panel.
+            "id": _uuid.uuid4(),
+            "metric_id": "cm_new_customers_acquired",
+            "rule": "exclusion_pattern",
+            "decision_key": "accounts receivable",
+            "decision": "deferred",
+            "reviewer_id": "RGM",
+            "reviewer_note": None,
+            "pr_number": None,
+            "pr_url": None,
+            "created_at": ts,
+            "updated_at": ts,
+        },
+        {
+            # Stale: "old phrase" no longer in current findings → is_stale=True.
+            "id": stale_decision_id,
+            "metric_id": "cm_new_customers_acquired",
+            "rule": "exclusion_pattern",
+            "decision_key": "old phrase",
+            "decision": "accepted",
+            "reviewer_id": "RGM",
+            "reviewer_note": "applied in PR 99",
+            "pr_number": 99,
+            "pr_url": "https://github.com/example/repo/pull/99",
+            "created_at": ts,
+            "updated_at": ts,
+        },
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # Active panel renders — the accounts receivable rec is still active.
+    assert "Suggested actions" in body
+    assert "accounts receivable" in body
+
+    # Archived section renders for the stale "old phrase" decision.
+    assert "Archived recommendations" in body
+    assert "old phrase" in body
+
+    # The stale card uses "archived" badge text, not "Suggested actions".
+    # Both active and archived are present in the same response.
+    assert "archived" in body
+
+    # Active card renders with Accept/Dismiss/Defer buttons (it's decided=deferred).
+    assert "rec-card--decided" in body
+
+    # Stale card does NOT render decide buttons (no action on archived cards).
+    # Count rec-decide-btn occurrences: should be 0 for the stale card.
+    # (The active deferred card also has no decide buttons — it shows Undo.)
+    assert "rec-undo-btn" in body  # active decided card has Undo

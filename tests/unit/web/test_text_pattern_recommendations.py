@@ -459,3 +459,124 @@ class TestConfigDriftFlag:
             assert rec["config_drift"] is False, (
                 f"Expected config_drift=False on rule {rec['rule']!r} for legacy None hash"
             )
+
+
+# ---------------------------------------------------------------------------
+# is_stale flag — set when decision_key absent from latest run's findings
+# ---------------------------------------------------------------------------
+
+
+def _decision(
+    *,
+    metric_id: str = "cm_x",
+    rule: str = "exclusion_pattern",
+    decision_key: str = "accounts receivable",
+    decision: str = "deferred",
+    reviewer_id: str = "RGM",
+) -> dict:
+    return {
+        "id": "d1",
+        "metric_id": metric_id,
+        "rule": rule,
+        "decision_key": decision_key,
+        "decision": decision,
+        "reviewer_id": reviewer_id,
+        "reviewer_note": None,
+        "pr_number": None,
+        "pr_url": None,
+        "updated_at": "2026-05-01T20:00:00+00:00",
+    }
+
+
+class TestIsStaleFlag:
+    """is_stale=False when decision_key still fires; True when it no longer fires.
+
+    Active recommendations (produced by current run) always have is_stale=False.
+    Stale recommendations are injected from the decisions list for keys that
+    no longer surface in findings/summaries.
+    """
+
+    def test_active_rec_is_not_stale(self) -> None:
+        """A rec whose decision_key is still in current findings → is_stale=False."""
+        out = compute_recommendations(
+            [_summary()],
+            [_finding(phrase="accounts receivable", pct=45.0)],
+            [_decision(decision_key="accounts receivable")],
+        )
+        recs = out["cm_x"]
+        excl = [r for r in recs if r["rule"] == "exclusion_pattern"]
+        assert len(excl) == 1
+        assert excl[0]["is_stale"] is False
+
+    def test_decision_for_absent_key_is_stale(self) -> None:
+        """A decision whose decision_key is NOT in current findings → is_stale=True."""
+        # The current findings have no phrase matching "old phrase" above threshold.
+        out = compute_recommendations(
+            [_summary()],
+            [],  # No current findings — rule won't fire
+            [_decision(decision_key="old phrase")],
+        )
+        # Stale card injected into output under the decision's metric_id.
+        assert "cm_x" in out
+        stale = [r for r in out["cm_x"] if r["is_stale"]]
+        assert len(stale) == 1
+        assert stale[0]["decision_key"] == "old phrase"
+        assert stale[0]["is_stale"] is True
+
+    def test_empty_findings_all_decisions_stale(self) -> None:
+        """Edge case: empty findings list → all decisions become is_stale=True."""
+        decisions = [
+            _decision(decision_key="phrase one"),
+            _decision(
+                metric_id="cm_x",
+                rule="keyword_overlap",
+                decision_key="cm_y",
+            ),
+        ]
+        out = compute_recommendations(
+            [_summary()],
+            [],  # No findings
+            decisions,
+        )
+        assert "cm_x" in out
+        stale = [r for r in out["cm_x"] if r["is_stale"]]
+        # Both decisions are stale (neither rule fires on empty findings/summaries).
+        assert len(stale) == 2
+        for rec in stale:
+            assert rec["is_stale"] is True
+
+    def test_stale_card_carries_decision(self) -> None:
+        """Stale rec card has the decision attached for audit display."""
+        d = _decision(decision_key="stale phrase", decision="accepted")
+        out = compute_recommendations(
+            [_summary()],
+            [],
+            [d],
+        )
+        stale = [r for r in out["cm_x"] if r["is_stale"]]
+        assert len(stale) == 1
+        assert stale[0]["decision"] is not None
+        assert stale[0]["decision"]["decision"] == "accepted"
+
+    def test_no_decisions_arg_no_stale_cards(self) -> None:
+        """When decisions arg is omitted, no stale cards are injected."""
+        out = compute_recommendations([_summary()], [_finding(pct=45.0)])
+        recs = out.get("cm_x", [])
+        stale = [r for r in recs if r.get("is_stale")]
+        assert stale == []
+
+    def test_fp_filter_gap_key_stale_when_rule_drops(self) -> None:
+        """fp_filter_gap decision is stale when wrong_value ratio drops below threshold."""
+        # Decision for wrong_value, but current summary shows reject_count < floor.
+        d = _decision(
+            metric_id="cm_x",
+            rule="fp_filter_gap",
+            decision_key="wrong_value",
+        )
+        # Summary with too few rejects to fire fp_filter_gap (below FP_REJECT_FLOOR=5).
+        s = _summary(reject=3, rejection_categories={"wrong_value": 3})
+        out = compute_recommendations([s], [], [d])
+        assert "cm_x" in out
+        stale = [r for r in out["cm_x"] if r["is_stale"]]
+        assert len(stale) == 1
+        assert stale[0]["decision_key"] == "wrong_value"

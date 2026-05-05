@@ -295,6 +295,8 @@ def stats():
         text_recommendation_decisions,
         config_snapshot_hash=stored_config_hash,
     )
+    all_recommendations = [r for recs in text_recommendations.values() for r in recs]
+    archived_count = sum(1 for r in all_recommendations if r.get("is_stale"))
 
     return render_template(
         "unified_stats.html",
@@ -328,6 +330,7 @@ def stats():
         text_metric_summary=text_metric_summary,
         text_phrase_findings=text_phrase_findings,
         text_recommendations=text_recommendations,
+        archived_count=archived_count,
         analytics_health=analytics_health,
     )
 
