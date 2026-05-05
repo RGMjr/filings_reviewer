@@ -98,7 +98,7 @@ Both endpoints are gated by `_require_reviewer_id` + `require_admin` (`src/web/m
 
 The recommendation helper (`compute_recommendations`) takes an optional third `decisions` arg (default `None`) — when provided, each rec dict gains a `decision` field looked up by `(metric_id, rule, decision_key)`. The DB reader returns rows ordered DESC by `updated_at`, so when multiple reviewers have decided the same rec, the freshest decision wins (helper uses `setdefault`).
 
-`pr_number` and `pr_url` columns on the table stay NULL through PR 1 (bookkeeping-only). They populate in PR 2 when an `exclusion_pattern` accept opens an auto-PR. Don't read them yet.
+`pr_number` and `pr_url` columns on the table stay NULL through PR 1 (bookkeeping-only) — but bookkeeping-only **with a process backing it**. The manual procedure for translating an accepted decision into a config or FP-filter PR (reviewer criteria, weekly engineer cadence, per-rule edit guide, Tier-1 spot-check, gold-standard gating, aging policy) is in [`docs/operations/text-pattern-recommendations-runbook.md`](../../docs/operations/text-pattern-recommendations-runbook.md). They populate in PR 2 when an `exclusion_pattern` accept opens an auto-PR. Don't read them yet.
 
 ## Image-confirmation reviewer notes
 
