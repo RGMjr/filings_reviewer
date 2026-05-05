@@ -80,7 +80,7 @@ The three rule types are defined in `src/web/text_pattern_recommendations.py` an
 
 ### `exclusion_pattern`
 
-**What it says.** A phrase appears in ≥30% of a metric's reject decisions, sourced from `rejection_reason` or `segment_text`, n-gram size ≥2 tokens. The `decision_key` is the phrase itself.
+**What it says.** A phrase from `segment_text` (the actual filing language) appears in ≥30% of a metric's reject decisions, n-gram size ≥2 tokens. The `decision_key` is the phrase itself. Free-text fields (`rejection_reason`, `reviewer_notes`) are no longer mined — the `rejection_category` enum already captures categorical policy intent; phrases come from `segment_text` only (PR 4, 2026-05-05).
 
 **Where it lands.** Add to the metric's `exclusions:` list under `config/metric_keywords.yaml`. Add the **literal phrase**, not a regex generalization — the recommendation is per-phrase and the validator gate cannot tell you whether a broader pattern is safe.
 

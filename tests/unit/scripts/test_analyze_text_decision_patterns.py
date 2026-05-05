@@ -102,14 +102,17 @@ class TestSegmentWindow:
 
 
 class TestMinePhrasesForMetric:
-    def test_finds_high_incidence_phrase_in_rejection_reason(self):
-        # 5 of 6 rejects share "accounts receivable"; the threshold is 10%
-        # and 83% clears.
+    def test_rejection_reason_is_not_mined(self):
+        # PR 4 (2026-05-05): rejection_reason and reviewer_notes are no longer
+        # mined — the rejection_category enum already captures categorical
+        # policy signal without free-text noise.  Even when rejection_reason
+        # contains a high-incidence bigram, no findings row should emerge.
         rows = [
             _decision(
                 fact_id=f"00000000-0000-0000-0000-00000000000{i}",
                 decision="reject",
                 reason="this is accounts receivable not customer count",
+                segment=None,  # no segment_text → nothing to mine
             )
             for i in range(5)
         ]
@@ -118,6 +121,37 @@ class TestMinePhrasesForMetric:
                 fact_id="00000000-0000-0000-0000-000000000099",
                 decision="reject",
                 reason="duplicate of fact 5",
+                segment=None,
+            )
+        )
+
+        findings = M._mine_phrases_for_metric(
+            rows, "cm_x", decision_type="reject", metric_keyword_tokens=set()
+        )
+        source_fields = {f["source_field"] for f in findings}
+        assert "rejection_reason" not in source_fields, (
+            "rejection_reason should no longer be a mining source (PR 4)"
+        )
+        assert "reviewer_notes" not in source_fields, (
+            "reviewer_notes should no longer be a mining source (PR 4)"
+        )
+
+    def test_finds_high_incidence_phrase_in_segment_text(self):
+        # segment_text is still mined; a high-incidence bigram across 5 of 6
+        # rejects (83%) should surface as a finding.
+        rows = [
+            _decision(
+                fact_id=f"00000000-0000-0000-0000-00000000000{i}",
+                decision="reject",
+                segment="the accounts receivable balance was recognised here",
+            )
+            for i in range(5)
+        ]
+        rows.append(
+            _decision(
+                fact_id="00000000-0000-0000-0000-000000000099",
+                decision="reject",
+                segment="unrelated segment text with no matching phrase",
             )
         )
 
@@ -125,41 +159,52 @@ class TestMinePhrasesForMetric:
             rows, "cm_x", decision_type="reject", metric_keyword_tokens=set()
         )
         phrases = {(f["phrase"], f["source_field"]) for f in findings}
-        assert ("accounts receivable", "rejection_reason") in phrases
-        # Verify count + pct.
+        assert ("accounts receivable", "segment_text") in phrases
         ar = next(
             f
             for f in findings
-            if f["phrase"] == "accounts receivable" and f["source_field"] == "rejection_reason"
+            if f["phrase"] == "accounts receivable" and f["source_field"] == "segment_text"
         )
         assert ar["occurrence_count"] == 5
         assert ar["pct_of_decisions"] == 83.33
         assert ar["phrase_ngram_size"] == 2
 
     def test_filters_below_pct_threshold(self):
-        # 1/6 cite "outlier phrase" — below the 10% threshold.
+        # Mining is segment_text-only post-PR-4. Build fixtures where one
+        # bigram survives the threshold and another does not.
         rows = [
-            _decision(fact_id=str(i), decision="reject", reason="generic noise") for i in range(6)
+            _decision(
+                fact_id=f"00000000-0000-0000-0000-00000000000{i}",
+                decision="reject",
+                segment="the generic noise was 100 here",
+            )
+            for i in range(6)
         ]
         # And one ringer with a unique 1-of-7 phrase.
-        rows.append(_decision(fact_id="ringer", decision="reject", reason="some outlier phrase"))
+        rows.append(
+            _decision(
+                fact_id="00000000-0000-0000-0000-000000000099",
+                decision="reject",
+                segment="some outlier phrase appeared with 100",
+            )
+        )
         findings = M._mine_phrases_for_metric(
             rows, "cm_x", decision_type="reject", metric_keyword_tokens=set()
         )
         # 1/7 = 14.3%, BUT MIN_OCCURRENCES is 2, so single occurrences are
-        # dropped. "noise" appears in 6/7 rows and SHOULD survive (~86%).
+        # dropped. "generic noise" appears in 6/7 rows and SHOULD survive (~86%).
         phrases = {f["phrase"] for f in findings}
         assert "outlier" not in phrases
-        assert "noise" in phrases
+        assert "generic noise" in phrases
 
     def test_metric_keyword_tokens_are_suppressed(self):
         # The metric's own keyword "customer" should not surface as a finding
-        # even though it appears in every reject reason.
+        # even though it appears in every reject's segment.
         rows = [
             _decision(
-                fact_id=str(i),
+                fact_id=f"00000000-0000-0000-0000-00000000000{i}",
                 decision="reject",
-                reason="this customer is wrong: it should be growth",
+                segment="this customer is wrong: it should be growth at 100",
             )
             for i in range(5)
         ]
@@ -178,9 +223,9 @@ class TestMinePhrasesForMetric:
     def test_examples_are_capped_and_carry_filing_id(self):
         rows = [
             _decision(
-                fact_id=f"fact-{i}",
+                fact_id=f"00000000-0000-0000-0000-0000000000{i:02d}",
                 decision="reject",
-                reason="accounts receivable balance issue",
+                segment="accounts receivable balance issue at 100",
             )
             for i in range(20)
         ]

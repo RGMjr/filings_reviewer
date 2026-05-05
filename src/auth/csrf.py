@@ -90,9 +90,17 @@ def _read_enforcement_flag() -> bool:
         else:
             enabled = rows[0]["value"] == "true"
     except Exception as exc:
-        # Any DB error (connection failure, table not yet applied, etc.) —
-        # default off and warn rather than raising. This keeps the middleware
-        # safe to register before the DB is fully available.
+        # Programmer / configuration errors (wrong context, import failures, etc.)
+        # should propagate loudly rather than silently defaulting to off.
+        # Transient DB errors (connection failure, table not yet applied, etc.)
+        # default off so the middleware stays safe before the DB is fully available.
+        _programmer_errors = (RuntimeError, ImportError, AttributeError, NameError)
+        if isinstance(exc, _programmer_errors):
+            logger.error(
+                "csrf_protect: programmer error reading auth_enforcement_enabled flag (re-raising): %s",
+                exc,
+            )
+            raise
         logger.warning(
             "csrf_protect: failed to read auth_enforcement_enabled flag (defaulting to False): %s",
             exc,

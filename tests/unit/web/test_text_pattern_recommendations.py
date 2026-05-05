@@ -40,7 +40,7 @@ def _finding(
     decision_type: str = "reject",
     phrase: str = "accounts receivable",
     ngram: int = 2,
-    source_field: str = "rejection_reason",
+    source_field: str = "segment_text",
     occurrences: int = 14,
     pct: float | Decimal = 45.20,
 ) -> dict:
@@ -580,3 +580,29 @@ class TestIsStaleFlag:
         stale = [r for r in out["cm_x"] if r["is_stale"]]
         assert len(stale) == 1
         assert stale[0]["decision_key"] == "wrong_value"
+
+
+# ---------------------------------------------------------------------------
+# PR 4 — Free-text sources are excluded from exclusion_pattern
+# ---------------------------------------------------------------------------
+
+
+class TestExclusionPatternSourceFieldNarrowing:
+    """Assert that rejection_reason no longer triggers exclusion_pattern.
+
+    After PR 4 (drop free-text n-gram mining), EXCL_SOURCE_FIELDS contains
+    only 'segment_text'. Findings from 'rejection_reason' would never appear
+    in new analysis runs anyway, but the rule-level guard is verified here so
+    a future widening of EXCL_SOURCE_FIELDS is caught by tests.
+    """
+
+    def test_rejection_reason_source_does_not_fire(self):
+        # A finding from rejection_reason — even at high pct — must not
+        # produce an exclusion_pattern recommendation.
+        out = compute_recommendations(
+            [_summary()], [_finding(source_field="rejection_reason", pct=80.0)]
+        )
+        assert "cm_x" not in out, (
+            "exclusion_pattern should not fire for source_field='rejection_reason' "
+            "after PR 4 narrowed EXCL_SOURCE_FIELDS to segment_text only"
+        )

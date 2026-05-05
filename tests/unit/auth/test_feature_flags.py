@@ -72,7 +72,7 @@ class TestIsEnabled:
 
     def test_db_error_returns_false(self, monkeypatch):
         def boom():
-            raise RuntimeError("db down")
+            raise Exception("connection refused")
 
         monkeypatch.setattr("src.web.app.get_db", boom)
         assert feature_flags.is_enabled("some_flag") is False
@@ -111,3 +111,31 @@ class TestIsEnabled:
         feature_flags.is_enabled("flag_a")
         feature_flags.is_enabled("flag_b")
         assert fake.call_count == 2
+
+    def test_runtime_error_propagates(self, monkeypatch):
+        def boom():
+            raise RuntimeError("Working outside of application context")
+
+        monkeypatch.setattr("src.web.app.get_db", boom)
+        with pytest.raises(RuntimeError):
+            feature_flags.is_enabled("some_flag")
+
+    def test_import_error_propagates(self, monkeypatch):
+        def boom():
+            raise ImportError("module not found")
+
+        monkeypatch.setattr("src.web.app.get_db", boom)
+        with pytest.raises(ImportError):
+            feature_flags.is_enabled("some_flag")
+
+    def test_fail_closed_true_re_raises_db_error(self, monkeypatch):
+        def boom():
+            raise Exception("connection refused")
+
+        monkeypatch.setattr("src.web.app.get_db", boom)
+        with pytest.raises(Exception, match="connection refused"):
+            feature_flags.is_enabled("some_flag", fail_closed=True)
+
+    def test_fail_closed_true_successful_read_returns_value(self, patch_db):
+        patch_db([{"value": "true"}])
+        assert feature_flags.is_enabled("some_flag", fail_closed=True) is True
