@@ -373,7 +373,9 @@ def test_filter_options_endpoint_industry_param_resolves_to_sic(client):
 
     captured: dict = {}
 
-    def fake_year_counts(db, *, sic_codes=None, form_types=None):
+    def fake_year_counts(
+        db, *, sic_codes=None, form_types=None, include_other=False, mapped_sic_codes=None
+    ):
         captured["sic_codes"] = sic_codes
         return [YearCount(year=2018, total=3, pending=3)]
 
@@ -403,7 +405,9 @@ def test_filter_options_endpoint_unknown_industry_silently_ignored(client):
     best-effort."""
     captured: dict = {}
 
-    def fake_year_counts(db, *, sic_codes=None, form_types=None):
+    def fake_year_counts(
+        db, *, sic_codes=None, form_types=None, include_other=False, mapped_sic_codes=None
+    ):
         captured["sic_codes"] = sic_codes
         return []
 
@@ -437,7 +441,9 @@ def test_filter_options_endpoint_form_type_param_resolves_bundle(client):
     year_captured: dict = {}
     industry_captured: dict = {}
 
-    def fake_year_counts(db, *, sic_codes=None, form_types=None):
+    def fake_year_counts(
+        db, *, sic_codes=None, form_types=None, include_other=False, mapped_sic_codes=None
+    ):
         year_captured["form_types"] = form_types
         return [YearCount(year=2015, total=467, pending=5)]
 
@@ -473,7 +479,9 @@ def test_filter_options_endpoint_multiple_form_types_union(client):
 
     year_captured: dict = {}
 
-    def fake_year_counts(db, *, sic_codes=None, form_types=None):
+    def fake_year_counts(
+        db, *, sic_codes=None, form_types=None, include_other=False, mapped_sic_codes=None
+    ):
         year_captured["form_types"] = form_types
         return [YearCount(year=2015, total=10, pending=2)]
 

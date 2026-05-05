@@ -950,11 +950,23 @@ ORDER BY yr DESC
 """
 
 
+_YEAR_COUNTS_OTHER_GATE_ALONE = (
+    "  AND (c.industry_code IS NULL OR c.industry_code <> ALL(%(mapped_sic_codes)s))\n"
+)
+_YEAR_COUNTS_OTHER_GATE_UNION = (
+    "  AND (c.industry_code = ANY(%(sic_codes)s) "
+    "OR c.industry_code IS NULL "
+    "OR c.industry_code <> ALL(%(mapped_sic_codes)s))\n"
+)
+
+
 def query_universe_year_counts(
     db: DatabaseAdapter,
     *,
     sic_codes: list[str] | None = None,
     form_types: list[str] | None = None,
+    include_other: bool = False,
+    mapped_sic_codes: list[str] | None = None,
 ) -> list[YearCount]:
     """Return distinct years in `filings` with universe total + pending counts.
 
@@ -968,6 +980,12 @@ def query_universe_year_counts(
     is responsible for resolving bundle keys via ``FORM_TYPE_BUNDLES``.
     None or empty for either means no filter on that axis.
 
+    When ``include_other`` is True the clause restricts to rows whose
+    ``industry_code`` is NULL or is not present in ``mapped_sic_codes``
+    (the complement of every named-bucket SIC).  When ``sic_codes`` is also
+    non-empty the two predicates are OR-combined (union).  This mirrors the
+    ``_industry_clause`` logic used by ``discover_candidates``.
+
     The Phase-1 in-scope gate (``is_in_scope_phase1 = TRUE``) is applied
     when ``form_types`` intersects ``S1F1_FORMS`` — same rule as
     ``_build_discovery_sql`` — so facet counts agree with what Preview
@@ -978,7 +996,14 @@ def query_universe_year_counts(
     include_phase1 = bool(form_types and (S1F1_FORMS & set(form_types)))
     sql = _YEAR_COUNTS_SQL
     params: dict[str, Any] = {}
-    if sic_codes:
+    if include_other:
+        if sic_codes:
+            sql += _YEAR_COUNTS_OTHER_GATE_UNION
+            params["sic_codes"] = list(sic_codes)
+        else:
+            sql += _YEAR_COUNTS_OTHER_GATE_ALONE
+        params["mapped_sic_codes"] = list(mapped_sic_codes or [])
+    elif sic_codes:
         sql += _YEAR_COUNTS_INDUSTRY_GATE
         params["sic_codes"] = list(sic_codes)
     if form_types:
@@ -1213,6 +1238,8 @@ def query_universe_form_type_counts(
     *,
     years: list[int] | None = None,
     sic_codes: list[str] | None = None,
+    include_other: bool = False,
+    mapped_sic_codes: list[str] | None = None,
 ) -> list[FormTypeCount]:
     """Return [{key, label, total, pending}] for every form-type bundle.
 
@@ -1229,8 +1256,12 @@ def query_universe_form_type_counts(
     the gate. Mirrors ``_build_discovery_sql``'s ``include_phase1`` rule.
 
     Optional ``years`` restricts by filing year; optional ``sic_codes``
-    restricts by company SIC. Filters apply on the LEFT JOIN so bundles
-    with zero matches still appear (total=0, pending=0).
+    restricts by company SIC.  When ``include_other`` is True the SIC
+    filter is replaced by the Other-partition predicate
+    (``industry_code IS NULL OR NOT IN mapped_sic_codes``); when both
+    ``sic_codes`` and ``include_other`` are set the two are OR-combined.
+    Filters apply on the LEFT JOIN so bundles with zero matches still
+    appear (total=0, pending=0).
 
     Sorted by bundle key for stable output (s1f1 → 10k → 8k).
     """
@@ -1263,7 +1294,23 @@ def query_universe_form_type_counts(
         return []
 
     year_clause = "AND EXTRACT(YEAR FROM f.filing_date) = ANY(%(years)s)" if years else ""
-    company_filter_clause = "AND c.industry_code = ANY(%(sic_codes)s)" if sic_codes else ""
+
+    # Build the company-filter clause for the FILTER expressions.
+    if include_other:
+        if sic_codes:
+            company_filter_clause = (
+                "AND (c.industry_code = ANY(%(sic_codes)s) "
+                "OR c.industry_code IS NULL "
+                "OR c.industry_code <> ALL(%(mapped_sic_codes)s))"
+            )
+        else:
+            company_filter_clause = (
+                "AND (c.industry_code IS NULL OR c.industry_code <> ALL(%(mapped_sic_codes)s))"
+            )
+    elif sic_codes:
+        company_filter_clause = "AND c.industry_code = ANY(%(sic_codes)s)"
+    else:
+        company_filter_clause = ""
 
     sql = _FORM_TYPE_COUNTS_SQL_TEMPLATE.format(
         year_clause=year_clause,
@@ -1279,6 +1326,8 @@ def query_universe_form_type_counts(
         params["years"] = [int(y) for y in years]
     if sic_codes:
         params["sic_codes"] = list(sic_codes)
+    if include_other:
+        params["mapped_sic_codes"] = list(mapped_sic_codes or [])
 
     rows = db.query(sql, params)
     by_key = {str(r["bundle_key"]): (int(r["total"]), int(r["pending"])) for r in rows}
