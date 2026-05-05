@@ -16,6 +16,7 @@ touches:
 updated: '2026-05-05'
 pr_refs:
   - 382
+  - 510
 note: Operator UI mitigation shipped via PR #382 — Resume Batch button surfaces when status='running' AND lock_stale=true (run_lock_until < NOW()), replacing the manual SQL UPDATE + local-runner workaround. Auto-recovery via the watcher's poll predicate is technically wired (_CLAIM_NEXT_SQL admits stale-locked running rows; watcher loop calls it every poll cycle) but never verified end-to-end on Render after the original incident. Severity downgraded medium→low because the operational pain is gone; remaining concern is verification, not new code.
 ---
 
