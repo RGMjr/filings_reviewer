@@ -36,6 +36,15 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Exception types that signal a programmer / configuration error — these should
+# propagate rather than being silently swallowed and defaulting to False.
+_PROGRAMMER_ERRORS: tuple[type[Exception], ...] = (
+    RuntimeError,
+    ImportError,
+    AttributeError,
+    NameError,
+)
+
 # ---------------------------------------------------------------------------
 # Cache
 # ---------------------------------------------------------------------------
@@ -61,7 +70,7 @@ def _clear_cache_for_tests() -> None:
 # ---------------------------------------------------------------------------
 
 
-def is_enabled(flag_key: str) -> bool:
+def is_enabled(flag_key: str, *, fail_closed: bool = False) -> bool:
     """Return True iff ``flag_key`` is set to ``'true'`` and not expired.
 
     Caches each key's value for ``_FLAG_CACHE_TTL`` seconds so the hot path
@@ -69,6 +78,9 @@ def is_enabled(flag_key: str) -> bool:
 
     Args:
         flag_key: The ``feature_flags.key`` value to read.
+        fail_closed: If True, any exception (including transient DB errors) is
+            re-raised rather than defaulting to False. Use for boot-time flag
+            reads where silent failure is the wrong default.
 
     Returns:
         Boolean — ``True`` if the row exists, ``value == 'true'``, and
@@ -83,7 +95,7 @@ def is_enabled(flag_key: str) -> bool:
             return value
 
     # Cache miss or expired — re-read from DB.
-    enabled = _read_flag_from_db(flag_key)
+    enabled = _read_flag_from_db(flag_key, fail_closed=fail_closed)
 
     with _CACHE_LOCK:
         _FLAG_CACHE[flag_key] = (enabled, now)
@@ -96,7 +108,7 @@ def is_enabled(flag_key: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _read_flag_from_db(flag_key: str) -> bool:
+def _read_flag_from_db(flag_key: str, *, fail_closed: bool = False) -> bool:
     """Read *flag_key* from ``feature_flags`` and return the resolved bool.
 
     Returns ``False`` on any DB error (connection, missing table, etc.) so
@@ -121,6 +133,13 @@ def _read_flag_from_db(flag_key: str) -> bool:
             {"flag_key": flag_key},
         )
     except Exception as exc:
+        if fail_closed or isinstance(exc, _PROGRAMMER_ERRORS):
+            logger.error(
+                "feature_flags.is_enabled(%s): unexpected error (re-raising): %s",
+                flag_key,
+                exc,
+            )
+            raise
         logger.warning(
             "feature_flags.is_enabled(%s): DB read failed (defaulting to False): %s",
             flag_key,

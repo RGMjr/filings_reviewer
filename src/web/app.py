@@ -324,7 +324,7 @@ def create_app(
     from src.auth.feature_flags import is_enabled
 
     with app.app_context():
-        google_login_on = is_enabled("google_login_enabled")
+        google_login_on = is_enabled("google_login_enabled", fail_closed=True)
 
     if google_login_on:
         from src.web.routes.auth import auth_bp
