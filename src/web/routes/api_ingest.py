@@ -23,6 +23,7 @@ from src.auth.permissions import (
 )
 from src.universe.onboarding import (
     FORM_TYPE_BUNDLES,
+    OTHER_INDUSTRY_KEY,
     load_industry_map,
     query_universe_form_type_counts,
     query_universe_industry_counts,
@@ -240,8 +241,15 @@ def filter_options():
             continue  # ignore malformed input rather than 400 — facet is best-effort
 
     industry_map = load_industry_map()
+
+    # Detect whether the user selected the "Other" pseudo-industry sentinel.
+    # The sentinel is stripped before SIC resolution so it never reaches
+    # resolve_industry(); the include_other flag carries the signal instead.
+    include_other = OTHER_INDUSTRY_KEY in raw_industries
+    named_industries = [ind for ind in raw_industries if ind != OTHER_INDUSTRY_KEY]
+
     selected_sic_codes: list[str] = []
-    for ind_name in raw_industries:
+    for ind_name in named_industries:
         try:
             _, codes = resolve_industry(ind_name, industry_map)
         except ValueError:
@@ -250,6 +258,15 @@ def filter_options():
     # Dedupe SIC codes while preserving order
     seen: set[str] = set()
     selected_sic_codes = [s for s in selected_sic_codes if not (s in seen or seen.add(s))]
+
+    # Compute the union of every YAML-mapped SIC code (needed for the
+    # Other-partition negation predicate when include_other is True).
+    mapped_sic_codes: list[str] = []
+    if include_other:
+        all_mapped: set[str] = set()
+        for entry in (industry_map.get("industries") or {}).values():
+            all_mapped.update(entry.get("sic_codes") or [])
+        mapped_sic_codes = sorted(all_mapped)
 
     # Resolve form-type bundle keys (s1f1, 10k, 8k) to canonical form-type
     # strings (S-1, S-1/A, 10-K, ...). Unknown bundle keys are ignored.
@@ -266,10 +283,15 @@ def filter_options():
 
     try:
         # Each axis is filtered by the OTHER two axes' selections, ignoring its own.
+        # When include_other is True the year/form-type axes restrict to the
+        # Other partition (complement of every named-bucket SIC) instead of
+        # dropping the SIC predicate entirely.
         year_rows = query_universe_year_counts(
             db,
             sic_codes=selected_sic_codes or None,
             form_types=selected_form_types or None,
+            include_other=include_other,
+            mapped_sic_codes=mapped_sic_codes if include_other else None,
         )
         industry_rows = query_universe_industry_counts(
             db,
@@ -287,6 +309,8 @@ def filter_options():
             db,
             years=selected_years or None,
             sic_codes=selected_sic_codes or None,
+            include_other=include_other,
+            mapped_sic_codes=mapped_sic_codes if include_other else None,
         )
     except psycopg.DatabaseError as exc:
         logger.error("DB error in filter-options: %s", exc)

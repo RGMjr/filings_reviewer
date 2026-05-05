@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.universe.onboarding import discover_candidates
+from src.universe.onboarding import discover_candidates, query_universe_year_counts
 
 
 def _seed(db, *, cik: str, name: str, sic: str, accession: str, form_type: str = "S-1"):
@@ -168,3 +168,47 @@ def test_discover_candidates_sic_union_other_returns_all_three(clean_db):
 
     names = {c.company_name for c in results}
     assert names == {"Mapped Software Co", "Unmapped Manufacturing Co", "Null Industry Co"}
+
+
+@pytest.mark.integration
+def test_year_counts_other_only_excludes_mapped_sic(clean_db):
+    """query_universe_year_counts with include_other=True and sic_codes=None
+    returns year rows covering only the Other partition (NULL or unmapped
+    industry_code), not the full universe.
+
+    This is the cross-axis facet regression tested by gh-387: when the user
+    selects __other__ as the only industry, the year-axis counts must be
+    restricted to the Other partition instead of returning full-universe totals.
+    """
+    # Seed two companies: one with a mapped SIC, one with an unmapped SIC.
+    _seed(
+        clean_db,
+        cik="0000999501",
+        name="Mapped Tech Co",
+        sic="7372",
+        accession="0000999501-15-000001",
+    )
+    _seed(
+        clean_db,
+        cik="0000999502",
+        name="Unmapped Other Co",
+        sic="9999",  # not in mapped_sic_codes below
+        accession="0000999502-15-000001",
+    )
+
+    # With include_other=True and mapped=["7372"], the year row should count
+    # only the row with sic="9999" (Other partition). The mapped row is excluded.
+    mapped = ["7372"]
+    rows = query_universe_year_counts(
+        clean_db,
+        sic_codes=None,
+        include_other=True,
+        mapped_sic_codes=mapped,
+    )
+
+    assert len(rows) == 1, f"Expected 1 year row; got {rows}"
+    assert rows[0].year == 2015
+    # Only the unmapped company counts toward the Other partition.
+    assert rows[0].total == 1, (
+        f"Other partition year count should be 1 (unmapped only); got {rows[0].total}"
+    )
