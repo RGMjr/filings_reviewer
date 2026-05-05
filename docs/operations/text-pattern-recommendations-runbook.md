@@ -42,6 +42,15 @@ For each accepted row, the procedure is:
    - The recommendation `decision_key` (the phrase, the target metric_id, or `"wrong_value"` per rule).
    - The gold-standard delta (Tier-1 presence-recall before / after; tier-2 P/R/F1 informational).
 6. **After merge**, leave the `text_pattern_recommendation_decisions` row in place. It is the audit trail. Do not delete or null it.
+7. **After merge, link the PR to the decision row.** Run:
+   ```bash
+   python3 scripts/link_text_recommendation_to_pr.py \
+     --decision-key "<phrase or metric_id or 'wrong_value'>" \
+     --metric-id "<metric_id>" \
+     --rule "<exclusion_pattern|keyword_overlap|fp_filter_gap>" \
+     --pr-number $(gh pr view --json number -q .number)
+   ```
+   This populates `text_pattern_recommendation_decisions.pr_number` and `pr_url`, closing the audit-trail link from reviewer decision to merged change. Re-running without `--force` is safe — the script exits 3 and leaves the existing value untouched.
 
 ### One recommendation per PR
 

@@ -129,6 +129,7 @@
     - If a ticket/issue reference is apparent, include it in parens: `feat: add X (GR-16)`
     - Add a body (blank line + detail) only when the diff spans multiple distinct concerns
     - Use the generated message directly — no confirmation. Run `git commit` via heredoc for multi-line messages.
+    - If the PR resolves a recommendation accepted on `/v2/review/stats`, run `python3 scripts/link_text_recommendation_to_pr.py` after merge to populate the audit trail (see `docs/operations/text-pattern-recommendations-runbook.md` Step 7).
 
 12. **Restore pre-existing staging.** Re-stage files that were unstaged in step 4.
 
