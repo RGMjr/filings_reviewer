@@ -37,13 +37,20 @@ def reset_flag_cache():
 @pytest.fixture()
 def app():
     """Minimal Flask test app with CSRF middleware registered."""
-    return create_app(
-        config_name="testing",
-        config_override={
-            "DATABASE_URL": "postgresql://test:test@localhost/test",
-            "API_KEY_REQUIRED": False,
-        },
-    )
+    from unittest.mock import patch as _patch
+
+    # Patch is_enabled at the source so create_app() never calls get_db().
+    # Patching src.web.app.get_db here would poison any blueprint that imports
+    # get_db at module level (e.g. ingest.py line 55), permanently replacing
+    # its bound reference with the test MagicMock for the rest of the session.
+    with _patch("src.auth.feature_flags.is_enabled", return_value=False):
+        return create_app(
+            config_name="testing",
+            config_override={
+                "DATABASE_URL": "postgresql://test:test@localhost/test",
+                "API_KEY_REQUIRED": False,
+            },
+        )
 
 
 @pytest.fixture()
@@ -272,3 +279,24 @@ class TestFlagCache:
 
         # query() should have been called a second time.
         assert mock_db.query.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Tests: programmer errors propagate rather than silently defaulting to off
+# ---------------------------------------------------------------------------
+
+
+class TestProgrammerErrorPropagates:
+    def test_runtime_error_propagates_from_flag_read(self, client):
+        """RuntimeError during flag read re-raises instead of defaulting to False."""
+        from unittest.mock import patch
+
+        def boom():
+            raise RuntimeError("Working outside of application context")
+
+        with patch("src.web.app.get_db", boom):
+            with pytest.raises(RuntimeError):
+                client.post(
+                    "/health",
+                    headers={"Origin": "https://evil.example.com"},
+                )
