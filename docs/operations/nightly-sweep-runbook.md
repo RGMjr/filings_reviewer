@@ -99,7 +99,63 @@ Configurable via Render env vars on the `filings-nightly-sweep` service (default
 - Local `.claude/settings.json` hooks deny `git push origin main`, `--force`, `gh pr merge --admin`.
 - The sweeper's prompt explicitly forbids: schema migrations, infra/credential changes, work outside declared `Touches` globs, baseline updates to silence tests, `--no-verify`.
 - Worktree isolation — the sweeper cannot collide with a concurrent human session.
-- Credential scope — the sweeper's env group (`ANTHROPIC_API_KEY`, `GH_TOKEN`) deliberately excludes DB and R2 creds.
+- Credential scope — `DATABASE_URL` is available in the sweeper's env (read-only stall check only). R2 creds (`R2_BUCKET`, `R2_*`) are deliberately excluded; `FILINGS_REVIEWER_ALLOW_PROD_WRITES` is unset so no R2 writes are possible.
+
+## Stalled-runs alert
+
+The sweep orchestrator runs `scripts/check_stalled_runs.py` at startup (step 2c) and
+appends any findings to the morning-review digest under a **"Stalled runs"** heading.
+
+### What it flags
+
+| Table | Condition |
+|---|---|
+| `text_decision_analysis_runs` | `status='running' AND started_at < NOW() - INTERVAL '30 minutes'` |
+| `model_training_runs` | `status='running' AND run_lock_until < NOW() - INTERVAL '30 minutes'` (lock-aware) |
+| `v2_ingest_batches` | `status='running' AND run_lock_until < NOW() - INTERVAL '30 minutes'` (lock-aware) |
+
+Thresholds are configurable via `STALL_THRESHOLD_TEXT_MINS` (default 30) and
+`STALL_THRESHOLD_LOCK_MINS` (default 30) on the `filings-nightly-sweep` Render service.
+
+### Idempotency
+
+The check re-fires every night for the same stale row until a human resolves it. No
+`last_alerted_at` column — a repeated entry in successive digests signals a
+**permanently stuck worker** requiring active remediation.
+
+### Manual escape hatches
+
+**`text_decision_analysis_runs` stuck row:**
+```sql
+UPDATE text_decision_analysis_runs
+   SET status = 'failed', error = 'manual cleanup', completed_at = NOW()
+ WHERE id = '<uuid>';
+```
+The next button click will start a fresh analysis run.
+
+**`model_training_runs` stuck row:**
+```sql
+UPDATE model_training_runs
+   SET status = 'failed', error = 'manual cleanup', completed_at = NOW()
+ WHERE id = '<uuid>';
+```
+Then restart the `filings-onboarding-runner` service to re-enable retrain.
+
+**`v2_ingest_batches` stuck row:** Use `POST /ingest/batch/<id>/resume` in the
+web UI — it re-queues failed/stuck rows and clears `run_lock_until`. Manual SQL:
+```sql
+UPDATE v2_ingest_batches
+   SET status = 'queued', run_lock_until = NULL
+ WHERE batch_id = '<uuid>';
+```
+
+### DB credential setup
+
+`check_stalled_runs.py` reads `DATABASE_URL` from the environment. On Render, this
+is set as `sync: false` on the `filings-nightly-sweep` service (see `render.yaml`).
+Configure the value in the Render UI → `filings-nightly-sweep` → **Environment**.
+If `DATABASE_URL` is absent or the connection fails, the script exits 0 with a
+warning logged — the sweep continues normally, but no stall section appears in the digest.
 
 ## When things go wrong
 
@@ -115,6 +171,7 @@ Configurable via Render env vars on the `filings-nightly-sweep` service (default
 
 ## References
 
+- Stall check: `scripts/check_stalled_runs.py` (unit tests: `tests/unit/scripts/test_check_stalled_runs.py`)
 - Selector: `scripts/known_issues_selector.py` (unit tests: `tests/unit/scripts/test_known_issues_selector.py`)
 - Digest writer: `scripts/write_sweep_digest.py` (unit tests: `tests/unit/scripts/test_write_sweep_digest.py`)
 - Orchestrator: `scripts/run_nightly_sweep.sh`
