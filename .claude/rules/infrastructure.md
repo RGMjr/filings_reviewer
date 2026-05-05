@@ -156,12 +156,10 @@ image storage, parallel surface. Two backends selected at runtime via
 is validated by `image_storage.validate_key()` (shared regex) — path-traversal
 sequences and absolute paths are rejected at every call site.
 
-**Reader-side compatibility:** legacy filesystem paths and the `html_content`
-DB-blob fallback both still work. Extraction call sites detect
+**Reader-side compatibility:** Extraction call sites detect
 `html_storage_path.startswith("filings/")` and download to a tempfile via the
-storage abstraction; otherwise they use the existing disk + DB-blob fallback
-logic. See `scripts/batch_v2_extraction.py` and `scripts/run_v2_extraction.py`
-for the per-row resolution flow.
+storage abstraction; otherwise they fall back to the legacy filesystem path
+directly. See `scripts/batch_v2_extraction.py` for the per-row resolution flow.
 
 **Writer-side (post-gh-315):** `src/filing_fetcher/filing_fetcher.py` uploads
 HTML bytes to R2 (or `LocalFilesystemFilingStorage` in dev) immediately after
@@ -170,11 +168,6 @@ verified via a HEAD check before the DB UPDATE; if the verify fails, the fetch
 fails-closed (`html_fetch_error` set, `html_storage_path` left NULL).
 `scripts/migrate_filing_html_to_r2.py` remains available for back-filling
 rows that stalled mid-fetch or predate gh-315.
-
-Legacy filesystem-path detection branches in `scripts/batch_v2_extraction.py`
-and `scripts/run_v2_extraction.py` are kept for one release to handle any
-remaining pre-gh-315 rows in the corpus; a follow-up fragment (gh-314) will
-remove them after the soak window.
 
 ### Prod-write guard
 

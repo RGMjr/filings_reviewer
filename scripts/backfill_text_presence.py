@@ -124,28 +124,31 @@ def _select_filings(db: DatabaseAdapter, args: argparse.Namespace) -> list[dict]
     return db.query(sql, params)
 
 
-def _resolve_html(filing: dict, db: DatabaseAdapter) -> tuple[Path | None, str | None]:
+def _resolve_html(filing: dict) -> tuple[Path | None, str | None]:
     """Return (resolved_path, temp_path_to_clean_up).
 
-    Tries html_storage_path first, then falls back to ``filings.html_content``
-    written to a temp file (mirrors ``batch_v2_extraction.py`` behavior).
+    R2 keys (starting with 'filings/') are downloaded to a temp file;
+    legacy filesystem paths are checked directly.
     """
-    storage_path = filing.get("html_storage_path")
-    if storage_path:
-        p = Path(storage_path)
-        if p.exists():
-            return p, None
+    from src.infra.filing_storage import get_filing_storage
 
-    rows = db.query(
-        "SELECT html_content FROM filings "
-        "WHERE filing_id = %(filing_id)s AND html_content IS NOT NULL",
-        {"filing_id": filing["filing_id"]},
-    )
-    if rows and rows[0].get("html_content"):
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".htm", delete=False, encoding="utf-8")
-        tmp.write(rows[0]["html_content"])
-        tmp.close()
-        return Path(tmp.name), tmp.name
+    storage_path = filing.get("html_storage_path")
+    if not storage_path:
+        return None, None
+
+    if storage_path.startswith("filings/"):
+        try:
+            data = get_filing_storage().get_bytes(storage_path)
+            tmp = tempfile.NamedTemporaryFile(mode="wb", suffix=".htm", delete=False)
+            tmp.write(data)
+            tmp.close()
+            return Path(tmp.name), tmp.name
+        except Exception:
+            return None, None
+
+    p = Path(storage_path)
+    if p.exists():
+        return p, None
 
     return None, None
 
@@ -157,8 +160,7 @@ def _process_one(
     dry_run: bool,
 ) -> tuple[str, int]:
     """Process one filing; return (status, presences_upserted)."""
-    db = DatabaseAdapter(db_url)
-    html_path, temp_to_clean = _resolve_html(filing, db)
+    html_path, temp_to_clean = _resolve_html(filing)
     try:
         if html_path is None:
             return "no_html", 0
