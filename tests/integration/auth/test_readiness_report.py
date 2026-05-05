@@ -136,6 +136,48 @@ def test_empty_db_json_shape(auth_db, cli):
     assert payload["dev_bypass_guard"]["status"] == "PASS"
 
 
+def test_populated_json_shape(auth_db, cli, users_cli, aliases_cli):
+    """--json output shape is correct with seeded data (populated case)."""
+    for u in users_cli.SEED_USERS:
+        users_cli.upsert_user(auth_db, u["email"], u["role"], u["display_name"], verbose=False)
+    for a in aliases_cli.SEED_ALIASES:
+        aliases_cli.upsert_alias(
+            auth_db, a["legacy_reviewer_string"], a["target_email"], verbose=False
+        )
+
+    report = cli.build_report(auth_db)
+    payload = json.loads(cli._format_json(report))
+
+    assert set(payload.keys()) == {
+        "allowlisted",
+        "users",
+        "active_sessions",
+        "legacy_aliases",
+        "flags",
+        "dev_bypass_guard",
+    }
+    assert len(payload["allowlisted"]) == 3
+    assert all(
+        {"normalized_email", "intended_role", "status", "created_at"} <= set(r)
+        for r in payload["allowlisted"]
+    )
+    assert len(payload["users"]) == 3
+    assert all(
+        {"normalized_email", "display_name", "first_login_at", "last_login_at", "account_status"}
+        <= set(r)
+        for r in payload["users"]
+    )
+    assert payload["active_sessions"] == 0
+    assert len(payload["legacy_aliases"]) == 2
+    assert all(
+        {"legacy_reviewer_string", "target_email", "active", "created_at"} <= set(r)
+        for r in payload["legacy_aliases"]
+    )
+    assert payload["flags"] == []
+    assert set(payload["dev_bypass_guard"].keys()) == {"status", "app_env", "auth_dev_bypass"}
+    assert payload["dev_bypass_guard"]["status"] == "PASS"
+
+
 def test_post_seed_check_passes(auth_db, cli, users_cli, aliases_cli):
     """Run the seed scripts (their main paths), then evaluate readiness."""
     # Seed users via the script's default code path.
@@ -319,7 +361,7 @@ def test_main_check_returns_zero_when_ready(auth_db, cli, users_cli, monkeypatch
     captured = capsys.readouterr()
     assert rc == 0, f"unexpected NOT READY output: {captured.err}"
     assert captured.out == ""
-    assert captured.err == ""
+    assert not any("NOT READY" in line for line in captured.err.splitlines())
 
 
 def test_main_check_returns_one_on_empty_db(auth_db, cli, monkeypatch, capsys):

@@ -58,6 +58,7 @@ _REPO_ROOT = Path(__file__).parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from src.auth.dev_bypass import is_dev_bypass_enabled  # noqa: E402
 from src.infra.db import DatabaseAdapter  # noqa: E402
 
 VALID_ROLES = {"admin", "reviewer", "viewer"}
@@ -189,15 +190,13 @@ def fetch_flags(db: DatabaseAdapter) -> list[dict]:
 
 
 def evaluate_dev_bypass_guard() -> dict:
-    """Mirror the predicate in src/auth/dev_bypass.py::verify_dev_bypass_safe.
+    """Uses `is_dev_bypass_enabled()` from `src.auth.dev_bypass`.
 
     PASS unless BOTH APP_ENV=production AND AUTH_DEV_BYPASS=1.
     """
     app_env = os.environ.get("APP_ENV")
-    bypass = os.environ.get("AUTH_DEV_BYPASS", "").strip()
     is_prod = app_env == "production"
-    is_bypass = bypass == "1"
-    fail = is_prod and is_bypass
+    fail = is_prod and is_dev_bypass_enabled()
     return {
         "status": "FAIL" if fail else "PASS",
         "app_env": app_env,
@@ -390,7 +389,11 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument(
         "--check",
         action="store_true",
-        help="Silent on success. Exit 0 if Stage-B-ready, 1 if not, 2 on script error.",
+        help=(
+            "Silent on success. Exit 0 if Stage-B-ready, 1 if not, 2 on script error. "
+            "NOTE: reads env vars from the running environment — use inside the prod container "
+            "for authoritative results."
+        ),
     )
     return parser
 
@@ -412,6 +415,13 @@ def main() -> int:
         return 2
 
     if args.check:
+        if os.environ.get("APP_ENV") != "production":
+            print(
+                "WARNING: --check is reading env vars from the local environment. "
+                "Run from inside the production container (where APP_ENV=production) "
+                "or set APP_ENV and AUTH_DEV_BYPASS to match prod before trusting this result.",
+                file=sys.stderr,
+            )
         ready, reasons = evaluate_readiness(report)
         if ready:
             return 0
