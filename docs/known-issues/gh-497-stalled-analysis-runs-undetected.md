@@ -8,7 +8,8 @@ severity: medium
 autonomy: skip
 estimated: —
 touches: []
-pr_refs: []
+pr_refs:
+  - 512
 discovered: 2026-05-05
 updated: 2026-05-05
 gh_issue: 497
