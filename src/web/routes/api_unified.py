@@ -1421,12 +1421,13 @@ def _text_analysis_threshold() -> int:
 def _spawn_text_analysis_runner(run_id: str, *, database_url: str) -> bool:
     """Spawn the text-decision pattern-analysis script as a detached subprocess.
 
-    Mirrors _spawn_retrain_runner. Fire-and-forget; the subprocess writes
-    status back to text_decision_analysis_runs via --run-id.
+    Fire-and-forget; the subprocess writes status back to
+    text_decision_analysis_runs via --run-id. Spawned unconditionally — unlike
+    retrain and ingest, there is no worker-side queue consumer for this surface
+    and the job runs in well under a second on the lifetime corpus, so honoring
+    INGEST_SPAWN_SUBPROCESS=false would silently strand the row at 'running'
+    forever (the prior shape — see manual-unblock run on 2026-05-05).
     """
-    if not current_app.config.get("INGEST_SPAWN_SUBPROCESS", True):
-        return True
-
     log_dir = _PROJECT_ROOT / "logs"
     log_dir.mkdir(exist_ok=True)
     log_path = log_dir / f"text_analysis_{run_id}.log"

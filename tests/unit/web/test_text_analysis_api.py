@@ -1,8 +1,10 @@
 """Unit tests for the text-decision pattern-analysis endpoints.
 
 Mirrors tests/unit/web/test_models_retrain.py for the parallel
-/api/v2/extraction/* endpoints. Subprocess spawn is suppressed via the
-INGEST_SPAWN_SUBPROCESS=False config flag.
+/api/v2/extraction/* endpoints. Subprocess spawn is patched out per-test.
+INGEST_SPAWN_SUBPROCESS is inert for this surface — the spawn runs
+unconditionally because the job is sub-second and has no worker-side
+queue consumer (2026-05-05).
 """
 
 from __future__ import annotations
@@ -92,7 +94,11 @@ class TestStaleRowSweep:
 
     def test_sweep_runs_before_concurrency_check(self, client, mock_db):
         mock_db.count_text_decisions_since.return_value = 100
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_TRIGGER, json=_VALID_REVIEWER)
         assert resp.status_code == 202
         sweep_sql = mock_db.execute.call_args_list[0].args[0]
@@ -101,7 +107,11 @@ class TestStaleRowSweep:
 
     def test_sweep_scoped_to_running_status_and_one_hour(self, client, mock_db):
         mock_db.count_text_decisions_since.return_value = 100
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             client.post(_TRIGGER, json=_VALID_REVIEWER)
         sweep_sql = mock_db.execute.call_args_list[0].args[0]
         assert "status = 'running'" in sweep_sql
@@ -121,7 +131,11 @@ class TestStaleRowSweep:
 class TestTriggerSpawn:
     def test_above_threshold_inserts_row_and_returns_run_id(self, client, mock_db):
         mock_db.count_text_decisions_since.return_value = 100
-        with patch("src.web.routes.api_unified.subprocess.Popen") as mock_popen:
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen") as mock_popen,
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_TRIGGER, json=_VALID_REVIEWER)
         assert resp.status_code == 202
         body = resp.get_json()
@@ -138,8 +152,9 @@ class TestTriggerSpawn:
         assert "INSERT INTO text_decision_analysis_runs" in sql
         assert params["id"] == run_id
         assert params["triggered_by"] == "RGM"
-        # INGEST_SPAWN_SUBPROCESS=False short-circuits before Popen.
-        mock_popen.assert_not_called()
+        # Spawn runs unconditionally — the prior INGEST_SPAWN_SUBPROCESS=False
+        # short-circuit was the bug that stranded rows at 'running' forever.
+        mock_popen.assert_called_once()
 
     def test_anchor_uses_last_run_completed_at(self, client, mock_db):
         ts = datetime(2026, 4, 1, 12, 0, tzinfo=UTC)
@@ -148,15 +163,18 @@ class TestTriggerSpawn:
             "completed_at": ts,
         }
         mock_db.count_text_decisions_since.return_value = 100
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_TRIGGER, json=_VALID_REVIEWER)
         assert resp.status_code == 202
         # Threshold helper called with that anchor.
         mock_db.count_text_decisions_since.assert_called_once_with(ts)
 
-    def test_spawn_failure_marks_row_failed(self, client, mock_db, app):
+    def test_spawn_failure_marks_row_failed(self, client, mock_db):
         mock_db.count_text_decisions_since.return_value = 100
-        app.config["INGEST_SPAWN_SUBPROCESS"] = True
         with (
             patch("src.web.routes.api_unified.subprocess.Popen") as mock_popen,
             patch("src.web.routes.api_unified.open", create=True) as mock_open,
@@ -217,13 +235,21 @@ class TestThresholdConfig:
         monkeypatch.setenv("TEXT_ANALYSIS_THRESHOLD_TOTAL", "5")
         # 7 decisions: would fail default 50, clears the override 5.
         mock_db.count_text_decisions_since.return_value = 7
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_TRIGGER, json=_VALID_REVIEWER)
         assert resp.status_code == 202
 
     def test_invalid_env_falls_back_to_default(self, client, mock_db, monkeypatch):
         monkeypatch.setenv("TEXT_ANALYSIS_THRESHOLD_TOTAL", "not-a-number")
         mock_db.count_text_decisions_since.return_value = 100
-        with patch("src.web.routes.api_unified.subprocess.Popen"):
+        with (
+            patch("src.web.routes.api_unified.subprocess.Popen"),
+            patch("src.web.routes.api_unified.open", create=True) as mock_open,
+        ):
+            mock_open.return_value = MagicMock()
             resp = client.post(_TRIGGER, json=_VALID_REVIEWER)
         assert resp.status_code == 202

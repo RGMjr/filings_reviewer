@@ -46,7 +46,7 @@ Powers the **Update Text Pattern Analysis** button on `/v2/review/stats` (Metric
 
 The script writes findings to three tables — it does NOT mutate `v2_review_decisions` or any extraction config. Render-disk-ephemerality does not affect this surface because nothing is persisted to disk; the UI renders directly from DB rows.
 
-- `POST /api/v2/extraction/analyze-text-decisions` — kicks off `scripts/analyze_text_decision_patterns.py` as a detached subprocess via `_spawn_text_analysis_runner` (mirrors `_spawn_retrain_runner`). Returns `202 + {run_id, status: 'running'}`. Three server-side gates:
+- `POST /api/v2/extraction/analyze-text-decisions` — kicks off `scripts/analyze_text_decision_patterns.py` as a detached subprocess via `_spawn_text_analysis_runner`. Returns `202 + {run_id, status: 'running'}`. Spawn is unconditional — unlike retrain (which honours `RETRAIN_SPAWN_SUBPROCESS=false` and is drained by the `filings-onboarding-runner` worker), text analysis has no worker-side queue consumer and the job runs in well under a second on the lifetime corpus, so honoring `INGEST_SPAWN_SUBPROCESS=false` would silently strand the row at `'running'` forever (the prior shape until 2026-05-05). Three server-side gates:
   - `_require_reviewer_id` → 403 `{error: "reviewer_name_required"}`.
   - **Concurrency**: `is_text_analysis_running()` — any `text_decision_analysis_runs` row with `status='running'` → 409 `{error: "analysis_already_running", running_run_id}`.
   - **Threshold**: `count_text_decisions_since(last_succeeded_run.completed_at)` ≥ `TEXT_ANALYSIS_THRESHOLD_TOTAL` (default `50`). Below → 409 `{error: "below_threshold", count, threshold}`. Single gate (no positive/negative split — every text decision is signal for rule-based extraction).
