@@ -25,9 +25,13 @@ What it does:
      created_at > anchor.
   3. Per canonical_metric_id: count by decision type, build a rejection-
      category histogram, build a top-correction-targets list, and mine
-     n-grams (n in {1,2,3}) from rejection_reason + reviewer_notes + a window
-     of segment_text. Suppress stopwords + the metric's own keyword tokens
-     so the metric name itself doesn't dominate findings.
+     n-grams (n in {1,2,3}) from a ±200-char window of segment_text (the
+     actual filing language). Categorical signal from rejection_category is
+     already captured in the metric summary — free-text fields
+     (rejection_reason, reviewer_notes) are not mined because reviewer prose
+     is idiosyncratic and crowds out the filing-language signal. Suppress
+     stopwords + the metric's own keyword tokens so the metric name itself
+     doesn't dominate findings.
   4. Filter findings to those with occurrence_count >= MIN_OCCURRENCES and
      pct_of_decisions >= MIN_PCT, keep top TOP_N per (metric, decision_type,
      source_field).
@@ -257,9 +261,12 @@ def _mine_phrases_for_metric(
 ) -> list[dict]:
     """Compute high-incidence phrases for one (metric, decision_type) bucket.
 
-    For each source field (rejection_reason / reviewer_notes / segment_text),
-    counts n-grams across all matching decisions, filters by occurrence and
-    decision-share thresholds, and keeps top TOP_N_PER_BUCKET.
+    Mines n-grams from segment_text only (±SEGMENT_WINDOW_CHARS around the
+    extracted value). Free-text fields (rejection_reason, reviewer_notes) are
+    excluded — reviewer prose is idiosyncratic and generates noise findings
+    that crowd out the structured filing-language signal. Categorical signal
+    from rejection_reason is already captured in the rejection_categories
+    histogram on the metric summary row.
 
     Returns a list of finding dicts ready for INSERT.
     """
@@ -270,7 +277,7 @@ def _mine_phrases_for_metric(
 
     findings: list[dict] = []
 
-    for source_field in ("rejection_reason", "reviewer_notes", "segment_text"):
+    for source_field in ("segment_text",):
         # Map phrase → {count, ngram_size, examples}
         counts: dict[str, int] = Counter()
         sizes: dict[str, int] = {}
@@ -280,10 +287,7 @@ def _mine_phrases_for_metric(
         contributing: dict[str, set[str]] = defaultdict(set)
 
         for row in relevant:
-            if source_field == "segment_text":
-                text = _segment_window(row.get("segment_text"), row.get("value_raw"))
-            else:
-                text = row.get(source_field) or ""
+            text = _segment_window(row.get("segment_text"), row.get("value_raw"))
             tokens = [t for t in _tokenize(text) if t not in metric_keyword_tokens]
 
             seen_in_row: set[str] = set()

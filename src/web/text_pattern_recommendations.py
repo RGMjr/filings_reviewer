@@ -28,12 +28,15 @@ logger = logging.getLogger(__name__)
 # .claude/rules/web.md "Recommendation rules".
 
 # exclusion_pattern: phrase appears in >= EXCL_PCT_LOW% of rejects sourced
-# from rejection_reason or segment_text. n-gram size >= EXCL_NGRAM_MIN
-# (single words are too aggressive for a YAML exclusion).
+# from segment_text. n-gram size >= EXCL_NGRAM_MIN (single words are too
+# aggressive for a YAML exclusion). rejection_reason and reviewer_notes are
+# excluded — the rejection_category enum already carries categorical policy
+# signal without free-text noise (dropped in PR 4 of the analysis-loop
+# improvement plan, 2026-05-05).
 EXCL_PCT_LOW = 30.0
 EXCL_PCT_HIGH = 50.0  # promotes severity from medium -> high
 EXCL_NGRAM_MIN = 2
-EXCL_SOURCE_FIELDS = ("rejection_reason", "segment_text")
+EXCL_SOURCE_FIELDS = ("segment_text",)
 
 # keyword_overlap: count of corrections to one sibling metric.
 OVERLAP_COUNT_LOW = 5

@@ -42,7 +42,7 @@ Threshold env vars are surfaced to the template by `review_unified.stats()` so t
 
 ## Text-decision pattern analysis endpoints
 
-Powers the **Update Text Pattern Analysis** button on `/v2/review/stats` (Metric Analytics → Summary tab). Text extraction is rule-based, not ML — there is no model to retrain. Instead, `scripts/analyze_text_decision_patterns.py` mines `v2_review_decisions` joined to `v2_metric_facts` and `v2_segments` for high-incidence root-cause phrases (n-grams over `rejection_reason`, `reviewer_notes`, and a window of `segment_text`) that inform manual edits to `config/metric_keywords.yaml` and the FP-filter rules in `src/extraction_v2/stages/false_positive_filter.py`.
+Powers the **Update Text Pattern Analysis** button on `/v2/review/stats` (Metric Analytics → Summary tab). Text extraction is rule-based, not ML — there is no model to retrain. Instead, `scripts/analyze_text_decision_patterns.py` mines `v2_review_decisions` joined to `v2_metric_facts` and `v2_segments` for high-incidence root-cause phrases (n-grams over a ±200-char window of `segment_text` only) that inform manual edits to `config/metric_keywords.yaml` and the FP-filter rules in `src/extraction_v2/stages/false_positive_filter.py`. Free-text fields (`rejection_reason`, `reviewer_notes`) are no longer mined — the `rejection_category` enum on `v2_review_decisions` already carries categorical policy signal without the prose noise (dropped in PR 4, 2026-05-05).
 
 The script writes findings to three tables — it does NOT mutate `v2_review_decisions` or any extraction config. Render-disk-ephemerality does not affect this surface because nothing is persisted to disk; the UI renders directly from DB rows.
 
@@ -78,7 +78,7 @@ Three rules in v1; a metric may fire multiple. Output is sorted by severity DESC
 
 | Rule | Trigger | Severity bands |
 |---|---|---|
-| **`exclusion_pattern`** | A `text_decision_phrase_findings` row with `decision_type='reject'`, `source_field IN ('rejection_reason', 'segment_text')`, `phrase_ngram_size >= 2`, `pct_of_decisions >= 30` | high if `pct >= 50`, else medium |
+| **`exclusion_pattern`** | A `text_decision_phrase_findings` row with `decision_type='reject'`, `source_field = 'segment_text'`, `phrase_ngram_size >= 2`, `pct_of_decisions >= 30` | high if `pct >= 50`, else medium |
 | **`keyword_overlap`** | A `top_correction_targets` entry with `count >= 5` | high if `count >= 10`, else medium |
 | **`fp_filter_gap`** | `rejection_categories['wrong_value'] / reject_count >= 0.5` AND `reject_count >= 5` | high if ratio `>= 0.7`, else medium |
 

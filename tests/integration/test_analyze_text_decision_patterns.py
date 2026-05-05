@@ -391,11 +391,10 @@ def test_run_writes_config_snapshot_hash(clean_db, cli):
     cli._orchestrate(args)
 
     runs = _query_runs(clean_db)
-    assert len(runs) == 1, "Expected exactly one run row"
-    run = runs[0]
-    assert run["status"] == "succeeded"
+    our_run = next(r for r in runs if r["triggered_by"] == "test")
+    assert our_run["status"] == "succeeded"
 
-    stored_hash = run.get("config_snapshot_hash")
+    stored_hash = our_run.get("config_snapshot_hash")
     assert stored_hash is not None, "config_snapshot_hash must be non-null after a successful run"
 
     # The config files have not changed, so the live hash must match the
@@ -405,4 +404,101 @@ def test_run_writes_config_snapshot_hash(clean_db, cli):
     assert stored_hash == compute_config_hash(), (
         "Stored config_snapshot_hash does not match current compute_config_hash() — "
         "either the hash was not written correctly or config files changed mid-test"
+    )
+
+
+@pytest.mark.skipif(
+    not __import__("os").getenv("TEST_DATABASE_URL"),
+    reason="TEST_DATABASE_URL not set",
+)
+def test_free_text_source_fields_are_dropped(clean_db, cli):
+    """After PR 4, phrase_findings rows must only have source_field='segment_text'.
+
+    Seeded decisions have non-empty rejection_reason, reviewer_notes, AND
+    segment_text. The miner must produce zero rows for
+    source_field IN ('rejection_reason', 'reviewer_notes').
+
+    Assertion also verifies that segment_text rows ARE produced (so the test
+    is not trivially passing due to a broken miner that emits nothing).
+    """
+    _truncate_analysis_tables(clean_db)
+
+    # Use a different cik/accession than _seed_corpus to avoid unique-key
+    # conflicts when this test shares the clean_db with other tests.
+    from tests.integration.conftest import (
+        create_test_company_and_filing,
+        create_test_v2_decision,
+        create_test_v2_fact,
+    )
+
+    _, filing_id = create_test_company_and_filing(
+        clean_db, cik="0009980002", accession_number="0009980002-24-000001"
+    )
+
+    # Segment with rich text so n-gram mining produces findings.
+    segment_rows = clean_db.query(
+        """
+        INSERT INTO v2_segments
+            (filing_id, segment_type, segment_text, dom_locator, sequence_idx)
+        VALUES
+            (%(filing_id)s, 'paragraph',
+             'annual recurring revenue customers retained cohort expansion metric value',
+             '/html/body/p[2]', 2)
+        RETURNING segment_id::text
+        """,
+        {"filing_id": filing_id},
+    )
+    segment_id = segment_rows[0]["segment_id"]
+
+    # Two facts + decisions so MIN_OCCURRENCES=2 is satisfied.
+    for raw_value, year in (("100%", 2023), ("105%", 2024)):
+        fact_id = create_test_v2_fact(
+            clean_db,
+            filing_id,
+            canonical_metric_id="cm_net_revenue_retention",
+            value_raw=raw_value,
+            period_start=f"{year}-01-01",
+            period_end=f"{year}-12-31",
+            source_locator={"segment_id": segment_id},
+        )
+        # Non-empty rejection_reason and reviewer_notes alongside segment_text.
+        create_test_v2_decision(
+            clean_db,
+            fact_id,
+            decision="reject",
+            rejection_reason="noisy free text reason should not appear in findings",
+            rejection_category="wrong_metric",
+        )
+
+    db_url = __import__("os").environ["TEST_DATABASE_URL"]
+    args = Namespace(
+        database_url=db_url,
+        run_id=None,
+        triggered_by="test_pr4",
+        max_decisions=None,
+    )
+    cli._orchestrate(args)
+
+    runs = _query_runs(clean_db)
+    # Find the run we just created (triggered_by='test_pr4').
+    our_run = next(r for r in runs if r["triggered_by"] == "test_pr4")
+    run_id = str(our_run["id"])
+    assert our_run["status"] == "succeeded"
+
+    findings = _query_findings(clean_db, run_id)
+
+    # Zero rows from free-text sources.
+    free_text_rows = [
+        f for f in findings if f["source_field"] in ("rejection_reason", "reviewer_notes")
+    ]
+    assert free_text_rows == [], (
+        f"Expected no findings from rejection_reason/reviewer_notes after PR 4, "
+        f"but got {len(free_text_rows)} row(s): {free_text_rows}"
+    )
+
+    # Segment-text rows still produced (miner is working, not silently empty).
+    segment_rows_found = [f for f in findings if f["source_field"] == "segment_text"]
+    assert len(segment_rows_found) >= 1, (
+        "Expected at least one segment_text finding row — check MIN_OCCURRENCES "
+        "threshold or segment text tokenization"
     )
