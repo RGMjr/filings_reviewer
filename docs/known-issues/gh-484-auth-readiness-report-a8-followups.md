@@ -15,6 +15,7 @@ updated: 2026-05-04
 gh_issue: 484
 pr_refs:
   - 479
+  - 518
 note: dev-bypass guard checks local env not prod, dev-bypass predicate duplicated instead of imported, JSON serialization only tested with empty data
 ---
 
