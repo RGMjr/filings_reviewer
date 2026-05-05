@@ -1110,15 +1110,20 @@
                   <td colspan="7" class="bg-light">
                     {# Suggested actions panel — populated only when at least one
                        rule fires for this metric. Rules + thresholds documented
-                       in src/web/text_pattern_recommendations.py. #}
+                       in src/web/text_pattern_recommendations.py. Active cards
+                       (is_stale=False) render here; stale cards whose
+                       decision_key no longer surfaces in the latest run render
+                       in the collapsed archived section below. #}
                     {% set recs = text_recommendations.get(s.metric_id, []) %}
-                    {% if recs %}
+                    {% set active_recs = recs | selectattr("is_stale", "equalto", false) | list %}
+                    {% set stale_recs = recs | selectattr("is_stale", "equalto", true) | list %}
+                    {% if active_recs %}
                     <div class="alert alert-warning small mb-3 mt-2">
                       <strong class="d-block mb-2">
                         Suggested actions
-                        <span class="badge bg-secondary ms-1">{{ recs|length }}</span>
+                        <span class="badge bg-secondary ms-1">{{ active_recs|length }}</span>
                       </strong>
-                      {% for r in recs %}
+                      {% for r in active_recs %}
                       {# rec-card: data attributes drive the JS click handlers
                          in static/js/analytics.js. Decision state, when set,
                          dims the card and swaps the action buttons for an
@@ -1174,6 +1179,46 @@
                       </div>
                       {% endfor %}
                     </div>
+                    {% endif %}
+                    {# Archived recommendations — decisions whose decision_key no
+                       longer surfaces in the latest analysis run. The DB row is
+                       preserved as audit history; this section is render-only.
+                       Collapsed by default to keep the active panel clean. #}
+                    {% if stale_recs %}
+                    <details class="mb-3 mt-2 small">
+                      <summary class="text-muted" style="cursor:pointer;">
+                        Archived recommendations ({{ stale_recs|length }})
+                      </summary>
+                      <div class="mt-2 ps-2 border-start border-secondary">
+                        {% for r in stale_recs %}
+                        <div class="rec-card mb-3 text-muted"
+                             data-metric-id="{{ s.metric_id }}"
+                             data-rule="{{ r.rule }}"
+                             data-decision-key="{{ r.decision_key }}">
+                          <div>
+                            <span class="badge bg-secondary me-1">archived</span>
+                            <strong>{{ r.title }}</strong>
+                            <span class="badge bg-light text-secondary border ms-1"
+                                  title="This decision_key no longer appears in the latest analysis run's findings. See the Aging policy in the text-pattern-recommendations-runbook.md."
+                                  style="cursor:help;">Re-verify</span>
+                          </div>
+                          <div class="text-muted small">{{ r.evidence }}</div>
+                          {% if r.decision %}
+                            {% set d = r.decision %}
+                            <div class="mt-1 small">
+                              <span class="badge bg-{{ 'success' if d.decision == 'accepted' else ('secondary' if d.decision == 'deferred' else 'dark') }}">
+                                {{ d.decision }}
+                              </span>
+                              by {{ d.reviewer_id }}
+                              {% if d.reviewer_note %}
+                              — <span class="fst-italic">"{{ d.reviewer_note }}"</span>
+                              {% endif %}
+                            </div>
+                          {% endif %}
+                        </div>
+                        {% endfor %}
+                      </div>
+                    </details>
                     {% endif %}
                     <div class="row">
                       {% for decision_type in ['reject', 'correct'] %}

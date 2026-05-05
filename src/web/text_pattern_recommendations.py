@@ -74,6 +74,7 @@ def compute_recommendations(
           "action": str,
           "decision": dict | None,  # populated when `decisions` arg matches
           "config_drift": bool,    # True when config changed since this run
+          "is_stale": bool,        # True when decision_key absent from latest run
         }
 
     When ``decisions`` is provided (a list of recommendation-decision rows
@@ -90,6 +91,10 @@ def compute_recommendations(
     template can render a freshness badge. When ``config_snapshot_hash`` is
     ``None`` (legacy runs from before this feature), ``config_drift`` is
     ``False`` — legacy cards are never false-flagged.
+
+    ``is_stale`` is ``True`` for a persisted decision whose ``decision_key``
+    is no longer present in the current run's findings/summaries. Stale
+    decisions are render-only archived — the DB row is never modified.
     """
     if not summaries and not findings:
         return {}
@@ -105,6 +110,34 @@ def compute_recommendations(
             config_drift = current_hash != config_snapshot_hash
         except Exception:  # noqa: BLE001
             logger.warning("Could not compute config hash for drift check", exc_info=True)
+
+    # Build the set of (metric_id, rule, decision_key) tuples that are active
+    # in the current run. Keys are derived per-rule:
+    #   exclusion_pattern: decision_key = phrase (from findings rows)
+    #   keyword_overlap:   decision_key = target_metric_id (from summary JSONB)
+    #   fp_filter_gap:     decision_key = literal "wrong_value" (from summary)
+    # A persisted decision whose triple is absent from this set is stale.
+    current_keys: set[tuple[str, str, str]] = set()
+    for f in findings:
+        mid = f["metric_id"]
+        if (
+            f.get("decision_type") == "reject"
+            and f.get("source_field") in EXCL_SOURCE_FIELDS
+            and int(f.get("phrase_ngram_size", 0)) >= EXCL_NGRAM_MIN
+            and float(f.get("pct_of_decisions", 0)) >= EXCL_PCT_LOW
+        ):
+            current_keys.add((mid, "exclusion_pattern", f["phrase"]))
+    for s in summaries:
+        mid = s["metric_id"]
+        for t in s.get("top_correction_targets") or []:
+            if int(t.get("count", 0)) >= OVERLAP_COUNT_LOW and t.get("target_metric_id"):
+                current_keys.add((mid, "keyword_overlap", t["target_metric_id"]))
+        reject_count = int(s.get("reject_count") or 0)
+        if reject_count >= FP_REJECT_FLOOR:
+            cats = s.get("rejection_categories") or {}
+            wrong_value = int(cats.get("wrong_value") or 0)
+            if wrong_value > 0 and wrong_value / reject_count >= FP_PCT_LOW:
+                current_keys.add((mid, "fp_filter_gap", "wrong_value"))
 
     # Group findings by metric_id once so each rule's helper can scan
     # locally without re-iterating the full list.
@@ -132,8 +165,43 @@ def compute_recommendations(
             for r in recs:
                 r["decision"] = decision_index.get((metric_id, r["rule"], r["decision_key"]))
                 r["config_drift"] = config_drift
+                r["is_stale"] = False  # Active recommendations are never stale
             recs.sort(key=lambda r: (_SEVERITY_RANK[r["severity"]], r["rule"]))
             out[metric_id] = recs
+
+    # Inject stale cards from persisted decisions whose (metric_id, rule,
+    # decision_key) triple no longer appears in the current run. These are
+    # rendered in the archived section — the rule no longer fires so they
+    # don't belong in the active panel, but the decision row is preserved
+    # as audit history and shown with reduced visual weight.
+    seen_active: set[tuple[str, str, str]] = {
+        (mid, r["rule"], r["decision_key"]) for mid, recs_list in out.items() for r in recs_list
+    }
+    for d in decisions or []:
+        triple = (d["metric_id"], d["rule"], d["decision_key"])
+        if triple in current_keys:
+            # The rule still fires — already handled above or will be.
+            continue
+        if triple in seen_active:
+            # Already emitted as an active card (shouldn't happen, but guard).
+            continue
+        metric_id = d["metric_id"]
+        stale_rec: dict[str, Any] = {
+            "rule": d["rule"],
+            "severity": "medium",  # Unknown — rule no longer fires
+            "decision_key": d["decision_key"],
+            "title": f"[Archived] {d['rule'].replace('_', ' ').title()}: {d['decision_key']}",
+            "evidence": "This recommendation no longer surfaces in the latest analysis run.",
+            "action": "No action required — the finding has dropped below detection thresholds.",
+            "decision": d,
+            "config_drift": config_drift,
+            "is_stale": True,
+        }
+        if metric_id not in out:
+            out[metric_id] = []
+        out[metric_id].append(stale_rec)
+        seen_active.add(triple)
+
     return out
 
 

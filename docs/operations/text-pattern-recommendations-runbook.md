@@ -72,6 +72,8 @@ Tier-1 metrics (must match `config/metric_keywords.yaml` and the Tier-1 list in 
 
 Decisions accepted but unapplied for more than **30 days** flip in the engineer's queue from "act on" to "re-verify." Add a `reviewer_note` ("stale, re-verify against current keywords") and treat it as a fresh investigation — the underlying phrasings, keywords, or FP rules may have moved since acceptance, and silently landing a 6-month-old reviewer judgment against a moved codebase is how the gold-standard gate gets surprised.
 
+Stale Defers and unaccepted Accepts are auto-archived in the UI when their `decision_key` no longer surfaces in the latest analysis run's findings. The DB row is preserved as audit history — the card moves to a collapsed "Archived recommendations" section and no longer occupies the active panel. A "Re-verify" badge on each archived card signals that the recommendation should be confirmed against current keywords before any action is taken.
+
 ## Per-rule edit guide
 
 The three rule types are defined in `src/web/text_pattern_recommendations.py` and documented under `.claude/rules/web.md` "Recommendation rules". Triggers and severity bands live there; this section covers what to edit.

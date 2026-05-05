@@ -75,6 +75,7 @@ Three rules in v1; a metric may fire multiple. Output is sorted by severity DESC
 **Card-level metadata fields** (orthogonal to rule type — present on every card):
 
 - `config_drift: bool` — `True` when `config_snapshot_hash` stored on the analysis run row differs from the current `compute_config_hash()` value at render time. Signals that `config/metric_keywords.yaml` or `false_positive_filter.py` has changed since the run was captured; the template renders a "Config changed since this analysis" badge. `False` when the hashes match OR when `config_snapshot_hash` is `NULL` (legacy runs from before the hash feature — legacy cards are never false-flagged). Computed in `compute_recommendations(config_snapshot_hash=...)` and set on every rec dict in the same loop as `decision`.
+- `is_stale: bool` — `True` when the rec's `(metric_id, rule, decision_key)` triple no longer surfaces in the latest analysis run's findings/summaries. Active recommendations always have `is_stale=False`. Stale cards are injected from the `decisions` arg for any persisted decision whose key dropped below detection thresholds; they render in a collapsed "Archived recommendations (n)" `<details>` section below the active panel. The DB row is never modified — this is render-only. The route passes `archived_count` (total stale cards across all metrics) to the template context for the section header.
 
 | Rule | Trigger | Severity bands |
 |---|---|---|
