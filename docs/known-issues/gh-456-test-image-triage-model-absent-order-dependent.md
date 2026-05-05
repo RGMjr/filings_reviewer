@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-04
 updated: 2026-05-04
 gh_issue: 456
+pr_refs:
+- 491
 note: passes in isolation, fails in full-suite — earlier test leaves model files under data/image_model/ that defeat the "absent" precondition
 ---
 

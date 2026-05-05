@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-04
 updated: 2026-05-04
 gh_issue: 445
+pr_refs:
+- 491
 note: image-triage model-absent test passes in isolation but fails under full pytest -x -q because a sibling test leaves data/image_model/_cache/ populated; masks regression coverage on the model-absent fallback path
 ---
 
