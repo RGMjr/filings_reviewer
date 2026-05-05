@@ -91,7 +91,7 @@ def oauth_app(monkeypatch, test_db_adapter):
     feature_flags._clear_cache_for_tests()
     monkeypatch.setattr(
         "src.auth.feature_flags.is_enabled",
-        lambda key: key == "google_login_enabled",
+        lambda key, **_kwargs: key == "google_login_enabled",
     )
 
     from src.web.app import create_app
