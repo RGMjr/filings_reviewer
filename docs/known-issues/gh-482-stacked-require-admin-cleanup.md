@@ -15,6 +15,7 @@ updated: 2026-05-05
 gh_issue: 482
 pr_refs:
   - 479
+  - 514
 note: four admin endpoints carry both @require_admin and @require(INGEST_RUN); remove the legacy decorator once Stage-C enforcement has soaked
 ---
 
