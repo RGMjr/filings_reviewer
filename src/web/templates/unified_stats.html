@@ -1132,6 +1132,11 @@
                             {{ r.severity }}
                           </span>
                           <strong>{{ r.title }}</strong>
+                          {% if r.config_drift %}
+                          <span class="badge bg-info text-dark ms-1"
+                                title="The keyword/FP-filter config has changed since this analysis was captured. Re-verify this recommendation against the current config before acting — see the Engineer cadence Step 1 in the text-pattern-recommendations runbook."
+                                style="cursor:help;">Config changed since this analysis &middot; re-verify</span>
+                          {% endif %}
                         </div>
                         <div class="text-muted small">{{ r.evidence }}</div>
                         <div class="small"><em>{{ r.action }}</em></div>

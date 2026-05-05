@@ -29,7 +29,7 @@ Process accepted decisions **weekly**, after the gold-standard pre-commit gate h
 
 For each accepted row, the procedure is:
 
-1. **Re-read the evidence on the stats page.** Each phrase finding includes up to 5 `{fact_id, filing_id}` examples. Open at least 2 in the review UI and confirm the suggestion still describes them after any keyword changes that have landed since the analysis run — the recommendation is stateless and a recent merge may have already addressed it.
+1. **Re-read the evidence on the stats page.** Each phrase finding includes up to 5 `{fact_id, filing_id}` examples. Open at least 2 in the review UI and confirm the suggestion still describes them after any keyword changes that have landed since the analysis run — the recommendation is stateless and a recent merge may have already addressed it. If the card shows the "Config changed since this analysis" badge, treat it as a re-verify even if the decision_key has not been touched — the keyword or FP-filter rules have moved since the analysis run was captured.
 2. **`EnterWorktree`** before any edits (CLAUDE.md project rule for any 3+ file or config change; a PreToolUse guard refuses `git checkout` in the primary tree).
 3. **Apply the smallest possible edit.** See "Per-rule edit guide" below. Do not refactor adjacent rules in the same PR.
 4. **Run gold-standard validation locally** before committing:

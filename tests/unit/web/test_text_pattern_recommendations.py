@@ -378,3 +378,84 @@ class TestDecisionMerging:
         rec = [r for r in out["cm_x"] if r["rule"] == "exclusion_pattern"][0]
         assert rec["decision"]["id"] == "d-fresh"
         assert rec["decision"]["reviewer_id"] == "RGM"
+
+
+# ---------------------------------------------------------------------------
+# config_drift flag — set when stored hash differs from live hash
+# ---------------------------------------------------------------------------
+
+
+class TestConfigDriftFlag:
+    """config_drift is a card-level metadata field; it fires on any rule type.
+
+    compute_recommendations imports compute_config_hash lazily inside the
+    function body, so we patch it at the source module
+    (``src.extraction_v2.config_hash.compute_config_hash``) to intercept
+    the call regardless of where the import lands.
+    """
+
+    _STORED_HASH = "a" * 64  # stable fake stored hash
+
+    def test_drift_true_when_stored_hash_differs(self) -> None:
+        """Stored hash != live hash → config_drift True on every card."""
+        from unittest.mock import patch
+
+        live_hash = "b" * 64  # differs from _STORED_HASH ("a" * 64)
+
+        with patch(
+            "src.extraction_v2.config_hash.compute_config_hash",
+            return_value=live_hash,
+        ):
+            out = compute_recommendations(
+                [_summary()],
+                [_finding()],
+                config_snapshot_hash=self._STORED_HASH,
+            )
+
+        assert "cm_x" in out
+        for rec in out["cm_x"]:
+            assert rec["config_drift"] is True, (
+                f"Expected config_drift=True on rule {rec['rule']!r} when hash differs"
+            )
+
+    def test_drift_false_when_stored_hash_matches(self) -> None:
+        """Stored hash == live hash → config_drift False on every card."""
+        from unittest.mock import patch
+
+        matching_hash = self._STORED_HASH  # same as stored
+
+        with patch(
+            "src.extraction_v2.config_hash.compute_config_hash",
+            return_value=matching_hash,
+        ):
+            out = compute_recommendations(
+                [_summary()],
+                [_finding()],
+                config_snapshot_hash=self._STORED_HASH,
+            )
+
+        assert "cm_x" in out
+        for rec in out["cm_x"]:
+            assert rec["config_drift"] is False, (
+                f"Expected config_drift=False on rule {rec['rule']!r} when hash matches"
+            )
+
+    def test_drift_false_when_stored_hash_is_none(self) -> None:
+        """Stored hash is None (legacy run) → config_drift False; legacy cards not flagged."""
+        from unittest.mock import patch
+
+        with patch(
+            "src.extraction_v2.config_hash.compute_config_hash",
+            return_value="b" * 64,
+        ):
+            out = compute_recommendations(
+                [_summary()],
+                [_finding()],
+                config_snapshot_hash=None,
+            )
+
+        assert "cm_x" in out
+        for rec in out["cm_x"]:
+            assert rec["config_drift"] is False, (
+                f"Expected config_drift=False on rule {rec['rule']!r} for legacy None hash"
+            )
