@@ -80,6 +80,37 @@ def load_session_user() -> None:
     g.user = _apply_legacy_session_bound(session_user, session_id)
 
 
+def load_api_key_user() -> None:
+    """Bridge non-browser API-key callers to ``flask.g.user``.
+
+    Registered as a second ``before_request`` hook immediately after
+    ``load_session_user`` (see ``src/web/app.py``).  When the session-cookie
+    path did not authenticate the request and the caller supplied a valid
+    API key (``Authorization: ApiKey <key>``, ``X-API-Key`` header, or
+    ``?api_key=`` arg), populate ``g.user`` with the synthetic admin
+    service-account ``SessionUser`` so per-route ``@require(<perm>)``
+    decorators pass.
+
+    This is the Stage-C bridge for ``gh-483``:  ``_verify_api_key`` in
+    ``src/web/middleware.py`` only runs on routes decorated with
+    ``@require_api_key`` (today, just ``image_crop``), not on the broader
+    ``/api/v2/*`` surface that uses ``@require(<perm>)`` directly.  Without
+    this hook, valid API-key requests would be rejected once
+    ``auth_enforcement_enabled`` flips to true.
+    """
+    if g.get("user") is not None:
+        return
+
+    # Lazy import: keeps the module import graph identical to pre-bridge state
+    # for tests that monkeypatch ``src.auth.load_user`` symbols, and keeps the
+    # service-account dependency local to the call path.
+    from src.auth.service_account import try_api_key_authentication
+
+    user = try_api_key_authentication()
+    if user is not None:
+        g.user = user
+
+
 _LEGACY_SESSION_GRACE_SECONDS = 4 * 3600  # 4 hours in seconds
 
 

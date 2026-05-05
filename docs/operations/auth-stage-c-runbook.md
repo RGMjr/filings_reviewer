@@ -171,8 +171,17 @@ Then complete a manual browser review workflow:
 
 - **Normal reviewer workflow works.** A reviewer can log in, submit text decisions, and
   submit image confirmations without error.
-- **API-key-only callers still work.** Any automation using `Authorization: ApiKey <key>`
-  headers should continue receiving 200. Test with a known automation call.
+- **API-key-only callers still work.** A second `before_request` hook
+  (`load_api_key_user` in `src/auth/load_user.py`) populates `flask.g.user` with the synthetic
+  admin service account from `src/auth/service_account.py` whenever the request carries a valid
+  `Authorization: ApiKey <key>`, `X-API-Key` header, or `?api_key=` arg. Per-route
+  `@require(<perm>)` decorators then see `role='admin'` and pass. Test with a known automation
+  call. **Service-account scope.** The bridge resolves to `email='api-key@service.local'`,
+  `id='00000000-0000-0000-0000-000000000000'`, `role='admin'`. The id is a sentinel — it
+  does NOT exist in `auth_users`, so allowlist management does not affect API-key callers. To
+  tighten scope (e.g. drop `ingest.run`), edit `_SERVICE_ACCOUNT.role` in
+  `src/auth/service_account.py`. `v2_audit_log.session_id` is `NULL` for these calls (no Flask
+  session) so they are identifiable as automation in retrospective queries.
 - **Same-origin browser requests without session are rejected.** A `curl` without a session
   cookie to a protected endpoint returns 401 / 302.
 - **Role restrictions work.** A `reviewer` cannot hit ingest endpoints (expects 403). A
