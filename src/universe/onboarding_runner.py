@@ -656,6 +656,11 @@ def main() -> int:
 
         batch_row = claim_next_queued_batch(db)
         if batch_row is not None:
+            if batch_row.get("status") == "running":
+                logger.error(
+                    "Watcher: auto-recovered stale-locked batch batch_id=%s",
+                    batch_row["batch_id"],
+                )
             run_one(db, batch_row)
         else:
             logger.debug("No queued work; sleeping %ds.", args.poll_interval)
