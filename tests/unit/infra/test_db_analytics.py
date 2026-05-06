@@ -310,3 +310,66 @@ class TestCountReviewActivity:
         db.count_review_activity(window="all")
         sql, _ = db.query.call_args[0]
         assert "INTERVAL" not in sql
+
+
+class TestGetImageDecisionBreakdownV2:
+    def test_filters_per_decision_type(self, db):
+        db.query.return_value = []
+        db.get_image_decision_breakdown_v2()
+        sql = db.query.call_args.args[0]
+        for clause in (
+            "FILTER (WHERE decision = 'accept')",
+            "FILTER (WHERE decision = 'correct')",
+            "FILTER (WHERE decision = 'add')",
+            "FILTER (WHERE decision = 'reject')",
+            "FILTER (WHERE decision = 'skip')",
+        ):
+            assert clause in sql
+
+    def test_legacy_accepts_subquery_filters_orphaned_legacy_rows(self, db):
+        """Legacy accepts only count when no per-metric confirmation row exists."""
+        db.query.return_value = []
+        db.get_image_decision_breakdown_v2()
+        sql = db.query.call_args.args[0]
+        assert "v2_image_review_decisions" in sql
+        assert "ird.decision = 'accept'" in sql
+        # Anti-join: image must NOT have any per-metric confirmation row.
+        assert "NOT EXISTS" in sql
+        assert "v2_image_metric_confirmations imc" in sql
+
+    def test_returns_zeros_when_no_rows(self, db):
+        db.query.return_value = []
+        result = db.get_image_decision_breakdown_v2()
+        assert result == {
+            "total": 0,
+            "accepted": 0,
+            "corrected": 0,
+            "added": 0,
+            "rejected": 0,
+            "skipped": 0,
+            "legacy_accepts_pending": 0,
+        }
+
+    def test_coerces_to_ints(self, db):
+        db.query.return_value = [
+            {
+                "total": 100,
+                "accepted": 40,
+                "corrected": 5,
+                "added": 25,
+                "rejected": 28,
+                "skipped": 2,
+                "legacy_accepts_pending": 137,
+            }
+        ]
+        result = db.get_image_decision_breakdown_v2()
+        assert result == {
+            "total": 100,
+            "accepted": 40,
+            "corrected": 5,
+            "added": 25,
+            "rejected": 28,
+            "skipped": 2,
+            "legacy_accepts_pending": 137,
+        }
+        assert all(isinstance(v, int) for v in result.values())

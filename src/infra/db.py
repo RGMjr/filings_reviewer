@@ -2430,6 +2430,60 @@ class DatabaseAdapter:
             "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,
         }
 
+    def get_image_decision_breakdown_v2(self) -> dict:
+        """Per-decision-type breakdown of image-metric confirmations.
+
+        Returns mutually-exclusive counts for each decision value the
+        per-metric flow records (accept / correct / add / reject / skip)
+        plus the lifetime total. Drives the five summary cards on the
+        Images tab of /v2/review/stats.
+
+        Also returns ``legacy_accepts_pending``: count of distinct images
+        accepted under the pre-per-metric flow (rows in
+        ``v2_image_review_decisions`` with decision='accept') that have
+        no rows in ``v2_image_metric_confirmations`` yet — i.e., the
+        reviewer's "relevant" intent never got a metric assigned. Powers
+        the backfill banner and goes to zero once the legacy review set
+        is migrated.
+        """
+        sql = """
+            WITH breakdown AS (
+                SELECT
+                    COUNT(*)                                            AS total,
+                    COUNT(*) FILTER (WHERE decision = 'accept')         AS accepted,
+                    COUNT(*) FILTER (WHERE decision = 'correct')        AS corrected,
+                    COUNT(*) FILTER (WHERE decision = 'add')            AS added,
+                    COUNT(*) FILTER (WHERE decision = 'reject')         AS rejected,
+                    COUNT(*) FILTER (WHERE decision = 'skip')           AS skipped
+                  FROM v2_image_metric_confirmations
+            ),
+            legacy AS (
+                SELECT COUNT(DISTINCT ird.img_id) AS legacy_accepts_pending
+                  FROM v2_image_review_decisions ird
+                 WHERE ird.decision = 'accept'
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM v2_image_metric_confirmations imc
+                        WHERE imc.img_id = ird.img_id
+                   )
+            )
+            SELECT b.total, b.accepted, b.corrected, b.added, b.rejected, b.skipped,
+                   l.legacy_accepts_pending
+              FROM breakdown b CROSS JOIN legacy l
+        """
+        rows = self.query(sql)
+        if not rows:
+            return {
+                "total": 0,
+                "accepted": 0,
+                "corrected": 0,
+                "added": 0,
+                "rejected": 0,
+                "skipped": 0,
+                "legacy_accepts_pending": 0,
+            }
+        return {k: int(v or 0) for k, v in dict(rows[0]).items()}
+
     def get_image_decision_overall_v2(self) -> dict:
         """Aggregate totals over all v2_image_metric_confirmations rows.
 

@@ -211,7 +211,11 @@ def stats():
 
     db = get_db()
     text_data = db.get_v2_review_stats()
+    # image_overall (Relevant / Not Relevant rollup) still feeds the side-by-side
+    # Summary-tab card. The Images tab now consumes image_breakdown for a
+    # per-decision-type view + legacy-accepts banner.
     image_overall = db.get_image_decision_overall_v2()
+    image_breakdown = db.get_image_decision_breakdown_v2()
     image_progress = db.get_image_review_progress_v2()
     image_tier = db.get_image_decisions_by_tier_v2()
     image_rejections = db.get_image_rejection_reasons_by_tier_v2()
@@ -333,6 +337,7 @@ def stats():
         totals=text_data["totals"],
         confidence_bands=text_data["confidence_bands"],
         image_overall=image_overall,
+        image_breakdown=image_breakdown,
         image_progress=image_progress,
         image_tier=image_tier,
         image_rejections=image_rejections,

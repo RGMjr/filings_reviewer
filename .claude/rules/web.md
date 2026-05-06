@@ -127,6 +127,12 @@ To edit the action text or severity thresholds for a category, modify `CATEGORY_
 
 Rendered as Bootstrap progress-bar rows (no chart library). The future LLM-summarized "Top Reviewer Themes" panel (deferred) will read `reviewer_notes` — the two panels are complementary.
 
+## Images tab — decision-type breakdown
+
+`/v2/review/stats` **Images tab** opens with five mutually-exclusive cards keyed on `v2_image_metric_confirmations.decision`: Accepted / Corrected / Added / Rejected / Skipped. The total decision count is shown as a small subtitle in the section header. Backed by `db.get_image_decision_breakdown_v2()`, which returns one dict per call (single roundtrip). The Summary-tab Image Confirmations card still uses `db.get_image_decision_overall_v2()` (Relevant / Not Relevant rollup) — the two helpers are independent on purpose so the simpler Summary view is decoupled from the per-decision breakdown.
+
+A warning banner above the cards surfaces `legacy_accepts_pending` — distinct images with a `v2_image_review_decisions.decision='accept'` row but no rows in `v2_image_metric_confirmations` yet. These are pre-per-metric-pivot reviews where the reviewer marked the image relevant without naming a metric; the banner disappears when the count hits zero (i.e., the legacy backfill is complete). The same anti-join lives inside `get_image_decision_breakdown_v2`.
+
 ## Review Activity panel
 
 `/v2/review/stats` **Summary tab** renders the "Review Activity" section — four cards that surface frequency-aggregated rankings of reviewer activity, not chronological feeds. Each card is a top-10 list of metrics or metric pairs sorted by event count DESC, with a "last seen" timestamp tiebreak. The cards are: Text Fact Corrections (grouped by `(original_metric_id, corrected_metric_id)` — value-only corrections render as `cm_X (value)`, metric-id changes render as `cm_X → cm_Y`), Text Fact Additions (grouped by `canonical_metric_id`, manual extractions only), Image Metric Additions (grouped by `confirmed_metric_id`, decision='add'), and Image Metric Corrections (grouped by `(detected_metric_id, confirmed_metric_id)`, decision='correct'). Backed by `db.get_top_text_corrections`, `get_top_text_additions`, `get_top_image_additions`, `get_top_image_corrections`, all in `src/infra/db.py`.
