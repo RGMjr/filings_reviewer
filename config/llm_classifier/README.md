@@ -10,7 +10,8 @@ Phase 1 of the metric-identification redesign (see plan at
 |---|---|---|
 | `recall_augmentation.yaml` | hand-edited | Tier-1 metrics enrolled in the paraphrase-recall path; section whitelist |
 | `thresholds.yaml` | `scripts/calibrate_llm_thresholds.py` | Per-metric decision threshold + Sonnet-fallback band |
-| `prompts/<metric_id>.yaml` | hand-edited (definition + signals); script-mined (few-shots) | Per-metric classifier prompt, versioned |
+| `prompts/<metric_id>.yaml` | hand-edited | Per-metric classifier prompt (definition, signals, decision_format), versioned |
+| `prompts/<metric_id>.few_shots.yaml` | `scripts/calibrate_llm_thresholds.py` | Mined few-shot examples; merged at load time. Never hand-edit. |
 
 ## Adding a metric
 

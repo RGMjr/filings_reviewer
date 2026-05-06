@@ -128,16 +128,32 @@ def load_thresholds(path: Path | None = None) -> tuple[dict[str, MetricThreshold
 
 
 def load_metric_prompt(metric_id: str, prompts_dir: Path | None = None) -> MetricPrompt:
-    src = (prompts_dir or (CONFIG_ROOT / "prompts")) / f"{metric_id}.yaml"
-    with src.open() as f:
+    """Load a metric prompt, merging an optional sidecar few-shots file.
+
+    The main file ``<metric_id>.yaml`` is human-authored: definition, signals,
+    decision_format, prompt_version. The sidecar ``<metric_id>.few_shots.yaml``
+    is automation-owned (written by ``scripts/calibrate_llm_thresholds.py``).
+    Splitting them avoids the calibration script clobbering hand-authored
+    content. If the main file carries a ``few_shot_examples`` key (legacy or
+    inline overrides), the sidecar takes precedence when present.
+    """
+    base_dir = prompts_dir or (CONFIG_ROOT / "prompts")
+    main_path = base_dir / f"{metric_id}.yaml"
+    with main_path.open() as f:
         raw = yaml.safe_load(f)
+    few_shots = raw.get("few_shot_examples", []) or []
+    sidecar_path = base_dir / f"{metric_id}.few_shots.yaml"
+    if sidecar_path.exists():
+        with sidecar_path.open() as f:
+            sidecar = yaml.safe_load(f) or {}
+        few_shots = sidecar.get("few_shot_examples", []) or []
     return MetricPrompt(
         metric_id=raw["metric_id"],
         prompt_version=raw["prompt_version"],
         definition=raw["definition"].strip(),
         positive_signals=tuple(raw.get("positive_signals", [])),
         negative_signals=tuple(raw.get("negative_signals", [])),
-        few_shot_examples=tuple(raw.get("few_shot_examples", []) or []),
+        few_shot_examples=tuple(few_shots),
         decision_format=raw.get("decision_format", "").strip(),
     )
 
@@ -148,6 +164,9 @@ def load_all_prompts(prompts_dir: Path | None = None) -> dict[str, MetricPrompt]
     if not src.exists():
         return out
     for yaml_path in sorted(src.glob("*.yaml")):
+        # Skip sidecar files; they are loaded by load_metric_prompt itself.
+        if yaml_path.name.endswith(".few_shots.yaml"):
+            continue
         metric_id = yaml_path.stem
         out[metric_id] = load_metric_prompt(metric_id, prompts_dir=src)
     return out
