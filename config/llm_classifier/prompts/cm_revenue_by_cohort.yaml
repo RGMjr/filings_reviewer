@@ -1,0 +1,42 @@
+# Per-metric prompt for cm_revenue_by_cohort.
+#
+# Core (Phase 1) metric. Captures revenue attributed to customer cohorts
+# defined by acquisition period (e.g., "2021 cohort") or tenure
+# (e.g., "0-1 years tenure"). Frequently appears as a table or a
+# multi-year stacked chart in S-1 filings; the prose discussion
+# typically references "cohort revenue", "revenue by signup year",
+# or "revenue by vintage".
+#
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_revenue_by_cohort.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_revenue_by_cohort
+
+definition: |
+  Recognized GAAP revenue attributed to customer cohorts defined by
+  acquisition period (e.g., "2020 cohort") or tenure at period end
+  (e.g., "customers with 0–1 years tenure"). Common paraphrases:
+  "cohort revenue", "revenue by customer vintage", "revenue by signup
+  year", "revenue by customer tenure", "ARR by cohort", "GMV by cohort".
+  Tracks how much each cohort contributes to total revenue over time.
+
+positive_signals:
+  - Explicit phrase like "revenue by cohort", "cohort revenue", "revenue by signup year", "revenue by vintage"
+  - Reference to a table or chart that splits revenue across acquisition years or tenure buckets
+  - Discussion of cohort retention or expansion expressed in dollars (not just retention percentage)
+  - Statements such as "our 2018 cohort generated $X in 2022", "older cohorts contribute Y% of revenue"
+
+negative_signals:
+  - Revenue by product or geography without a cohort dimension (out of scope)
+  - Pure retention percentage without dollar-level cohort attribution (use cm_net_revenue_retention or cm_gross_revenue_retention)
+  - Customer-count cohort tables (count of customers per cohort, no revenue) (use cm_customers_period_end_by_tenure)
+  - Cohort gross-margin tables that don't show revenue (use cm_gross_margin_by_cohort)
+  - Period-over-period revenue with no cohort segmentation
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.

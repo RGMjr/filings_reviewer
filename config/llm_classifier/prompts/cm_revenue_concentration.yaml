@@ -1,0 +1,44 @@
+# Per-metric prompt for cm_revenue_concentration.
+#
+# Captures customer dependency risk: top-N customers' share of revenue,
+# named-customer revenue percentages, or "no single customer exceeded
+# X%" statements. Almost always appears in Risk Factors; sometimes in
+# MD&A or Business sections.
+#
+# Major FP source historically: discussion of "large customers" without
+# a concentration metric (use cm_large_customers_period_end instead).
+#
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_revenue_concentration.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_revenue_concentration
+
+definition: |
+  A measure of how revenue is distributed across the customer base,
+  signaling customer-dependency risk. Common forms: "our top N customers
+  represented X% of revenue", "Customer A accounted for X% of revenue",
+  "no single customer exceeded 10% of revenue". May be expressed as a
+  threshold compliance statement (e.g., disclosing whether any customer
+  meets the SEC 10% threshold). Common paraphrases: "revenue
+  concentration", "customer concentration", "concentration of revenue".
+
+positive_signals:
+  - Explicit phrase "revenue concentration" or "customer concentration"
+  - Numeric percentage of revenue from "top N customers", "largest customers", or a named customer
+  - Statement that "no single / no individual customer accounted for more than X% of revenue"
+  - Risk Factors language about customer concentration risk that quantifies the share
+
+negative_signals:
+  - Count of large customers without revenue share (use cm_large_customers_period_end, e.g. "customers with >$100K ARR")
+  - Discussion of channel partners or distributor concentration without revenue percentages
+  - Generic "we depend on key customers" risk language without a quantified percentage
+  - Geography or product concentration (out of scope for this metric)
+  - Supplier or vendor concentration (the metric is customer-side only)
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.

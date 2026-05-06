@@ -1,0 +1,41 @@
+# Per-metric prompt for cm_customer_acquisition_cost.
+#
+# Customer acquisition cost (CAC). Sister to cm_lifetime_value_per_customer
+# and cm_ltv_to_cac_ratio. Common FP source: marketing/sales expense
+# discussions that don't break out cost per acquired customer, and
+# CAC payback period discussions (which is a separate metric).
+#
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_customer_acquisition_cost.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_customer_acquisition_cost
+
+definition: |
+  The cost incurred to acquire a single new customer, typically computed
+  as sales-and-marketing spend over a period divided by the number of
+  new customers acquired in that period. Commonly abbreviated CAC.
+  Disclosed as a dollar figure per customer (e.g., "$120 per new
+  customer") or as a methodology discussion. Common paraphrases:
+  "customer acquisition cost", "acquisition cost", "cost to acquire a
+  customer", "CAC".
+
+positive_signals:
+  - Explicit term "customer acquisition cost", "acquisition cost", or "CAC"
+  - A dollar amount described as cost per new (or acquired) customer
+  - Methodology disclosure tying sales-and-marketing spend to new customers
+  - Cohort-level CAC across acquisition periods
+
+negative_signals:
+  - LTV/CAC ratio discussion (use cm_ltv_to_cac_ratio or cm_ltv_to_cac_ratio_by_cohort) — shares "CAC" wording
+  - CAC payback period (separate metric — months/years to recoup CAC, not CAC itself)
+  - Customer support cost, customer servicing cost, or general operating expenses
+  - Sales-and-marketing expense discussions that don't disclose a per-customer figure
+  - Vendor / supplier acquisition costs
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.
