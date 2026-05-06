@@ -187,3 +187,126 @@ class TestRecentImageCorrections:
         sql, _ = db.query.call_args[0]
         assert "imc.detected_metric_id" in sql
         assert "imc.confirmed_metric_id" in sql
+
+
+# ---------------------------------------------------------------------------
+# Review Activity aggregations: get_top_* + count_review_activity
+# ---------------------------------------------------------------------------
+
+
+class TestGetTopTextCorrections:
+    def test_groups_by_pair_and_filters_correct(self, db):
+        db.query.return_value = []
+        db.get_top_text_corrections(window="all", limit=10)
+        sql, params = db.query.call_args[0]
+        assert "rd.decision = 'correct'" in sql
+        assert "GROUP BY mf.canonical_metric_id, rd.assigned_metric_id" in sql
+        assert "ORDER BY count DESC, last_seen DESC" in sql
+        assert params == {"limit": 10}
+
+    def test_window_7d_adds_interval_filter(self, db):
+        db.query.return_value = []
+        db.get_top_text_corrections(window="7d")
+        sql, _ = db.query.call_args[0]
+        assert "rd.created_at >= NOW() - INTERVAL '7 days'" in sql
+
+    def test_window_all_omits_interval_filter(self, db):
+        db.query.return_value = []
+        db.get_top_text_corrections(window="all")
+        sql, _ = db.query.call_args[0]
+        assert "INTERVAL" not in sql
+
+    def test_returns_dict_list_with_aliases(self, db):
+        ts = datetime(2026, 5, 1, tzinfo=UTC)
+        db.query.return_value = [
+            {
+                "original_metric_id": "cm_a",
+                "corrected_metric_id": "cm_b",
+                "count": 5,
+                "last_seen": ts,
+            }
+        ]
+        rows = db.get_top_text_corrections(window="all")
+        assert rows == [
+            {
+                "original_metric_id": "cm_a",
+                "corrected_metric_id": "cm_b",
+                "count": 5,
+                "last_seen": ts,
+            }
+        ]
+
+
+class TestGetTopTextAdditions:
+    def test_groups_by_metric_filters_manual(self, db):
+        db.query.return_value = []
+        db.get_top_text_additions(window="all")
+        sql, _ = db.query.call_args[0]
+        assert "mf.extraction_method = 'manual'" in sql
+        assert "GROUP BY mf.canonical_metric_id" in sql
+
+    def test_window_7d_filter(self, db):
+        db.query.return_value = []
+        db.get_top_text_additions(window="7d")
+        sql, _ = db.query.call_args[0]
+        assert "mf.created_at >= NOW() - INTERVAL '7 days'" in sql
+
+
+class TestGetTopImageAdditions:
+    def test_groups_by_confirmed_metric_filters_add(self, db):
+        db.query.return_value = []
+        db.get_top_image_additions(window="all")
+        sql, _ = db.query.call_args[0]
+        assert "imc.decision = 'add'" in sql
+        assert "GROUP BY imc.confirmed_metric_id" in sql
+
+
+class TestGetTopImageCorrections:
+    def test_groups_by_detected_confirmed_pair(self, db):
+        db.query.return_value = []
+        db.get_top_image_corrections(window="all")
+        sql, _ = db.query.call_args[0]
+        assert "imc.decision = 'correct'" in sql
+        assert "GROUP BY imc.detected_metric_id, imc.confirmed_metric_id" in sql
+
+
+class TestCountReviewActivity:
+    def test_returns_zeros_when_db_returns_no_row(self, db):
+        db.query.return_value = []
+        result = db.count_review_activity(window="all")
+        assert result == {
+            "text_corrections": 0,
+            "text_additions": 0,
+            "image_additions": 0,
+            "image_corrections": 0,
+        }
+
+    def test_returns_int_dict(self, db):
+        db.query.return_value = [
+            {
+                "text_corrections": 4,
+                "text_additions": 7,
+                "image_additions": 12,
+                "image_corrections": 0,
+            }
+        ]
+        result = db.count_review_activity(window="all")
+        assert result == {
+            "text_corrections": 4,
+            "text_additions": 7,
+            "image_additions": 12,
+            "image_corrections": 0,
+        }
+
+    def test_window_7d_appends_filter_to_each_subquery(self, db):
+        db.query.return_value = []
+        db.count_review_activity(window="7d")
+        sql, _ = db.query.call_args[0]
+        # Three distinct subqueries each gate on the 7-day window.
+        assert sql.count("INTERVAL '7 days'") >= 3
+
+    def test_window_all_omits_filter(self, db):
+        db.query.return_value = []
+        db.count_review_activity(window="all")
+        sql, _ = db.query.call_args[0]
+        assert "INTERVAL" not in sql

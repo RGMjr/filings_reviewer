@@ -12,7 +12,7 @@ import logging
 import os
 from contextlib import contextmanager
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import psycopg
 from psycopg.rows import dict_row
@@ -2751,6 +2751,127 @@ class DatabaseAdapter:
         """
         rows = self.query(sql, {"limit": limit})
         return [dict(r) for r in rows]
+
+    def get_top_text_corrections(self, window: Literal["7d", "all"], limit: int = 10) -> list[dict]:
+        """Top metric (original, corrected) pairs by reject volume.
+
+        Aggregates v2_review_decisions joined to v2_metric_facts so the
+        Review Activity card on /v2/review/stats can rank where text
+        extraction is most often corrected. Value-only corrections retain
+        original_metric_id == corrected_metric_id; the template renders those
+        as "cm_X (value)" rather than "cm_X -> cm_X".
+        """
+        where_window = "AND rd.created_at >= NOW() - INTERVAL '7 days'" if window == "7d" else ""
+        sql = f"""
+            SELECT
+                mf.canonical_metric_id   AS original_metric_id,
+                rd.assigned_metric_id    AS corrected_metric_id,
+                COUNT(*)                 AS count,
+                MAX(rd.created_at)       AS last_seen
+              FROM v2_review_decisions rd
+              JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
+             WHERE rd.decision = 'correct'
+               {where_window}
+             GROUP BY mf.canonical_metric_id, rd.assigned_metric_id
+             ORDER BY count DESC, last_seen DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
+
+    def get_top_text_additions(self, window: Literal["7d", "all"], limit: int = 10) -> list[dict]:
+        """Top manually-added text-fact metrics by addition volume."""
+        where_window = "AND mf.created_at >= NOW() - INTERVAL '7 days'" if window == "7d" else ""
+        sql = f"""
+            SELECT
+                mf.canonical_metric_id   AS metric_id,
+                COUNT(*)                 AS count,
+                MAX(mf.created_at)       AS last_seen
+              FROM v2_metric_facts mf
+             WHERE mf.extraction_method = 'manual'
+               {where_window}
+             GROUP BY mf.canonical_metric_id
+             ORDER BY count DESC, last_seen DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
+
+    def get_top_image_additions(self, window: Literal["7d", "all"], limit: int = 10) -> list[dict]:
+        """Top reviewer-added image metrics (decision='add') by add volume."""
+        where_window = "AND imc.created_at >= NOW() - INTERVAL '7 days'" if window == "7d" else ""
+        sql = f"""
+            SELECT
+                imc.confirmed_metric_id  AS metric_id,
+                COUNT(*)                 AS count,
+                MAX(imc.created_at)      AS last_seen
+              FROM v2_image_metric_confirmations imc
+             WHERE imc.decision = 'add'
+               {where_window}
+             GROUP BY imc.confirmed_metric_id
+             ORDER BY count DESC, last_seen DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
+
+    def get_top_image_corrections(
+        self, window: Literal["7d", "all"], limit: int = 10
+    ) -> list[dict]:
+        """Top image-metric (detected -> confirmed) correction pairs.
+
+        Image corrections always change the metric_id (no value-only case),
+        so detected_metric_id and confirmed_metric_id always differ.
+        """
+        where_window = "AND imc.created_at >= NOW() - INTERVAL '7 days'" if window == "7d" else ""
+        sql = f"""
+            SELECT
+                imc.detected_metric_id,
+                imc.confirmed_metric_id,
+                COUNT(*)                 AS count,
+                MAX(imc.created_at)      AS last_seen
+              FROM v2_image_metric_confirmations imc
+             WHERE imc.decision = 'correct'
+               {where_window}
+             GROUP BY imc.detected_metric_id, imc.confirmed_metric_id
+             ORDER BY count DESC, last_seen DESC
+             LIMIT %(limit)s
+        """
+        rows = self.query(sql, {"limit": limit})
+        return [dict(r) for r in rows]
+
+    def count_review_activity(self, window: Literal["7d", "all"]) -> dict[str, int]:
+        """Total counts for the four Review Activity card types in one roundtrip.
+
+        Returns {text_corrections, text_additions, image_additions,
+        image_corrections}. Drives the per-card header badges on the
+        Latest/All-time toggle.
+        """
+        where_text_decision = (
+            "AND created_at >= NOW() - INTERVAL '7 days'" if window == "7d" else ""
+        )
+        where_facts = "AND created_at >= NOW() - INTERVAL '7 days'" if window == "7d" else ""
+        where_imc = "AND created_at >= NOW() - INTERVAL '7 days'" if window == "7d" else ""
+        sql = f"""
+            SELECT
+                (SELECT COUNT(*) FROM v2_review_decisions
+                  WHERE decision = 'correct' {where_text_decision})       AS text_corrections,
+                (SELECT COUNT(*) FROM v2_metric_facts
+                  WHERE extraction_method = 'manual' {where_facts})       AS text_additions,
+                (SELECT COUNT(*) FROM v2_image_metric_confirmations
+                  WHERE decision = 'add' {where_imc})                     AS image_additions,
+                (SELECT COUNT(*) FROM v2_image_metric_confirmations
+                  WHERE decision = 'correct' {where_imc})                 AS image_corrections
+        """
+        rows = self.query(sql, {})
+        if not rows:
+            return {
+                "text_corrections": 0,
+                "text_additions": 0,
+                "image_additions": 0,
+                "image_corrections": 0,
+            }
+        return {k: int(v or 0) for k, v in dict(rows[0]).items()}
 
     def get_rejection_reason_rollup(self, side: str, since: datetime | None = None) -> list[dict]:
         """Aggregate rejected decisions by reason for the Summary tab.

@@ -225,10 +225,20 @@ def stats():
     since_ts = last_run.get("completed_at") if last_run else None
     image_decisions_since = db.count_image_decisions_since(since_ts)
 
-    recent_text_corrections = db.get_recent_text_corrections(limit=10)
-    recent_text_additions = db.get_recent_text_additions(limit=10)
-    recent_image_additions = db.get_recent_image_additions(limit=10)
-    recent_image_corrections = db.get_recent_image_corrections(limit=10)
+    # Review Activity section: frequency-aggregated rankings per card.
+    # Two scopes (Latest 7 days / All-time) rendered side-by-side; client toggle
+    # swaps via display:none. Per-card header badge reads from
+    # activity_counts_{latest,alltime}. See .claude/rules/web.md.
+    top_text_corrections_latest = db.get_top_text_corrections(window="7d", limit=10)
+    top_text_corrections_alltime = db.get_top_text_corrections(window="all", limit=10)
+    top_text_additions_latest = db.get_top_text_additions(window="7d", limit=10)
+    top_text_additions_alltime = db.get_top_text_additions(window="all", limit=10)
+    top_image_additions_latest = db.get_top_image_additions(window="7d", limit=10)
+    top_image_additions_alltime = db.get_top_image_additions(window="all", limit=10)
+    top_image_corrections_latest = db.get_top_image_corrections(window="7d", limit=10)
+    top_image_corrections_alltime = db.get_top_image_corrections(window="all", limit=10)
+    activity_counts_latest = db.count_review_activity(window="7d")
+    activity_counts_alltime = db.count_review_activity(window="all")
 
     # Phase 4c: rejection-reason rollup. "Why Reviewers Reject" panel groups
     # decisions by category for both sides. Lifetime totals (since=None) so
@@ -329,10 +339,16 @@ def stats():
         rejection_reason_labels=IMAGE_REJECTION_REASON_LABELS,
         last_training_run=last_run,
         image_decisions_since=image_decisions_since,
-        recent_text_corrections=recent_text_corrections,
-        recent_text_additions=recent_text_additions,
-        recent_image_additions=recent_image_additions,
-        recent_image_corrections=recent_image_corrections,
+        top_text_corrections_latest=top_text_corrections_latest,
+        top_text_corrections_alltime=top_text_corrections_alltime,
+        top_text_additions_latest=top_text_additions_latest,
+        top_text_additions_alltime=top_text_additions_alltime,
+        top_image_additions_latest=top_image_additions_latest,
+        top_image_additions_alltime=top_image_additions_alltime,
+        top_image_corrections_latest=top_image_corrections_latest,
+        top_image_corrections_alltime=top_image_corrections_alltime,
+        activity_counts_latest=activity_counts_latest,
+        activity_counts_alltime=activity_counts_alltime,
         threshold_total=threshold_total,
         threshold_positive=threshold_positive,
         retrain_running=retrain_running,
@@ -355,6 +371,43 @@ def stats():
         cross_metric_findings=cross_metric_findings,
         covered_phrases=covered_phrases,
         interpretations=interpretations,
+    )
+
+
+_ACTIVITY_DETAIL_TYPES: dict[str, dict[str, Any]] = {
+    "text-corrections": {
+        "label": "Text Fact Corrections",
+        "fetcher": "get_recent_text_corrections",
+    },
+    "text-additions": {
+        "label": "Text Fact Additions",
+        "fetcher": "get_recent_text_additions",
+    },
+    "image-additions": {
+        "label": "Image Metric Additions",
+        "fetcher": "get_recent_image_additions",
+    },
+    "image-corrections": {
+        "label": "Image Metric Corrections",
+        "fetcher": "get_recent_image_corrections",
+    },
+}
+
+
+@review_unified_bp.route("/stats/activity/<activity_type>")
+@require(PROTECTED_READ)
+def activity_detail(activity_type: str):
+    """Full event-level history for one Review Activity card type."""
+    spec = _ACTIVITY_DETAIL_TYPES.get(activity_type)
+    if spec is None:
+        abort(404)
+    db = get_db()
+    rows = getattr(db, spec["fetcher"])(limit=200)
+    return render_template(
+        "activity_detail.html",
+        activity_type=activity_type,
+        label=spec["label"],
+        rows=rows,
     )
 
 
