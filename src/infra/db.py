@@ -2440,8 +2440,10 @@ class DatabaseAdapter:
 
         Also returns ``legacy_accepts_pending``: count of distinct images
         accepted under the pre-per-metric flow (rows in
-        ``v2_image_review_decisions`` with decision='accept') that have
-        no rows in ``v2_image_metric_confirmations`` yet — i.e., the
+        ``v2_image_review_decisions`` with decision='relevant' — the
+        legacy table's CHECK constraint enforces 'relevant' / 'not_relevant',
+        not the new flow's 'accept' / 'reject' vocabulary) that have no
+        rows in ``v2_image_metric_confirmations`` yet — i.e., the
         reviewer's "relevant" intent never got a metric assigned. Powers
         the backfill banner and goes to zero once the legacy review set
         is migrated.
@@ -2460,7 +2462,7 @@ class DatabaseAdapter:
             legacy AS (
                 SELECT COUNT(DISTINCT ird.img_id) AS legacy_accepts_pending
                   FROM v2_image_review_decisions ird
-                 WHERE ird.decision = 'accept'
+                 WHERE ird.decision = 'relevant'
                    AND NOT EXISTS (
                        SELECT 1
                          FROM v2_image_metric_confirmations imc

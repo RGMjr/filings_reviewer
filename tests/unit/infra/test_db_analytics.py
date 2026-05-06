@@ -332,7 +332,7 @@ class TestGetImageDecisionBreakdownV2:
         db.get_image_decision_breakdown_v2()
         sql = db.query.call_args.args[0]
         assert "v2_image_review_decisions" in sql
-        assert "ird.decision = 'accept'" in sql
+        assert "ird.decision = 'relevant'" in sql
         # Anti-join: image must NOT have any per-metric confirmation row.
         assert "NOT EXISTS" in sql
         assert "v2_image_metric_confirmations imc" in sql
