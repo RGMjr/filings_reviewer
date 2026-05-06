@@ -167,11 +167,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
+      - name: Upgrade pip
+        # pip 26.1 patches CVE-2026-6357; upgrade before auditing.
+        run: uv pip install "pip>=26.1"
+
       - name: Audit dependencies
-        # Temporarily ignoring CVE-2026-3219 (pip 26.0.1). No fix version
-        # published by upstream yet; pip-audit would block every PR on a
-        # vulnerability we cannot remediate. Remove this ignore once a
-        # patched pip is released.
+        # CVE-2026-3219 (pip 26.0.1) still has no upstream fix — ignore until
+        # a patched pip is released. CVE-2026-6357 is resolved by the upgrade above.
         run: uv run pip-audit --ignore-vuln CVE-2026-3219
 
   integration-tests:
