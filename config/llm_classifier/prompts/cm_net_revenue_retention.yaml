@@ -1,0 +1,38 @@
+# Per-metric prompt for cm_net_revenue_retention.
+#
+# Versioned: every change increments `prompt_version`. Old versions stay
+# queryable via v2_text_metric_presence.classifier_metadata.prompt_version
+# for regression diagnosis.
+#
+# Few-shot examples must come from at least 3 distinct issuers and must
+# exclude any issuer in the held-out test split (see data/gold_standard/split_v1.json).
+# scripts/calibrate_llm_thresholds.py enforces this when (re)mining examples.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_net_revenue_retention
+
+definition: |
+  Net revenue retention (NRR) is the percentage of recurring revenue retained
+  from a cohort of customers over a period, including expansion (upsell,
+  cross-sell, price increases) and net of churn and downgrades. Common
+  paraphrases: "net dollar retention", "net dollar-based retention rate",
+  "dollar-based net expansion rate", "net retention rate" (when the
+  surrounding context makes the dollar/expansion meaning clear).
+
+positive_signals:
+  - Explicit metric name (any paraphrase above)
+  - Numeric percentage near a paraphrase (e.g. "118%", "over 130%")
+  - Discussion of expansion and churn together as a single percentage
+
+negative_signals:
+  - Pure customer-count retention without a dollar/revenue qualifier (use cm_customer_retention_rate)
+  - Gross retention only (no expansion mentioned — use cm_gross_revenue_retention)
+  - Cohort revenue tables that don't aggregate to a single retention percentage
+
+few_shot_examples: []  # populated by scripts/calibrate_llm_thresholds.py
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.
