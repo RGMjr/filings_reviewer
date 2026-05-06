@@ -14,13 +14,9 @@ Modes:
 
   --mode sweep  Run the LLM classifier on the calibration split and pick
                 per-metric thresholds maximizing recall holding precision
-                flat. Requires the LLMPresenceClassifierStage from PR3 —
-                this script raises NotImplementedError until that lands.
+                flat (≥ baseline precision − 2pt). Requires ANTHROPIC_API_KEY.
 
-  --mode all    Run mine then sweep. Default is currently ``mine`` because
-                ``sweep`` raises NotImplementedError until the LLM presence
-                classifier stage lands; the default flips back to ``all``
-                once sweep mode is wired.
+  --mode all    Run mine then sweep. Default.
 
 Outputs:
 
@@ -57,7 +53,9 @@ import os
 import random
 import re
 import sys
+import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +82,14 @@ GOLD_CSV = REPO_ROOT / "data" / "gold_standard" / "golden_set_260408.csv"
 SPLIT_FILE = REPO_ROOT / "data" / "gold_standard" / "split_v1.json"
 PROMPTS_DIR = REPO_ROOT / "config" / "llm_classifier" / "prompts"
 THRESHOLDS_FILE = REPO_ROOT / "config" / "llm_classifier" / "thresholds.yaml"
+
+# Threshold candidates for the calibration sweep: [0.1, 0.2, ..., 0.9].
+SWEEP_THRESHOLDS = [round(x * 0.1, 1) for x in range(1, 10)]
+
+# Sweep picks the threshold that maximizes recall holding precision ≥
+# (baseline_precision − PRECISION_FLOOR_SLACK). 2pt slack tolerates tiny
+# precision drops caused by the small calibration set size (4 filings).
+PRECISION_FLOOR_SLACK = 0.02
 
 # Rejection categories whose decisions are useful as presence-classifier
 # negatives (the keyword fired but the metric was wrong, not the value).
@@ -468,14 +474,173 @@ def run_mine(
     return report
 
 
-def run_sweep(metric_ids: list[str], **_: Any) -> None:
-    """Threshold sweep on the calibration split. Wired in PR3 alongside
-    the LLMPresenceClassifierStage — until that lands, this raises so
-    callers cannot accidentally write defaulted thresholds to disk."""
-    raise NotImplementedError(
-        "Threshold sweep requires LLMPresenceClassifierStage (PR3). "
-        "Run --mode mine for now; sweep mode lands when the classifier ships."
+def _prf(threshold: float, filing_data: list[tuple[str, bool, float]]) -> tuple[float, float]:
+    """Precision/recall at a threshold for a list of (url, label, score) triples."""
+    tp = sum(1 for _, lb, sc in filing_data if lb and sc > threshold)
+    fp = sum(1 for _, lb, sc in filing_data if not lb and sc > threshold)
+    fn = sum(1 for _, lb, sc in filing_data if lb and sc <= threshold)
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 1.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    return precision, recall
+
+
+def run_sweep(
+    metric_ids: list[str],
+    *,
+    thresholds_file: Path = THRESHOLDS_FILE,
+    split_file: Path = SPLIT_FILE,
+    gold_csv: Path = GOLD_CSV,
+) -> dict[str, dict[str, Any]]:
+    """Threshold sweep on the calibration split.
+
+    For each enrolled metric, scores every usable gold-standard quote from each
+    calibration filing against the LLM classifier, aggregates to a
+    per-(filing, metric) max-score, then sweeps thresholds [0.1 … 0.9] to
+    find the value that maximises recall while holding precision ≥
+    (baseline_precision − PRECISION_FLOOR_SLACK).
+
+    Writes results to ``config/llm_classifier/thresholds.yaml``.
+    Returns a per-metric report dict.
+    """
+    from src.llm.presence_classifier_client import PresenceClassifierClient, load_thresholds
+
+    splits = load_splits(split_file)
+    calibration_urls = list(splits.calibration_urls)
+
+    # Collect usable texts and gold metric labels per calibration filing.
+    filing_texts: dict[str, list[str]] = {url: [] for url in calibration_urls}
+    filing_metric_labels: dict[str, set[str]] = {url: set() for url in calibration_urls}
+    with gold_csv.open(encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            url = row["Document URL"].strip()
+            if url not in filing_texts:
+                continue
+            metric = (row.get("Standard Metric Name") or "").strip()
+            if metric.startswith("cm_"):
+                filing_metric_labels[url].add(metric)
+            quote = (row.get("Quote/context") or "").strip()
+            prose = _extract_prose(quote)
+            if _is_usable_prose(prose) and prose not in filing_texts[url]:
+                filing_texts[url].append(prose)
+
+    client = PresenceClassifierClient()
+    enrolled_with_prompts = [m for m in metric_ids if m in client.config.prompts]
+    if not enrolled_with_prompts:
+        logger.warning("run_sweep: no enrolled metrics have loaded prompt YAMLs; nothing to sweep")
+        return {}
+
+    # Score all calibration texts against all enrolled metrics.
+    # Aggregate to per-(filing, metric) max score.
+    scores: dict[tuple[str, str], float] = {}
+    for url in calibration_urls:
+        texts = filing_texts[url]
+        if not texts:
+            logger.warning("sweep: no usable gold texts for calibration filing %s", url)
+            continue
+        for text in texts:
+            try:
+                for sc in client.classify_segment(text, enrolled_with_prompts):
+                    key = (url, sc.metric_id)
+                    if sc.score > scores.get(key, -1.0):
+                        scores[key] = sc.score
+            except Exception as exc:
+                logger.warning("sweep: classify_segment failed url=%s: %s", url, exc)
+
+    calibration_run_id = str(uuid.uuid4())
+    calibrated_at = datetime.now(UTC).isoformat()
+    existing_cfg = load_thresholds(thresholds_file)
+    default_band = list(existing_cfg.default_sonnet_band)
+
+    report: dict[str, dict[str, Any]] = {}
+    new_thresholds: dict[str, dict[str, Any]] = {}
+
+    for metric in enrolled_with_prompts:
+        filing_data = [
+            (url, metric in filing_metric_labels[url], scores.get((url, metric), 0.0))
+            for url in calibration_urls
+        ]
+        n_positive = sum(1 for _, label, _ in filing_data if label)
+        n_total = len(filing_data)
+
+        if n_positive < 1:
+            logger.warning(
+                "metric=%s no positive gold labels in calibration split; skipping", metric
+            )
+            continue
+        if n_positive < 3:
+            logger.warning(
+                "metric=%s only %d supporting filing(s) in calibration (< 3); "
+                "low confidence — manual review recommended",
+                metric,
+                n_positive,
+            )
+
+        baseline_precision, baseline_recall = _prf(0.5, filing_data)
+        precision_floor = max(0.0, baseline_precision - PRECISION_FLOOR_SLACK)
+
+        best_threshold = 0.5
+        best_recall = baseline_recall
+        best_precision = baseline_precision
+        for t in SWEEP_THRESHOLDS:
+            p, r = _prf(t, filing_data)
+            if p >= precision_floor and r > best_recall:
+                best_threshold, best_recall, best_precision = t, r, p
+
+        new_thresholds[metric] = {
+            "threshold": best_threshold,
+            "sonnet_band": default_band,
+            "calibration_run_id": calibration_run_id,
+            "calibrated_at": calibrated_at,
+        }
+        report[metric] = {
+            "threshold": best_threshold,
+            "precision": round(best_precision, 4),
+            "recall": round(best_recall, 4),
+            "supporting_filings": n_positive,
+            "total_calibration_filings": n_total,
+        }
+        logger.info(
+            "metric=%s threshold=%.1f precision=%.3f recall=%.3f supporting=%d/%d",
+            metric,
+            best_threshold,
+            best_precision,
+            best_recall,
+            n_positive,
+            n_total,
+        )
+
+    # Preserve the existing file structure; only replace the thresholds block.
+    existing_raw = yaml.safe_load(thresholds_file.read_text()) or {}
+    existing_raw["thresholds"] = new_thresholds
+    _THRESHOLDS_YAML_HEADER = """\
+# Per-metric calibrated decision thresholds for the LLM presence classifier.
+#
+# Populated by scripts/calibrate_llm_thresholds.py against the calibration
+# split (see data/gold_standard/split_v1.json). DO NOT hand-edit values
+# without re-running calibration — the calibration script is the only
+# authorized writer.
+#
+# Schema:
+#   thresholds:
+#     <metric_id>:
+#       threshold: <0..1>          # promote (segment, metric) to presence
+#       sonnet_band: [<lo>, <hi>]  # llm_score in this band → re-score with Sonnet
+#       calibration_run_id: <str>  # FK into reviewable calibration log
+#       calibrated_at: <ISO8601>
+#
+# Defaults (used when a metric has no entry yet) live at the bottom.
+
+"""
+    thresholds_file.write_text(
+        _THRESHOLDS_YAML_HEADER + yaml.safe_dump(existing_raw, sort_keys=False, allow_unicode=True)
     )
+    logger.info(
+        "run_sweep: wrote %d metric threshold(s) to %s (run_id=%s)",
+        len(new_thresholds),
+        thresholds_file,
+        calibration_run_id,
+    )
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -497,8 +662,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mode",
         choices=("mine", "sweep", "all"),
-        # Default flips to "all" once run_sweep is wired (PR3 Part G).
-        default="mine",
+        default="all",
     )
     parser.add_argument(
         "--metric",
@@ -553,7 +717,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"mine": report}, indent=2))
 
     if args.mode in ("sweep", "all"):
-        run_sweep(metrics)
+        sweep_report = run_sweep(metrics)
+        print(json.dumps({"sweep": sweep_report}, indent=2))
 
     return 0
 
