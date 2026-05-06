@@ -57,6 +57,7 @@ from src.extraction_v2.models import (
     Document,
     ImageAsset,
     ImageClassificationRecord,
+    LLMPresenceSignal,
     MetricCandidate,
     MetricDefinition,
     MetricFact,
@@ -73,7 +74,9 @@ from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterSt
 from src.extraction_v2.stages.image_classify import ImageClassifyStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
 from src.extraction_v2.stages.ingestion import IngestionStage
-from src.extraction_v2.stages.llm_presence_classifier import LLMPresenceClassifierStage
+from src.extraction_v2.stages.llm_presence_classifier import (
+    LLMPresenceClassifierStage,  # always imported; no import-time side effects
+)
 from src.extraction_v2.stages.metric_presence import MetricPresenceStage
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
@@ -429,9 +432,9 @@ class PipelineContext:
     presences: list[MetricPresence] = field(
         default_factory=list
     )  # Populated by MetricPresenceStage (final stage)
-    llm_presence_signals: list[Any] = field(
+    llm_presence_signals: list[LLMPresenceSignal] = field(
         default_factory=list
-    )  # list[SegmentClassification] written by LLMPresenceClassifierStage; read by MetricPresenceStage
+    )  # written by LLMPresenceClassifierStage; read by MetricPresenceStage
 
     # Diagnostics (only populated when config.retain_context=True)
     _pre_filter_bound_values: list[BoundValue] = field(default_factory=list)  # Before FP filter
@@ -520,8 +523,12 @@ class V2Pipeline:
 
                 if _ff_is_enabled("presence_classifier_enabled"):
                     self.config.enable_llm_presence_classifier = True
-            except Exception:
-                pass  # DB unavailable at pipeline-init time; stay off
+            except Exception as exc:
+                logger.debug(
+                    "LLMPresenceClassifier: feature flag check failed, staying off: %s",
+                    exc,
+                    exc_info=True,
+                )
         if os.environ.get("VISION_CLASSIFY_PROVIDER"):
             self.config.vision_classify_provider = os.environ["VISION_CLASSIFY_PROVIDER"]
         if os.environ.get("VISION_CLASSIFY_MODEL"):

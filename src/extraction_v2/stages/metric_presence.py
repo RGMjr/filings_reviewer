@@ -132,9 +132,7 @@ class MetricPresenceStage:
         # Keyword-pass signals on metrics with no facts/definitions are
         # discarded (no record created) — keyword path is authoritative for
         # what the keyword pipeline produced.
-        llm_signals: list[LLMPresenceSignal] = list(
-            getattr(context, "llm_presence_signals", []) or []
-        )
+        llm_signals: list[LLMPresenceSignal] = list(context.llm_presence_signals)
         llm_by_metric: dict[str, list[LLMPresenceSignal]] = defaultdict(list)
         for sig in llm_signals:
             llm_by_metric[sig.metric_id].append(sig)

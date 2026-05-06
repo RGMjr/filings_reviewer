@@ -295,6 +295,12 @@ class ValidationResult:
     stage_timings: dict[str, int] = field(default_factory=dict)
     total_pipeline_ms: int = 0
 
+    # LLM classifier diagnostics (informational; populated when flag is on).
+    # classifier_metadata_by_metric: metric_id → classifier_metadata dict from presences.
+    # keyword_detected_metrics: metrics surfaced by keyword/fact path (not LLM-only).
+    classifier_metadata_by_metric: dict[str, dict] = field(default_factory=dict)
+    keyword_detected_metrics: set[str] = field(default_factory=set)
+
     @property
     def presence_precision(self) -> float:
         """Presence precision = pTP / (pTP + pFP)."""
@@ -368,6 +374,19 @@ class AggregateMetrics:
     total_metric_presence_fn: int = 0
     presence_by_metric: dict[str, MetricScores] = field(default_factory=dict)
     presence_by_tier: dict[int, MetricScores] = field(default_factory=dict)
+
+    # LLM classifier diagnostic columns (informational; empty/0 when flag is off).
+    # Per-metric: mean/p90 of classifier scores; % of (filing, metric) pairs where
+    # keyword path and classifier agree on presence.
+    # Run-level token columns (always 0 until token-threading PR adds structured
+    # access; data is currently only emitted to logger in presence_classifier_client.py).
+    classifier_score_mean_by_metric: dict[str, float] = field(default_factory=dict)
+    classifier_score_p90_by_metric: dict[str, float] = field(default_factory=dict)
+    classifier_agreement_by_metric: dict[str, float] = field(default_factory=dict)
+    llm_total_input_tokens: int = 0
+    llm_total_output_tokens: int = 0
+    llm_cache_hit_rate: float = 0.0
+    llm_estimated_cost_usd: float = 0.0
 
     @property
     def presence_precision(self) -> float:
@@ -906,6 +925,19 @@ class V2GoldStandardValidator:
             result.metric_presence_fp_by_metric[metric_id] = (
                 result.metric_presence_fp_by_metric.get(metric_id, 0) + 1
             )
+
+        # Capture LLM classifier metadata for diagnostic aggregation (Part H).
+        # Populated only when enable_llm_presence_classifier is on; otherwise
+        # presences have no classifier_metadata and keyword_detected_metrics
+        # covers all detected metrics (all presence records are keyword-sourced).
+        for p in v2_result.presences:
+            if not p.canonical_metric_id:
+                continue
+            mid = normalize_metric_id(p.canonical_metric_id)
+            if p.classifier_metadata:
+                result.classifier_metadata_by_metric[mid] = p.classifier_metadata
+            if p.detected_at_stage != "llm_presence_classifier":
+                result.keyword_detected_metrics.add(mid)
 
         # Store all pre-threshold facts and gold entries so metrics can be
         # recomputed at a different confidence threshold without re-running
@@ -1898,6 +1930,38 @@ class V2GoldStandardValidator:
             for metric_id in sorted(native_counts):
                 print(f"    {metric_id}: {native_counts[metric_id]} chart facts")
 
+    @staticmethod
+    def print_llm_classifier_diagnostics(metrics: AggregateMetrics) -> None:
+        """Print informational LLM classifier diagnostic columns.
+
+        Per-metric: classifier_score_mean, classifier_score_p90, agreement_with_keyword_path.
+        Run-level: total_input_tokens, total_output_tokens, cache_hit_rate, estimated_cost_usd.
+
+        Skips the section when no classifier metadata was collected (flag off → no signals).
+        Run-level token columns always show 0 until a future PR threads token data from
+        PresenceClassifierClient through StageResult.metadata.
+        """
+        if not metrics.classifier_score_mean_by_metric:
+            return
+
+        print("\n==== LLM CLASSIFIER DIAGNOSTICS (informational) ====")
+        print(
+            f"  Run-level: input_tokens={metrics.llm_total_input_tokens}, "
+            f"output_tokens={metrics.llm_total_output_tokens}, "
+            f"cache_hit_rate={metrics.llm_cache_hit_rate:.1%}, "
+            f"estimated_cost_usd=${metrics.llm_estimated_cost_usd:.4f}"
+        )
+
+        print("\n  Per-metric classifier diagnostics:")
+        col_w = max(len(mid) for mid in metrics.classifier_score_mean_by_metric)
+        print(f"  {'Metric':<{col_w}}  {'score_mean':>10}  {'score_p90':>9}  {'agreement':>9}")
+        print("  " + "-" * (col_w + 34))
+        for mid in sorted(metrics.classifier_score_mean_by_metric, key=lambda m: (get_tier(m), m)):
+            mean = metrics.classifier_score_mean_by_metric.get(mid, 0.0)
+            p90 = metrics.classifier_score_p90_by_metric.get(mid, 0.0)
+            agr = metrics.classifier_agreement_by_metric.get(mid, 0.0)
+            print(f"  {mid:<{col_w}}  {mean:>10.3f}  {p90:>9.3f}  {agr:>9.1%}")
+
     def compute_metrics(self, results: list[ValidationResult]) -> AggregateMetrics:
         """
         Compute aggregate metrics from validation results.
@@ -2035,6 +2099,37 @@ class V2GoldStandardValidator:
             f = 2 * p * r_score / (p + r_score) if (p + r_score) > 0 else 0.0
             presence_by_tier[t] = MetricScores(precision=p, recall=r_score, f1=f)
 
+        # LLM classifier diagnostic aggregation.
+        # Pool signals from all filings per metric to compute per-metric stats.
+        metric_scores: dict[str, list[float]] = {}
+        metric_agreements: dict[str, list[bool]] = {}
+        for r in results:
+            for mid, meta in r.classifier_metadata_by_metric.items():
+                signals = meta.get("signals", [])
+                scores = [float(s["score"]) for s in signals if "score" in s]
+                if mid not in metric_scores:
+                    metric_scores[mid] = []
+                metric_scores[mid].extend(scores)
+                keyword_found = mid in r.keyword_detected_metrics
+                classifier_found = any(s.get("present", False) for s in signals)
+                if mid not in metric_agreements:
+                    metric_agreements[mid] = []
+                metric_agreements[mid].append(keyword_found == classifier_found)
+
+        classifier_score_mean_by_metric: dict[str, float] = {}
+        classifier_score_p90_by_metric: dict[str, float] = {}
+        for mid, scores in metric_scores.items():
+            if scores:
+                classifier_score_mean_by_metric[mid] = sum(scores) / len(scores)
+                sorted_scores = sorted(scores)
+                p90_idx = min(int(0.9 * len(sorted_scores)), len(sorted_scores) - 1)
+                classifier_score_p90_by_metric[mid] = sorted_scores[p90_idx]
+        classifier_agreement_by_metric: dict[str, float] = {
+            mid: sum(1 for a in agreements if a) / len(agreements)
+            for mid, agreements in metric_agreements.items()
+            if agreements
+        }
+
         return AggregateMetrics(
             precision=precision,
             recall=recall,
@@ -2058,6 +2153,9 @@ class V2GoldStandardValidator:
             total_metric_presence_fn=total_metric_presence_fn,
             presence_by_metric=presence_by_metric,
             presence_by_tier=presence_by_tier,
+            classifier_score_mean_by_metric=classifier_score_mean_by_metric,
+            classifier_score_p90_by_metric=classifier_score_p90_by_metric,
+            classifier_agreement_by_metric=classifier_agreement_by_metric,
         )
 
     def compute_metrics_at_threshold(
@@ -2371,6 +2469,9 @@ def run_validation(
 
     # Print PR2 text-presence tier breakdown (Tier-1 = regression gate; Tier-2 informational).
     V2GoldStandardValidator.print_presence_tier_report(metrics)
+
+    # Print LLM classifier diagnostics (informational; skipped when flag is off).
+    V2GoldStandardValidator.print_llm_classifier_diagnostics(metrics)
 
     # Print CHART cross-source confirmation gate (Phase 3 go/no-go).
     V2GoldStandardValidator.print_cross_source_gate(metrics)
