@@ -697,7 +697,7 @@ class MetricPresence:
     # Shadow-mode LLM classifier output: {metric_id: {score, present, rationale, model,
     # sonnet_fallback, prompt_version, source}}. None when classifier is off or produced
     # no signal for this metric. Written to v2_text_metric_presence.classifier_metadata.
-    classifier_metadata: dict | None = field(default=None)
+    classifier_metadata: dict[str, Any] | None = field(default=None)
 
 
 @dataclass

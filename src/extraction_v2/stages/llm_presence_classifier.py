@@ -68,11 +68,15 @@ class LLMPresenceClassifierStage:
 
         start = datetime.now(UTC)
 
+        # Defensive double-check: the stage is only registered in the pipeline
+        # when the flag is on (pipeline.py:_setup_stages), so this branch is
+        # unreachable in normal operation. Kept to protect callers that invoke
+        # process() directly (e.g. tests or future orchestration paths).
         if not context.config.enable_llm_presence_classifier:
             return StageResult(
                 stage=PipelineStage.LLM_PRESENCE_CLASSIFIER,
                 success=True,
-                duration_ms=0,
+                duration_ms=int((datetime.now(UTC) - start).total_seconds() * 1000),
                 items_processed=0,
                 items_output=0,
             )
@@ -84,7 +88,7 @@ class LLMPresenceClassifierStage:
             return StageResult(
                 stage=PipelineStage.LLM_PRESENCE_CLASSIFIER,
                 success=True,
-                duration_ms=0,
+                duration_ms=int((datetime.now(UTC) - start).total_seconds() * 1000),
                 items_processed=0,
                 items_output=0,
                 warnings=[f"client init failed: {exc}"],
@@ -95,7 +99,7 @@ class LLMPresenceClassifierStage:
             return StageResult(
                 stage=PipelineStage.LLM_PRESENCE_CLASSIFIER,
                 success=True,
-                duration_ms=0,
+                duration_ms=int((datetime.now(UTC) - start).total_seconds() * 1000),
                 items_processed=0,
                 items_output=0,
                 warnings=["ANTHROPIC_API_KEY not set"],
@@ -201,7 +205,7 @@ class LLMPresenceClassifierStage:
                         )
                         errors.append(f"paraphrase segment {segment.segment_id}: {exc}")
 
-        context.llm_presence_signals = signals  # type: ignore[assignment]
+        context.llm_presence_signals = signals
 
         # Log disagreements: paraphrase-recall found a metric that keywords missed.
         if signals:
