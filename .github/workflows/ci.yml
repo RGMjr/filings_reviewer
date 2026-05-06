@@ -168,11 +168,12 @@ jobs:
         run: uv sync --extra dev
 
       - name: Audit dependencies
-        # Temporarily ignoring CVE-2026-3219 (pip 26.0.1). No fix version
-        # published by upstream yet; pip-audit would block every PR on a
-        # vulnerability we cannot remediate. Remove this ignore once a
-        # patched pip is released.
-        run: uv run pip-audit --ignore-vuln CVE-2026-3219
+        # Temporarily ignoring pip CVEs for vulnerabilities in the runner-managed
+        # pip that we cannot remediate from this repo:
+        #   CVE-2026-3219 (pip 26.0.1) — no fix version published upstream yet
+        #   CVE-2026-6357 (pip 26.0.1) — fix in pip 26.1, awaiting runner update
+        # Remove each ignore once the runner ships a patched pip.
+        run: uv run pip-audit --ignore-vuln CVE-2026-3219 --ignore-vuln CVE-2026-6357
 
   integration-tests:
     name: Integration Tests
