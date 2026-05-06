@@ -1,0 +1,42 @@
+# Per-metric prompt for cm_lifetime_value_per_customer.
+#
+# Customer lifetime value (LTV / CLV). Sister to cm_customer_acquisition_cost
+# and cm_ltv_to_cac_ratio — these three frequently appear together in
+# unit-economics discussions. Distinguishing LTV alone from the combined
+# LTV/CAC ratio is the main FP risk.
+#
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_lifetime_value_per_customer.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_lifetime_value_per_customer
+
+definition: |
+  The estimated total revenue or gross profit a single customer
+  generates for the issuer over the duration of the customer
+  relationship. Commonly abbreviated LTV (Lifetime Value) or CLV
+  (Customer Lifetime Value). Often disclosed as a dollar figure per
+  customer or per cohort, sometimes computed as average revenue per
+  customer multiplied by an estimated retention period or as the
+  inverse of churn times margin per customer. Common paraphrases:
+  "lifetime value", "customer lifetime value", "LTV", "CLV".
+
+positive_signals:
+  - Explicit term "lifetime value", "LTV", "customer lifetime value", or "CLV"
+  - A dollar amount described as the value of an average customer over time
+  - Disclosure of how LTV is computed (e.g., "ARPU divided by churn rate")
+  - Cohort-level LTV figures showing how customer value evolves over tenure
+
+negative_signals:
+  - LTV/CAC ratio discussion (use cm_ltv_to_cac_ratio or cm_ltv_to_cac_ratio_by_cohort) — these often share the term "LTV"
+  - Customer-acquisition-cost-only discussion (use cm_customer_acquisition_cost)
+  - Generic average revenue per customer / ARPU without lifetime framing (use cm_revenue_per_customer)
+  - References to "value of our customer base" in qualitative terms without a dollar LTV figure
+  - '"Long-term value to shareholders" or similar enterprise-value language unrelated to per-customer LTV'
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.

@@ -1,0 +1,43 @@
+# Per-metric prompt for cm_ltv_to_cac_ratio.
+#
+# The ratio of customer lifetime value to customer acquisition cost,
+# disclosed as a single overall number. Sister to:
+#   - cm_lifetime_value_per_customer (numerator)
+#   - cm_customer_acquisition_cost (denominator)
+#   - cm_ltv_to_cac_ratio_by_cohort (cohort-segmented variant)
+# Common collision: text that mentions both LTV and CAC but never
+# computes a ratio (use cm_lifetime_value_per_customer + cm_customer_acquisition_cost).
+#
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_ltv_to_cac_ratio.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_ltv_to_cac_ratio
+
+definition: |
+  The ratio of customer lifetime value (LTV) to customer acquisition
+  cost (CAC), expressed as a single overall multiple (e.g., "3.5x" or
+  "5:1"). Higher ratios indicate stronger unit economics. Common
+  paraphrases: "LTV/CAC", "LTV-to-CAC", "LTV:CAC", "lifetime value to
+  acquisition cost ratio". Excludes by-cohort variants (those map to
+  cm_ltv_to_cac_ratio_by_cohort).
+
+positive_signals:
+  - Explicit ratio notation "LTV/CAC", "LTV:CAC", "LTV-to-CAC"
+  - Numeric multiple framed as a ratio (e.g., "3.5x", "5 to 1") next to LTV/CAC mention
+  - Discussion of unit economics characterized by an LTV-to-CAC multiple
+  - Explanation of how the ratio is computed without by-cohort segmentation
+
+negative_signals:
+  - LTV alone without CAC division (use cm_lifetime_value_per_customer)
+  - CAC alone without LTV division (use cm_customer_acquisition_cost)
+  - LTV/CAC analyzed by cohort or vintage (use cm_ltv_to_cac_ratio_by_cohort)
+  - CAC payback period (different metric — time to recover CAC, not the ratio)
+  - Generic "we have favorable unit economics" without a quantified ratio
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.

@@ -6,29 +6,31 @@ introduced in Phase 1 of the metric-identification redesign. Distinct from
 text-only and Anthropic-only because the prompt-caching strategy below
 is specific to Anthropic's cache-control semantics.
 
-Caching has two layers:
+The classifier is multi-label per call: one Anthropic request scores all
+requested metrics for a segment. The per-metric definition + few-shot
+block is sent with ``cache_control={"type": "ephemeral"}`` so the model
+server caches the prefix; the prefix is made stable by sorting metric
+blocks by ``metric_id`` and rendering them deterministically. Any byte
+change anywhere in the prefix invalidates the entire cache.
 
-1. **Server-side prompt cache (Anthropic)** — the per-metric definition
-   + few-shot block is sent with ``cache_control={"type": "ephemeral"}``
-   so the model server caches the prefix. Cache key (server-side) is the
-   full prefix bytes; we make the prefix stable by sorting metric blocks
-   deterministically and writing prompt YAML with stable key order.
-   Target ≥85% cache hit rate across a validator run.
+Two-pass model strategy:
+- Default: Haiku 4.5 (cheap; ~$0.20-0.40 per filing target).
+- Sonnet 4.6 fallback: any metric whose Haiku score lands in that
+  metric's calibrated ``sonnet_band`` is re-scored on Sonnet for that
+  segment. The Sonnet score replaces the Haiku score in the final result.
 
-2. **Local response cache (LLMCache)** — full (model, prompt, segment)
-   responses memoized to the on-disk SQLite cache shared with
-   ``vision_client.py``. Cache key includes ``prompt_version`` so
-   versioned prompt changes invalidate cleanly.
-
-This module currently exposes the public API and config loaders only.
-Wire-level model calls land in PR3 alongside the
-``LLMPresenceClassifierStage`` extraction stage.
+The ``LLMPresenceClassifierStage`` (PR3 Part D) wires this client into
+the V2 extraction pipeline; calibrated thresholds come from
+``config/llm_classifier/thresholds.yaml`` (PR3 Part G).
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,9 +40,56 @@ import yaml
 logger = logging.getLogger(__name__)
 
 DEFAULT_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+# Sonnet 4.6's canonical alias is the un-dated form per Anthropic's model
+# catalog; unlike Haiku 4.5 there is no stable date-suffixed alias yet.
+# Pin shape kept consistent: any future change to a date-suffixed Sonnet
+# alias should follow the Haiku pattern.
 DEFAULT_SONNET_MODEL = "claude-sonnet-4-6"
 
 CONFIG_ROOT = Path(__file__).resolve().parents[2] / "config" / "llm_classifier"
+
+# Per-1M-token pricing in USD, used by classify_segment to log a cost
+# estimate per call. Updated when Anthropic publishes new rates; pinned here
+# rather than hit a live pricing API on every classifier call.
+_PRICING_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-haiku-4-5-20251001": (1.00, 5.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+}
+_DEFAULT_PRICING: tuple[float, float] = (3.00, 15.00)
+# Anthropic prompt-caching: cache reads cost ~0.1x base input price; 5-minute
+# ephemeral cache writes cost ~1.25x base input. See claude-api skill
+# (shared/prompt-caching.md) for current multipliers.
+_CACHE_READ_MULTIPLIER = 0.10
+_CACHE_WRITE_MULTIPLIER = 1.25
+# Output JSON schema for the multi-label classifier call. Numeric range
+# constraints (minimum/maximum on score) are not honored by structured
+# outputs; classify_segment clamps client-side.
+_CLASSIFY_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "metrics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "metric_id": {"type": "string"},
+                    "present": {"type": "boolean"},
+                    "score": {"type": "number"},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["metric_id", "present", "score", "rationale"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["metrics"],
+    "additionalProperties": False,
+}
+# Max tokens per classifier response — enough headroom for ~8 metrics each
+# with a one-sentence rationale. Bumped if multi-label output starts hitting
+# the cap.
+_CLASSIFY_MAX_TOKENS = 2048
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +117,15 @@ class MetricThreshold:
     metric_id: str
     threshold: float
     sonnet_band: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class ThresholdsConfig:
+    """Parsed contents of ``config/llm_classifier/thresholds.yaml``."""
+
+    per_metric: dict[str, MetricThreshold]
+    default_threshold: float
+    default_sonnet_band: tuple[float, float]
 
 
 @dataclass(frozen=True)
@@ -108,23 +166,38 @@ def load_recall_augmentation(path: Path | None = None) -> RecallAugmentationConf
     )
 
 
-def load_thresholds(path: Path | None = None) -> tuple[dict[str, MetricThreshold], float, tuple[float, float]]:
+def _validated_band(band: list[float] | tuple[float, float], *, where: str) -> tuple[float, float]:
+    lo, hi = float(band[0]), float(band[1])
+    assert lo < hi, f"sonnet_band must satisfy lo < hi (got [{lo}, {hi}] in {where})"
+    return lo, hi
+
+
+def load_thresholds(path: Path | None = None) -> ThresholdsConfig:
     src = path or (CONFIG_ROOT / "thresholds.yaml")
     with src.open() as f:
         raw = yaml.safe_load(f)
     defaults = raw.get("defaults", {})
     default_threshold = float(defaults.get("threshold", 0.50))
-    band = defaults.get("sonnet_band", [0.35, 0.65])
-    default_band = (float(band[0]), float(band[1]))
+    default_band = _validated_band(
+        defaults.get("sonnet_band", [0.35, 0.65]),
+        where=f"{src} defaults",
+    )
     out: dict[str, MetricThreshold] = {}
     for metric_id, entry in (raw.get("thresholds") or {}).items():
-        entry_band = entry.get("sonnet_band", band)
+        entry_band = _validated_band(
+            entry.get("sonnet_band", list(default_band)),
+            where=f"{src} thresholds.{metric_id}",
+        )
         out[metric_id] = MetricThreshold(
             metric_id=metric_id,
             threshold=float(entry["threshold"]),
-            sonnet_band=(float(entry_band[0]), float(entry_band[1])),
+            sonnet_band=entry_band,
         )
-    return out, default_threshold, default_band
+    return ThresholdsConfig(
+        per_metric=out,
+        default_threshold=default_threshold,
+        default_sonnet_band=default_band,
+    )
 
 
 def load_metric_prompt(metric_id: str, prompts_dir: Path | None = None) -> MetricPrompt:
@@ -141,6 +214,10 @@ def load_metric_prompt(metric_id: str, prompts_dir: Path | None = None) -> Metri
     main_path = base_dir / f"{metric_id}.yaml"
     with main_path.open() as f:
         raw = yaml.safe_load(f)
+    assert raw["metric_id"] == metric_id, (
+        f"prompt YAML at {main_path} declares metric_id={raw['metric_id']!r} "
+        f"but filename stem is {metric_id!r}; rename the file or fix the YAML"
+    )
     few_shots = raw.get("few_shot_examples", []) or []
     sidecar_path = base_dir / f"{metric_id}.few_shots.yaml"
     if sidecar_path.exists():
@@ -181,15 +258,15 @@ def load_classifier_config(config_root: Path | None = None) -> ClassifierClientC
     """
     root = config_root or CONFIG_ROOT
     recall = load_recall_augmentation(root / "recall_augmentation.yaml")
-    thresholds, default_thr, default_band = load_thresholds(root / "thresholds.yaml")
+    thresholds = load_thresholds(root / "thresholds.yaml")
     prompts = load_all_prompts(root / "prompts")
     return ClassifierClientConfig(
         api_key=os.environ.get("ANTHROPIC_API_KEY"),
         recall_augmentation=recall,
         prompts=prompts,
-        thresholds=thresholds,
-        default_threshold=default_thr,
-        default_sonnet_band=default_band,
+        thresholds=thresholds.per_metric,
+        default_threshold=thresholds.default_threshold,
+        default_sonnet_band=thresholds.default_sonnet_band,
     )
 
 
@@ -211,17 +288,136 @@ class SegmentClassification:
     prompt_version: str
 
 
+# ---------------------------------------------------------------------------
+# Prompt construction (deterministic — every byte feeds the cache key)
+# ---------------------------------------------------------------------------
+
+
+_SYSTEM_HEADER = (
+    "You are a metric-presence classifier for SEC S-1 / F-1 filings.\n"
+    "For each metric below, score whether the user-provided segment of\n"
+    "filing prose discusses that metric (regardless of whether a numeric\n"
+    "value is present). Use the metric definition, positive/negative\n"
+    "signals, and few-shot examples as your guide.\n\n"
+    "Return a single JSON object matching the response schema. Include one\n"
+    "entry in 'metrics' for EVERY metric listed below. 'score' is your\n"
+    "calibrated [0..1] confidence that the metric is being discussed.\n"
+    "'present' is your boolean call at the deployment threshold; the\n"
+    "downstream pipeline may override it using a calibrated threshold.\n"
+    "'rationale' is one short sentence quoting the most decisive evidence.\n"
+)
+
+
+def _format_few_shot(example: dict[str, Any]) -> str:
+    label = "PRESENT" if example.get("label") else "NOT PRESENT"
+    text = (example.get("text") or "").strip()
+    extra = ""
+    rej = example.get("rejection_category")
+    if rej:
+        extra = f" [reviewer rejection_category={rej}]"
+    return f"  - [{label}]{extra} {text}"
+
+
+def _format_metric_block(prompt: MetricPrompt) -> str:
+    parts = [
+        f"### metric_id: {prompt.metric_id}",
+        f"prompt_version: {prompt.prompt_version}",
+        "",
+        "Definition:",
+        prompt.definition.strip(),
+    ]
+    if prompt.positive_signals:
+        parts.append("\nPositive signals:")
+        parts.extend(f"  - {s}" for s in prompt.positive_signals)
+    if prompt.negative_signals:
+        parts.append("\nNegative signals:")
+        parts.extend(f"  - {s}" for s in prompt.negative_signals)
+    if prompt.few_shot_examples:
+        parts.append("\nFew-shot examples:")
+        parts.extend(_format_few_shot(ex) for ex in prompt.few_shot_examples)
+    return "\n".join(parts)
+
+
+def _build_system_text(prompts: list[MetricPrompt]) -> str:
+    """Concatenate header + per-metric blocks.
+
+    Sorted by metric_id so the prefix bytes are deterministic — same input
+    set must produce the same prefix bytes for the Anthropic prompt cache
+    to hit. Any byte change anywhere in the prefix invalidates the cache.
+    """
+    sorted_prompts = sorted(prompts, key=lambda p: p.metric_id)
+    blocks = [_format_metric_block(p) for p in sorted_prompts]
+    return _SYSTEM_HEADER + "\n" + "\n\n".join(blocks)
+
+
+def _metric_set_hash(metric_ids: Iterable[str]) -> str:
+    """Stable telemetry hash for the (sorted) metric set sent in one call."""
+    payload = ",".join(sorted(metric_ids)).encode()
+    return hashlib.sha256(payload).hexdigest()[:12]
+
+
+def _estimate_cost_usd(usage: Any, model: str) -> float:
+    """Estimate $ cost from an Anthropic Usage object, accounting for cache."""
+    in_rate, out_rate = _PRICING_PER_MTOK.get(model, _DEFAULT_PRICING)
+    input_tokens = getattr(usage, "input_tokens", 0) or 0
+    output_tokens = getattr(usage, "output_tokens", 0) or 0
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    return (
+        input_tokens * in_rate
+        + cache_read * in_rate * _CACHE_READ_MULTIPLIER
+        + cache_create * in_rate * _CACHE_WRITE_MULTIPLIER
+        + output_tokens * out_rate
+    ) / 1_000_000
+
+
+def _extract_json_text(response: Any) -> str:
+    """Pull the JSON-bearing text block out of an Anthropic Message response."""
+    content = getattr(response, "content", None) or []
+    for block in content:
+        if getattr(block, "type", None) == "text":
+            return getattr(block, "text", "") or ""
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Client
+# ---------------------------------------------------------------------------
+
+
 class PresenceClassifierClient:
     """Anthropic-backed classifier for per-(segment, metric) presence.
 
-    The classification entrypoint (``classify_segment``) is intentionally
-    not implemented in this PR — the foundation lands the config + client
-    skeleton so subsequent PRs can wire the calibration script and
-    extraction stage without churn on this interface.
+    Two-pass model strategy:
+    - Default model: Haiku (cheap; multi-label per call).
+    - Sonnet fallback: any metric whose Haiku score lands inside that
+      metric's calibrated ``sonnet_band`` is re-scored on Sonnet for that
+      one segment, then the Sonnet score replaces the Haiku score in the
+      returned `SegmentClassification`.
+
+    Caching: the per-metric system prefix is sent with
+    ``cache_control={"type": "ephemeral"}`` so Anthropic caches the
+    rendered system text. Determinism is enforced by sorting metric blocks
+    by ``metric_id`` and rendering them with stable formatting; any byte
+    change anywhere in the prefix invalidates the entire cache (see
+    claude-api skill / shared/prompt-caching.md).
+
+    Dependency injection: pass ``anthropic_client=...`` to the constructor
+    to substitute a mock or pre-configured Anthropic client. The default
+    constructs ``anthropic.Anthropic(api_key=config.api_key)`` lazily on
+    first call so importing this module does not require the SDK or a key.
     """
 
-    def __init__(self, config: ClassifierClientConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: ClassifierClientConfig | None = None,
+        *,
+        anthropic_client: Any | None = None,
+    ) -> None:
         self.config = config or load_classifier_config()
+        self._anthropic_client: Any | None = anthropic_client
+
+    # ----- public API -----
 
     def threshold_for(self, metric_id: str) -> tuple[float, tuple[float, float]]:
         """Return (threshold, sonnet_band) for a metric, falling back to defaults."""
@@ -240,13 +436,173 @@ class PresenceClassifierClient:
         self,
         segment_text: str,
         metric_ids: list[str],
-        section_type: str | None = None,
+        section_type: str | None = None,  # noqa: ARG002 — caller-side filter
     ) -> list[SegmentClassification]:
         """Score a segment against multiple metrics in a single batched call.
 
-        Implementation lands in PR3 with the LLMPresenceClassifierStage.
+        Returns one ``SegmentClassification`` per requested metric_id, in
+        the input order. Raises ``ValueError`` if any requested metric_id
+        has no prompt YAML loaded, or if the API response is missing a
+        metric we asked about. Raises whatever the Anthropic SDK raises
+        (rate limit, server errors) — callers wrap the call in their own
+        retry policy.
         """
-        raise NotImplementedError(
-            "classify_segment is wired in PR3 (LLMPresenceClassifierStage). "
-            "Foundation PR ships config + skeleton only."
+        if not metric_ids:
+            return []
+        missing = [m for m in metric_ids if m not in self.config.prompts]
+        if missing:
+            raise ValueError(
+                f"No classifier prompt loaded for metric_ids={missing}. "
+                f"Author config/llm_classifier/prompts/<metric_id>.yaml "
+                f"and re-load the config."
+            )
+
+        haiku_scores = self._call_model(
+            model=self.config.haiku_model,
+            metric_ids=metric_ids,
+            segment_text=segment_text,
         )
+
+        # Identify metrics whose Haiku score is borderline → re-score with
+        # Sonnet. Each metric has its own band; default band applies when a
+        # metric has no calibrated entry yet.
+        borderline: list[str] = []
+        for mid in metric_ids:
+            _thr, band = self.threshold_for(mid)
+            score = float(haiku_scores[mid].get("score", 0.0))
+            if band[0] <= score <= band[1]:
+                borderline.append(mid)
+
+        sonnet_scores: dict[str, dict[str, Any]] = {}
+        if borderline:
+            sonnet_scores = self._call_model(
+                model=self.config.sonnet_model,
+                metric_ids=borderline,
+                segment_text=segment_text,
+            )
+
+        out: list[SegmentClassification] = []
+        for mid in metric_ids:
+            threshold, _band = self.threshold_for(mid)
+            if mid in sonnet_scores:
+                raw = sonnet_scores[mid]
+                model = self.config.sonnet_model
+                fallback = True
+            else:
+                raw = haiku_scores[mid]
+                model = self.config.haiku_model
+                fallback = False
+            score = max(0.0, min(1.0, float(raw.get("score", 0.0))))
+            out.append(
+                SegmentClassification(
+                    metric_id=mid,
+                    score=score,
+                    present=score >= threshold,
+                    rationale=str(raw.get("rationale", "")).strip(),
+                    model=model,
+                    sonnet_fallback=fallback,
+                    prompt_version=self.config.prompts[mid].prompt_version,
+                )
+            )
+        return out
+
+    # ----- internals -----
+
+    def _get_client(self) -> Any:
+        if self._anthropic_client is not None:
+            return self._anthropic_client
+        if not self.config.api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY not set; PresenceClassifierClient cannot "
+                "call Anthropic. Set the env var or pass anthropic_client=...."
+            )
+        try:
+            import anthropic as anthropic_sdk  # type: ignore[import-untyped]
+        except ImportError as exc:  # pragma: no cover — dep is in requirements
+            raise ImportError(
+                "anthropic SDK is required for PresenceClassifierClient. "
+                "Install via: uv pip install -r requirements.txt"
+            ) from exc
+        self._anthropic_client = anthropic_sdk.Anthropic(api_key=self.config.api_key)
+        return self._anthropic_client
+
+    def _call_model(
+        self,
+        *,
+        model: str,
+        metric_ids: list[str],
+        segment_text: str,
+    ) -> dict[str, dict[str, Any]]:
+        """Run one Anthropic call and return {metric_id: response_entry}.
+
+        Validates that every requested metric appears in the response and
+        logs token usage + cost + cache hit rate.
+        """
+        prompts = [self.config.prompts[m] for m in metric_ids]
+        system_text = _build_system_text(prompts)
+        system_blocks: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": system_text,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+        client = self._get_client()
+        response = client.messages.create(
+            model=model,
+            max_tokens=_CLASSIFY_MAX_TOKENS,
+            system=system_blocks,
+            messages=[{"role": "user", "content": segment_text}],
+            output_config={
+                "format": {
+                    "type": "json_schema",
+                    "schema": _CLASSIFY_OUTPUT_SCHEMA,
+                }
+            },
+        )
+
+        # Telemetry — log even if parsing fails so we still see the cost.
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            output_tokens = getattr(usage, "output_tokens", 0) or 0
+            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            cacheable = cache_read + cache_create + input_tokens
+            hit_rate = (cache_read / cacheable) if cacheable > 0 else 0.0
+            logger.info(
+                "classify_segment model=%s metrics=%d set_hash=%s "
+                "tokens=in:%d/out:%d cache=read:%d/write:%d hit_rate=%.2f "
+                "cost=$%.5f",
+                model,
+                len(metric_ids),
+                _metric_set_hash(metric_ids),
+                input_tokens,
+                output_tokens,
+                cache_read,
+                cache_create,
+                hit_rate,
+                _estimate_cost_usd(usage, model),
+            )
+
+        text = _extract_json_text(response)
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Classifier response was not valid JSON (model={model}): {exc}; raw={text[:500]!r}"
+            ) from exc
+
+        by_metric: dict[str, dict[str, Any]] = {}
+        for entry in payload.get("metrics", []) or []:
+            mid = entry.get("metric_id")
+            if mid in metric_ids:
+                by_metric[mid] = entry
+        missing_in_response = [m for m in metric_ids if m not in by_metric]
+        if missing_in_response:
+            raise ValueError(
+                f"Classifier response missing metrics={missing_in_response} "
+                f"(model={model}); got={list(by_metric)}"
+            )
+        return by_metric

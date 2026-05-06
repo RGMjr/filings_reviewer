@@ -1,0 +1,45 @@
+# Per-metric prompt for cm_ltv_to_cac_ratio_by_cohort.
+#
+# The cohort-segmented variant of cm_ltv_to_cac_ratio. Captures temporal
+# qualifiers like "6-month LTV/CAC" or "LTV/CAC after 12 months" that
+# describe how unit economics evolve across acquisition cohorts.
+# Often appears in payments / fintech / e-commerce S-1s as a multi-year
+# table or stacked chart.
+#
+# Major FP source: a single overall LTV/CAC ratio that doesn't actually
+# segment by cohort (that's cm_ltv_to_cac_ratio).
+#
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_ltv_to_cac_ratio_by_cohort.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_ltv_to_cac_ratio_by_cohort
+
+definition: |
+  The ratio of customer lifetime value (LTV) to customer acquisition
+  cost (CAC), analyzed by acquisition cohort or vintage. Typically
+  disclosed as a multi-year table or chart, or with temporal qualifiers
+  such as "6-month LTV/CAC" or "LTV/CAC after 12 months". Captures
+  how unit economics vary across cohorts and how quickly the ratio
+  grows as a cohort matures. Common paraphrases: "LTV/CAC by cohort",
+  "LTV-to-CAC by vintage", "LTV/CAC by acquisition year", "M-month
+  LTV/CAC".
+
+positive_signals:
+  - LTV/CAC discussed across multiple cohorts, vintages, or acquisition years
+  - Temporal qualifiers tied to LTV/CAC ("6-month LTV/CAC", "LTV/CAC after 12 months")
+  - A table or chart showing LTV/CAC ratios for each acquisition cohort
+  - Statements like "our 2019 cohort reached an LTV/CAC of 4x by year three"
+
+negative_signals:
+  - A single overall LTV/CAC ratio that is NOT segmented by cohort (use cm_ltv_to_cac_ratio)
+  - LTV-only or CAC-only by cohort without the ratio (use cm_lifetime_value_per_customer or cm_customer_acquisition_cost)
+  - Cohort revenue / retention tables that don't disclose an LTV/CAC ratio (use cm_revenue_by_cohort)
+  - Generic unit-economics commentary without quantified per-cohort ratios
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.

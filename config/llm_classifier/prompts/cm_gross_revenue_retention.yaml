@@ -1,0 +1,39 @@
+# Per-metric prompt for cm_gross_revenue_retention.
+#
+# Sister metric to cm_net_revenue_retention. The defining difference is
+# whether expansion is included: NRR includes expansion, GRR does not.
+# Both share keyword surface area ("retention rate", "dollar retention"),
+# so negative signals lean heavily on disambiguation cues.
+#
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_gross_revenue_retention.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_gross_revenue_retention
+
+definition: |
+  Gross revenue retention (GRR) is the percentage of recurring revenue
+  retained from a cohort of customers over a period, measured net of
+  churn and contraction but EXCLUDING expansion (upsell, cross-sell,
+  price increases). GRR is capped at 100% and represents the "floor" of
+  revenue retained. Common paraphrases: "gross dollar retention", "gross
+  retention rate", "GRR".
+
+positive_signals:
+  - Explicit metric name ("gross revenue retention", "gross dollar retention", "GRR")
+  - Numeric percentage at or near 100% described as a retention floor
+  - Side-by-side disclosure with NRR where the gross figure is lower
+  - Language emphasizing "excluding expansion" or "before expansion"
+
+negative_signals:
+  - Net dollar / net revenue retention discussion (use cm_net_revenue_retention) — usually >100% and cites expansion
+  - Pure customer-count retention without a dollar/revenue qualifier (use cm_customer_retention_rate)
+  - Cohort revenue tables that don't aggregate to a single retention percentage (use cm_revenue_by_cohort)
+  - Generic "retention" without the gross/net qualifier where context makes the type ambiguous
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.

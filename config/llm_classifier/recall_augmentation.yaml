@@ -22,6 +22,7 @@ enrolled_metrics:
   - cm_lifetime_value_per_customer
   - cm_customer_acquisition_cost
   - cm_ltv_to_cac_ratio
+  - cm_ltv_to_cac_ratio_by_cohort
 
 section_whitelist:
   - mda
