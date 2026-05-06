@@ -38,6 +38,10 @@ import yaml
 logger = logging.getLogger(__name__)
 
 DEFAULT_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+# Sonnet 4.6's canonical alias is the un-dated form per Anthropic's model
+# catalog; unlike Haiku 4.5 there is no stable date-suffixed alias yet.
+# Pin shape kept consistent: any future change to a date-suffixed Sonnet
+# alias should follow the Haiku pattern.
 DEFAULT_SONNET_MODEL = "claude-sonnet-4-6"
 
 CONFIG_ROOT = Path(__file__).resolve().parents[2] / "config" / "llm_classifier"
@@ -68,6 +72,15 @@ class MetricThreshold:
     metric_id: str
     threshold: float
     sonnet_band: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class ThresholdsConfig:
+    """Parsed contents of ``config/llm_classifier/thresholds.yaml``."""
+
+    per_metric: dict[str, MetricThreshold]
+    default_threshold: float
+    default_sonnet_band: tuple[float, float]
 
 
 @dataclass(frozen=True)
@@ -108,23 +121,38 @@ def load_recall_augmentation(path: Path | None = None) -> RecallAugmentationConf
     )
 
 
-def load_thresholds(path: Path | None = None) -> tuple[dict[str, MetricThreshold], float, tuple[float, float]]:
+def _validated_band(band: list[float] | tuple[float, float], *, where: str) -> tuple[float, float]:
+    lo, hi = float(band[0]), float(band[1])
+    assert lo < hi, f"sonnet_band must satisfy lo < hi (got [{lo}, {hi}] in {where})"
+    return lo, hi
+
+
+def load_thresholds(path: Path | None = None) -> ThresholdsConfig:
     src = path or (CONFIG_ROOT / "thresholds.yaml")
     with src.open() as f:
         raw = yaml.safe_load(f)
     defaults = raw.get("defaults", {})
     default_threshold = float(defaults.get("threshold", 0.50))
-    band = defaults.get("sonnet_band", [0.35, 0.65])
-    default_band = (float(band[0]), float(band[1]))
+    default_band = _validated_band(
+        defaults.get("sonnet_band", [0.35, 0.65]),
+        where=f"{src} defaults",
+    )
     out: dict[str, MetricThreshold] = {}
     for metric_id, entry in (raw.get("thresholds") or {}).items():
-        entry_band = entry.get("sonnet_band", band)
+        entry_band = _validated_band(
+            entry.get("sonnet_band", list(default_band)),
+            where=f"{src} thresholds.{metric_id}",
+        )
         out[metric_id] = MetricThreshold(
             metric_id=metric_id,
             threshold=float(entry["threshold"]),
-            sonnet_band=(float(entry_band[0]), float(entry_band[1])),
+            sonnet_band=entry_band,
         )
-    return out, default_threshold, default_band
+    return ThresholdsConfig(
+        per_metric=out,
+        default_threshold=default_threshold,
+        default_sonnet_band=default_band,
+    )
 
 
 def load_metric_prompt(metric_id: str, prompts_dir: Path | None = None) -> MetricPrompt:
@@ -141,6 +169,10 @@ def load_metric_prompt(metric_id: str, prompts_dir: Path | None = None) -> Metri
     main_path = base_dir / f"{metric_id}.yaml"
     with main_path.open() as f:
         raw = yaml.safe_load(f)
+    assert raw["metric_id"] == metric_id, (
+        f"prompt YAML at {main_path} declares metric_id={raw['metric_id']!r} "
+        f"but filename stem is {metric_id!r}; rename the file or fix the YAML"
+    )
     few_shots = raw.get("few_shot_examples", []) or []
     sidecar_path = base_dir / f"{metric_id}.few_shots.yaml"
     if sidecar_path.exists():
@@ -181,15 +213,15 @@ def load_classifier_config(config_root: Path | None = None) -> ClassifierClientC
     """
     root = config_root or CONFIG_ROOT
     recall = load_recall_augmentation(root / "recall_augmentation.yaml")
-    thresholds, default_thr, default_band = load_thresholds(root / "thresholds.yaml")
+    thresholds = load_thresholds(root / "thresholds.yaml")
     prompts = load_all_prompts(root / "prompts")
     return ClassifierClientConfig(
         api_key=os.environ.get("ANTHROPIC_API_KEY"),
         recall_augmentation=recall,
         prompts=prompts,
-        thresholds=thresholds,
-        default_threshold=default_thr,
-        default_sonnet_band=default_band,
+        thresholds=thresholds.per_metric,
+        default_threshold=thresholds.default_threshold,
+        default_sonnet_band=thresholds.default_sonnet_band,
     )
 
 

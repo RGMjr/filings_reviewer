@@ -17,7 +17,10 @@ Modes:
                 flat. Requires the LLMPresenceClassifierStage from PR3 —
                 this script raises NotImplementedError until that lands.
 
-  --mode all    Run mine then sweep (default).
+  --mode all    Run mine then sweep. Default is currently ``mine`` because
+                ``sweep`` raises NotImplementedError until the LLM presence
+                classifier stage lands; the default flips back to ``all``
+                once sweep mode is wired.
 
 Outputs:
 
@@ -139,6 +142,9 @@ class Splits:
     train_issuers: frozenset[str]
     calibration_issuers: frozenset[str]
     test_issuers: frozenset[str]
+    # url -> issuer_key, populated from every split. Kept on the dataclass so
+    # downstream mining doesn't have to re-read split_v1.json.
+    issuer_lookup: dict[str, str]
 
 
 def load_splits(split_file: Path = SPLIT_FILE) -> Splits:
@@ -151,6 +157,11 @@ def load_splits(split_file: Path = SPLIT_FILE) -> Splits:
     def issuers(name: str) -> frozenset[str]:
         return frozenset(r["issuer_key"] for r in splits[name])
 
+    issuer_lookup: dict[str, str] = {}
+    for rows in splits.values():
+        for r in rows:
+            issuer_lookup[r["url"]] = r["issuer_key"]
+
     return Splits(
         train_urls=urls("train"),
         calibration_urls=urls("calibration"),
@@ -158,6 +169,7 @@ def load_splits(split_file: Path = SPLIT_FILE) -> Splits:
         train_issuers=issuers("train"),
         calibration_issuers=issuers("calibration"),
         test_issuers=issuers("test"),
+        issuer_lookup=issuer_lookup,
     )
 
 
@@ -186,8 +198,7 @@ def mine_positive_examples(
     rng = random.Random(seed + hash(metric_id) % 1024)
     candidates_by_issuer: dict[str, list[FewShotExample]] = {}
     excluded_issuers = splits.test_issuers | splits.calibration_issuers
-
-    issuer_lookup = _build_issuer_lookup(splits)
+    issuer_lookup = splits.issuer_lookup
 
     seen_texts: set[str] = set()
     with gold_csv.open(encoding="utf-8-sig") as f:
@@ -223,7 +234,9 @@ def mine_positive_examples(
         logger.warning(
             "metric=%s only %d distinct train issuers found (min %d); "
             "few-shot diversity below target",
-            metric_id, len(issuers), min_issuers,
+            metric_id,
+            len(issuers),
+            min_issuers,
         )
 
     rng.shuffle(issuers)
@@ -240,16 +253,6 @@ def mine_positive_examples(
             if len(chosen) >= max_examples:
                 break
     return chosen
-
-
-def _build_issuer_lookup(splits: Splits) -> dict[str, str]:
-    """Build a {url: issuer_key} map from split_v1.json across all splits."""
-    raw = json.loads(SPLIT_FILE.read_text())
-    out: dict[str, str] = {}
-    for rows in raw["splits"].values():
-        for r in rows:
-            out[r["url"]] = r["issuer_key"]
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +295,7 @@ def mine_negative_examples_from_db(
         return []
 
     rng = random.Random(seed + hash(metric_id) % 1024 + 7919)
-    issuer_lookup = _build_issuer_lookup(splits)
+    issuer_lookup = splits.issuer_lookup
     excluded_issuers = splits.test_issuers | splits.calibration_issuers
     train_urls = splits.train_urls
 
@@ -348,7 +351,9 @@ def mine_negative_examples_from_db(
         logger.warning(
             "metric=%s only %d distinct issuers in review-decision negatives "
             "(min %d); diversity below target",
-            metric_id, len(issuers), min_issuers,
+            metric_id,
+            len(issuers),
+            min_issuers,
         )
     rng.shuffle(issuers)
     pools = {iss: list(candidates_by_issuer[iss]) for iss in issuers}
@@ -390,11 +395,7 @@ def write_few_shots_sidecar(
                 "issuer": ex.issuer,
                 "filing_url": ex.filing_url,
                 "source": ex.source,
-                **(
-                    {"rejection_category": ex.rejection_category}
-                    if ex.rejection_category
-                    else {}
-                ),
+                **({"rejection_category": ex.rejection_category} if ex.rejection_category else {}),
             }
             for ex in examples
         ],
@@ -485,15 +486,20 @@ def run_sweep(metric_ids: list[str], **_: Any) -> None:
 def discover_metrics() -> list[str]:
     """List every metric with a hand-authored prompt YAML."""
     return sorted(
-        p.stem
-        for p in PROMPTS_DIR.glob("*.yaml")
-        if not p.name.endswith(".few_shots.yaml")
+        p.stem for p in PROMPTS_DIR.glob("*.yaml") if not p.name.endswith(".few_shots.yaml")
     )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--mode", choices=("mine", "sweep", "all"), default="all")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("mine", "sweep", "all"),
+        # Default flips to "all" once run_sweep is wired (PR3 Part G).
+        default="mine",
+    )
     parser.add_argument(
         "--metric",
         action="append",
@@ -530,7 +536,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.error(
             "Refusing to mine — these metrics have no prompt YAML at %s: %s. "
             "Author config/llm_classifier/prompts/<metric_id>.yaml first.",
-            PROMPTS_DIR, missing,
+            PROMPTS_DIR,
+            missing,
         )
         return 1
 

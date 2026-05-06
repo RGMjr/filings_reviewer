@@ -34,16 +34,15 @@ def test_split_has_three_named_partitions(split: dict) -> None:
 
 
 def test_split_counts(split: dict) -> None:
+    # Counts are intentionally hardcoded so adding a gold filing forces a
+    # conscious decision to update both the split and this test.
     assert len(split["splits"]["train"]) == 12
     assert len(split["splits"]["calibration"]) == 4
     assert len(split["splits"]["test"]) == 4
 
 
 def test_issuer_purity(split: dict) -> None:
-    sets = {
-        name: {row["issuer_key"] for row in rows}
-        for name, rows in split["splits"].items()
-    }
+    sets = {name: {row["issuer_key"] for row in rows} for name, rows in split["splits"].items()}
     assert sets["train"] & sets["calibration"] == set()
     assert sets["train"] & sets["test"] == set()
     assert sets["calibration"] & sets["test"] == set()

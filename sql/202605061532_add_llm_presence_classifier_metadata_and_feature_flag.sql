@@ -14,7 +14,7 @@ BEGIN;
 -- Shape (advisory; not enforced):
 --   { "prompt_version": "<semver>",
 --     "llm_score": <0..1>,
---     "model": "claude-haiku-4-5" | "claude-sonnet-4-6",
+--     "model": "claude-haiku-4-5-20251001" | "claude-sonnet-4-6",
 --     "sonnet_fallback": <bool>,
 --     "candidate_source": "keyword" | "paraphrase_recall" | "both" }
 -- NULL on rows produced by non-classifier stages.

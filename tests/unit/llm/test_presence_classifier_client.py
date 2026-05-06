@@ -80,11 +80,26 @@ def test_load_recall_augmentation(config_root: Path) -> None:
 
 
 def test_load_thresholds_with_defaults(config_root: Path) -> None:
-    thresholds, default_thr, default_band = load_thresholds(config_root / "thresholds.yaml")
-    assert thresholds["cm_net_revenue_retention"].threshold == 0.62
-    assert thresholds["cm_net_revenue_retention"].sonnet_band == (0.40, 0.70)
-    assert default_thr == 0.50
-    assert default_band == (0.35, 0.65)
+    cfg = load_thresholds(config_root / "thresholds.yaml")
+    assert cfg.per_metric["cm_net_revenue_retention"].threshold == 0.62
+    assert cfg.per_metric["cm_net_revenue_retention"].sonnet_band == (0.40, 0.70)
+    assert cfg.default_threshold == 0.50
+    assert cfg.default_sonnet_band == (0.35, 0.65)
+
+
+def test_load_thresholds_rejects_inverted_sonnet_band(tmp_path: Path) -> None:
+    bad = tmp_path / "thresholds.yaml"
+    bad.write_text(
+        textwrap.dedent("""\
+        version: 1
+        thresholds: {}
+        defaults:
+          threshold: 0.50
+          sonnet_band: [0.70, 0.30]
+    """)
+    )
+    with pytest.raises(AssertionError, match="sonnet_band must satisfy lo < hi"):
+        load_thresholds(bad)
 
 
 def test_load_metric_prompt(config_root: Path) -> None:
@@ -96,6 +111,21 @@ def test_load_metric_prompt(config_root: Path) -> None:
     assert prompt.negative_signals == ("customer-count retention only",)
     assert prompt.few_shot_examples == ()
     assert prompt.decision_format.startswith('{"present"')
+
+
+def test_load_metric_prompt_rejects_mismatched_metric_id(tmp_path: Path) -> None:
+    prompts = tmp_path / "prompts"
+    _write(
+        prompts / "cm_net_revenue_retention.yaml",
+        """\
+        prompt_version: "0.1.0-test"
+        metric_id: cm_some_other_metric
+        definition: x
+        decision_format: "{}"
+        """,
+    )
+    with pytest.raises(AssertionError, match="declares metric_id"):
+        load_metric_prompt("cm_net_revenue_retention", prompts_dir=prompts)
 
 
 def test_load_all_prompts_skips_when_missing(tmp_path: Path) -> None:

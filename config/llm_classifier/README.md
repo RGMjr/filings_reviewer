@@ -1,7 +1,6 @@
 # LLM Presence Classifier — Configuration
 
-Phase 1 of the metric-identification redesign (see plan at
-`/root/.claude/plans/i-want-to-take-idempotent-wigderson.md` and
+Phase 1 of the metric-identification redesign (see
 `docs/operations/text-pipeline-presence-pivot-plan.md`).
 
 ## Files
