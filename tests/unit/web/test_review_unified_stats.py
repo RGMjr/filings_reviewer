@@ -72,10 +72,18 @@ def _stub_analytics_helpers(mock_db) -> None:
         "negative": 0,
     }
     mock_db.count_text_decisions_since.return_value = 0
-    mock_db.get_recent_text_corrections.return_value = []
-    mock_db.get_recent_text_additions.return_value = []
-    mock_db.get_recent_image_additions.return_value = []
-    mock_db.get_recent_image_corrections.return_value = []
+    # Review Activity section: 4 frequency-aggregated cards x 2 scopes
+    # (Latest 7d, All-time) plus per-window count totals for the badges.
+    mock_db.get_top_text_corrections.return_value = []
+    mock_db.get_top_text_additions.return_value = []
+    mock_db.get_top_image_additions.return_value = []
+    mock_db.get_top_image_corrections.return_value = []
+    mock_db.count_review_activity.return_value = {
+        "text_corrections": 0,
+        "text_additions": 0,
+        "image_additions": 0,
+        "image_corrections": 0,
+    }
     # Phase 3: stats() now calls db.query() directly to check whether a retrain
     # is currently running. Default to "none running" so button gating depends
     # only on the threshold counters.
@@ -123,7 +131,7 @@ def test_stats_renders_empty(client, mock_db):
     assert "Metric Analytics" in body
     # Summary tab is now the default landing — sanity-check it rendered.
     assert "Image Relevance Classifier" in body
-    assert "Recent Activity" in body
+    assert "Review Activity" in body
     assert 'id="summary-stats"' in body
     # Update Image Classifier button — Phase 3 button, disabled below threshold.
     assert "Update Image Classifier" in body
@@ -187,8 +195,10 @@ def test_stats_renders_with_data(client, mock_db):
     assert "Tier 3 All" in body
 
 
-def test_stats_summary_renders_recent_activity(client, mock_db):
-    """Recent-activity rows render with the expected company / metric / reviewer cells."""
+def test_stats_summary_renders_review_activity(client, mock_db):
+    """Review Activity cards render frequency-aggregated rows with the
+    Latest/All-time toggle, count badges, and pair / value-only metric labels.
+    """
     from datetime import datetime
 
     mock_db.get_v2_review_stats.return_value = _empty_text_data()
@@ -229,51 +239,67 @@ def test_stats_summary_renders_recent_activity(client, mock_db):
         "negative": 41,
     }
     mock_db.count_text_decisions_since.return_value = 12
-    mock_db.get_recent_text_corrections.return_value = [
+
+    # Aggregated rows for the Review Activity cards. Same fixture for both
+    # scopes — the mock returns these regardless of window arg.
+    mock_db.get_top_text_corrections.return_value = [
         {
-            "created_at": ts,
-            "reviewer_id": "RGM",
-            "corrected_metric_id": "cm_total_customers",
-            "corrected_value": None,
-            "reviewer_notes": None,
-            "fact_id": "fact-1",
             "original_metric_id": "cm_arpu",
-            "original_value_raw": "100",
-            "filing_id": 42,
-            "company_name": "Acme",
-            "cik": "0001",
+            "corrected_metric_id": "cm_total_customers",
+            "count": 4,
+            "last_seen": ts,
         },
-    ]
-    mock_db.get_recent_text_additions.return_value = []
-    mock_db.get_recent_image_additions.return_value = [
         {
-            "created_at": ts,
-            "confirmation_id": "conf-1",
-            "img_id": "img-1",
-            "confirmed_metric_id": "cm_net_revenue_retention",
-            "reviewer_id": "RGM",
-            "filing_id": 42,
-            "company_name": "Acme",
-            "cik": "0001",
+            # Value-only correction: same metric, no -> arrow.
+            "original_metric_id": "cm_revenue_concentration",
+            "corrected_metric_id": "cm_revenue_concentration",
+            "count": 3,
+            "last_seen": ts,
         },
     ]
-    mock_db.get_recent_image_corrections.return_value = []
+    mock_db.get_top_text_additions.return_value = []
+    mock_db.get_top_image_additions.return_value = [
+        {
+            "metric_id": "cm_net_revenue_retention",
+            "count": 7,
+            "last_seen": ts,
+        },
+    ]
+    mock_db.get_top_image_corrections.return_value = []
+    mock_db.count_review_activity.return_value = {
+        "text_corrections": 7,
+        "text_additions": 0,
+        "image_additions": 7,
+        "image_corrections": 0,
+    }
+
     # Text-decision pattern analysis helpers (no run yet → empty Patterns tab).
     mock_db.get_last_text_analysis_run.return_value = None
     mock_db.is_text_analysis_running.return_value = (False, None)
     mock_db.get_text_decision_metric_summary.return_value = []
     mock_db.get_text_decision_phrase_findings.return_value = []
     mock_db.get_recommendation_decisions.return_value = []
+    mock_db.get_rejection_reason_rollup.return_value = []
+    mock_db.query.return_value = []
 
     resp = client.get("/v2/review/stats")
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert "2026-05-01 14:30 UTC" in body
+    assert "2026-05-01 14:30 UTC" in body  # last training run timestamp
     assert "(by RGM)" in body
-    assert "47" in body  # total decisions since
+    # Aggregated metric pairs and singles render.
     assert "cm_arpu" in body and "cm_total_customers" in body
     assert "cm_net_revenue_retention" in body
-    assert "Acme" in body
+    # Value-only correction renders as the metric + "(value)" qualifier rather
+    # than "cm_X -> cm_X".
+    assert "cm_revenue_concentration" in body
+    assert "(value)" in body
+    # Toggle and persistence wiring.
+    assert 'id="review-activity-scope-toggle"' in body
+    assert "cmasb:stats:review_activity_scope" in body
+    # See-all link is present for each card type.
+    assert "/v2/review/stats/activity/text-corrections" in body
+    assert "/v2/review/stats/activity/image-additions" in body
 
 
 def test_patterns_tab_renders_recommendation_alert(client, mock_db):
@@ -865,3 +891,53 @@ def test_patterns_tab_covered_phrases_chip(client, mock_db):
     # (it would be present for other undecided recs, so count check is not needed —
     # just verify the chip text is present).
     assert "multi metric phrase" in body
+
+
+# ---------------------------------------------------------------------------
+# Activity-detail click-through page (/v2/review/stats/activity/<type>)
+# ---------------------------------------------------------------------------
+
+
+def test_activity_detail_unknown_type_returns_404(client, mock_db):
+    resp = client.get("/v2/review/stats/activity/bogus-type")
+    assert resp.status_code == 404
+
+
+def test_activity_detail_text_corrections_renders(client, mock_db):
+    from datetime import datetime
+
+    ts = datetime(2026, 5, 1, 14, 30, tzinfo=UTC)
+    mock_db.get_recent_text_corrections.return_value = [
+        {
+            "created_at": ts,
+            "reviewer_id": "RGM",
+            "corrected_metric_id": "cm_total_customers",
+            "corrected_value": None,
+            "reviewer_notes": None,
+            "fact_id": "fact-1",
+            "original_metric_id": "cm_arpu",
+            "original_value_raw": "100",
+            "filing_id": 42,
+            "company_name": "Acme",
+            "cik": "0001",
+        },
+    ]
+
+    resp = client.get("/v2/review/stats/activity/text-corrections")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "All Text Fact Corrections" in body
+    assert "Acme" in body
+    assert "cm_arpu" in body and "cm_total_customers" in body
+    # Limit was bumped to 200 for this page.
+    mock_db.get_recent_text_corrections.assert_called_once_with(limit=200)
+
+
+def test_activity_detail_image_corrections_empty(client, mock_db):
+    mock_db.get_recent_image_corrections.return_value = []
+
+    resp = client.get("/v2/review/stats/activity/image-corrections")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "All Image Metric Corrections" in body
+    assert "No activity recorded yet" in body

@@ -280,16 +280,16 @@
                 <div class="text-muted small">Total Decisions</div>
               </div>
               <div class="col-4 mb-3">
+                <div class="fs-4 fw-bold text-warning">{{ image_progress.pending_count or 0 }}</div>
+                <div class="text-muted small">Pending Images</div>
+              </div>
+              <div class="col-4 mb-3">
                 <div class="fs-4 fw-bold text-success">{{ img.relevant_count or 0 }}</div>
                 <div class="text-muted small">Relevant</div>
               </div>
-              <div class="col-4 mb-3">
+              <div class="col-4">
                 <div class="fs-4 fw-bold text-danger">{{ img.not_relevant_count or 0 }}</div>
                 <div class="text-muted small">Not Relevant</div>
-              </div>
-              <div class="col-4">
-                <div class="fs-4 fw-bold text-warning">{{ image_progress.pending_count or 0 }}</div>
-                <div class="text-muted small">Pending Images</div>
               </div>
               <div class="col-4">
                 <div class="fs-4 fw-bold text-info">{{ image_progress.reviewed_count or 0 }}</div>
@@ -311,173 +311,278 @@
       </div>
     </div>
 
-    {# Recent Activity panels — 4 small tables of most recent reviewer activity.
-       Each row links to its source filing's review page. #}
+    {# Review Activity — frequency-aggregated rankings per card with
+       Latest (7d) / All-time scope toggle. Each card holds two table panes;
+       the inactive pane is hidden via display:none. JS handler in the
+       <script> block at the bottom; localStorage key cmasb:stats:review_activity_scope. #}
     <div class="row mb-4">
-      <div class="col-12">
-        <h4 class="mb-3">Recent Activity</h4>
+      <div class="col-12 d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0">Review Activity</h4>
+        <div class="btn-group btn-group-sm" role="group" id="review-activity-scope-toggle">
+          <button type="button" class="btn btn-outline-secondary active"
+                  data-scope="latest">Latest 7 days</button>
+          <button type="button" class="btn btn-outline-secondary"
+                  data-scope="alltime">All-time</button>
+        </div>
       </div>
 
       {# Text fact corrections #}
       <div class="col-lg-6 mb-3">
         <div class="card h-100">
-          <div class="card-header">
-            <h6 class="mb-0">Text Fact Corrections <span class="badge bg-secondary ms-1">{{ recent_text_corrections|length }}</span></h6>
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Text Fact Corrections</h6>
+            <span>
+              <span class="badge bg-secondary scope-latest">{{ activity_counts_latest.text_corrections }}</span>
+              <span class="badge bg-secondary scope-alltime" style="display:none;">{{ activity_counts_alltime.text_corrections }}</span>
+            </span>
           </div>
-          {% if recent_text_corrections %}
-          <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 small">
-              <thead class="table-light">
-                <tr>
-                  <th>When</th>
-                  <th>Company</th>
-                  <th>Original &rarr; Corrected</th>
-                  <th>Reviewer</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for r in recent_text_corrections %}
-                <tr>
-                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
-                  <td>
-                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}">
-                      {{ r.company_name }}
-                    </a>
-                  </td>
-                  <td class="font-monospace small">
-                    {{ r.original_metric_id }}
-                    {% if r.corrected_metric_id and r.corrected_metric_id != r.original_metric_id %}
-                    &rarr; {{ r.corrected_metric_id }}
-                    {% endif %}
-                  </td>
-                  <td>{{ r.reviewer_id or '—' }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+          <div class="scope-latest">
+            {% if top_text_corrections_latest %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Original &rarr; Corrected</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_text_corrections_latest %}
+                  <tr>
+                    <td class="font-monospace small">
+                      {% if r.corrected_metric_id and r.corrected_metric_id != r.original_metric_id %}
+                      {{ r.original_metric_id }} &rarr; {{ r.corrected_metric_id }}
+                      {% else %}
+                      {{ r.original_metric_id }} <span class="text-muted">(value)</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No corrections in the last 7 days.</div>
+            {% endif %}
           </div>
-          {% else %}
-          <div class="card-body text-muted small">No corrections yet.</div>
-          {% endif %}
+          <div class="scope-alltime" style="display:none;">
+            {% if top_text_corrections_alltime %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Original &rarr; Corrected</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_text_corrections_alltime %}
+                  <tr>
+                    <td class="font-monospace small">
+                      {% if r.corrected_metric_id and r.corrected_metric_id != r.original_metric_id %}
+                      {{ r.original_metric_id }} &rarr; {{ r.corrected_metric_id }}
+                      {% else %}
+                      {{ r.original_metric_id }} <span class="text-muted">(value)</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No corrections yet.</div>
+            {% endif %}
+          </div>
+          <div class="card-footer bg-transparent text-center">
+            <a class="small" href="{{ url_for('review_unified.activity_detail', activity_type='text-corrections') }}">
+              See all activity &rarr;
+            </a>
+          </div>
         </div>
       </div>
 
-      {# Text fact additions (manually-entered missed metrics) #}
+      {# Text fact additions #}
       <div class="col-lg-6 mb-3">
         <div class="card h-100">
-          <div class="card-header">
-            <h6 class="mb-0">Text Fact Additions <span class="badge bg-secondary ms-1">{{ recent_text_additions|length }}</span></h6>
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Text Fact Additions</h6>
+            <span>
+              <span class="badge bg-secondary scope-latest">{{ activity_counts_latest.text_additions }}</span>
+              <span class="badge bg-secondary scope-alltime" style="display:none;">{{ activity_counts_alltime.text_additions }}</span>
+            </span>
           </div>
-          {% if recent_text_additions %}
-          <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 small">
-              <thead class="table-light">
-                <tr>
-                  <th>When</th>
-                  <th>Company</th>
-                  <th>Metric</th>
-                  <th>Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for r in recent_text_additions %}
-                <tr>
-                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
-                  <td>
-                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}">
-                      {{ r.company_name }}
-                    </a>
-                  </td>
-                  <td class="font-monospace small">{{ r.canonical_metric_id }}</td>
-                  <td>{{ r.value_raw }}{% if r.unit %} <span class="text-muted">{{ r.unit }}</span>{% endif %}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+          <div class="scope-latest">
+            {% if top_text_additions_latest %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Metric</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_text_additions_latest %}
+                  <tr>
+                    <td class="font-monospace small">{{ r.metric_id }}</td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No manual additions in the last 7 days.</div>
+            {% endif %}
           </div>
-          {% else %}
-          <div class="card-body text-muted small">No manual additions yet.</div>
-          {% endif %}
+          <div class="scope-alltime" style="display:none;">
+            {% if top_text_additions_alltime %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Metric</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_text_additions_alltime %}
+                  <tr>
+                    <td class="font-monospace small">{{ r.metric_id }}</td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No manual additions yet.</div>
+            {% endif %}
+          </div>
+          <div class="card-footer bg-transparent text-center">
+            <a class="small" href="{{ url_for('review_unified.activity_detail', activity_type='text-additions') }}">
+              See all activity &rarr;
+            </a>
+          </div>
         </div>
       </div>
 
       {# Image metric additions #}
       <div class="col-lg-6 mb-3">
         <div class="card h-100">
-          <div class="card-header">
-            <h6 class="mb-0">Image Metric Additions <span class="badge bg-secondary ms-1">{{ recent_image_additions|length }}</span></h6>
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Image Metric Additions</h6>
+            <span>
+              <span class="badge bg-secondary scope-latest">{{ activity_counts_latest.image_additions }}</span>
+              <span class="badge bg-secondary scope-alltime" style="display:none;">{{ activity_counts_alltime.image_additions }}</span>
+            </span>
           </div>
-          {% if recent_image_additions %}
-          <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 small">
-              <thead class="table-light">
-                <tr>
-                  <th>When</th>
-                  <th>Company</th>
-                  <th>Added Metric</th>
-                  <th>Reviewer</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for r in recent_image_additions %}
-                <tr>
-                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
-                  <td>
-                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}?tab=images">
-                      {{ r.company_name }}
-                    </a>
-                  </td>
-                  <td class="font-monospace small">{{ r.confirmed_metric_id }}</td>
-                  <td>{{ r.reviewer_id or '—' }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+          <div class="scope-latest">
+            {% if top_image_additions_latest %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Added Metric</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_image_additions_latest %}
+                  <tr>
+                    <td class="font-monospace small">{{ r.metric_id }}</td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No image additions in the last 7 days.</div>
+            {% endif %}
           </div>
-          {% else %}
-          <div class="card-body text-muted small">No image additions yet.</div>
-          {% endif %}
+          <div class="scope-alltime" style="display:none;">
+            {% if top_image_additions_alltime %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Added Metric</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_image_additions_alltime %}
+                  <tr>
+                    <td class="font-monospace small">{{ r.metric_id }}</td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No image additions yet.</div>
+            {% endif %}
+          </div>
+          <div class="card-footer bg-transparent text-center">
+            <a class="small" href="{{ url_for('review_unified.activity_detail', activity_type='image-additions') }}">
+              See all activity &rarr;
+            </a>
+          </div>
         </div>
       </div>
 
       {# Image metric corrections #}
       <div class="col-lg-6 mb-3">
         <div class="card h-100">
-          <div class="card-header">
-            <h6 class="mb-0">Image Metric Corrections <span class="badge bg-secondary ms-1">{{ recent_image_corrections|length }}</span></h6>
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">Image Metric Corrections</h6>
+            <span>
+              <span class="badge bg-secondary scope-latest">{{ activity_counts_latest.image_corrections }}</span>
+              <span class="badge bg-secondary scope-alltime" style="display:none;">{{ activity_counts_alltime.image_corrections }}</span>
+            </span>
           </div>
-          {% if recent_image_corrections %}
-          <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0 small">
-              <thead class="table-light">
-                <tr>
-                  <th>When</th>
-                  <th>Company</th>
-                  <th>Detected &rarr; Confirmed</th>
-                  <th>Reviewer</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for r in recent_image_corrections %}
-                <tr>
-                  <td class="text-nowrap text-muted">{{ r.created_at.strftime('%m-%d %H:%M') }}</td>
-                  <td>
-                    <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}?tab=images">
-                      {{ r.company_name }}
-                    </a>
-                  </td>
-                  <td class="font-monospace small">
-                    {{ r.detected_metric_id }} &rarr; {{ r.confirmed_metric_id }}
-                  </td>
-                  <td>{{ r.reviewer_id or '—' }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+          <div class="scope-latest">
+            {% if top_image_corrections_latest %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Detected &rarr; Confirmed</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_image_corrections_latest %}
+                  <tr>
+                    <td class="font-monospace small">{{ r.detected_metric_id }} &rarr; {{ r.confirmed_metric_id }}</td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No image corrections in the last 7 days.</div>
+            {% endif %}
           </div>
-          {% else %}
-          <div class="card-body text-muted small">No image corrections yet.</div>
-          {% endif %}
+          <div class="scope-alltime" style="display:none;">
+            {% if top_image_corrections_alltime %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr><th>Detected &rarr; Confirmed</th><th class="text-end">Count</th><th class="text-nowrap">Last seen</th></tr>
+                </thead>
+                <tbody>
+                  {% for r in top_image_corrections_alltime %}
+                  <tr>
+                    <td class="font-monospace small">{{ r.detected_metric_id }} &rarr; {{ r.confirmed_metric_id }}</td>
+                    <td class="text-end">{{ r.count }}</td>
+                    <td class="text-nowrap text-muted">{{ r.last_seen.strftime('%m-%d %H:%M') }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="card-body text-muted small">No image corrections yet.</div>
+            {% endif %}
+          </div>
+          <div class="card-footer bg-transparent text-center">
+            <a class="small" href="{{ url_for('review_unified.activity_detail', activity_type='image-corrections') }}">
+              See all activity &rarr;
+            </a>
+          </div>
         </div>
       </div>
     </div>
@@ -1564,6 +1669,46 @@
     var scope = btn.getAttribute('data-scope');
     localStorage.setItem(LS_SCOPE_KEY, scope);
     applyReasonsScope(scope);
+  });
+
+  // -------------------------------------------------------------------
+  // Review Activity toggle — persisted in localStorage
+  // Key: cmasb:stats:review_activity_scope  ("latest" | "alltime")
+  // Toggles .scope-latest / .scope-alltime panes inside the Review
+  // Activity section on the Summary tab.
+  // -------------------------------------------------------------------
+  var LS_REVIEW_ACTIVITY_KEY = 'cmasb:stats:review_activity_scope';
+
+  function applyReviewActivityScope(scope) {
+    var toggle = document.getElementById('review-activity-scope-toggle');
+    if (!toggle) return;
+    var section = toggle.closest('.row');
+    if (!section) return;
+    var showLatest = scope !== 'alltime';
+    section.querySelectorAll('.scope-latest').forEach(function (el) {
+      el.style.display = showLatest ? '' : 'none';
+    });
+    section.querySelectorAll('.scope-alltime').forEach(function (el) {
+      el.style.display = showLatest ? 'none' : '';
+    });
+    toggle.querySelectorAll('[data-scope]').forEach(function (btn) {
+      if (btn.getAttribute('data-scope') === (showLatest ? 'latest' : 'alltime')) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  var savedActivityScope = localStorage.getItem(LS_REVIEW_ACTIVITY_KEY) || 'latest';
+  applyReviewActivityScope(savedActivityScope);
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('#review-activity-scope-toggle [data-scope]');
+    if (!btn) return;
+    var scope = btn.getAttribute('data-scope');
+    localStorage.setItem(LS_REVIEW_ACTIVITY_KEY, scope);
+    applyReviewActivityScope(scope);
   });
 
   // -------------------------------------------------------------------

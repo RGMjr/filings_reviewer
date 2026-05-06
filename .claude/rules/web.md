@@ -127,6 +127,14 @@ To edit the action text or severity thresholds for a category, modify `CATEGORY_
 
 Rendered as Bootstrap progress-bar rows (no chart library). The future LLM-summarized "Top Reviewer Themes" panel (deferred) will read `reviewer_notes` — the two panels are complementary.
 
+## Review Activity panel
+
+`/v2/review/stats` **Summary tab** renders the "Review Activity" section — four cards that surface frequency-aggregated rankings of reviewer activity, not chronological feeds. Each card is a top-10 list of metrics or metric pairs sorted by event count DESC, with a "last seen" timestamp tiebreak. The cards are: Text Fact Corrections (grouped by `(original_metric_id, corrected_metric_id)` — value-only corrections render as `cm_X (value)`, metric-id changes render as `cm_X → cm_Y`), Text Fact Additions (grouped by `canonical_metric_id`, manual extractions only), Image Metric Additions (grouped by `confirmed_metric_id`, decision='add'), and Image Metric Corrections (grouped by `(detected_metric_id, confirmed_metric_id)`, decision='correct'). Backed by `db.get_top_text_corrections`, `get_top_text_additions`, `get_top_image_additions`, `get_top_image_corrections`, all in `src/infra/db.py`.
+
+A **[Latest 7 days | All-time]** toggle (button group `#review-activity-scope-toggle`) swaps between two scope panes per card; the inactive pane is hidden via `display:none`. Persisted under localStorage key `cmasb:stats:review_activity_scope`. Each card header carries two count badges (`.scope-latest` / `.scope-alltime`); the JS handler shows the matching one. Per-window totals come from a single `db.count_review_activity(window)` call — one DB roundtrip per scope returning all four type counts. Each card footer links to `/v2/review/stats/activity/<activity_type>` for the full event-level history.
+
+`GET /v2/review/stats/activity/<activity_type>` (`activity_type ∈ {"text-corrections", "text-additions", "image-additions", "image-corrections"}`) renders `activity_detail.html` — a chronological event-level table (limit=200) reusing the existing `db.get_recent_*` fetchers. Unknown types return 404. No pagination yet; if volume warrants it, add a `?page=N` query param.
+
 ## Conventions
 
 - API auth: `_check_api_key` before_request hook in the V2 API blueprint, configured via `FILINGS_API_KEY` env var. For individual routes on mixed blueprints (e.g. `image_crop` on `review_unified_bp`), use the `@require_api_key` per-view decorator from `src/web/middleware.py` — same Origin/Referer bypass, no blueprint-wide `before_request` install. Same-origin browser bypass uses scheme-independent host comparison for both `Origin` and `Referer` so HTTPS-terminating proxies (Render) don't mask same-origin GET AJAX (which omits `Origin` per the Fetch spec) as cross-origin and 401 it.
@@ -161,6 +169,7 @@ The unified review UI persists filter/sort/tab state client-side via localStorag
 | `cmasb:review:text_filter`       | review page   | `{status, metric, sort}` JSON       | `unified_review.html`    |
 | `cmasb:review:image_filter`      | review page   | `{status, sort}` JSON               | `unified_review.html`    |
 | `cmasb:patterns:reasons_scope`   | stats page    | `"run" \| "lifetime"`               | `unified_stats.html` (Patterns tab Why-Reviewers-Reject toggle — only durable Patterns preference; search and category filter are session-scoped) |
+| `cmasb:stats:review_activity_scope` | stats page | `"latest" \| "alltime"`             | `unified_stats.html` (Summary tab Review Activity Latest/All-time toggle; default `"latest"`) |
 
 **Pattern**: on page load, URL params win and are written to localStorage; if a param is absent and localStorage has a value, the page redirects once with the stored value applied. This pattern lets server routes stay stateless — do not add server-side session storage for view state. Do NOT rename `hideCompleted` → a `cmasb:` key; that would silently wipe existing users' saved preference.
 

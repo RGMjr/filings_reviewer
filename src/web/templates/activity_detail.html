@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}All {{ label }} - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+  <div class="col-12 d-flex justify-content-between align-items-center">
+    <div>
+      <h1>All {{ label }}</h1>
+      <p class="text-muted mb-0">Showing up to 200 most recent events.</p>
+    </div>
+    <a href="{{ url_for('review_unified.stats') }}" class="btn btn-outline-secondary">
+      &larr; Back to Stats
+    </a>
+  </div>
+</div>
+
+{% if not rows %}
+<div class="alert alert-info">No activity recorded yet.</div>
+{% else %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h6 class="mb-0">{{ label }}</h6>
+    <span class="badge bg-secondary">{{ rows|length }} shown</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 small">
+      <thead class="table-light">
+        <tr>
+          <th>When</th>
+          <th>Company</th>
+          {% if activity_type == 'text-corrections' %}
+          <th>Original &rarr; Corrected</th>
+          <th>Reviewer</th>
+          {% elif activity_type == 'text-additions' %}
+          <th>Metric</th>
+          <th>Value</th>
+          {% elif activity_type == 'image-additions' %}
+          <th>Added Metric</th>
+          <th>Reviewer</th>
+          {% elif activity_type == 'image-corrections' %}
+          <th>Detected &rarr; Confirmed</th>
+          <th>Reviewer</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="text-nowrap text-muted">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            {% if activity_type in ('image-additions', 'image-corrections') %}
+            <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}?tab=images">
+              {{ r.company_name }}
+            </a>
+            {% else %}
+            <a href="{{ url_for('review_unified.review_filing', filing_id=r.filing_id) }}">
+              {{ r.company_name }}
+            </a>
+            {% endif %}
+          </td>
+          {% if activity_type == 'text-corrections' %}
+          <td class="font-monospace small">
+            {{ r.original_metric_id }}
+            {% if r.corrected_metric_id and r.corrected_metric_id != r.original_metric_id %}
+            &rarr; {{ r.corrected_metric_id }}
+            {% else %}
+            <span class="text-muted">(value)</span>
+            {% endif %}
+          </td>
+          <td>{{ r.reviewer_id or '—' }}</td>
+          {% elif activity_type == 'text-additions' %}
+          <td class="font-monospace small">{{ r.canonical_metric_id }}</td>
+          <td>{{ r.value_raw }}{% if r.unit %} <span class="text-muted">{{ r.unit }}</span>{% endif %}</td>
+          {% elif activity_type == 'image-additions' %}
+          <td class="font-monospace small">{{ r.confirmed_metric_id }}</td>
+          <td>{{ r.reviewer_id or '—' }}</td>
+          {% elif activity_type == 'image-corrections' %}
+          <td class="font-monospace small">
+            {{ r.detected_metric_id }} &rarr; {{ r.confirmed_metric_id }}
+          </td>
+          <td>{{ r.reviewer_id or '—' }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
