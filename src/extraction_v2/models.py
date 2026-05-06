@@ -694,6 +694,30 @@ class MetricPresence:
     evidence_segment_ids: list[str] = field(default_factory=list)
     advisory_value_count: int = 0
     advisory_fact_ids: list[str] = field(default_factory=list)
+    # Shadow-mode LLM classifier output: {metric_id: {score, present, rationale, model,
+    # sonnet_fallback, prompt_version, source}}. None when classifier is off or produced
+    # no signal for this metric. Written to v2_text_metric_presence.classifier_metadata.
+    classifier_metadata: dict | None = field(default=None)
+
+
+@dataclass
+class LLMPresenceSignal:
+    """One LLM classifier output for a (segment, metric) pair.
+
+    Written by LLMPresenceClassifierStage into PipelineContext.llm_presence_signals.
+    Read by MetricPresenceStage to populate MetricPresence.classifier_metadata.
+    """
+
+    segment_id: str
+    section_type: str | None
+    metric_id: str
+    score: float
+    present: bool
+    rationale: str
+    model: str
+    sonnet_fallback: bool
+    prompt_version: str
+    source: str  # "keyword" — segment was in candidate shortlist; "paraphrase" — recall path
 
 
 @dataclass
