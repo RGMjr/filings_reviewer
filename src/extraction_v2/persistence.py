@@ -767,6 +767,7 @@ class V2PersistenceAdapter:
                 evidence_segment_ids,
                 advisory_value_count,
                 advisory_fact_ids,
+                classifier_metadata,
                 pipeline_version,
                 created_at,
                 updated_at
@@ -778,6 +779,7 @@ class V2PersistenceAdapter:
                 %(evidence_segment_ids)s,
                 %(advisory_value_count)s,
                 %(advisory_fact_ids)s,
+                %(classifier_metadata)s,
                 %(pipeline_version)s,
                 NOW(),
                 NOW()
@@ -788,6 +790,7 @@ class V2PersistenceAdapter:
                 evidence_segment_ids = EXCLUDED.evidence_segment_ids,
                 advisory_value_count = EXCLUDED.advisory_value_count,
                 advisory_fact_ids = EXCLUDED.advisory_fact_ids,
+                classifier_metadata = EXCLUDED.classifier_metadata,
                 pipeline_version = EXCLUDED.pipeline_version,
                 updated_at = NOW()
             """,
@@ -800,6 +803,11 @@ class V2PersistenceAdapter:
                     "evidence_segment_ids": json.dumps(p.evidence_segment_ids),
                     "advisory_value_count": p.advisory_value_count,
                     "advisory_fact_ids": json.dumps(p.advisory_fact_ids),
+                    "classifier_metadata": (
+                        json.dumps(p.classifier_metadata)
+                        if p.classifier_metadata is not None
+                        else None
+                    ),
                     "pipeline_version": "2.0.0",
                 }
                 for p in presences

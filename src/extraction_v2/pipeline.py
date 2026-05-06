@@ -18,6 +18,8 @@ see ``_setup_stages``):
 5b.   Image Classify                 → Vision metric-classifier audit trail
                                        (gated by ENABLE_METRIC_CLASSIFY)
 6.    Metric Candidate Generation    → YAML taxonomy matching
+6.5.  LLM Presence Classifier        → per-(segment, metric) LLM scores; paraphrase-recall path
+                                       (gated by PRESENCE_CLASSIFIER_ENABLED / presence_classifier_enabled flag)
 7.    Value Binding                  → structural link required
 7.5.  False Positive Filter          → 13 rule-based suppression rules
 8.    Period Inference               → from header_path or context
@@ -71,6 +73,7 @@ from src.extraction_v2.stages.false_positive_filter import FalsePositiveFilterSt
 from src.extraction_v2.stages.image_classify import ImageClassifyStage
 from src.extraction_v2.stages.image_triage import ImageTriageStage
 from src.extraction_v2.stages.ingestion import IngestionStage
+from src.extraction_v2.stages.llm_presence_classifier import LLMPresenceClassifierStage
 from src.extraction_v2.stages.metric_presence import MetricPresenceStage
 from src.extraction_v2.stages.ocr_extraction import OCRExtractionStage
 from src.extraction_v2.stages.period_inference import PeriodInferenceStage
@@ -104,6 +107,7 @@ class PipelineStage(str, Enum):
     CHART_FACT_BRIDGE = "chart_fact_bridge"
     IMAGE_CLASSIFY = "image_classify"
     CANDIDATE_GENERATION = "candidate_generation"
+    LLM_PRESENCE_CLASSIFIER = "llm_presence_classifier"
     VALUE_BINDING = "value_binding"
     FALSE_POSITIVE_FILTER = "false_positive_filter"
     PERIOD_INFERENCE = "period_inference"
@@ -122,6 +126,9 @@ class PipelineConfig:
     enable_section_classification: bool = True
     enable_image_extraction: bool = True
     enable_chart_extraction: bool = True
+    enable_llm_presence_classifier: bool = (
+        False  # Shadow mode; enabled via PRESENCE_CLASSIFIER_ENABLED env or DB flag
+    )
 
     # Quality thresholds
     min_confidence_auto_accept: float = 0.90  # Auto-accept above this
@@ -422,6 +429,9 @@ class PipelineContext:
     presences: list[MetricPresence] = field(
         default_factory=list
     )  # Populated by MetricPresenceStage (final stage)
+    llm_presence_signals: list[Any] = field(
+        default_factory=list
+    )  # list[SegmentClassification] written by LLMPresenceClassifierStage; read by MetricPresenceStage
 
     # Diagnostics (only populated when config.retain_context=True)
     _pre_filter_bound_values: list[BoundValue] = field(default_factory=list)  # Before FP filter
@@ -501,6 +511,17 @@ class V2Pipeline:
             self.config.enable_image_keyword_prescan = True
         if _env_truthy("ENABLE_METRIC_CLASSIFY"):
             self.config.enable_metric_classify = True
+        if _env_truthy("PRESENCE_CLASSIFIER_ENABLED"):
+            self.config.enable_llm_presence_classifier = True
+        else:
+            # Fall back to DB feature flag when env var is absent.
+            try:
+                from src.auth.feature_flags import is_enabled as _ff_is_enabled
+
+                if _ff_is_enabled("presence_classifier_enabled"):
+                    self.config.enable_llm_presence_classifier = True
+            except Exception:
+                pass  # DB unavailable at pipeline-init time; stay off
         if os.environ.get("VISION_CLASSIFY_PROVIDER"):
             self.config.vision_classify_provider = os.environ["VISION_CLASSIFY_PROVIDER"]
         if os.environ.get("VISION_CLASSIFY_MODEL"):
@@ -597,6 +618,12 @@ class V2Pipeline:
 
         # Stage 6: Metric Candidate Generation
         self._stages.append((PipelineStage.CANDIDATE_GENERATION, CandidateGenerationStage()))
+
+        # Stage 6.5: LLM Presence Classifier (shadow mode — no-op when flag is off)
+        if self.config.enable_llm_presence_classifier:
+            self._stages.append(
+                (PipelineStage.LLM_PRESENCE_CLASSIFIER, LLMPresenceClassifierStage())
+            )
 
         # Stage 7: Value Binding
         self._stages.append((PipelineStage.VALUE_BINDING, ValueBindingStage()))
