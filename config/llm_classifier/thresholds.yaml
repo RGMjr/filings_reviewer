@@ -1,0 +1,23 @@
+# Per-metric calibrated decision thresholds for the LLM presence classifier.
+#
+# Populated by scripts/calibrate_llm_thresholds.py against the calibration
+# split (see data/gold_standard/split_v1.json). DO NOT hand-edit values
+# without re-running calibration — the calibration script is the only
+# authorized writer.
+#
+# Schema:
+#   thresholds:
+#     <metric_id>:
+#       threshold: <0..1>          # promote (segment, metric) to presence
+#       sonnet_band: [<lo>, <hi>]  # llm_score in this band → re-score with Sonnet
+#       calibration_run_id: <str>  # FK into reviewable calibration log
+#       calibrated_at: <ISO8601>
+#
+# Defaults (used when a metric has no entry yet) live at the bottom.
+
+version: 1
+thresholds: {}
+
+defaults:
+  threshold: 0.50
+  sonnet_band: [0.35, 0.65]

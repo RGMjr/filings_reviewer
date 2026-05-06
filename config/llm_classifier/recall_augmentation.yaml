@@ -1,0 +1,29 @@
+# Paraphrase-recall enrolled metrics
+#
+# Tier-1 metrics for which the LLM presence classifier runs over a
+# definition-anchored shortlist (NOT gated by keyword candidate_generation),
+# because keyword expansion has hit diminishing returns and recall failures
+# are dominated by paraphrased prose.
+#
+# Section whitelist bounds cost: classifier scans only these section types
+# for the enrolled metrics. Other sections still flow through the
+# keyword-pre-filter path (the classifier never sees them for these metrics
+# unless candidate_generation produced a hit).
+#
+# Adding a metric here is the only knob we tune for recall lift in Phase 1.
+# Removing one falls back to keyword-only, which is the recall floor.
+
+version: 1
+enrolled_metrics:
+  - cm_net_revenue_retention
+  - cm_gross_revenue_retention
+  - cm_revenue_by_cohort
+  - cm_revenue_concentration
+  - cm_lifetime_value_per_customer
+  - cm_customer_acquisition_cost
+  - cm_ltv_to_cac_ratio
+
+section_whitelist:
+  - mda
+  - business
+  - risk_factors
