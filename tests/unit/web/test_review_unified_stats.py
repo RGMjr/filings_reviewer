@@ -84,6 +84,18 @@ def _stub_analytics_helpers(mock_db) -> None:
         "image_additions": 0,
         "image_corrections": 0,
     }
+    # Images-tab per-decision-type breakdown + legacy-accepts banner. Empty by
+    # default so the breakdown cards render with zeros and the banner stays
+    # hidden; tests that exercise the populated state override explicitly.
+    mock_db.get_image_decision_breakdown_v2.return_value = {
+        "total": 0,
+        "accepted": 0,
+        "corrected": 0,
+        "added": 0,
+        "rejected": 0,
+        "skipped": 0,
+        "legacy_accepts_pending": 0,
+    }
     # Phase 3: stats() now calls db.query() directly to check whether a retrain
     # is currently running. Default to "none running" so button gating depends
     # only on the threshold counters.
@@ -941,3 +953,99 @@ def test_activity_detail_image_corrections_empty(client, mock_db):
     body = resp.get_data(as_text=True)
     assert "All Image Metric Corrections" in body
     assert "No activity recorded yet" in body
+
+
+# ---------------------------------------------------------------------------
+# Images-tab per-decision-type breakdown + legacy-accepts banner
+# ---------------------------------------------------------------------------
+
+
+def test_images_tab_renders_decision_breakdown_cards(client, mock_db):
+    """Five mutually-exclusive cards render with per-decision-type counts."""
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 100,
+        "relevant_count": 70,
+        "not_relevant_count": 30,
+        "relevant_pct": 70.0,
+        "not_relevant_pct": 30.0,
+    }
+    mock_db.get_image_decision_breakdown_v2.return_value = {
+        "total": 100,
+        "accepted": 40,
+        "corrected": 5,
+        "added": 25,
+        "rejected": 28,
+        "skipped": 2,
+        "legacy_accepts_pending": 0,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 120,
+        "pending_count": 20,
+        "reviewed_count": 100,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 83.3,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # New section heading + total subtitle.
+    assert "Decisions by Type" in body
+    assert "Total Decisions:" in body
+
+    # All five card labels appear.
+    for label in ("Accepted", "Corrected", "Added", "Rejected", "Skipped"):
+        assert f">{label}<" in body, f"missing card label: {label}"
+
+    # Each card's count renders. Use unique values so we can pin them.
+    for value in ("40", "25", "28"):
+        assert value in body
+
+    # Banner does NOT render when legacy_accepts_pending == 0.
+    assert "awaiting per-metric backfill" not in body
+
+
+def test_images_tab_renders_legacy_accepts_banner(client, mock_db):
+    """Banner renders with the count when legacy_accepts_pending > 0."""
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 50,
+        "relevant_count": 30,
+        "not_relevant_count": 20,
+        "relevant_pct": 60.0,
+        "not_relevant_pct": 40.0,
+    }
+    mock_db.get_image_decision_breakdown_v2.return_value = {
+        "total": 50,
+        "accepted": 20,
+        "corrected": 0,
+        "added": 10,
+        "rejected": 20,
+        "skipped": 0,
+        "legacy_accepts_pending": 137,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 60,
+        "pending_count": 10,
+        "reviewed_count": 50,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 83.3,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    assert "137" in body
+    assert "awaiting per-metric backfill" in body
+    assert "alert-warning" in body

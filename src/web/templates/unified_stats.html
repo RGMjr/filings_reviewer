@@ -840,6 +840,7 @@
   <div class="tab-pane fade" id="images-stats" role="tabpanel" aria-labelledby="images-tab">
 
     {% set overall_stats = image_overall %}
+    {% set breakdown = image_breakdown or {} %}
     {% set progress = image_progress %}
     {% set tier_stats = image_tier %}
     {% set rejection_stats = image_rejections %}
@@ -861,35 +862,78 @@
     </div>
     {% else %}
 
-    {# Summary Cards #}
-    <div class="row mb-4">
-      <div class="col-md-4">
-        <div class="card">
-          <div class="card-body">
-            <h6 class="card-subtitle mb-2 text-muted">Total Decisions</h6>
-            <h2 class="mb-0">{{ overall_stats.total_decisions }}</h2>
+    {# Per-decision-type breakdown header. Total is shown as a small subtitle
+       above five mutually-exclusive cards (accept / correct / add / reject /
+       skip). The legacy-accepts banner above the cards tracks pre-per-metric
+       reviews awaiting metric assignment — disappears when count == 0. #}
+    <div class="row mb-3">
+      <div class="col-12 d-flex justify-content-between align-items-end">
+        <div>
+          <h5 class="mb-1">Decisions by Type</h5>
+          <p class="text-muted small mb-0">
+            Total Decisions: <strong>{{ breakdown.total or overall_stats.total_decisions }}</strong>
+            &middot; lifetime per-metric confirmations across all images
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {% if breakdown.legacy_accepts_pending and breakdown.legacy_accepts_pending > 0 %}
+    <div class="row mb-3">
+      <div class="col-12">
+        <div class="alert alert-warning py-2 px-3 mb-0 small" role="alert">
+          <strong>{{ breakdown.legacy_accepts_pending }}</strong>
+          image{{ '' if breakdown.legacy_accepts_pending == 1 else 's' }}
+          accepted under the legacy flow
+          {{ 'is' if breakdown.legacy_accepts_pending == 1 else 'are' }}
+          awaiting per-metric backfill — the reviewer marked the image relevant
+          but never assigned a specific metric. Backfill is being addressed in a
+          separate task.
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Five mutually-exclusive decision-type cards. Same color language as the
+       Summary-tab Image Confirmations card so the two surfaces stay consistent. #}
+    <div class="row mb-4 g-2">
+      <div class="col">
+        <div class="card border-success h-100">
+          <div class="card-body p-3">
+            <h6 class="card-subtitle mb-1 text-muted small">Accepted</h6>
+            <h3 class="mb-0 text-success">{{ breakdown.accepted or 0 }}</h3>
           </div>
         </div>
       </div>
-      <div class="col-md-4">
-        <div class="card border-success">
-          <div class="card-body">
-            <h6 class="card-subtitle mb-2 text-muted">Relevant</h6>
-            <h2 class="mb-0 text-success">
-              {{ overall_stats.relevant_count }}
-              <small class="fs-6 text-muted">({{ overall_stats.relevant_pct|round(1) }}%)</small>
-            </h2>
+      <div class="col">
+        <div class="card border-info h-100">
+          <div class="card-body p-3">
+            <h6 class="card-subtitle mb-1 text-muted small">Corrected</h6>
+            <h3 class="mb-0 text-info">{{ breakdown.corrected or 0 }}</h3>
           </div>
         </div>
       </div>
-      <div class="col-md-4">
-        <div class="card border-danger">
-          <div class="card-body">
-            <h6 class="card-subtitle mb-2 text-muted">Not Relevant</h6>
-            <h2 class="mb-0 text-danger">
-              {{ overall_stats.not_relevant_count }}
-              <small class="fs-6 text-muted">({{ overall_stats.not_relevant_pct|round(1) }}%)</small>
-            </h2>
+      <div class="col">
+        <div class="card border-primary h-100">
+          <div class="card-body p-3">
+            <h6 class="card-subtitle mb-1 text-muted small">Added</h6>
+            <h3 class="mb-0 text-primary">{{ breakdown.added or 0 }}</h3>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card border-danger h-100">
+          <div class="card-body p-3">
+            <h6 class="card-subtitle mb-1 text-muted small">Rejected</h6>
+            <h3 class="mb-0 text-danger">{{ breakdown.rejected or 0 }}</h3>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="card border-secondary h-100">
+          <div class="card-body p-3">
+            <h6 class="card-subtitle mb-1 text-muted small">Skipped</h6>
+            <h3 class="mb-0 text-secondary">{{ breakdown.skipped or 0 }}</h3>
           </div>
         </div>
       </div>
