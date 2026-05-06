@@ -2431,32 +2431,51 @@ class DatabaseAdapter:
         }
 
     def get_image_decision_breakdown_v2(self) -> dict:
-        """Per-decision-type breakdown of image-metric confirmations.
+        """Decision-type breakdown of image review activity.
 
-        Returns mutually-exclusive counts for each decision value the
-        per-metric flow records (accept / correct / add / reject / skip)
-        plus the lifetime total. Drives the five summary cards on the
-        Images tab of /v2/review/stats.
+        Drives the five summary cards on the Images tab of
+        ``/v2/review/stats``.
 
-        Also returns ``legacy_accepts_pending``: count of distinct images
-        accepted under the pre-per-metric flow (rows in
-        ``v2_image_review_decisions`` with decision='relevant' — the
-        legacy table's CHECK constraint enforces 'relevant' / 'not_relevant',
-        not the new flow's 'accept' / 'reject' vocabulary) that have no
-        rows in ``v2_image_metric_confirmations`` yet — i.e., the
-        reviewer's "relevant" intent never got a metric assigned. Powers
-        the backfill banner and goes to zero once the legacy review set
-        is migrated.
+        The Accepted card is **image-distinct** and unions both review
+        flows: ``accepted_images`` counts distinct images with any
+        positive reviewer signal — ``v2_image_review_decisions.decision='relevant'``
+        (legacy flow) UNIONed with
+        ``v2_image_metric_confirmations.decision IN ('accept','correct','add')``
+        (per-metric flow). ``accepted_images_per_metric`` is the
+        per-metric subset of that — distinct images with at least one
+        accept/correct/add row — surfaced as a sub-line on the same
+        card so reviewers can see the "modern pipeline" number grow as
+        the legacy backlog drains.
+
+        The other four cards are per-metric **decision counts** on
+        ``v2_image_metric_confirmations``: ``corrected``, ``added``,
+        ``rejected``, ``skipped``. Mixed-unit by design — the Accepted
+        total measures reviewer effort across both flows; the other
+        cards remain decision-type drill-downs useful for keyword-
+        detector recall diagnostics (e.g. a tiny ``accepted_images_per_metric``
+        relative to ``added`` says the keyword rules are missing the
+        right metric on most charts).
+
+        Also returns ``legacy_accepts_pending``: count of distinct
+        legacy ``'relevant'`` rows that have NO row in
+        ``v2_image_metric_confirmations`` at all — i.e., the reviewer
+        marked the image relevant but never assigned a specific metric.
+        Powers the backfill banner and goes to zero once the legacy
+        review set is migrated. Note the legacy table's CHECK
+        constraint enforces ``'relevant'`` / ``'not_relevant'``, not
+        the new flow's ``'accept'`` / ``'reject'`` vocabulary.
         """
         sql = """
             WITH breakdown AS (
                 SELECT
                     COUNT(*)                                            AS total,
-                    COUNT(*) FILTER (WHERE decision = 'accept')         AS accepted,
                     COUNT(*) FILTER (WHERE decision = 'correct')        AS corrected,
                     COUNT(*) FILTER (WHERE decision = 'add')            AS added,
                     COUNT(*) FILTER (WHERE decision = 'reject')         AS rejected,
-                    COUNT(*) FILTER (WHERE decision = 'skip')           AS skipped
+                    COUNT(*) FILTER (WHERE decision = 'skip')           AS skipped,
+                    COUNT(DISTINCT img_id) FILTER (
+                        WHERE decision IN ('accept', 'correct', 'add')
+                    )                                                    AS accepted_images_per_metric
                   FROM v2_image_metric_confirmations
             ),
             legacy AS (
@@ -2468,16 +2487,30 @@ class DatabaseAdapter:
                          FROM v2_image_metric_confirmations imc
                         WHERE imc.img_id = ird.img_id
                    )
+            ),
+            relevant_images AS (
+                SELECT COUNT(*) AS accepted_images FROM (
+                    SELECT img_id
+                      FROM v2_image_metric_confirmations
+                     WHERE decision IN ('accept', 'correct', 'add')
+                    UNION
+                    SELECT img_id
+                      FROM v2_image_review_decisions
+                     WHERE decision = 'relevant'
+                ) AS u
             )
-            SELECT b.total, b.accepted, b.corrected, b.added, b.rejected, b.skipped,
+            SELECT b.total, b.corrected, b.added, b.rejected, b.skipped,
+                   b.accepted_images_per_metric,
+                   r.accepted_images,
                    l.legacy_accepts_pending
-              FROM breakdown b CROSS JOIN legacy l
+              FROM breakdown b CROSS JOIN legacy l CROSS JOIN relevant_images r
         """
         rows = self.query(sql)
         if not rows:
             return {
                 "total": 0,
-                "accepted": 0,
+                "accepted_images": 0,
+                "accepted_images_per_metric": 0,
                 "corrected": 0,
                 "added": 0,
                 "rejected": 0,

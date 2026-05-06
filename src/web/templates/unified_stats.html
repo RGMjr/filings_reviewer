@@ -901,7 +901,10 @@
         <div class="card border-success h-100">
           <div class="card-body p-3">
             <h6 class="card-subtitle mb-1 text-muted small">Accepted</h6>
-            <h3 class="mb-0 text-success">{{ breakdown.accepted or 0 }}</h3>
+            <h3 class="mb-0 text-success">{{ breakdown.accepted_images or 0 }}</h3>
+            <small class="d-block text-muted mt-1">
+              {{ breakdown.accepted_images_per_metric or 0 }} with specific metrics
+            </small>
           </div>
         </div>
       </div>
