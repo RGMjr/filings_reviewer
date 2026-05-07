@@ -118,6 +118,9 @@ def _stub_analytics_helpers(mock_db) -> None:
     # Image Add Patterns substrate. Default empty so the panel is hidden;
     # tests that exercise the populated panel override explicitly.
     mock_db.get_image_add_substrate.return_value = []
+    # Per-metric image decisions rollup (Images tab). Default empty so the new
+    # card renders the no-data fallback; populated-state tests override.
+    mock_db.get_image_decisions_by_metric_v2.return_value = []
 
 
 def test_stats_renders_empty(client, mock_db):
@@ -209,6 +212,95 @@ def test_stats_renders_with_data(client, mock_db):
     # tier badge text rendered via |replace('_', ' ')|title
     assert "Tier 1 Cohort" in body
     assert "Tier 3 All" in body
+
+
+def test_stats_renders_image_decisions_by_metric_card(client, mock_db):
+    """The new per-metric card on the Images tab renders rows with the
+    expected columns. The Images tab body is gated behind a non-zero
+    overall total_decisions, so we set that here.
+    """
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 9,
+        "relevant_count": 8,
+        "not_relevant_count": 1,
+        "relevant_pct": 88.9,
+        "not_relevant_pct": 11.1,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 9,
+        "pending_count": 0,
+        "reviewed_count": 9,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 100.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_image_decisions_by_metric_v2.return_value = [
+        {
+            "metric_id": "cm_net_revenue_retention",
+            "accepted_count": 5,
+            "corrected_count": 1,
+            "added_count": 2,
+            "rejected_count": 1,
+            "confirmed_images": 8,
+            "precision_pct": 85.7,
+        },
+        {
+            "metric_id": "cm_customer_acquisition_cost",
+            "accepted_count": 0,
+            "corrected_count": 0,
+            "added_count": 0,
+            "rejected_count": 3,
+            "confirmed_images": 0,
+            "precision_pct": 0.0,
+        },
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Image Decisions by Metric" in body
+    assert "cm_net_revenue_retention" in body
+    assert "cm_customer_acquisition_cost" in body
+    # Precision rendering: rounded float plus "%"
+    assert "85.7%" in body
+
+
+def test_stats_image_decisions_by_metric_empty_state(client, mock_db):
+    """When per-metric rows are empty but the Images tab is otherwise active
+    (overall total_decisions > 0), the new card renders the fallback
+    'No per-metric image decisions yet.' message instead of a table.
+    """
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 1,
+        "relevant_count": 1,
+        "not_relevant_count": 0,
+        "relevant_pct": 100.0,
+        "not_relevant_pct": 0.0,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 1,
+        "pending_count": 0,
+        "reviewed_count": 1,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 100.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+    _stub_analytics_helpers(mock_db)
+    # Default-stubbed to [] in _stub_analytics_helpers; explicit for clarity.
+    mock_db.get_image_decisions_by_metric_v2.return_value = []
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Image Decisions by Metric" in body
+    assert "No per-metric image decisions yet." in body
 
 
 def test_stats_summary_renders_review_activity(client, mock_db):

@@ -226,6 +226,7 @@ def stats():
     image_progress = db.get_image_review_progress_v2()
     image_tier = db.get_image_decisions_by_tier_v2()
     image_rejections = db.get_image_rejection_reasons_by_tier_v2()
+    image_decisions_by_metric = db.get_image_decisions_by_metric_v2()
     analytics_health = db.get_analytics_surface_health()
 
     # Phase 2: model-update anchor + decision counters + recent activity.
@@ -352,6 +353,7 @@ def stats():
         image_progress=image_progress,
         image_tier=image_tier,
         image_rejections=image_rejections,
+        image_decisions_by_metric=image_decisions_by_metric,
         rejection_reason_labels=IMAGE_REJECTION_REASON_LABELS,
         last_training_run=last_run,
         image_decisions_since=image_decisions_since,

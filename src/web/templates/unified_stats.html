@@ -1002,6 +1002,64 @@
       </div>
     </div>
 
+    {# Image Decisions by Metric — per-metric reviewer rollup #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Image Decisions by Metric</h5>
+            <p class="text-muted small mb-2">
+              Per-metric breakdown of reviewer decisions on
+              <code>v2_image_metric_confirmations</code>. <strong>Confirmed</strong>
+              counts each image where the reviewer accepted, corrected to, or
+              added this metric. <strong>Precision %</strong> is
+              (accepted + corrected) &divide; (accepted + corrected + rejected) —
+              high "Added" counts indicate keyword-rule recall gaps; low
+              precision indicates keyword-rule noise.
+            </p>
+            {% if image_decisions_by_metric %}
+            <div class="table-responsive">
+              <table class="table table-sm table-hover">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th class="text-end">Confirmed</th>
+                    <th class="text-end">Accepted</th>
+                    <th class="text-end">Corrected to</th>
+                    <th class="text-end">Added</th>
+                    <th class="text-end">Rejected</th>
+                    <th class="text-end">Precision %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in image_decisions_by_metric %}
+                  <tr>
+                    <td><code>{{ row.metric_id }}</code></td>
+                    <td class="text-end fw-semibold">{{ row.confirmed_images }}</td>
+                    <td class="text-end text-success">{{ row.accepted_count }}</td>
+                    <td class="text-end">{{ row.corrected_count }}</td>
+                    <td class="text-end">{{ row.added_count }}</td>
+                    <td class="text-end text-danger">{{ row.rejected_count }}</td>
+                    <td class="text-end">
+                      {% if row.precision_pct is none %}
+                        <span class="text-muted">&mdash;</span>
+                      {% else %}
+                        {{ row.precision_pct|round(1) }}%
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No per-metric image decisions yet.</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
     {# Detection Tier Table #}
     <div class="row mb-4">
       <div class="col-12">
