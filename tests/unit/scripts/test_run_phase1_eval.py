@@ -337,3 +337,99 @@ def test_stratified_sample_deterministic(cli):
     assert s1 == s2
     s3 = cli._stratified_disagreement_sample(rows, sample_size=30, seed=99)
     assert s1 != s3
+
+
+# ---------------------------------------------------------------------------
+# evaluate_filing_direct — regression coverage for classify_segment signature
+# ---------------------------------------------------------------------------
+# This test exists because the original PR landed without exercising
+# evaluate_filing_direct against the real classify_segment signature
+# (gh-531 / PR #535 changed it to return ``(list, dict)``); the script
+# crashed on first live run. The fake here mirrors the real shape — if
+# classify_segment's signature drifts again, this test will catch it
+# rather than the next operator paying for the API call.
+
+
+class _FakeClassification:
+    """Minimal SegmentClassification stand-in for evaluate_filing_direct."""
+
+    def __init__(self, metric_id: str, score: float, present: bool) -> None:
+        self.metric_id = metric_id
+        self.score = score
+        self.present = present
+        self.model = "claude-haiku-4-5-20251001"
+        self.sonnet_fallback = False
+        self.prompt_version = "0.1.0-test"
+        self.rationale = ""
+
+
+class _FakeClassifierClient:
+    """Mirror the real PresenceClassifierClient.classify_segment signature.
+
+    Returns ``(classifications, token_counts)`` so the script's call site is
+    exercised the same way the real client behaves.
+    """
+
+    def __init__(self, scores_per_metric: dict[str, float]) -> None:
+        self._scores = scores_per_metric
+
+    def classify_segment(
+        self, text: str, metric_ids: list[str]
+    ) -> tuple[list[_FakeClassification], dict[str, int]]:
+        score_for = self._scores.get
+        classifications = [
+            _FakeClassification(m, score_for(m, 0.0), present=score_for(m, 0.0) >= 0.5)
+            for m in metric_ids
+        ]
+        tokens = {"input_tokens": 10, "output_tokens": 5, "cache_read": 0, "cache_create": 0}
+        return classifications, tokens
+
+
+def test_evaluate_filing_direct_unpacks_classify_segment_tuple(cli):
+    """Regression: evaluate_filing_direct iterates the classifications list,
+    not the (list, dict) tuple. Crashed live in pre-fix code with
+    ``AttributeError: 'list' object has no attribute 'metric_id'``.
+    """
+    filing = cli.FilingSelection(
+        corpus="gold",
+        filing_url="https://example.com/f1.htm",
+        filing_id=None,
+        issuer_key="alpha",
+        company="Alpha Inc",
+    )
+    client = _FakeClassifierClient(
+        {"cm_net_revenue_retention": 0.92, "cm_revenue_concentration": 0.10}
+    )
+    aggregates, errors = cli.evaluate_filing_direct(
+        filing,
+        ["cm_net_revenue_retention", "cm_revenue_concentration"],
+        client,
+        gold_quotes=["NRR was 132% reflecting expansion."],
+    )
+    assert errors == []
+    assert aggregates["cm_net_revenue_retention"].score == 0.92
+    assert aggregates["cm_net_revenue_retention"].present is True
+    assert aggregates["cm_revenue_concentration"].score == 0.10
+    assert aggregates["cm_revenue_concentration"].present is False
+
+
+def test_evaluate_filing_direct_classify_segment_signature_matches_real_client():
+    """Drift guard: if PresenceClassifierClient.classify_segment ever
+    changes its return type, this assertion fails before the next live
+    eval run does. The eval runner depends on the tuple-returning shape
+    introduced by PR #535 (gh-531).
+    """
+    import inspect
+
+    from src.llm.presence_classifier_client import PresenceClassifierClient
+
+    sig = inspect.signature(PresenceClassifierClient.classify_segment)
+    return_anno = sig.return_annotation
+    # Stringify so this works whether the annotation is evaluated lazily
+    # (PEP 563) or as a real type. The eval runner unpacks a 2-tuple.
+    return_str = str(return_anno).replace(" ", "")
+    assert "tuple[" in return_str, (
+        f"PresenceClassifierClient.classify_segment must return a tuple "
+        f"(scripts/run_phase1_eval.py and scripts/calibrate_llm_thresholds.py "
+        f"unpack it). Got: {return_anno!r}"
+    )

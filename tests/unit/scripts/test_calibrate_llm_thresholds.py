@@ -412,8 +412,14 @@ class _FakePresenceClient:
         self.config = SimpleNamespace(prompts={m: True for m in enrolled})
         self._scores = scores_map  # (text, metric_id) -> float
 
-    def classify_segment(self, text: str, metric_ids: list[str]) -> list[_FakeSC]:
-        return [_FakeSC(m, self._scores.get((text, m), 0.0)) for m in metric_ids]
+    def classify_segment(
+        self, text: str, metric_ids: list[str]
+    ) -> tuple[list[_FakeSC], dict[str, int]]:
+        # Match the real ``PresenceClassifierClient.classify_segment``
+        # signature (gh-531 / PR #535): ``(classifications, token_counts)``.
+        classifications = [_FakeSC(m, self._scores.get((text, m), 0.0)) for m in metric_ids]
+        tokens = {"input_tokens": 0, "output_tokens": 0, "cache_read": 0, "cache_create": 0}
+        return classifications, tokens
 
 
 def _make_fake_client_cls(scores_map: dict, enrolled: list[str]) -> type:

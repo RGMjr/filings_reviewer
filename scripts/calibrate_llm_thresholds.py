@@ -539,12 +539,17 @@ def run_sweep(
             continue
         for text in texts:
             try:
-                for sc in client.classify_segment(text, enrolled_with_prompts):
-                    key = (url, sc.metric_id)
-                    if sc.score > scores.get(key, -1.0):
-                        scores[key] = sc.score
+                # ``classify_segment`` returns ``(classifications, token_counts)``
+                # since the gh-531 token-threading fix (PR #535). Sweep mode
+                # discards the token totals.
+                classifications, _tokens = client.classify_segment(text, enrolled_with_prompts)
             except Exception as exc:
                 logger.warning("sweep: classify_segment failed url=%s: %s", url, exc)
+                continue
+            for sc in classifications:
+                key = (url, sc.metric_id)
+                if sc.score > scores.get(key, -1.0):
+                    scores[key] = sc.score
 
     calibration_run_id = str(uuid.uuid4())
     calibrated_at = datetime.now(UTC).isoformat()

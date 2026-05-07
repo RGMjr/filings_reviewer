@@ -663,7 +663,11 @@ def evaluate_filing_direct(
 
     for text, section_type in texts:
         try:
-            results = client.classify_segment(text, metric_ids)
+            # ``classify_segment`` returns ``(classifications, token_counts)``
+            # since the gh-531 token-threading fix (PR #535). Token totals
+            # are discarded here — see follow-up fragment for surfacing them
+            # in summary.tokens.
+            results, _tokens = client.classify_segment(text, metric_ids)
         except ValueError as exc:  # parse / shape errors — hard fail per criterion #1
             errors.append(
                 {
