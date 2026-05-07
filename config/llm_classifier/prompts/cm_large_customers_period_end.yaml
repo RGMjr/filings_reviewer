@@ -1,0 +1,43 @@
+# Per-metric prompt for cm_large_customers_period_end.
+#
+# Versioned: every change increments `prompt_version`. Old versions stay
+# queryable via v2_text_metric_presence.classifier_metadata.prompt_version
+# for regression diagnosis.
+#
+# Few-shot examples must come from at least 3 distinct issuers and must
+# exclude any issuer in the held-out test split (see data/gold_standard/split_v1.json).
+# scripts/calibrate_llm_thresholds.py enforces this when (re)mining examples.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_large_customers_period_end
+
+definition: |
+  Large customers period-end is the count of customers whose annual revenue
+  contribution (or contract value) exceeds a stated dollar threshold, measured
+  at period end. The defining feature is a specific dollar threshold combined
+  with a customer count. Common paraphrases: customers contributing more than
+  $X, customers with ARR over $X, customers paying $X or more annually,
+  enterprise customers (only when an explicit dollar threshold is stated),
+  customers over $X, paid customers >$100,000, >$1M ARR customers.
+  Typical thresholds: >$100K ARR, >$250K ARR, >$1M ARR.
+
+positive_signals:
+  - Explicit dollar threshold combined with a customer count (e.g. 575 customers with ARR over $100,000)
+  - Table column header of the form Paid Customers >$100,000 or similar
+  - Narrative disclosure of a tiered customer count at a stated revenue cutoff
+  - Enterprise customers label when accompanied by a dollar-value definition
+
+negative_signals:
+  - Total customer counts or paid customer counts without any dollar threshold (use cm_customers_period_end or cm_customers_period_end_by_tenure)
+  - Revenue concentration as a percentage of revenue from top-N customers without a per-customer threshold (use cm_revenue_concentration)
+  - Customer counts segmented by tenure, geography, or industry without a dollar cutoff
+
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_large_customers_period_end.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.

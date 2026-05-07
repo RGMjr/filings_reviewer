@@ -1,0 +1,43 @@
+# Per-metric prompt for cm_customer_retention_rate.
+#
+# Versioned: every change increments `prompt_version`. Old versions stay
+# queryable via v2_text_metric_presence.classifier_metadata.prompt_version
+# for regression diagnosis.
+#
+# Few-shot examples must come from at least 3 distinct issuers and must
+# exclude any issuer in the held-out test split (see data/gold_standard/split_v1.json).
+# scripts/calibrate_llm_thresholds.py enforces this when (re)mining examples.
+
+prompt_version: "0.1.0-template"
+metric_id: cm_customer_retention_rate
+
+definition: |
+  Customer retention rate is the percentage of customers (logos) retained from
+  the start of a period to the end — a headcount/logo measure, NOT a dollar
+  measure. Common paraphrases: customer retention rate, logo retention rate,
+  customer churn rate (inverted: retention = 1 − churn), gross customer
+  retention (only when the surrounding context makes clear it counts customers,
+  not revenue), customer logo retention. The key distinguishing feature is
+  that the metric tracks the number of customers, not the revenue they generate.
+
+positive_signals:
+  - Explicit customer retention rate or logo retention rate disclosure
+  - Customer churn rate when the filing frames it as an inverted retention metric
+  - A percentage described as the share of customers who renewed or stayed
+  - Gross customer retention explicitly defined as customer-count based
+
+negative_signals:
+  - Dollar-based retention such as net revenue retention, net dollar retention, gross revenue retention, or dollar-based retention (use cm_net_revenue_retention or cm_gross_revenue_retention)
+  - Cohort revenue tables showing revenue retained from a cohort (not a logo count)
+  - Any retention figure where the numerator/denominator is revenue or ARR
+  - Gross retention without explicit clarification that it counts customers not dollars
+
+# Few-shot examples are owned by automation; they live in the sidecar
+# cm_customer_retention_rate.few_shots.yaml written by
+# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+
+decision_format: |
+  Respond with a single JSON object:
+    {"present": <bool>, "score": <0..1>, "rationale": "<one sentence>"}
+  `score` is your calibrated confidence; the deployment threshold is set
+  per-metric in thresholds.yaml.
