@@ -32,10 +32,36 @@ class TestCategoryActionsDict:
         assert self.EXPECTED_KEYS <= set(CATEGORY_ACTIONS.keys())
 
     def test_each_entry_has_required_fields(self):
-        required = {"label", "action", "target_file", "severity_thresholds"}
+        required = {
+            "label",
+            "description",
+            "example",
+            "action",
+            "target_file",
+            "severity_thresholds",
+        }
         for cat, meta in CATEGORY_ACTIONS.items():
             missing = required - set(meta.keys())
             assert not missing, f"Category '{cat}' is missing fields: {missing}"
+
+    def test_reject_form_metadata_is_reviewer_facing(self):
+        """Every category that appears in the Reject-form dropdown needs a
+        non-empty label, description, and example so the inline help in
+        unified_review.html has something to render.
+
+        Coverage check: every enum value in REJECTION_CATEGORIES must be a key
+        in CATEGORY_ACTIONS — otherwise the Jinja loop emits an empty option.
+        """
+        from src.review.models import REJECTION_CATEGORIES
+
+        for cat in REJECTION_CATEGORIES:
+            assert cat in CATEGORY_ACTIONS, (
+                f"Enum value '{cat}' from REJECTION_CATEGORIES is missing in CATEGORY_ACTIONS"
+            )
+            meta = CATEGORY_ACTIONS[cat]
+            assert meta["label"], f"'{cat}' must have a non-empty label"
+            assert meta["description"], f"'{cat}' must have a non-empty description"
+            assert meta["example"], f"'{cat}' must have a non-empty example"
 
     def test_severity_thresholds_are_ordered(self):
         for cat, meta in CATEGORY_ACTIONS.items():

@@ -691,8 +691,8 @@ def test_patterns_tab_category_rollup_panel(client, mock_db):
 
     # Category rollup panel exists.
     assert "Category rollup (this run)" in body
-    # Category data renders — "Part Of Date" (label from CATEGORY_ACTIONS).
-    assert "Part of date" in body
+    # Category data renders — "Date component (year, month, day)" (label from CATEGORY_ACTIONS).
+    assert "Date component" in body
     # Severity badge present for dominant category.
     assert "high" in body or "medium" in body
 

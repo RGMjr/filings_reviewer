@@ -5,8 +5,15 @@ Port 5200.
 """
 
 import os
+import sys
 
 from flask import Blueprint, Flask, jsonify, render_template, request, send_from_directory
+
+# Import the canonical Reject-form category metadata from src so the mock
+# template render mirrors production. The module is pure-Python with no DB or
+# extraction-pipeline imports (see its docstring).
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from src.web.text_decision_category_actions import CATEGORY_ACTIONS  # noqa: E402
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -411,6 +418,7 @@ def _shared_template_vars(
         rejected_count=1,
         review_statuses=V2_REVIEW_STATUSES,
         sort_options=V2_SORT_OPTIONS,
+        rejection_categories=CATEGORY_ACTIONS,
         page=1,
         per_page=100,
         total_pages=1,
