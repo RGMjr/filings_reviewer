@@ -1164,7 +1164,7 @@
                   {% for s in f.sample_images %}
                   <li>
                     <a href="{{ url_for('review_unified.review_filing', filing_id=s.filing_id, img_id=s.img_id, tab='images') }}">
-                      filing {{ s.filing_id }} / img {{ s.img_id[:8] }}
+                      filing {{ s.filing_id }} / img {{ (s.img_id|string)[:8] }}
                     </a>
                   </li>
                   {% endfor %}
