@@ -167,6 +167,18 @@ The banner's count and the trailing call-to-action both link to **`/v2/review/le
 
 **`images_legacy_pending` column.** `get_unified_filings_for_review`, `get_unified_filings_for_review_count`, and `get_next_filing_with_pending_work` all project `images_legacy_pending` (COUNT DISTINCT via EXISTS+NOT EXISTS in an `image_progress` CTE). The value is available on every row dict returned by `get_unified_filings_for_review`. `get_filing_pending_counts` also returns `images_legacy_pending` so `next_filing()` can apply the smart-default `tab=images&image_status=legacy_backfill` landing when a filing only has legacy backfill work. Note: legacy-backfill images have `images_pending=0` (they have been reviewed but never assigned a metric), so the normal `(facts_pending > 0 OR images_pending > 0)` pending filter in `get_next_filing_with_pending_work` MUST be REPLACED (not stacked) by `images_legacy_pending > 0` when `legacy_backfill_only=True`.
 
+## Cross-filing decision-type review pages
+
+`GET /v2/review/decisions/<decision_type>` (`decision_type ∈ {'accepted', 'corrected', 'added'}`) renders `unified_review.html` in cross-filing read-only mode. `?img_id=<X>` focuses a specific image; defaults to the first in the set. The page shows a thumbnail strip of all images matching the decision type across all filings, with the focused image's full per-metric decision rows (read-only — no Accept/Reject/Correct/Add/Skip controls). Reviewer attribution badges from `v2_image_metric_confirmations.reviewer_id` render on both the image-card header and individual decision rows.
+
+Mode is activated by passing `cross_filing_decisions_mode=decision_type` (a non-empty string) to `render_template`. `review_filing()` always passes `cross_filing_decisions_mode=None` explicitly so Jinja `StrictUndefined` does not trip on existing per-filing renders. Unknown `decision_type` values return 404.
+
+Template guards (`{% if not cross_filing_decisions_mode %}`) hide: the breadcrumb's per-filing link (replaced with "Metric Analytics → All X images (N)"), the tab bar, the "Next filing" / progress pill row, the bulk action bar, the image-level Skip/Reject-all/Next-Pending buttons, per-metric write controls (Accept/Reject/Correct/Skip/Undo), the Add-metric panel, notes textarea, and Submit buttons. The thumbnail `<a>` links to `decisions_review` with `?img_id=<X>` instead of `review_filing`.
+
+The stats page Accepted / Corrected / Added cards link to this route via a Bootstrap `stretched-link` anchor inside each `.card` (with `position: relative` on the card div).
+
+DB helper: `DatabaseAdapter.get_images_with_decision_type(decision_type)` — single SELECT reusing `_V2_IMAGE_CANDIDATE_SELECT` + `_V2_IMAGE_CONFIRMATION_ROLLUP_JOIN` shape. Ordered by `(filing_id ASC, img_id ASC)`. No pagination needed at current corpus size (~100 images).
+
 ## Legacy-backfill guided queue
 
 `/v2/review/legacy-backfill` and `/v2/review/legacy-backfill/next` are stateless 302 redirectors that walk the reviewer through every legacy-relevant image awaiting per-metric backfill, across whichever filings they live in. Both are click targets from the warning banner on the Images stats tab.

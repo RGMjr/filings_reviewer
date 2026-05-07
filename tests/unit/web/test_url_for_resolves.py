@@ -19,6 +19,7 @@ from src.web.app import create_app  # noqa: I001
 _ENDPOINTS: list[tuple[str, dict]] = [
     ("review_unified.filing_list", {}),
     ("review_unified.review_filing", {"filing_id": 1}),
+    ("review_unified.decisions_review", {"decision_type": "accepted"}),
     ("review_unified.stats", {}),
     ("review_unified.image_crop", {"img_id": "00000000-0000-0000-0000-000000000000"}),
     ("review_unified.next_filing", {}),

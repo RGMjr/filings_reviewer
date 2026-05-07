@@ -468,6 +468,116 @@ def _legacy_backfill_done_response() -> Response:
     return redirect(url_for("review_unified.stats") + "#images-stats")
 
 
+_VALID_DECISION_TYPES = ("accepted", "corrected", "added")
+
+
+@review_unified_bp.route("/decisions/<decision_type>")
+@require(PROTECTED_READ)
+def decisions_review(decision_type: str):
+    """Cross-filing read-only view of all images carrying a given decision type.
+
+    decision_type ∈ ('accepted', 'corrected', 'added'). Anything else 404s.
+    Optional ?img_id=<X> focuses a specific image (defaults to first in set).
+    """
+    if decision_type not in _VALID_DECISION_TYPES:
+        abort(404)
+
+    db = get_db()
+    images = db.get_images_with_decision_type(decision_type)
+
+    # Pick focused image: ?img_id param if valid, else first in list
+    requested_img_id = request.args.get("img_id", type=str)
+    current_image = None
+    if requested_img_id:
+        for img in images:
+            if str(img["img_id"]) == requested_img_id:
+                current_image = img
+                break
+    if current_image is None and images:
+        current_image = images[0]
+
+    current_image_confirmations: list = []
+    if current_image:
+        current_image_confirmations = db.get_image_metric_confirmations(current_image["img_id"])
+
+    # Build a minimal filing context from the focused image so the template
+    # filing-header chrome (company name, accession, SEC link) still resolves.
+    filing: dict = {}
+    sec_filing_url: str | None = None
+    if current_image:
+        filing = {
+            "filing_id": current_image["filing_id"],
+            "company_name": current_image.get("company_name", ""),
+            "ticker": current_image.get("ticker"),
+            "accession_number": current_image.get("accession_number", ""),
+            "form_type": None,
+        }
+        try:
+            sec_filing_url = resolve_sec_filing_url(
+                {
+                    "cik": current_image.get("cik", ""),
+                    "accession_number": current_image.get("accession_number", ""),
+                }
+            )
+        except Exception:
+            sec_filing_url = None
+
+    label_map = {
+        "accepted": "All accepted images",
+        "corrected": "All images with corrections",
+        "added": "All images with added metrics",
+    }
+    cross_filing_label = f"{label_map[decision_type]} ({len(images)})"
+
+    return render_template(
+        "unified_review.html",
+        filing=filing,
+        document_type=None,
+        active_tab="images",
+        # Text-tab stubs (tab hidden in cross-filing mode; stubs prevent StrictUndefined)
+        facts=[],
+        current_fact=None,
+        existing_decision=None,
+        available_metrics=[],
+        all_metrics=[],
+        current_filters={"status": "all", "metric": "all", "sort": "confidence_desc"},
+        total_facts=0,
+        total_facts_unfiltered=0,
+        pending_count=0,
+        accepted_count=0,
+        rejected_count=0,
+        review_statuses=V2_REVIEW_STATUSES,
+        sort_options=V2_SORT_OPTIONS,
+        rejection_categories=CATEGORY_ACTIONS,
+        page=1,
+        per_page=25,
+        total_pages=1,
+        sec_filing_url=sec_filing_url,
+        image_ocr_segments=[],
+        # Image tab
+        image_candidates=images,
+        all_image_candidates=images,
+        current_image=current_image,
+        current_image_confirmations=current_image_confirmations,
+        image_pending=0,
+        image_reviewed=len(images),
+        image_skipped=0,
+        image_auto_rejected=0,
+        image_auto_reject_candidates=0,
+        image_filters={"status": "all", "sort": "relevance"},
+        chart_types=[],
+        rejection_reasons=[],
+        image_decisions=IMAGE_DECISIONS,
+        review_statuses_images=IMAGE_REVIEW_FILTER_STATUSES,
+        next_filing_url=url_for("review_unified.filing_list"),
+        # Cross-filing mode flag
+        cross_filing_decisions_mode=decision_type,
+        cross_filing_decisions_label=cross_filing_label,
+        legacy_backfill_mode=False,
+        legacy_backfill_progress={},
+    )
+
+
 @review_unified_bp.route("/legacy-backfill")
 @require(PROTECTED_READ)
 def legacy_backfill_entry():
@@ -883,6 +993,7 @@ def review_filing(filing_id: int):
             # Legacy-backfill guided queue (cross-filing)
             legacy_backfill_mode=legacy_backfill_mode,
             legacy_backfill_progress=legacy_backfill_progress,
+            cross_filing_decisions_mode=None,
         )
 
     except Exception as e:

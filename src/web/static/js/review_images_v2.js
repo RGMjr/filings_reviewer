@@ -436,6 +436,7 @@
                 confirmed_metric_id: c.confirmed_metric_id,
                 decision: 'add',
                 rejection_reason: null,
+                reviewer_id: c.reviewer_id || null,
             };
             if (cid) state.confirmationIds[key] = cid;
         } else if (c.detected_metric_id) {
@@ -444,6 +445,7 @@
                 confirmed_metric_id: c.confirmed_metric_id || null,
                 decision: c.decision,
                 rejection_reason: c.rejection_reason || null,
+                reviewer_id: c.reviewer_id || null,
             };
             if (cid) state.confirmationIds[c.detected_metric_id] = cid;
         }
@@ -482,6 +484,7 @@
               <button type="button" class="btn btn-outline-secondary btn-sm btn-remove-added">Remove</button>
             </div>
             <div class="metric-state-indicator small mt-1 text-muted">Will be submitted as 'add'</div>
+            ${d.reviewer_id ? `<span class="row-reviewer-tag text-muted small ms-2">[${escapeHtml(d.reviewer_id)}]</span>` : ''}
         `;
         list.appendChild(li);
         li.querySelector('.btn-remove-added').addEventListener('click', () => {
@@ -834,6 +837,17 @@
         }
         const undoBtn = row.querySelector('.btn-undo-metric');
         if (undoBtn) undoBtn.style.display = '';
+        let reviewerTag = row.querySelector('.row-reviewer-tag');
+        if (d.reviewer_id) {
+            if (!reviewerTag) {
+                reviewerTag = document.createElement('span');
+                reviewerTag.className = 'row-reviewer-tag text-muted small ms-2';
+                if (indicator) indicator.after(reviewerTag);
+            }
+            reviewerTag.textContent = `[${d.reviewer_id}]`;
+        } else if (reviewerTag) {
+            reviewerTag.remove();
+        }
     }
 
     function clearRowState(row) {

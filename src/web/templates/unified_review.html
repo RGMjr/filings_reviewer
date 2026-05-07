@@ -153,8 +153,13 @@
 {%- endif -%}
 <nav aria-label="breadcrumb" class="mb-2">
   <ol class="breadcrumb">
+    {% if cross_filing_decisions_mode|default(false) %}
+    <li class="breadcrumb-item"><a href="{{ url_for('review_unified.stats') }}#images-stats">Metric Analytics</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ cross_filing_decisions_label|default('') }}</li>
+    {% else %}
     <li class="breadcrumb-item"><a href="{{ url_for('review_unified.filing_list', **breadcrumb_kwargs) }}">Review Filings</a></li>
     <li class="breadcrumb-item active" aria-current="page">{{ filing.company_name }}</li>
+    {% endif %}
   </ol>
 </nav>
 
@@ -164,7 +169,14 @@
     <div class="col-12">
       <div class="d-flex justify-content-between align-items-center">
         <div>
+          {% if cross_filing_decisions_mode|default(false) %}
+          <h4 class="mb-0">
+            <span class="badge bg-secondary me-2" style="font-size:0.55em;vertical-align:middle;">{{ cross_filing_decisions_label|default('') }}</span>
+            {{ filing.company_name }}{% if filing.ticker %} <small class="text-muted" style="font-size: 0.65em;">{{ filing.ticker }}</small>{% endif %}
+          </h4>
+          {% else %}
           <h4 class="mb-0">{{ filing.company_name }}{% if filing.ticker %} <small class="text-muted" style="font-size: 0.65em;">{{ filing.ticker }}</small>{% endif %}</h4>
+          {% endif %}
           <small class="text-muted">
             {{ filing.accession_number }}
             {% if filing.form_type %}&middot; {{ filing.form_type }}{% endif %}
@@ -175,6 +187,8 @@
             {% endif %}
           </small>
         </div>
+        {% if not cross_filing_decisions_mode|default(false) %}
+        {# Hidden in cross-filing mode: no per-filing progress or next-filing nav #}
         <div class="text-end review-pill-row">
           <span class="badge bg-primary">{{ total_facts_unfiltered }} facts</span>
           <span class="badge bg-warning text-dark">{{ pending_count }} pending</span>
@@ -193,11 +207,13 @@
             Next filing <span class="kbd ms-1">F</span>
           </a>
         </div>
+        {% endif %}
       </div>
     </div>
   </div>
 
-  {# Tab Bar #}
+  {# Tab Bar — hidden in cross-filing mode (text tab is meaningless cross-filing) #}
+  {% if not cross_filing_decisions_mode|default(false) %}
   <ul class="nav nav-tabs">
     <li class="nav-item">
       <a class="nav-link {% if active_tab == 'text' %}active{% endif %}"
@@ -212,6 +228,7 @@
       </a>
     </li>
   </ul>
+  {% endif %}
 
   {# Tab-specific filter bar (sticky with header + tabs) #}
   {% if active_tab == 'text' %}
@@ -761,6 +778,8 @@
   <div class="row image-review-layout">
     {# Left Column: Thumbnail Sidebar #}
     <div class="col-auto image-thumbnail-sidebar">
+      {% if not cross_filing_decisions_mode|default(false) %}
+      {# Hidden in cross-filing mode: no bulk write actions in read-only view #}
       <div id="bulk-action-bar" class="mb-2 d-none">
         <div class="d-flex flex-wrap align-items-center gap-2 p-2 bg-light border rounded">
           <span id="bulk-selected-count" class="small fw-bold">0 selected</span>
@@ -770,6 +789,7 @@
           <button type="button" class="btn btn-sm btn-link text-secondary p-0" id="btn-bulk-clear">Clear</button>
         </div>
       </div>
+      {% endif %}
       <div class="card">
         <div class="card-header py-2">
           <h6 class="mb-0">Images ({{ image_candidates|length }})</h6>
@@ -778,7 +798,7 @@
           <div class="list-group list-group-flush">
             {% for candidate in image_candidates %}
             {% set is_current = current_image and candidate.img_id == current_image.img_id %}
-            <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, img_id=candidate.img_id, image_status=image_filters.status, image_sort=image_filters.sort if image_filters.sort and image_filters.sort != 'relevance' else None, tab='images') }}"
+            <a href="{% if cross_filing_decisions_mode|default(false) %}{{ url_for('review_unified.decisions_review', decision_type=cross_filing_decisions_mode) }}?img_id={{ candidate.img_id }}{% else %}{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, img_id=candidate.img_id, image_status=image_filters.status, image_sort=image_filters.sort if image_filters.sort and image_filters.sort != 'relevance' else None, tab='images') }}{% endif %}"
                class="list-group-item list-group-item-action thumbnail-item {{ 'active' if is_current else '' }} {{ 'reviewed' if candidate.image_review_state in ('relevant', 'no_relevant') else '' }}"
                data-img-id="{{ candidate.img_id }}"
                data-image-review-state="{{ candidate.image_review_state or 'pending' }}"
@@ -892,6 +912,17 @@
               {% if current_image.auto_reject_candidate %}
               <span class="badge bg-secondary ms-1" title="Auto-reject candidate: tier-3 image, likely no relevant metrics. Review to confirm or override.">Auto-reject candidate</span>
               {% endif %}
+              {# Reviewer attribution badge — driven by data already on the page.
+                 Hidden when no per-metric confirmations exist for this image. #}
+              {% set imc_reviewers = (current_image_confirmations or [])
+                                     |map(attribute='reviewer_id')
+                                     |reject('none')|unique|list %}
+              {% if imc_reviewers %}
+              <span class="badge bg-info ms-1" title="Reviewers who recorded per-metric decisions on this image">
+                {{ 'Reviewer' if imc_reviewers|length == 1 else 'Reviewers' }}:
+                {{ imc_reviewers|join(', ') }}
+              </span>
+              {% endif %}
             </div>
           </div>
 
@@ -950,6 +981,8 @@
             </div>
           </div>
           {% else %}
+          {% if not cross_filing_decisions_mode|default(false) %}
+          {# Hidden in cross-filing mode: no per-filing pending queue or write actions #}
           <div class="d-flex justify-content-between align-items-center mb-3">
             <div class="d-flex gap-2">
               <button type="button" id="btn-skip" class="btn btn-outline-secondary">
@@ -965,6 +998,7 @@
               Next Pending &rarr;
             </a>
           </div>
+          {% endif %}
           {% endif %}
 
           {# Detected Metrics card — chart-presence pivot (#86 PR 3b, sql/47).
@@ -1021,6 +1055,8 @@
                       <span class="metric-label fw-semibold">{{ metric.metric_id }}</span>
                       <span class="metric-score text-muted small ms-2">{{ '%.2f'|format(metric.score) }}</span>
                     </div>
+                    {% if not cross_filing_decisions_mode|default(false) %}
+                    {# Hidden in cross-filing mode: read-only view, no per-metric write actions #}
                     <div class="btn-group btn-group-sm metric-actions" role="group">
                       <button type="button" class="btn btn-outline-success btn-accept-metric"
                               data-action="accept">
@@ -1043,6 +1079,7 @@
                             data-action="undo" style="display: none;">
                       Undo
                     </button>
+                    {% endif %}
                   </div>
                   <div class="reject-expansion mt-2" style="display: none;">
                     <label class="form-label small mb-1">Reason</label>
@@ -1068,6 +1105,8 @@
                 </li>
                 {% endfor %}
               </ul>
+              {% if not cross_filing_decisions_mode|default(false) %}
+              {# Hidden in cross-filing mode: no write actions in read-only view #}
               <div class="mt-3 border-top pt-3">
                 <button type="button" class="btn btn-outline-secondary btn-sm"
                         id="btn-add-missed-detected-metric">
@@ -1110,6 +1149,7 @@
                   Submit and mark image complete <span class="kbd ms-1">M</span>
                 </button>
               </div>
+              {% endif %}
             </div>
           </div>
           {% endif %}
@@ -1289,6 +1329,7 @@ window.TEXT_PENDING = {{ pending_count|tojson }};
 // returns a /legacy-backfill/next URL, and short-circuits the empty-queue
 // cross-tab cascade to flow through the same route (which 302s to stats).
 window.LEGACY_BACKFILL_MODE = {{ (legacy_backfill_mode|default(false))|tojson }};
+window.CROSS_FILING_DECISIONS_MODE = {{ (cross_filing_decisions_mode|default(false))|tojson }};
 let reviewStartTime = Date.now();
 
 function filterParams() {

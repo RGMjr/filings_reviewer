@@ -903,29 +903,35 @@
        Summary-tab Image Confirmations card so the two surfaces stay consistent. #}
     <div class="row mb-4 g-2">
       <div class="col">
-        <div class="card border-success h-100">
+        <div class="card border-success h-100" style="position: relative;">
           <div class="card-body p-3">
             <h6 class="card-subtitle mb-1 text-muted small">Accepted</h6>
             <h3 class="mb-0 text-success">{{ breakdown.accepted_images or 0 }}</h3>
             <small class="d-block text-muted mt-1">
               {{ breakdown.accepted_images_per_metric or 0 }} with specific metrics
             </small>
+            <a href="{{ url_for('review_unified.decisions_review', decision_type='accepted') }}"
+               class="stretched-link text-decoration-none" aria-label="Browse accepted images"></a>
           </div>
         </div>
       </div>
       <div class="col">
-        <div class="card border-info h-100">
+        <div class="card border-info h-100" style="position: relative;">
           <div class="card-body p-3">
             <h6 class="card-subtitle mb-1 text-muted small">Corrected</h6>
             <h3 class="mb-0 text-info">{{ breakdown.corrected or 0 }}</h3>
+            <a href="{{ url_for('review_unified.decisions_review', decision_type='corrected') }}"
+               class="stretched-link text-decoration-none" aria-label="Browse corrected images"></a>
           </div>
         </div>
       </div>
       <div class="col">
-        <div class="card border-primary h-100">
+        <div class="card border-primary h-100" style="position: relative;">
           <div class="card-body p-3">
             <h6 class="card-subtitle mb-1 text-muted small">Added</h6>
             <h3 class="mb-0 text-primary">{{ breakdown.added or 0 }}</h3>
+            <a href="{{ url_for('review_unified.decisions_review', decision_type='added') }}"
+               class="stretched-link text-decoration-none" aria-label="Browse added images"></a>
           </div>
         </div>
       </div>
