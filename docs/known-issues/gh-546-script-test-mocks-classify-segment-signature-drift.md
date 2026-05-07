@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-07
 updated: 2026-05-07
 gh_issue: 546
+pr_refs:
+  - 556
 note: tighten or share script-side fake-client mocks so they cannot drift from inspect.signature(real_classify_segment)
 ---
 
