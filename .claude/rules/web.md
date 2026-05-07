@@ -129,6 +129,24 @@ The same `CATEGORY_ACTIONS` dict also drives the Reject-form dropdown in `unifie
 
 Rendered as Bootstrap progress-bar rows (no chart library). The future LLM-summarized "Top Reviewer Themes" panel (deferred) will read `reviewer_notes` — the two panels are complementary.
 
+## Image Add Patterns — Patterns panel
+
+`/v2/review/stats` **Patterns tab** renders a collapsible "Image Add Patterns" panel (below the Why-Reviewers-Reject panel, above the per-metric rollup). Gated on `{% if image_add_findings %}` — empty in dev/test where zero Add decisions exist; visible in prod where the substrate is non-empty.
+
+**Purpose**: surfaces the most common 2–4 word n-gram phrases from `v2_image_assets.nearby_text` for images where a reviewer chose `decision='add'`, grouped by `confirmed_metric_id`. These are labelled `(image, correct-metric-id)` signals where the keyword detector missed — the panel prompts the operator to add the top phrases to `config/metric_keywords.yaml` under the metric's `patterns` list.
+
+**Data flow** (render-time, no schema, no background script):
+
+1. `db.get_image_add_substrate()` — single SELECT joining `v2_image_metric_confirmations` (WHERE `decision='add'`) to `v2_image_assets`, filtering `nearby_text IS NOT NULL AND length(nearby_text) >= 20`. Returns `{confirmed_metric_id, img_id, filing_id, nearby_text}` per row.
+2. `src/web/image_pattern_recommendations.compute_image_add_findings(rows)` — pure function; no DB calls. Tokenizes `nearby_text`, strips stopwords + per-metric keyword tokens, counts n-grams per metric, applies `IMG_MIN_OCCURRENCES=2` and `IMG_MIN_PCT=10.0` thresholds, returns top 5 phrases per metric ranked by add_count DESC. Each finding dict includes `"min_occurrences": int` so the template can display the threshold without an extra context kwarg.
+3. `stats()` passes `image_add_findings` to `unified_stats.html`.
+
+**Tunables** (constants at top of `src/web/image_pattern_recommendations.py`): `IMG_MIN_OCCURRENCES`, `IMG_MIN_PCT`, `IMG_TOP_N_PER_METRIC`, `IMG_NGRAM_SIZES`, `IMG_MAX_SAMPLE_IMAGES`. Tighten `IMG_MIN_PCT` upward if findings contain boilerplate noise. No schema, migration, or test churn — a one-line change + server restart.
+
+**No persistence**: read-only panel. No Accept/Dismiss/Defer buttons; no `image_pattern_recommendation_decisions` table. The text-side recommendation-decisions plumbing is reusable later if volume warrants persisting per-recommendation state.
+
+**Sample-image links** drill through to `/v2/review/<filing_id>?img_id=<uuid>&tab=images` — the `review_filing` route reads both as query params.
+
 ## Images tab — decision-type breakdown
 
 `/v2/review/stats` **Images tab** opens with five cards backed by `db.get_image_decision_breakdown_v2()` (single roundtrip). The Summary-tab Image Confirmations card uses the independent `db.get_image_decision_overall_v2()` (Relevant / Not Relevant rollup) — the two helpers stay decoupled so the simpler Summary view is unaffected by changes to the per-decision breakdown.
