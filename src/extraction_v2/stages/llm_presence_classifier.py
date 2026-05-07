@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +42,27 @@ logger = logging.getLogger(__name__)
 
 # Minimum segment text length to bother classifying.
 _MIN_SEGMENT_CHARS = 50
+
+
+@dataclass(frozen=True)
+class _ClassifyTask:
+    """One unit of work for ThreadPoolExecutor: one segment × one metric set."""
+
+    segment_id: str
+    text: str
+    metric_ids: list[str]
+    section_type: str | None
+    source: str  # "keyword" | "paraphrase"
+
+
+@dataclass
+class _ClassifyResult:
+    """Output of one classify task. Either signals are populated or error_msg is."""
+
+    task: _ClassifyTask
+    signals: list[LLMPresenceSignal]
+    tokens: dict[str, int]
+    error_msg: str | None = None
 
 
 class LLMPresenceClassifierStage:
@@ -122,15 +145,10 @@ class LLMPresenceClassifierStage:
             if seg_id:
                 kw_seg_metrics[seg_id].add(cand.metric_id)
 
-        signals: list[LLMPresenceSignal] = []
-        errors: list[str] = []
-        keyword_count = 0
-        paraphrase_count = 0
-        total_input_tokens = 0
-        total_output_tokens = 0
-        total_cache_read = 0
-        total_cache_create = 0
+        # --- Build task list (both paths) ---
+        tasks: list[_ClassifyTask] = []
 
+        # Keyword path: segments with at least one MetricCandidate.
         for seg_id, metric_ids in kw_seg_metrics.items():
             segment = segment_by_id.get(seg_id)
             if not segment or not segment.text or len(segment.text.strip()) < _MIN_SEGMENT_CHARS:
@@ -139,87 +157,71 @@ class LLMPresenceClassifierStage:
             scoreable = [m for m in metric_ids if m in client.config.prompts]
             if not scoreable:
                 continue
-            try:
-                sec_type = segment.section_type.value if segment.section_type else None
-                classifications, seg_tokens = client.classify_segment(
-                    segment.text, scoreable, section_type=sec_type
+            sec_type = segment.section_type.value if segment.section_type else None
+            tasks.append(
+                _ClassifyTask(
+                    segment_id=seg_id,
+                    text=segment.text,
+                    metric_ids=scoreable,
+                    section_type=sec_type,
+                    source="keyword",
                 )
-                for sc in classifications:
-                    signals.append(
-                        LLMPresenceSignal(
-                            segment_id=seg_id,
-                            section_type=sec_type,
-                            metric_id=sc.metric_id,
-                            score=sc.score,
-                            present=sc.present,
-                            rationale=sc.rationale,
-                            model=sc.model,
-                            sonnet_fallback=sc.sonnet_fallback,
-                            prompt_version=sc.prompt_version,
-                            source="keyword",
-                        )
-                    )
-                keyword_count += 1
-                total_input_tokens += seg_tokens.get("input_tokens", 0)
-                total_output_tokens += seg_tokens.get("output_tokens", 0)
-                total_cache_read += seg_tokens.get("cache_read", 0)
-                total_cache_create += seg_tokens.get("cache_create", 0)
-            except Exception as exc:
-                logger.warning(
-                    "LLMPresenceClassifierStage: classify failed segment=%s metrics=%s: %s",
-                    seg_id,
-                    scoreable,
-                    exc,
-                )
-                errors.append(f"segment {seg_id}: {exc}")
+            )
+        keyword_count = len(tasks)
 
-        # --- Paraphrase-recall path (Part E) ---
-        # Score whitelisted-section segments that had NO keyword hit, against
-        # the full enrolled-metric set. This is the source of recall lift.
+        # Paraphrase-recall path (Part E): whitelisted-section segments
+        # without a keyword hit, scored against the enrolled-metric set.
         if enrolled and section_whitelist:
             enrolled_with_prompts = [m for m in sorted(enrolled) if m in client.config.prompts]
             if enrolled_with_prompts:
                 for segment in context.segments:
                     if segment.segment_id in kw_seg_metrics:
-                        continue  # Already scored in keyword path
+                        continue
                     if not segment.section_type:
                         continue
                     if segment.section_type.value not in section_whitelist:
                         continue
                     if not segment.text or len(segment.text.strip()) < _MIN_SEGMENT_CHARS:
                         continue
-                    try:
-                        sec_type = segment.section_type.value
-                        classifications, seg_tokens = client.classify_segment(
-                            segment.text, enrolled_with_prompts, section_type=sec_type
+                    tasks.append(
+                        _ClassifyTask(
+                            segment_id=segment.segment_id,
+                            text=segment.text,
+                            metric_ids=enrolled_with_prompts,
+                            section_type=segment.section_type.value,
+                            source="paraphrase",
                         )
-                        for sc in classifications:
-                            signals.append(
-                                LLMPresenceSignal(
-                                    segment_id=segment.segment_id,
-                                    section_type=sec_type,
-                                    metric_id=sc.metric_id,
-                                    score=sc.score,
-                                    present=sc.present,
-                                    rationale=sc.rationale,
-                                    model=sc.model,
-                                    sonnet_fallback=sc.sonnet_fallback,
-                                    prompt_version=sc.prompt_version,
-                                    source="paraphrase",
-                                )
-                            )
-                        paraphrase_count += 1
-                        total_input_tokens += seg_tokens.get("input_tokens", 0)
-                        total_output_tokens += seg_tokens.get("output_tokens", 0)
-                        total_cache_read += seg_tokens.get("cache_read", 0)
-                        total_cache_create += seg_tokens.get("cache_create", 0)
-                    except Exception as exc:
-                        logger.warning(
-                            "LLMPresenceClassifierStage: paraphrase classify failed segment=%s: %s",
-                            segment.segment_id,
-                            exc,
-                        )
-                        errors.append(f"paraphrase segment {segment.segment_id}: {exc}")
+                    )
+        paraphrase_count = len(tasks) - keyword_count
+
+        # --- Execute tasks (concurrent if config.llm_presence_concurrency > 1) ---
+        # Each classify_segment call is I/O-bound (Anthropic API), so threads
+        # work without GIL contention. Anthropic's prompt cache is server-side
+        # and benefits from concurrent reads on the same prefix.
+        concurrency = max(1, int(getattr(context.config, "llm_presence_concurrency", 1)))
+        results = _execute_tasks(tasks, client, concurrency)
+
+        signals: list[LLMPresenceSignal] = []
+        errors: list[str] = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cache_read = 0
+        total_cache_create = 0
+        for r in results:
+            if r.error_msg:
+                logger.warning(
+                    "LLMPresenceClassifierStage: %s classify failed segment=%s: %s",
+                    r.task.source,
+                    r.task.segment_id,
+                    r.error_msg,
+                )
+                errors.append(f"{r.task.source} segment {r.task.segment_id}: {r.error_msg}")
+                continue
+            signals.extend(r.signals)
+            total_input_tokens += r.tokens.get("input_tokens", 0)
+            total_output_tokens += r.tokens.get("output_tokens", 0)
+            total_cache_read += r.tokens.get("cache_read", 0)
+            total_cache_create += r.tokens.get("cache_create", 0)
 
         context.llm_presence_signals = signals
 
@@ -257,6 +259,57 @@ class LLMPresenceClassifierStage:
                 "total_cache_create": total_cache_create,
             },
         )
+
+
+def _classify_one(task: _ClassifyTask, client: Any) -> _ClassifyResult:
+    """Run one classify_segment call and convert to LLMPresenceSignal list.
+
+    Pure function — safe to call from worker threads. Captures any exception
+    in ``error_msg`` so the orchestrator can log + continue.
+    """
+    try:
+        classifications, seg_tokens = client.classify_segment(
+            task.text, task.metric_ids, section_type=task.section_type
+        )
+    except Exception as exc:  # noqa: BLE001 — error captured per-task
+        return _ClassifyResult(task=task, signals=[], tokens={}, error_msg=str(exc))
+
+    signals = [
+        LLMPresenceSignal(
+            segment_id=task.segment_id,
+            section_type=task.section_type,
+            metric_id=sc.metric_id,
+            score=sc.score,
+            present=sc.present,
+            rationale=sc.rationale,
+            model=sc.model,
+            sonnet_fallback=sc.sonnet_fallback,
+            prompt_version=sc.prompt_version,
+            source=task.source,
+        )
+        for sc in classifications
+    ]
+    return _ClassifyResult(task=task, signals=signals, tokens=seg_tokens)
+
+
+def _execute_tasks(
+    tasks: list[_ClassifyTask],
+    client: Any,
+    concurrency: int,
+) -> list[_ClassifyResult]:
+    """Run all tasks; returns results in submission order.
+
+    ``concurrency=1`` runs serially (single-threaded). ``concurrency>1`` uses
+    a ThreadPoolExecutor; results are ordered to match ``tasks`` input order
+    so log determinism is preserved.
+    """
+    if not tasks:
+        return []
+    if concurrency <= 1:
+        return [_classify_one(t, client) for t in tasks]
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(_classify_one, t, client) for t in tasks]
+        return [f.result() for f in futures]
 
 
 def _log_disagreements(

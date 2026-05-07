@@ -427,9 +427,11 @@ def select_reviewed_corpus(
     """
     import psycopg
 
+    # The column is ``filings.sec_html_url`` (not ``html_url``); aliasing
+    # to ``html_url`` keeps the row-unpacking variable name stable below.
     sql = """
         SELECT f.filing_id,
-               f.html_url,
+               f.sec_html_url AS html_url,
                c.name AS company_name,
                COUNT(rd.decision_id) AS decision_count
           FROM v2_review_decisions rd
@@ -437,7 +439,7 @@ def select_reviewed_corpus(
           JOIN filings f ON f.filing_id = mf.filing_id
           JOIN companies c ON c.cik = f.cik
          WHERE mf.source_type = 'text'
-         GROUP BY f.filing_id, f.html_url, c.name
+         GROUP BY f.filing_id, f.sec_html_url, c.name
          ORDER BY decision_count DESC, f.filing_id ASC
          LIMIT 50
     """
@@ -630,6 +632,21 @@ class _PathAFiling:
     accession_number: str
 
 
+def _normalize_to_filings_url(url: str) -> str:
+    """Normalize a gold-split URL to the form ``filings.sec_html_url`` uses.
+
+    The gold-split file (`data/gold_standard/split_v1.json`) sometimes carries
+    a document-filename suffix (e.g. ``.../<accession>/d745413ds1a.htm``);
+    the ``filings`` table normalizes to the accession directory
+    (e.g. ``.../<accession>/``). Strip a trailing ``.htm`` / ``.html`` filename
+    and ensure a trailing slash so we can exact-match the DB column.
+    """
+    parts = url.rstrip("/").split("/")
+    if parts and parts[-1].lower().endswith((".htm", ".html")):
+        parts = parts[:-1]
+    return "/".join(parts) + "/"
+
+
 def _enrich_filings_for_path_a(
     filings: list[FilingSelection],
     db_url: str,
@@ -650,17 +667,24 @@ def _enrich_filings_for_path_a(
 
     with psycopg.connect(db_url) as conn, conn.cursor() as cur:
         if gold:
+            # ``filings.sec_html_url`` is the actual column; aliased to
+            # ``html_url`` so the unpacking shape below stays stable.
+            # Gold split URLs may carry a document filename suffix that the
+            # DB doesn't store — normalize before matching.
+            gold_db_urls = [_normalize_to_filings_url(f.filing_url) for f in gold]
             cur.execute(
-                "SELECT filing_id, html_url, html_storage_path, cik, accession_number"
-                " FROM filings WHERE html_url = ANY(%s)",
-                ([f.filing_url for f in gold],),
+                "SELECT filing_id, sec_html_url AS html_url, html_storage_path, cik, accession_number"
+                " FROM filings WHERE sec_html_url = ANY(%s)",
+                (gold_db_urls,),
             )
             by_url: dict[str, Any] = {row[1]: row for row in cur.fetchall()}
             for f in gold:
-                row = by_url.get(f.filing_url)
+                lookup_url = _normalize_to_filings_url(f.filing_url)
+                row = by_url.get(lookup_url)
                 if row is None:
                     raise RuntimeError(
-                        f"Gold filing not found in DB (html_url={f.filing_url!r}). "
+                        f"Gold filing not found in DB (sec_html_url={lookup_url!r}, "
+                        f"split URL={f.filing_url!r}). "
                         "Corpus and DB have diverged; cannot run --path pipeline."
                     )
                 filing_id, _, html_storage_path, cik, accession_number = row
@@ -789,6 +813,10 @@ def evaluate_filing_pipeline(
             enable_chart_extraction=False,
             enable_llm_presence_classifier=True,
             retain_context=True,
+            # Bump per-segment concurrency for the eval — Anthropic's prompt
+            # cache benefits from concurrent reads on the same prefix and
+            # the smoke run otherwise serializes hundreds of API calls.
+            llm_presence_concurrency=8,
         )
         pipeline = V2Pipeline(config=pipeline_config)
         result = pipeline.process(
@@ -1228,7 +1256,11 @@ def run_eval(
         gold_filings, gold_missing = select_gold_corpus(
             splits, gold_metrics_per_filing, scoreable_required, limit=limit or 5
         )
-        if gold_missing:
+        # When the operator deliberately runs a smaller corpus via --limit
+        # (validation / iteration), incomplete required-metric coverage is
+        # expected and informational. Hard-fail only at the default limit
+        # where missing coverage signals real corpus/DB drift.
+        if gold_missing and limit is None:
             return 2, {
                 "error": (
                     f"Gold corpus selection failed to cover required metrics: "
@@ -1239,6 +1271,13 @@ def run_eval(
                 "skipped_required": skipped_required,
                 "selected_gold_filings": [f.filing_url for f in gold_filings],
             }
+        if gold_missing and limit is not None:
+            logger.warning(
+                "smoke eval --limit %d: gold corpus does not cover required "
+                "metrics %s — proceeding because --limit was explicitly set",
+                limit,
+                gold_missing,
+            )
 
     # ---- Reviewed corpus ----
     reviewed_filings: list[FilingSelection] = []
