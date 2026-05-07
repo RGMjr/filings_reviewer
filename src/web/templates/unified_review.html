@@ -1654,7 +1654,7 @@ document.addEventListener('keydown', function(e) {
 
   modalEl.addEventListener('shown.bs.modal', function () {
     if (typeof Panzoom === 'undefined') return;  // CDN failed; image still visible at 1:1
-    pz = Panzoom(imgEl, { maxScale: 8, minScale: 1, contain: 'inside' });
+    pz = Panzoom(imgEl, { maxScale: 8, minScale: 1 });
     wrapEl.addEventListener('wheel', onWheel, { passive: false });
     imgEl.addEventListener('panzoomstart', onStart);
     imgEl.addEventListener('panzoomend', onEnd);
