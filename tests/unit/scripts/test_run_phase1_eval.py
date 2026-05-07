@@ -86,10 +86,10 @@ def test_dry_run_gold_only_writes_csv_and_summary(cli, tmp_path, monkeypatch):
     assert len(summary_loaded["selected_gold_filings"]) >= 1
 
 
-def test_path_pipeline_returns_precondition_failure(cli, tmp_path):
-    """Selecting --path pipeline returns exit code 2 with a clear message."""
+def test_path_pipeline_dry_run_not_supported(cli, tmp_path):
+    """--path pipeline with --dry-run returns exit code 2 (dry-run unsupported for Path A)."""
     exit_code, summary = cli.run_eval(
-        run_id="testrun_pipeline",
+        run_id="testrun_pipeline_dryrun",
         out_dir=tmp_path,
         path_mode="pipeline",
         gold_only=True,
@@ -98,7 +98,7 @@ def test_path_pipeline_returns_precondition_failure(cli, tmp_path):
         dry_run=True,
     )
     assert exit_code == 2
-    assert "not implemented" in summary["error"].lower()
+    assert "dry-run" in summary["error"].lower() or "--dry-run" in summary["error"]
 
 
 def test_dry_run_reviewed_corpus_requires_database_url(cli, tmp_path, monkeypatch):

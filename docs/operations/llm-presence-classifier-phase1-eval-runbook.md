@@ -63,7 +63,8 @@ Exit codes:
   breakdown.
 - `2` — preconditions not met (missing `ANTHROPIC_API_KEY`, missing
   `DATABASE_URL` without `--gold-only`, gold corpus failed coverage,
-  `--path pipeline` selected). Re-run after fixing the precondition.
+  or `--path pipeline` preconditions not met — see Path selection below).
+  Re-run after fixing the precondition.
 
 ## Corpus selection
 
@@ -88,12 +89,35 @@ density. Filings already in the gold corpus are excluded by URL.
 paraphrase-eligible `v2_segments` (reviewed corpus) and calls
 `PresenceClassifierClient.classify_segment` directly. Mirrors the
 orchestration in `scripts/calibrate_llm_thresholds.run_sweep`. This is
-the cheap path used for the smoke test.
+the fast plumbing-test path: cheap, no HTML access required, but uses a
+biased sample (gold quotes are sparse; reviewed segments are pre-filtered).
+Supports `--dry-run`.
 
-`--path pipeline` is reserved for a follow-up. It would invoke the full
-V2 pipeline per filing with `enable_llm_presence_classifier=True` and
-`retain_context=True` to capture the real keyword + paraphrase merging
-that production will see. It returns exit code 2 today.
+`--path pipeline` runs the full V2 pipeline per filing with
+`enable_llm_presence_classifier=True` and `retain_context=True`, then
+reads `PipelineResult.context.llm_presence_signals` for classifier scores
+and `PipelineResult.context.candidates` for the keyword baseline. This is
+the production-representative path: classifier sees the same
+keyword-shortlisted + paraphrase-recall segments as live extraction.
+
+**Path A preconditions:**
+- `ANTHROPIC_API_KEY` required (no `--dry-run` equivalent).
+- `DATABASE_URL` required, even with `--gold-only` (gold filings need
+  DB lookup to resolve `html_storage_path`, `cik`, `accession_number`).
+- `--dry-run` is not supported; exit 2 if passed.
+
+**Path A cost:** ~$0.20–0.40 per filing on Haiku (real filings have
+hundreds of segments vs. the handful of gold quotes used in Path B).
+10-filing full run ≈ $2–4. Run with `--limit 1` to validate wiring before
+a full run.
+
+```bash
+# Validate one filing before paying for the full run:
+python3 scripts/run_phase1_eval.py --path pipeline --gold-only --limit 1
+
+# Full Path A run:
+python3 scripts/run_phase1_eval.py --path pipeline
+```
 
 ## Gold-negative caveat
 
@@ -104,8 +128,6 @@ annotates this. Recall is the trustworthy signal.
 
 ## Follow-ups not in this PR
 
-- Path A (`--path pipeline`) implementation. Requires HTML access via
-  `src/infra/filing_storage` to feed the V2 pipeline per filing.
 - Integration tests for the DB-touching helpers
   (`select_reviewed_corpus`, `build_reviewed_labels`,
   `keyword_baseline_path_b`). These are exercised end-to-end during the
