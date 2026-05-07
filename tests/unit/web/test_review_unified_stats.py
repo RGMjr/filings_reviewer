@@ -89,7 +89,8 @@ def _stub_analytics_helpers(mock_db) -> None:
     # hidden; tests that exercise the populated state override explicitly.
     mock_db.get_image_decision_breakdown_v2.return_value = {
         "total": 0,
-        "accepted": 0,
+        "accepted_images": 0,
+        "accepted_images_per_metric": 0,
         "corrected": 0,
         "added": 0,
         "rejected": 0,
@@ -973,7 +974,8 @@ def test_images_tab_renders_decision_breakdown_cards(client, mock_db):
     }
     mock_db.get_image_decision_breakdown_v2.return_value = {
         "total": 100,
-        "accepted": 40,
+        "accepted_images": 79,
+        "accepted_images_per_metric": 31,
         "corrected": 5,
         "added": 25,
         "rejected": 28,
@@ -1003,9 +1005,14 @@ def test_images_tab_renders_decision_breakdown_cards(client, mock_db):
     for label in ("Accepted", "Corrected", "Added", "Rejected", "Skipped"):
         assert f">{label}<" in body, f"missing card label: {label}"
 
-    # Each card's count renders. Use unique values so we can pin them.
-    for value in ("40", "25", "28"):
+    # Accepted card is image-distinct (79). The other three cards retain
+    # decision-level counts (5 corrected, 25 added, 28 rejected). Use unique
+    # values so we can pin them.
+    for value in ("79", "25", "28"):
         assert value in body
+
+    # Sub-line on the Accepted card surfaces the per-metric subset.
+    assert "31 with specific metrics" in body
 
     # Banner does NOT render when legacy_accepts_pending == 0.
     assert "awaiting per-metric backfill" not in body
@@ -1024,7 +1031,8 @@ def test_images_tab_renders_legacy_accepts_banner(client, mock_db):
     }
     mock_db.get_image_decision_breakdown_v2.return_value = {
         "total": 50,
-        "accepted": 20,
+        "accepted_images": 30,
+        "accepted_images_per_metric": 15,
         "corrected": 0,
         "added": 10,
         "rejected": 20,

@@ -129,9 +129,17 @@ Rendered as Bootstrap progress-bar rows (no chart library). The future LLM-summa
 
 ## Images tab — decision-type breakdown
 
-`/v2/review/stats` **Images tab** opens with five mutually-exclusive cards keyed on `v2_image_metric_confirmations.decision`: Accepted / Corrected / Added / Rejected / Skipped. The total decision count is shown as a small subtitle in the section header. Backed by `db.get_image_decision_breakdown_v2()`, which returns one dict per call (single roundtrip). The Summary-tab Image Confirmations card still uses `db.get_image_decision_overall_v2()` (Relevant / Not Relevant rollup) — the two helpers are independent on purpose so the simpler Summary view is decoupled from the per-decision breakdown.
+`/v2/review/stats` **Images tab** opens with five cards backed by `db.get_image_decision_breakdown_v2()` (single roundtrip). The Summary-tab Image Confirmations card uses the independent `db.get_image_decision_overall_v2()` (Relevant / Not Relevant rollup) — the two helpers stay decoupled so the simpler Summary view is unaffected by changes to the per-decision breakdown.
 
-A warning banner above the cards surfaces `legacy_accepts_pending` — distinct images with a `v2_image_review_decisions.decision='accept'` row but no rows in `v2_image_metric_confirmations` yet. These are pre-per-metric-pivot reviews where the reviewer marked the image relevant without naming a metric; the banner disappears when the count hits zero (i.e., the legacy backfill is complete). The same anti-join lives inside `get_image_decision_breakdown_v2`.
+The **Accepted** card is image-distinct and unions both review flows: `accepted_images` counts distinct images with any positive reviewer signal — `v2_image_review_decisions.decision='relevant'` (legacy flow) UNIONed with `v2_image_metric_confirmations.decision IN ('accept','correct','add')` (per-metric flow). A small sub-line on the same card shows `accepted_images_per_metric` — the per-metric subset, which should grow as the legacy backlog drains.
+
+The other four cards (Corrected / Added / Rejected / Skipped) are per-metric **decision counts** on `v2_image_metric_confirmations`. Mixed-unit by design: the Accepted total measures reviewer effort across both flows (the headline "what has the reviewer marked relevant"), while the other cards remain decision-type drill-downs useful for keyword-detector recall diagnostics (e.g. a tiny `accepted_images_per_metric` relative to `added` says the keyword rules are missing the right metric on most charts).
+
+The total decision count is shown as a small subtitle in the section header — that aligns with the four right-hand cards, not the Accepted total.
+
+Returned dict keys: `total`, `accepted_images`, `accepted_images_per_metric`, `corrected`, `added`, `rejected`, `skipped`, `legacy_accepts_pending`. The pre-PR-528 `accepted` field (per-metric `accept` decision count) is intentionally not returned — the Decisions-by-Detection-Tier section below conveys that signal at tier granularity.
+
+A warning banner above the cards surfaces `legacy_accepts_pending` — distinct images with a `v2_image_review_decisions.decision='relevant'` row but no rows in `v2_image_metric_confirmations` yet. These are pre-per-metric-pivot reviews where the reviewer marked the image relevant without naming a metric; the banner disappears when the count hits zero (i.e., the legacy backfill is complete). The legacy table's CHECK constraint enforces `'relevant'` / `'not_relevant'`, not the new flow's `'accept'` / `'reject'` vocabulary — getting the filter wrong (PR #528's original landing) zeros the count silently. The same anti-join lives inside `get_image_decision_breakdown_v2`.
 
 ## Review Activity panel
 

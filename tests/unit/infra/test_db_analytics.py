@@ -318,7 +318,6 @@ class TestGetImageDecisionBreakdownV2:
         db.get_image_decision_breakdown_v2()
         sql = db.query.call_args.args[0]
         for clause in (
-            "FILTER (WHERE decision = 'accept')",
             "FILTER (WHERE decision = 'correct')",
             "FILTER (WHERE decision = 'add')",
             "FILTER (WHERE decision = 'reject')",
@@ -337,12 +336,35 @@ class TestGetImageDecisionBreakdownV2:
         assert "NOT EXISTS" in sql
         assert "v2_image_metric_confirmations imc" in sql
 
+    def test_accepted_images_unions_legacy_and_per_metric_sources(self, db):
+        """Accepted card is image-distinct across both review flows.
+
+        Asserts the SQL builds the union of (per-metric accept/correct/add)
+        and (legacy 'relevant') and exposes both the union total
+        (accepted_images) and the per-metric subset
+        (accepted_images_per_metric).
+        """
+        db.query.return_value = []
+        db.get_image_decision_breakdown_v2()
+        sql = db.query.call_args.args[0]
+        # Per-metric subset: distinct images with any positive per-metric row.
+        assert (
+            "COUNT(DISTINCT img_id) FILTER (\n                        WHERE decision IN ('accept', 'correct', 'add')\n                    )"
+            in sql
+        )
+        # Union of legacy 'relevant' and per-metric positive — drives the
+        # image-distinct headline.
+        assert "UNION" in sql
+        assert "accepted_images" in sql
+        assert "accepted_images_per_metric" in sql
+
     def test_returns_zeros_when_no_rows(self, db):
         db.query.return_value = []
         result = db.get_image_decision_breakdown_v2()
         assert result == {
             "total": 0,
-            "accepted": 0,
+            "accepted_images": 0,
+            "accepted_images_per_metric": 0,
             "corrected": 0,
             "added": 0,
             "rejected": 0,
@@ -354,22 +376,24 @@ class TestGetImageDecisionBreakdownV2:
         db.query.return_value = [
             {
                 "total": 100,
-                "accepted": 40,
+                "accepted_images": 79,
+                "accepted_images_per_metric": 31,
                 "corrected": 5,
                 "added": 25,
                 "rejected": 28,
                 "skipped": 2,
-                "legacy_accepts_pending": 137,
+                "legacy_accepts_pending": 48,
             }
         ]
         result = db.get_image_decision_breakdown_v2()
         assert result == {
             "total": 100,
-            "accepted": 40,
+            "accepted_images": 79,
+            "accepted_images_per_metric": 31,
             "corrected": 5,
             "added": 25,
             "rejected": 28,
             "skipped": 2,
-            "legacy_accepts_pending": 137,
+            "legacy_accepts_pending": 48,
         }
         assert all(isinstance(v, int) for v in result.values())
