@@ -882,12 +882,20 @@
         if (!reviewerName) return;
 
         state.submitting = true;
+        // In legacy-backfill mode, advance via the cross-filing queue route
+        // instead of the per-filing scan. _get_next_image_candidate_info reads
+        // view_filters.mode === 'legacy_backfill' and returns a redirect-into
+        // /v2/review/legacy-backfill/next?after=<img_id>.
+        const viewFilters = { status: state.imageStatus, sort: state.imageSort };
+        if (window.LEGACY_BACKFILL_MODE) {
+            viewFilters.mode = 'legacy_backfill';
+        }
         const payload = {
             img_id: state.imgId,
             reviewer_id: reviewerName,
             decisions,
             mark_complete: markComplete,
-            view_filters: { status: state.imageStatus, sort: state.imageSort },
+            view_filters: viewFilters,
         };
 
         try {
@@ -997,11 +1005,18 @@
 
         state.submitting = true;
         try {
+            // Mirror the main submit-decisions flow's legacy-backfill mode
+            // toggle so the rejection POST's next_candidate URL points at
+            // the cross-filing queue.
+            const rejectViewFilters = { status: state.imageStatus, sort: state.imageSort };
+            if (window.LEGACY_BACKFILL_MODE) {
+                rejectViewFilters.mode = 'legacy_backfill';
+            }
             const payload = {
                 img_id: state.imgId,
                 reviewer_id: reviewerName,
                 decisions: decisions,
-                view_filters: { status: state.imageStatus, sort: state.imageSort },
+                view_filters: rejectViewFilters,
             };
             const resp = await fetch('/api/v2/image-metric-confirmations', {
                 method: 'POST',
@@ -1030,6 +1045,16 @@
             if (skipData.status === 'success') {
                 if (typeof skipData.text_pending_count === 'number') {
                     state.textPending = skipData.text_pending_count;
+                }
+                // Legacy-backfill mode: the skip route doesn't know about the
+                // cross-filing queue, so prefer the rejection POST's
+                // next_candidate URL (which goes through
+                // _get_next_image_candidate_info's mode='legacy_backfill'
+                // branch). The skip is still needed to flip
+                // review_status='skipped' for legacy cleanup.
+                if (window.LEGACY_BACKFILL_MODE && data.next_candidate && data.next_candidate.url) {
+                    window.location.href = data.next_candidate.url;
+                    return;
                 }
                 if (skipData.next_candidate) {
                     window.location.href = skipData.next_candidate.url;

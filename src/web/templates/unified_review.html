@@ -829,6 +829,32 @@
 
     {# Center Column: Main Image Display #}
     <div class="col image-main-display">
+      {% if legacy_backfill_mode|default(false) %}
+      {# Legacy-backfill guided queue banner. Renders only when the user
+         arrived via /v2/review/legacy-backfill?...&legacy_backfill=1 (the
+         entry route 302s here with the flag attached). The {% else %}
+         branch covers the stale-bookmark edge case where the cursor img_id
+         is no longer in the queue (already backfilled). #}
+      <div class="alert alert-info py-2 px-3 mb-2 small" role="alert">
+        {% if legacy_backfill_progress.position %}
+          <strong>Legacy backfill: image {{ legacy_backfill_progress.position }}
+          of {{ legacy_backfill_progress.total_remaining }}.</strong>
+          Previously marked relevant
+          {% if legacy_backfill_progress.legacy_decision_at %}
+            on {{ legacy_backfill_progress.legacy_decision_at.strftime('%Y-%m-%d') }}
+            {% if legacy_backfill_progress.legacy_decision_by %}
+              by {{ legacy_backfill_progress.legacy_decision_by }}
+            {% endif %}
+          {% endif %}
+          — please assign a metric.
+        {% else %}
+          <strong>This image has already been backfilled.</strong>
+          <a href="{{ url_for('review_unified.legacy_backfill_entry') }}">
+            Continue with the queue →
+          </a>
+        {% endif %}
+      </div>
+      {% endif %}
       {% if current_image %}
       <div class="card">
         <div class="card-body">
@@ -1259,6 +1285,11 @@ window.NEXT_FILING_URL = NEXT_FILING_URL;
 // Exposed for the images-tab IIFE so it can mirror the text-tab's
 // "hand off to the other tab before advancing" behavior.
 window.TEXT_PENDING = {{ pending_count|tojson }};
+// Legacy-backfill guided queue flag — when truthy, review_images_v2.js sets
+// view_filters.mode='legacy_backfill' on submit so _get_next_image_candidate_info
+// returns a /legacy-backfill/next URL, and short-circuits the empty-queue
+// cross-tab cascade to flow through the same route (which 302s to stats).
+window.LEGACY_BACKFILL_MODE = {{ (legacy_backfill_mode|default(false))|tojson }};
 let reviewStartTime = Date.now();
 
 function filterParams() {

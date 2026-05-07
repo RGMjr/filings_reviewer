@@ -420,6 +420,90 @@ def activity_detail(activity_type: str):
     )
 
 
+# =============================================================================
+# Legacy-backfill guided queue (cross-filing)
+# =============================================================================
+#
+# A small dedicated flow that walks the reviewer through every legacy
+# `v2_image_review_decisions.decision='relevant'` row that does NOT yet have a
+# matching `v2_image_metric_confirmations` row — i.e. images marked relevant
+# under the pre-per-metric flow that never got a specific metric assigned.
+# Click target for the warning banner on `/v2/review/stats` (Images tab).
+#
+# Both routes are stateless 302 redirectors:
+# - `/v2/review/legacy-backfill` resolves the first pending image and 302s
+#   into the standard per-filing review page with `?legacy_backfill=1`.
+# - `/v2/review/legacy-backfill/next?after=<img_id>` resolves the next pending
+#   image after the cursor (regardless of whether the cursor itself is still
+#   in the queue) and 302s the same way.
+#
+# Empty queue: both flash "All caught up — legacy backfill complete." and
+# redirect to `/v2/review/stats` (#images-stats anchor). The banner there
+# zeroes out automatically (`legacy_accepts_pending == 0`).
+
+
+def _redirect_to_legacy_backfill_image(row: dict) -> Response:
+    """302 to the per-filing review page focused on the given image."""
+    qs = urlencode(
+        {
+            "img_id": str(row["img_id"]),
+            "tab": "images",
+            "legacy_backfill": "1",
+        }
+    )
+    return redirect(f"/v2/review/{row['filing_id']}?{qs}")
+
+
+def _legacy_backfill_done_response() -> Response:
+    """Flash and 302 to /v2/review/stats when the queue is empty."""
+    flash("All caught up — legacy backfill complete.", "success")
+    return redirect(url_for("review_unified.stats") + "#images-stats")
+
+
+@review_unified_bp.route("/legacy-backfill")
+@require(PROTECTED_READ)
+def legacy_backfill_entry():
+    """Resolve the first pending legacy-backfill image and 302 to its review page.
+
+    On empty queue: flash + 302 to /v2/review/stats. The banner there is
+    `legacy_accepts_pending`-gated so it disappears once the queue is drained.
+    """
+    db = get_db()
+    first = db.get_legacy_backfill_first()
+    if first is None:
+        return _legacy_backfill_done_response()
+    return _redirect_to_legacy_backfill_image(first)
+
+
+@review_unified_bp.route("/legacy-backfill/next")
+@require(PROTECTED_READ)
+def legacy_backfill_next():
+    """Given ``?after=<img_id>`` resolve the next pending image and 302 to it.
+
+    Robust to the cursor having dropped out of the queue (which is the normal
+    case after a successful per-metric submit on the just-reviewed image) —
+    `db.get_legacy_backfill_after` looks the cursor's filing_id up via
+    `v2_image_assets` and walks forward by `(filing_id, img_id)` tuple order.
+
+    On empty queue or cursor past the last row: flash + 302 to
+    /v2/review/stats.
+    """
+    after = request.args.get("after", type=str)
+    if not after:
+        # Treat a missing cursor like an entry click — return the first row.
+        db = get_db()
+        first = db.get_legacy_backfill_first()
+        if first is None:
+            return _legacy_backfill_done_response()
+        return _redirect_to_legacy_backfill_image(first)
+
+    db = get_db()
+    nxt = db.get_legacy_backfill_after(after)
+    if nxt is None:
+        return _legacy_backfill_done_response()
+    return _redirect_to_legacy_backfill_image(nxt)
+
+
 @review_unified_bp.route("/<int:filing_id>")
 @require(PROTECTED_READ)
 def review_filing(filing_id: int):
@@ -614,6 +698,31 @@ def review_filing(filing_id: int):
         image_status = request.args.get("image_status", "all")
         db_image_status = image_status if image_status in IMAGE_REVIEW_FILTER_STATUSES else None
 
+        # Legacy-backfill mode (cross-filing guided queue). When the user
+        # arrives via /v2/review/legacy-backfill, the entry route 302s here
+        # with ?legacy_backfill=1 and ?img_id=<X>. The template renders a slim
+        # banner above the image card; the JS sets view_filters.mode=
+        # 'legacy_backfill' on submit so _get_next_image_candidate_info
+        # returns a /legacy-backfill/next URL for cross-filing advance.
+        legacy_backfill_mode = request.args.get("legacy_backfill") == "1"
+        legacy_backfill_progress: dict[str, Any] = {}
+        if legacy_backfill_mode:
+            queue = db.get_legacy_backfill_queue()
+            requested_img = request.args.get("img_id", type=str)
+            position = None
+            current_row = None
+            for idx, row in enumerate(queue, start=1):
+                if requested_img and str(row["img_id"]) == requested_img:
+                    position = idx
+                    current_row = row
+                    break
+            legacy_backfill_progress = {
+                "position": position,
+                "total_remaining": len(queue),
+                "legacy_decision_at": current_row["legacy_decision_at"] if current_row else None,
+                "legacy_decision_by": current_row["legacy_decision_by"] if current_row else None,
+            }
+
         image_sort = request.args.get("image_sort", IMAGE_SORT_DEFAULT)
         if image_sort not in IMAGE_SORT_OPTIONS:
             image_sort = IMAGE_SORT_DEFAULT
@@ -762,6 +871,9 @@ def review_filing(filing_id: int):
             review_statuses_images=IMAGE_REVIEW_FILTER_STATUSES,
             sec_url=sec_url,
             next_filing_url=next_filing_url,
+            # Legacy-backfill guided queue (cross-filing)
+            legacy_backfill_mode=legacy_backfill_mode,
+            legacy_backfill_progress=legacy_backfill_progress,
         )
 
     except Exception as e:

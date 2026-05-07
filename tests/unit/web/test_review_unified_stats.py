@@ -1057,12 +1057,85 @@ def test_images_tab_renders_legacy_accepts_banner(client, mock_db):
     assert "137" in body
     assert "awaiting per-metric backfill" in body
     assert "alert-warning" in body
+    # Banner is now a clickable link to the legacy-backfill guided queue.
+    assert "/v2/review/legacy-backfill" in body
+    assert "Click here to start backfilling" in body
 
 
-def test_legacy_accepts_banner_count_is_linked_to_filtered_filings(client, mock_db):
+# ---------------------------------------------------------------------------
+# Legacy-backfill guided queue: entry + next + done routes
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_backfill_entry_redirects_to_first_image(client, mock_db):
+    """Entry route 302s to /v2/review/<filing_id>?img_id=<X>&tab=images&legacy_backfill=1."""
+    mock_db.get_legacy_backfill_first.return_value = {
+        "img_id": "img-abc",
+        "filing_id": 42,
+        "legacy_decision_at": None,
+        "legacy_decision_by": None,
+    }
+    resp = client.get("/v2/review/legacy-backfill", follow_redirects=False)
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert "/v2/review/42" in location
+    assert "img_id=img-abc" in location
+    assert "legacy_backfill=1" in location
+    assert "tab=images" in location
+
+
+def test_legacy_backfill_entry_redirects_to_stats_when_empty(client, mock_db):
+    """Empty queue: flash + 302 to /v2/review/stats#images-stats."""
+    mock_db.get_legacy_backfill_first.return_value = None
+    resp = client.get("/v2/review/legacy-backfill", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "/v2/review/stats" in resp.headers["Location"]
+    assert "images-stats" in resp.headers["Location"]
+
+
+def test_legacy_backfill_next_with_cursor_redirects_to_next_image(client, mock_db):
+    """?after=<img_id> calls db.get_legacy_backfill_after and 302s to its filing URL."""
+    mock_db.get_legacy_backfill_after.return_value = {
+        "img_id": "img-next",
+        "filing_id": 7,
+        "legacy_decision_at": None,
+        "legacy_decision_by": None,
+    }
+    resp = client.get("/v2/review/legacy-backfill/next?after=cursor-id", follow_redirects=False)
+    assert resp.status_code == 302
+    location = resp.headers["Location"]
+    assert "/v2/review/7" in location
+    assert "img_id=img-next" in location
+    assert "legacy_backfill=1" in location
+    mock_db.get_legacy_backfill_after.assert_called_once_with("cursor-id")
+
+
+def test_legacy_backfill_next_without_after_falls_back_to_first(client, mock_db):
+    """A bare /next request (no ?after=) is treated like the entry route — falls
+    back to first remaining queue row."""
+    mock_db.get_legacy_backfill_first.return_value = {
+        "img_id": "img-first",
+        "filing_id": 1,
+        "legacy_decision_at": None,
+        "legacy_decision_by": None,
+    }
+    resp = client.get("/v2/review/legacy-backfill/next", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "img_id=img-first" in resp.headers["Location"]
+    mock_db.get_legacy_backfill_after.assert_not_called()
+
+
+def test_legacy_backfill_next_empty_redirects_to_stats(client, mock_db):
+    mock_db.get_legacy_backfill_after.return_value = None
+    resp = client.get("/v2/review/legacy-backfill/next?after=cursor", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "/v2/review/stats" in resp.headers["Location"]
+
+
+def test_legacy_accepts_banner_count_is_linked_to_backfill_queue(client, mock_db):
     """The legacy-accepts-pending count in the banner must be wrapped in an
-    <a href> pointing to /v2/review/filings?legacy_backfill=1 so reviewers
-    can navigate directly from the count to the actionable queue."""
+    <a href> pointing to /v2/review/legacy-backfill so reviewers can navigate
+    directly from the count to the guided backfill queue."""
     _stub_analytics_helpers(mock_db)
     mock_db.get_v2_review_stats.return_value = _empty_text_data()
     mock_db.get_image_decision_overall_v2.return_value = {
@@ -1097,12 +1170,13 @@ def test_legacy_accepts_banner_count_is_linked_to_filtered_filings(client, mock_
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
 
-    assert "legacy_backfill=1" in body, (
-        "Banner count must link to /v2/review/filings?legacy_backfill=1"
+    # Banner links to the dedicated guided queue route.
+    assert "/v2/review/legacy-backfill" in body, (
+        "Banner count must link to /v2/review/legacy-backfill"
     )
     # The count itself must appear inside an <a> tag (not bare text).
     import re
 
-    assert re.search(r"<a[^>]+legacy_backfill=1[^>]*>[^<]*<strong>48</strong>", body), (
-        "48 must be wrapped in <strong> inside the legacy_backfill=1 anchor"
+    assert re.search(r"<a[^>]+legacy-backfill[^>]*>[^<]*<strong>48</strong>", body), (
+        "48 must be wrapped in <strong> inside the legacy-backfill anchor"
     )
