@@ -107,7 +107,7 @@ def _insert_classification(
     confidence: float = 0.9,
 ) -> None:
     """Insert a v2_image_classifications row."""
-    db.query(
+    db.execute(
         """
         INSERT INTO v2_image_classifications (
             img_id, predicted_metrics, confidence, provider, model,
@@ -143,7 +143,7 @@ def _insert_confirmation(
     reviewer_id: str = "test_reviewer",
 ) -> None:
     """Insert a v2_image_metric_confirmations row."""
-    db.query(
+    db.execute(
         """
         INSERT INTO v2_image_metric_confirmations (
             img_id, detected_metric_id, confirmed_metric_id,
