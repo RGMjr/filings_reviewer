@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-06
 updated: 2026-05-07
 gh_issue: 531
+pr_refs:
+  - 535
 note: add token fields to StageResult.metadata in LLMPresenceClassifierStage and wire to AggregateMetrics
 ---
 
