@@ -144,6 +144,10 @@ PATTERN_STATUSES = ("candidate", "approved", "rejected", "deprecated")
 # ImageReviewCandidate.review_status
 IMAGE_REVIEW_STATUSES = ("pending", "reviewed", "skipped", "auto_rejected")
 
+# Extended filter enum — includes virtual 'legacy_backfill' which does NOT map to
+# v2_image_assets.review_status; it uses EXISTS+NOT EXISTS logic in the DB layer.
+IMAGE_REVIEW_FILTER_STATUSES = IMAGE_REVIEW_STATUSES + ("legacy_backfill",)
+
 # ImageReviewCandidate.detection_tier
 IMAGE_DETECTION_TIERS = ("tier_1_cohort", "tier_2_large", "tier_3_all", "seed_list", "presentation")
 

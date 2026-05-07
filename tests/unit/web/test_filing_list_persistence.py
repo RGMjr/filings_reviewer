@@ -137,3 +137,44 @@ def test_persist_js_checks_get_not_has_for_doc_type(client, _stub_db):
         "persist-JS no longer uses the null-check pattern; the empty-sentinel "
         "invariant for document_type is at risk."
     )
+
+
+def test_legacy_backfill_param_passes_to_db_helpers(client, _stub_db):
+    """?legacy_backfill=1 must propagate legacy_backfill_only=True to both DB helpers."""
+    resp = client.get("/v2/review/filings?legacy_backfill=1")
+    assert resp.status_code == 200
+
+    _stub_db.get_unified_filings_for_review_count.assert_called_once()
+    count_kwargs = _stub_db.get_unified_filings_for_review_count.call_args[1]
+    assert count_kwargs.get("legacy_backfill_only") is True
+
+    _stub_db.get_unified_filings_for_review.assert_called_once()
+    list_kwargs = _stub_db.get_unified_filings_for_review.call_args[1]
+    assert list_kwargs.get("legacy_backfill_only") is True
+
+
+def test_no_legacy_backfill_param_passes_false_to_db_helpers(client, _stub_db):
+    """Without ?legacy_backfill=1, DB helpers receive legacy_backfill_only=False."""
+    resp = client.get("/v2/review/filings")
+    assert resp.status_code == 200
+
+    count_kwargs = _stub_db.get_unified_filings_for_review_count.call_args[1]
+    assert count_kwargs.get("legacy_backfill_only") is False
+
+    list_kwargs = _stub_db.get_unified_filings_for_review.call_args[1]
+    assert list_kwargs.get("legacy_backfill_only") is False
+
+
+def test_legacy_backfill_filter_chip_renders_when_active(client, _stub_db):
+    """Filter chip showing 'Filtering: legacy-backfill candidates' must appear
+    when ?legacy_backfill=1 is present."""
+    resp = client.get("/v2/review/filings?legacy_backfill=1")
+    html = resp.get_data(as_text=True)
+    assert "Filtering: legacy-backfill candidates" in html
+
+
+def test_legacy_backfill_filter_chip_absent_by_default(client, _stub_db):
+    """Filter chip must NOT appear on a normal (no legacy_backfill param) request."""
+    resp = client.get("/v2/review/filings")
+    html = resp.get_data(as_text=True)
+    assert "Filtering: legacy-backfill candidates" not in html

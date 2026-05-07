@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.infra.db import DatabaseAdapter
+from src.review.models import IMAGE_REVIEW_FILTER_STATUSES, IMAGE_REVIEW_STATUSES
 
 
 @pytest.fixture
@@ -185,3 +186,44 @@ class TestClassificationFallback:
         results = db.get_image_review_candidates_for_filing_v2(filing_id=1)
         assert results[0]["predicted_metrics"] == predicted
         assert results[0]["classification_id"] == 42
+
+
+class TestLegacyBackfillFilter:
+    def test_legacy_backfill_generates_exists_not_exists(self, db):
+        db.get_image_review_candidates_for_filing_v2(filing_id=1, status="legacy_backfill")
+        sql = db.query.call_args[0][0]
+        assert "NOT EXISTS" in sql
+        # The backfill EXISTS filter uses specific alias 'ird' and 'imc'.
+        assert "v2_image_review_decisions ird" in sql
+        assert "v2_image_metric_confirmations imc" in sql
+
+    def test_legacy_backfill_does_not_use_review_status_filter(self, db):
+        db.get_image_review_candidates_for_filing_v2(filing_id=1, status="legacy_backfill")
+        sql = db.query.call_args[0][0]
+        assert "review_status = %(status)s" not in sql
+
+    def test_normal_status_uses_review_status_column(self, db):
+        db.get_image_review_candidates_for_filing_v2(filing_id=1, status="pending")
+        sql = db.query.call_args[0][0]
+        assert "review_status = %(status)s" in sql
+        # The backfill EXISTS filter uses alias 'ird' — must be absent for normal statuses.
+        assert "v2_image_review_decisions ird" not in sql
+
+    def test_legacy_decision_field_in_shared_constant(self):
+        assert "legacy_decision" in DatabaseAdapter._V2_IMAGE_CANDIDATE_SELECT
+        assert "d.decision = 'relevant'" in DatabaseAdapter._V2_IMAGE_CANDIDATE_SELECT
+
+
+class TestImageReviewFilterStatuses:
+    def test_filter_statuses_is_superset_of_review_statuses(self):
+        for s in IMAGE_REVIEW_STATUSES:
+            assert s in IMAGE_REVIEW_FILTER_STATUSES
+
+    def test_legacy_backfill_in_filter_statuses(self):
+        assert "legacy_backfill" in IMAGE_REVIEW_FILTER_STATUSES
+
+    def test_legacy_backfill_not_in_review_statuses(self):
+        assert "legacy_backfill" not in IMAGE_REVIEW_STATUSES
+
+    def test_garbage_value_not_in_filter_statuses(self):
+        assert "garbage_value" not in IMAGE_REVIEW_FILTER_STATUSES
