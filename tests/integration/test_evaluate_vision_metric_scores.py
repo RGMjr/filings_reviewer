@@ -82,15 +82,20 @@ def _insert_image(db, filing_id: int, filename: str = "chart1.png") -> str:
         """
         INSERT INTO v2_image_assets (
             filing_id, filename, classification, width, height,
-            file_path
+            dom_locator, file_path
         )
         VALUES (
-            %(filing_id)s, %(filename)s, 'chart', 800, 600, %(file_path)s
+            %(filing_id)s, %(filename)s, 'chart', 800, 600, %(dom_locator)s, %(file_path)s
         )
         ON CONFLICT (filing_id, filename) DO UPDATE SET classification = EXCLUDED.classification
         RETURNING img_id::text
         """,
-        {"filing_id": filing_id, "filename": filename, "file_path": f"pipeline/test/{filename}"},
+        {
+            "filing_id": filing_id,
+            "filename": filename,
+            "dom_locator": f"body > img[src='{filename}']",
+            "file_path": f"pipeline/test/{filename}",
+        },
     )
     return rows[0]["img_id"]
 
