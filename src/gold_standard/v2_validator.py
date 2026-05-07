@@ -45,6 +45,7 @@ from src.gold_standard.baseline import (
 from src.gold_standard.baseline import (
     ComparisonResult as BaselineComparisonResult,
 )
+from src.llm.presence_classifier_client import estimate_cost_usd_from_counts
 from src.shared.keyword_config import get_metric_tiers
 
 logger = logging.getLogger(__name__)
@@ -294,6 +295,11 @@ class ValidationResult:
     # Populated from v2_result.stage_results; empty if the pipeline failed.
     stage_timings: dict[str, int] = field(default_factory=dict)
     total_pipeline_ms: int = 0
+
+    # Per-stage metadata dicts (stage name → StageResult.metadata).
+    # Populated alongside stage_timings; used to thread LLM token counts to
+    # compute_metrics without adding per-metric fields to ValidationResult.
+    stage_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # LLM classifier diagnostics (informational; populated when flag is on).
     # classifier_metadata_by_metric: metric_id → classifier_metadata dict from presences.
@@ -677,10 +683,11 @@ class V2GoldStandardValidator:
             all_v2_facts = v2_result.facts  # Includes low-confidence facts for FN tracing
             v2_context = v2_result.context  # type: ignore[assignment]
 
-            # Capture per-stage timings for Phase C observability.
+            # Capture per-stage timings and metadata for Phase C observability.
             result.stage_timings = {
                 sr.stage.value: sr.duration_ms for sr in v2_result.stage_results
             }
+            result.stage_metadata = {sr.stage.value: sr.metadata for sr in v2_result.stage_results}
             result.total_pipeline_ms = v2_result.total_duration_ms
 
             # Count chart facts and cross-source confirmation for Phase 3 gate.
@@ -1938,8 +1945,8 @@ class V2GoldStandardValidator:
         Run-level: total_input_tokens, total_output_tokens, cache_hit_rate, estimated_cost_usd.
 
         Skips the section when no classifier metadata was collected (flag off → no signals).
-        Run-level token columns always show 0 until a future PR threads token data from
-        PresenceClassifierClient through StageResult.metadata.
+        Run-level token columns are populated when ``enable_llm_presence_classifier``
+        is on; they show 0 when the flag is off or no API calls were made.
         """
         if not metrics.classifier_score_mean_by_metric:
             return
@@ -2130,6 +2137,23 @@ class V2GoldStandardValidator:
             if agreements
         }
 
+        # LLM token aggregation: sum token counts from stage metadata across all filings.
+        llm_stage_key = "llm_presence_classifier"
+        llm_total_input = sum(
+            r.stage_metadata.get(llm_stage_key, {}).get("total_input_tokens", 0) for r in results
+        )
+        llm_total_output = sum(
+            r.stage_metadata.get(llm_stage_key, {}).get("total_output_tokens", 0) for r in results
+        )
+        llm_total_cache_read = sum(
+            r.stage_metadata.get(llm_stage_key, {}).get("total_cache_read", 0) for r in results
+        )
+        llm_total_cache_create = sum(
+            r.stage_metadata.get(llm_stage_key, {}).get("total_cache_create", 0) for r in results
+        )
+        llm_cacheable = llm_total_cache_read + llm_total_cache_create + llm_total_input
+        llm_cache_hit_rate = llm_total_cache_read / llm_cacheable if llm_cacheable > 0 else 0.0
+
         return AggregateMetrics(
             precision=precision,
             recall=recall,
@@ -2156,6 +2180,15 @@ class V2GoldStandardValidator:
             classifier_score_mean_by_metric=classifier_score_mean_by_metric,
             classifier_score_p90_by_metric=classifier_score_p90_by_metric,
             classifier_agreement_by_metric=classifier_agreement_by_metric,
+            llm_total_input_tokens=llm_total_input,
+            llm_total_output_tokens=llm_total_output,
+            llm_cache_hit_rate=llm_cache_hit_rate,
+            llm_estimated_cost_usd=estimate_cost_usd_from_counts(
+                llm_total_input,
+                llm_total_output,
+                llm_total_cache_read,
+                llm_total_cache_create,
+            ),
         )
 
     def compute_metrics_at_threshold(
