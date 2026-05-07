@@ -3,16 +3,16 @@ autonomy: n/a
 discovered: '2026-04-22'
 estimated: —
 id: 81
-note: Pipeline merged in PR #110; remaining work is operator activation (smoke + prod enable + backfill)
+note: Closed as obsolete 2026-05-07. Pipeline (full-page OCR + image-level Tier-1 keyword pre-scan) shipped in PR #110, both flags default-off. The PayPal-pre-2024 8-K backfill no longer warrants pursuit; closing without operator activation. Re-open if a future need surfaces a real-world consumer for this corpus.
 pr_refs:
   - 110
 severity: medium
 slug: paypal-pre-2024-8-ks-extract-no-facts-body-is-page-image-sca
 source: legacy
-status: open
+status: archived
 title: PayPal Pre-2024 8-Ks Extract No Facts — Body Is Page-Image Scans
 touches: []
-updated: '2026-04-28'
+updated: '2026-05-07'
 ---
 
 ### Problem
