@@ -20,11 +20,12 @@ Paths
 
   Path A (``--path pipeline``)
       Runs the full V2 pipeline per filing with
-      ``enable_llm_presence_classifier=True`` and
-      ``retain_context=True``, then reads
-      ``PipelineResult.context.llm_presence_signals``. **Not implemented
-      in this PR** — opt-in opt-out follow-up. Selecting it returns exit
-      code 2.
+      ``enable_llm_presence_classifier=True`` and ``retain_context=True``,
+      then reads ``PipelineResult.context.llm_presence_signals`` for
+      classifier scores and ``PipelineResult.context.candidates`` for the
+      keyword baseline.  Requires both ``ANTHROPIC_API_KEY`` and
+      ``DATABASE_URL`` (gold filings need the DB for HTML path resolution).
+      ``--dry-run`` is not supported for Path A.
 
 Smoke-test exit codes
 ---------------------
@@ -614,6 +615,252 @@ def _load_paraphrase_segments(
 
 
 # ---------------------------------------------------------------------------
+# Path A helpers: HTML resolution, DB enrichment, pipeline evaluation
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _PathAFiling:
+    """Filing enriched with DB metadata for Path A (full V2 pipeline) evaluation."""
+
+    selection: FilingSelection
+    filing_id: int
+    html_storage_path: str | None
+    cik: str
+    accession_number: str
+
+
+def _enrich_filings_for_path_a(
+    filings: list[FilingSelection],
+    db_url: str,
+) -> list[_PathAFiling]:
+    """Query the DB to resolve html_storage_path, cik, and accession_number.
+
+    Gold filings (filing_id=None) are matched by html_url.  Reviewed filings
+    are matched by filing_id (already present on FilingSelection).
+
+    Raises RuntimeError if a gold filing's URL isn't found — it means the
+    gold corpus and the production DB have diverged.
+    """
+    import psycopg
+
+    gold = [f for f in filings if f.corpus == "gold"]
+    reviewed = [f for f in filings if f.corpus == "reviewed"]
+    result: list[_PathAFiling] = []
+
+    with psycopg.connect(db_url) as conn, conn.cursor() as cur:
+        if gold:
+            cur.execute(
+                "SELECT filing_id, html_url, html_storage_path, cik, accession_number"
+                " FROM filings WHERE html_url = ANY(%s)",
+                ([f.filing_url for f in gold],),
+            )
+            by_url: dict[str, Any] = {row[1]: row for row in cur.fetchall()}
+            for f in gold:
+                row = by_url.get(f.filing_url)
+                if row is None:
+                    raise RuntimeError(
+                        f"Gold filing not found in DB (html_url={f.filing_url!r}). "
+                        "Corpus and DB have diverged; cannot run --path pipeline."
+                    )
+                filing_id, _, html_storage_path, cik, accession_number = row
+                result.append(
+                    _PathAFiling(
+                        selection=f,
+                        filing_id=int(filing_id),
+                        html_storage_path=html_storage_path,
+                        cik=cik or "",
+                        accession_number=accession_number or "",
+                    )
+                )
+
+        if reviewed:
+            ids = [f.filing_id for f in reviewed if f.filing_id is not None]
+            if ids:
+                cur.execute(
+                    "SELECT filing_id, html_storage_path, cik, accession_number"
+                    " FROM filings WHERE filing_id = ANY(%s)",
+                    (ids,),
+                )
+                by_id: dict[int, Any] = {int(row[0]): row for row in cur.fetchall()}
+                for f in reviewed:
+                    if f.filing_id is None:
+                        continue
+                    row = by_id.get(f.filing_id)
+                    if row is None:
+                        continue
+                    _, html_storage_path, cik, accession_number = row
+                    result.append(
+                        _PathAFiling(
+                            selection=f,
+                            filing_id=f.filing_id,
+                            html_storage_path=html_storage_path,
+                            cik=cik or "",
+                            accession_number=accession_number or "",
+                        )
+                    )
+
+    return result
+
+
+def _resolve_filing_html(paf: _PathAFiling) -> tuple[Path, Path | None]:
+    """Resolve a filing's HTML to a local path, downloading from R2 if needed.
+
+    Mirrors batch_v2_extraction.py:204-249 exactly.
+
+    Returns (resolved_path, temp_path):
+    - temp_path is set when a NamedTemporaryFile was created; caller must
+      delete it after use.
+    """
+    import os
+    import tempfile
+
+    html_path = paf.html_storage_path
+    temp_path: Path | None = None
+
+    if html_path and html_path.startswith("filings/"):
+        try:
+            from src.infra.filing_storage import get_filing_storage
+
+            data = get_filing_storage().get_bytes(html_path)
+            tmp = tempfile.NamedTemporaryFile(mode="wb", suffix=".htm", delete=False)
+            tmp.write(data)
+            tmp.close()
+            resolved = Path(tmp.name)
+            temp_path = resolved
+            logger.info(
+                "Path A filing %d: R2 key %s (%d bytes) -> %s",
+                paf.filing_id,
+                html_path,
+                len(data),
+                resolved,
+            )
+            return resolved, temp_path
+        except Exception as r2_err:
+            logger.warning(
+                "Path A filing %d: R2 read failed for %s: %s; falling through to disk",
+                paf.filing_id,
+                html_path,
+                r2_err,
+            )
+            html_path = None
+
+    if html_path:
+        resolved = Path(html_path)
+    else:
+        company_slug = (paf.selection.company or paf.selection.issuer_key).replace(" ", "_")
+        resolved = REPO_ROOT / "data" / "gold_standard" / company_slug / "filing.html"
+        if os.environ.get("APP_ENV") == "production":
+            raise RuntimeError(
+                f"Filing {paf.filing_id}: no html_storage_path; "
+                "refusing gold-standard fallback in production"
+            )
+        logger.warning(
+            "Path A filing %d: no html_storage_path; falling back to %s",
+            paf.filing_id,
+            resolved,
+        )
+
+    if not resolved.exists():
+        raise RuntimeError(f"Filing {paf.filing_id}: HTML not found: {resolved}")
+
+    return resolved, temp_path
+
+
+def evaluate_filing_pipeline(
+    paf: _PathAFiling,
+    metric_ids: list[str],
+) -> tuple[dict[str, _AggregatedScore], dict[str, bool], list[dict[str, Any]]]:
+    """Run the full V2 pipeline on a filing and extract LLM presence signals.
+
+    Returns ``(per_metric_aggregate, kw_present, errors)``.
+
+    ``kw_present[metric_id]`` is True iff CandidateGenerationStage emitted at
+    least one candidate for that metric — the keyword baseline for criterion #3.
+    """
+    from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
+
+    errors: list[dict[str, Any]] = []
+    resolved_path, temp_path = _resolve_filing_html(paf)
+
+    try:
+        pipeline_config = PipelineConfig(
+            enable_image_extraction=False,
+            enable_chart_extraction=False,
+            enable_llm_presence_classifier=True,
+            retain_context=True,
+        )
+        pipeline = V2Pipeline(config=pipeline_config)
+        result = pipeline.process(
+            html_path=resolved_path,
+            filing_id=paf.filing_id,
+            cik=paf.cik,
+            accession_number=paf.accession_number,
+        )
+    except Exception as exc:
+        errors.append(
+            {
+                "filing_url": paf.selection.filing_url,
+                "metric_id": None,
+                "exception": f"{type(exc).__name__}: {exc}",
+                "stage": "pipeline",
+            }
+        )
+        return {}, {}, errors
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+    if result.context is None:
+        errors.append(
+            {
+                "filing_url": paf.selection.filing_url,
+                "metric_id": None,
+                "exception": ("PipelineResult.context is None despite retain_context=True"),
+                "stage": "pipeline",
+            }
+        )
+        return {}, {}, errors
+
+    # Max-score aggregation per metric across all LLM signals.
+    aggregates: dict[str, _AggregatedScore] = {}
+    for sig in result.context.llm_presence_signals:
+        existing = aggregates.get(sig.metric_id)
+        if existing is None or sig.score > existing.score:
+            aggregates[sig.metric_id] = _AggregatedScore(
+                score=sig.score,
+                present=sig.present,
+                model=sig.model,
+                sonnet_fallback=sig.sonnet_fallback,
+                prompt_version=sig.prompt_version,
+                section_type=sig.section_type,
+            )
+
+    # Backfill metrics not scored (no matching segments / no signals).
+    for metric in metric_ids:
+        aggregates.setdefault(
+            metric,
+            _AggregatedScore(
+                score=0.0,
+                present=False,
+                model="(none)",
+                sonnet_fallback=False,
+                prompt_version="(none)",
+                section_type=None,
+            ),
+        )
+
+    # Keyword baseline: True iff CandidateGenerationStage produced at least
+    # one candidate for this metric.
+    kw_present = {m: any(c.metric_id == m for c in result.context.candidates) for m in metric_ids}
+
+    return aggregates, kw_present, errors
+
+
+# ---------------------------------------------------------------------------
 # Classifier orchestration (Path B)
 # ---------------------------------------------------------------------------
 
@@ -941,14 +1188,27 @@ def run_eval(
     run_started_at = datetime.now(UTC).isoformat()
 
     if path_mode == "pipeline":
-        return 2, {
-            "error": (
-                "--path pipeline (full V2 pipeline) is not implemented in this "
-                "PR. Use --path direct (default). Path A is documented as a "
-                "follow-up — see scripts/run_phase1_eval.py module docstring."
-            ),
-            "run_started_at": run_started_at,
-        }
+        if dry_run:
+            return 2, {
+                "error": (
+                    "--path pipeline does not support --dry-run. "
+                    "Use --path direct for dry-run corpus/label checks."
+                ),
+                "run_started_at": run_started_at,
+            }
+        if not os.environ.get("DATABASE_URL"):
+            return 2, {
+                "error": (
+                    "DATABASE_URL is required for --path pipeline "
+                    "(gold filings need DB for HTML path resolution)."
+                ),
+                "run_started_at": run_started_at,
+            }
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            return 2, {
+                "error": "ANTHROPIC_API_KEY is required for --path pipeline.",
+                "run_started_at": run_started_at,
+            }
 
     if gold_only and reviewed_only:
         return 2, {"error": "--gold-only and --reviewed-only are mutually exclusive"}
@@ -1070,67 +1330,97 @@ def run_eval(
     if reviewed_filing_ids and db_url:
         kw_baseline_reviewed = keyword_baseline_path_b(db_url, reviewed_filing_ids, metric_ids)
 
-    # Run classifier.
-    from src.llm.presence_classifier_client import PresenceClassifierClient
-
-    client = PresenceClassifierClient()
     rows: list[EvalRow] = []
     errors: list[dict[str, Any]] = []
 
-    # Gold filings: score gold-CSV quotes.
-    if gold_filings:
-        gold_quotes_map = _gold_quotes_per_filing(
-            GOLD_CSV, frozenset(f.filing_url for f in gold_filings)
-        )
-        for filing in gold_filings:
-            quotes = gold_quotes_map.get(filing.filing_url, [])
-            aggregates, fil_errors = evaluate_filing_direct(
-                filing,
-                metric_ids,
-                client,
-                gold_quotes=quotes,
-            )
+    if path_mode == "pipeline":
+        # Path A: run V2 pipeline per filing; keyword baseline from context.candidates.
+        try:
+            enriched = _enrich_filings_for_path_a(gold_filings + reviewed_filings, db_url)
+        except RuntimeError as enrich_err:
+            return 2, {"error": str(enrich_err), "run_started_at": run_started_at}
+
+        for paf in enriched:
+            aggregates_a, kw_present_a, fil_errors = evaluate_filing_pipeline(paf, metric_ids)
             errors.extend(fil_errors)
             for metric in metric_ids:
-                gt = gold_labels.get((filing.filing_url, metric))
+                if paf.selection.corpus == "gold":
+                    gt = gold_labels.get((paf.selection.filing_url, metric))
+                else:
+                    gt = reviewed_labels.get((paf.filing_id, metric))
                 rows.append(
                     _classify_eval_row(
                         run_id=run_id,
                         run_started_at=run_started_at,
-                        run_finished_at="",  # filled below
+                        run_finished_at="",
+                        filing=paf.selection,
+                        metric_id=metric,
+                        ground_truth=gt,
+                        aggregate=aggregates_a.get(metric),
+                        keyword_present=kw_present_a.get(metric),
+                    )
+                )
+
+    else:
+        # Path B (direct): call PresenceClassifierClient on gold quotes / v2_segments.
+        from src.llm.presence_classifier_client import PresenceClassifierClient
+
+        client = PresenceClassifierClient()
+
+        # Gold filings: score gold-CSV quotes.
+        if gold_filings:
+            gold_quotes_map = _gold_quotes_per_filing(
+                GOLD_CSV, frozenset(f.filing_url for f in gold_filings)
+            )
+            for filing in gold_filings:
+                quotes = gold_quotes_map.get(filing.filing_url, [])
+                aggregates, fil_errors = evaluate_filing_direct(
+                    filing,
+                    metric_ids,
+                    client,
+                    gold_quotes=quotes,
+                )
+                errors.extend(fil_errors)
+                for metric in metric_ids:
+                    gt = gold_labels.get((filing.filing_url, metric))
+                    rows.append(
+                        _classify_eval_row(
+                            run_id=run_id,
+                            run_started_at=run_started_at,
+                            run_finished_at="",  # filled below
+                            filing=filing,
+                            metric_id=metric,
+                            ground_truth=gt,
+                            aggregate=aggregates.get(metric),
+                            keyword_present=None,
+                        )
+                    )
+
+        # Reviewed filings: score paraphrase-eligible v2_segments.
+        for filing in reviewed_filings:
+            aggregates, fil_errors = evaluate_filing_direct(
+                filing,
+                metric_ids,
+                client,
+                db_url=db_url,
+                section_whitelist=section_whitelist,
+            )
+            errors.extend(fil_errors)
+            for metric in metric_ids:
+                gt = reviewed_labels.get((filing.filing_id, metric))
+                kw = kw_baseline_reviewed.get((filing.filing_id, metric))
+                rows.append(
+                    _classify_eval_row(
+                        run_id=run_id,
+                        run_started_at=run_started_at,
+                        run_finished_at="",
                         filing=filing,
                         metric_id=metric,
                         ground_truth=gt,
                         aggregate=aggregates.get(metric),
-                        keyword_present=None,
+                        keyword_present=kw,
                     )
                 )
-
-    # Reviewed filings: score paraphrase-eligible v2_segments.
-    for filing in reviewed_filings:
-        aggregates, fil_errors = evaluate_filing_direct(
-            filing,
-            metric_ids,
-            client,
-            db_url=db_url,
-            section_whitelist=section_whitelist,
-        )
-        errors.extend(fil_errors)
-        for metric in metric_ids:
-            gt = reviewed_labels.get((filing.filing_id, metric))
-            kw = kw_baseline_reviewed.get((filing.filing_id, metric))
-            rows.append(
-                _classify_eval_row(
-                    run_id=run_id,
-                    run_started_at=run_started_at,
-                    run_finished_at="",
-                    filing=filing,
-                    metric_id=metric,
-                    ground_truth=gt,
-                    aggregate=aggregates.get(metric),
-                    keyword_present=kw,
-                )
-            )
 
     run_finished_at = datetime.now(UTC).isoformat()
     for r in rows:
