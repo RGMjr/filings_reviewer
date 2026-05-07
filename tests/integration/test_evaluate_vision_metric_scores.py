@@ -82,10 +82,10 @@ def _insert_image(db, filing_id: int, filename: str = "chart1.png") -> str:
         """
         INSERT INTO v2_image_assets (
             filing_id, filename, classification, width, height,
-            page_number, file_path
+            file_path
         )
         VALUES (
-            %(filing_id)s, %(filename)s, 'chart', 800, 600, 1, %(file_path)s
+            %(filing_id)s, %(filename)s, 'chart', 800, 600, %(file_path)s
         )
         ON CONFLICT (filing_id, filename) DO UPDATE SET classification = EXCLUDED.classification
         RETURNING img_id::text
