@@ -3,7 +3,7 @@ id: 540
 source: gh
 slug: forward-looking-rejection-category
 title: Add forward_looking rejection category to Reject form
-status: open
+status: archived
 severity: medium
 autonomy: skip
 estimated: —
@@ -15,7 +15,7 @@ touches:
 discovered: 2026-05-07
 updated: 2026-05-07
 gh_issue: 540
-note: Add a dedicated rejection_category for analyst-target / guidance / projection numbers; needs enum + CHECK widen + CATEGORY_ACTIONS entry.
+note: Closed as not-planned 2026-05-07 (GH issue closed with reason `not planned`). Permanent rejection_category enum addition for a fuzzy benefit — no FP filter remediation, recommendation rule explicitly deferred, no data backfill, no quantified count of mis-bucketed rejections to act on. Reopen with (a) recent counts of `not_a_metric`/`other` rejections that should have been `forward_looking`, and (b) the FP filter or recommendation rule bundled in.
 ---
 
 ### Problem
