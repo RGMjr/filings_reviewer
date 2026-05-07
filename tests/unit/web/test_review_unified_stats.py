@@ -1164,7 +1164,8 @@ def test_legacy_accepts_banner_count_is_linked_to_backfill_queue(client, mock_db
         "reviewed_count": 48,
         "skipped_count": 0,
         "auto_rejected_count": 0,
-        "review_pct": 100.0,    }
+        "review_pct": 100.0,
+    }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
     mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
 
@@ -1182,6 +1183,8 @@ def test_legacy_accepts_banner_count_is_linked_to_backfill_queue(client, mock_db
     assert re.search(r"<a[^>]+legacy-backfill[^>]*>[^<]*<strong>48</strong>", body), (
         "48 must be wrapped in <strong> inside the legacy-backfill anchor"
     )
+
+
 def test_patterns_tab_image_add_panel_renders(client, mock_db):
     """Image Add Patterns panel renders when substrate rows produce findings.
 
@@ -1248,4 +1251,3 @@ def test_patterns_tab_image_add_panel_renders(client, mock_db):
     assert "quarterly growth" in body
     # Sample image link resolves to the review page.
     assert "/v2/review/101" in body
-
