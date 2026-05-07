@@ -213,3 +213,77 @@ The `GET /api/v2/models/training/<uuid>/status` poll endpoint surfaces `queued`,
     WHERE id = '<uuid>';
    ```
 5. **Click again.** With the row no longer at `queued`/`running`, the concurrency gate clears and the next click enqueues a fresh row.
+
+---
+
+## Phase 2 — Vision Per-Metric Score Calibration Eval
+
+`scripts/evaluate_vision_metric_scores.py` is a read-only offline eval that
+measures whether the confidence scores emitted by the Vision metric-classify
+step (`v2_image_classifications.predicted_metrics`) are calibrated enough to
+filter on.  **It does not modify any production data or route.**
+
+### When to run
+
+Run this script once a sufficient volume of per-metric reviewer decisions has
+accumulated in `v2_image_metric_confirmations` (a few hundred labeled images is
+a reasonable minimum).  Re-run after any substantial labeling session to check
+whether score calibration has shifted.
+
+### Usage
+
+```bash
+# Write the report to the default path.
+python3 scripts/evaluate_vision_metric_scores.py \
+    --database-url "$DATABASE_URL" \
+    --output data/vision_score_eval/report.txt
+
+# Preview to stdout without writing (useful during testing).
+python3 scripts/evaluate_vision_metric_scores.py --database-url "$DATABASE_URL" --dry-run
+
+# Limit rows fetched during development.
+python3 scripts/evaluate_vision_metric_scores.py --database-url "$DATABASE_URL" --limit 500
+```
+
+### What the report contains
+
+| Section | Description |
+|---------|-------------|
+| Header counts | Total labeled (img_id, metric_id) pairs, positives, negatives, positive rate |
+| AUC-ROC | Overall discriminative power across all metrics |
+| Average Precision | Area under the precision-recall curve |
+| Threshold sweep | Precision / recall / F1 at thresholds 0.1–0.9 |
+| Per-metric breakdown | AUC and AP per metric, shown only where ≥30 positive labels exist |
+
+### How to interpret the output
+
+**AUC-ROC:**
+
+| AUC | Interpretation |
+|-----|---------------|
+| < 0.70 | Scores not calibrated — do not filter |
+| 0.70–0.80 | Marginal — review per-metric breakdown before deciding |
+| ≥ 0.80 | Proceed to Phase 2b gating decision |
+
+**Phase 2b trigger condition (from the approved plan):**
+AUC ≥ 0.80 AND a threshold exists with ≥95% recall AND ≥40% precision.
+If the condition is met, open a Phase 2b PR to apply the filter at the
+`predicted_metrics` emission site in `src/web/routes/api_unified.py`.
+If not met, stop and revisit after Phase 3 (per-metric classifier) ships.
+
+**Threshold sweep:**
+Choose the threshold row where recall is closest to 0.95 (from above), then
+read the corresponding precision.  If precision ≥ 0.40, the filter is viable.
+
+**Per-metric breakdown:**
+Low AUC on a specific metric indicates the Vision model's score is noisy for
+that metric class.  Metrics below the breakdown threshold (< 30 positives)
+cannot be evaluated reliably.
+
+### Results
+
+*(Fill in after running the script against the production database.)*
+
+| Run date | N pairs | AUC-ROC | AP | Phase 2b trigger met? |
+|----------|---------|---------|-----|----------------------|
+| TBD | — | — | — | — |
