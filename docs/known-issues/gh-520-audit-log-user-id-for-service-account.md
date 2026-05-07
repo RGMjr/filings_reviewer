@@ -3,7 +3,7 @@ id: 520
 source: gh
 slug: audit-log-user-id-for-service-account
 title: "audit-log: add user_id column to v2_audit_log for service-account traceability"
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: S
@@ -13,9 +13,9 @@ touches:
   - src/infra/db.py
   - docs/operations/auth-stage-c-runbook.md
 discovered: 2026-05-05
-updated: 2026-05-05
+updated: 2026-05-07
 gh_issue: 520
-note: surfaced during gh-483 — service-account API-key requests have session_id=NULL and no other identifier; add user_id column to v2_audit_log so automation traffic is filterable directly
+note: v2_audit_log.user_id added (timestamp migration 202605071643_*); populated from flask.g.user.id in insert_audit_log_entry and the review_unified async audit path. Service-account sentinel seeded into auth_users so the FK can hold it. Canonical filter for automation traffic is `WHERE user_id = '00000000-0000-0000-0000-000000000000'`.
 ---
 
 ### Problem

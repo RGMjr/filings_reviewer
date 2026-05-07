@@ -662,6 +662,7 @@ class DatabaseAdapter:
         query_params: dict[str, Any] | None,
         response_status: int,
         response_time_ms: int | None,
+        user_id: str | None = None,
     ) -> int:
         """
         Insert an audit log entry for a review route request (writes v2_audit_log).
@@ -674,12 +675,14 @@ class DatabaseAdapter:
                 session_id, ip_address, user_agent,
                 route_name, http_method, url_path,
                 filing_id, query_params,
-                response_status, response_time_ms
+                response_status, response_time_ms,
+                user_id
             ) VALUES (
                 %(session_id)s, %(ip_address)s, %(user_agent)s,
                 %(route_name)s, %(http_method)s, %(url_path)s,
                 %(filing_id)s, %(query_params)s,
-                %(response_status)s, %(response_time_ms)s
+                %(response_status)s, %(response_time_ms)s,
+                %(user_id)s
             )
             RETURNING log_id
         """
@@ -695,6 +698,7 @@ class DatabaseAdapter:
             "query_params": json.dumps(query_params) if query_params else None,
             "response_status": response_status,
             "response_time_ms": response_time_ms,
+            "user_id": user_id,
         }
 
         result = self.query(sql, params)

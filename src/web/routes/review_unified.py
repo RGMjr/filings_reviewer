@@ -92,7 +92,8 @@ def _log_request_complete(response):
             response_time_ms = int((time.time() - g.request_start_time) * 1000)
 
         # Capture all request context into a plain dict BEFORE spawning thread.
-        # Flask's request/session proxies are not usable across threads.
+        # Flask's request/session/g proxies are not usable across threads.
+        user = getattr(g, "user", None)
         audit_kwargs = {
             "session_id": session.get("_id"),
             "ip_address": request.remote_addr,
@@ -104,6 +105,7 @@ def _log_request_complete(response):
             "query_params": dict(request.args) if request.args else None,
             "response_status": response.status_code,
             "response_time_ms": response_time_ms,
+            "user_id": user.id if user is not None else None,
         }
         # get_db() returns a per-request adapter tied to Flask g — not safe across threads.
         # Capture DATABASE_URL and pool ref so the thread creates its own adapter.
