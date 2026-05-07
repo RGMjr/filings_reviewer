@@ -253,7 +253,7 @@
         <option value="all" {% if image_filters.status == 'all' %}selected{% endif %}>All Status</option>
         {% for status in review_statuses_images %}
         <option value="{{ status }}" {% if image_filters.status == status %}selected{% endif %}>
-          {{ status|capitalize }}
+          {% if status == 'legacy_backfill' %}Legacy backfill{% else %}{{ status|capitalize }}{% endif %}
         </option>
         {% endfor %}
       </select>
@@ -869,6 +869,12 @@
               {% endif %}
             </div>
           </div>
+
+          {% if current_image.legacy_decision %}
+          <div class="alert alert-warning py-1 px-3 mb-0 small rounded-0" role="alert">
+            Previously marked relevant — please assign a metric.
+          </div>
+          {% endif %}
 
           <div class="main-image-container text-center mb-3">
             <button type="button"
