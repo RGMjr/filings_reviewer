@@ -3,16 +3,16 @@ autonomy: skip
 discovered: '2026-04-21'
 estimated: M
 id: 53
-note: Count cap superseded by dollar budget in PR #131; residual concern is presence-coverage truncation on non-Tier-1 charts post-pivot
+note: Original count cap superseded by dollar budget in PR #131 (2026-04-22). Residual presence-truncation concern declared obsolete (2026-05-07) — non-Tier-1 chart presence signals are not load-bearing post-#86 pivot, and Tier-1 charts bypass the budget entirely. Closing without measurement.
 pr_refs:
   - 131
 severity: low
 slug: chart-call-limit-10-truncates-ocr-on-high-chart-filings
 source: legacy
-status: open
+status: resolved
 title: Chart OCR dollar budget may truncate non-Tier-1 presence signals on high-chart filings
 touches: []
-updated: '2026-04-28'
+updated: '2026-05-07'
 ---
 
 ### Original problem (2026-04-21)
