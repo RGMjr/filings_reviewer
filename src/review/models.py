@@ -191,8 +191,14 @@ IMAGE_REJECTION_REASONS = (
     "other",
 )
 
-# Display labels for rejection reasons (for dropdowns)
+# Display labels for rejection reasons (for dropdowns and analytics tables).
+# Covers both the legacy V1 vocabulary (CHECK-constrained on
+# v2_image_review_decisions and v2_image_classifications) and the per-metric
+# values the reject form writes to v2_image_metric_confirmations (no CHECK).
+# Adding entries here is purely additive — IMAGE_REJECTION_REASONS governs the
+# CHECK-constrained tables and is unchanged.
 IMAGE_REJECTION_REASON_LABELS: dict[str, str] = {
+    # Legacy V1 vocabulary (do not remove)
     "decorative": "Decorative (logo, icon)",
     "not_a_chart": "Not a Chart",
     "wrong_subject": "Wrong Subject",
@@ -200,6 +206,12 @@ IMAGE_REJECTION_REASON_LABELS: dict[str, str] = {
     "unreadable": "Unreadable",
     "table_handled_elsewhere": "Table (handled by table pipeline)",
     "other": "Other",
+    # Per-metric reject form values (v2_image_metric_confirmations)
+    "not_present": "Not present",
+    "unrelated_chart": "Unrelated chart",
+    "similar_metric_misclassified": "Similar metric misclassified",
+    "too_low_confidence": "Too low confidence",
+    "no_relevant_metrics": "No relevant metrics (image-level reject)",
 }
 
 # Detection tier priority for sorting (lower = higher priority)

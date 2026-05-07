@@ -2889,6 +2889,64 @@ class DatabaseAdapter:
         rows = self.query(sql)
         return [dict(r) for r in rows]
 
+    def get_image_decisions_by_metric_v2(self) -> list[dict]:
+        """Per-metric reviewer-decision rollup over v2_image_metric_confirmations.
+
+        Returns one row per metric with counts split by decision type plus a
+        precision % over (accept + correct) / (accept + correct + reject).
+
+        The metric attribution uses COALESCE(confirmed_metric_id,
+        detected_metric_id) so each decision lands on the right metric:
+            accept  -> detected (confirmed is NULL on accept)
+            correct -> confirmed (the corrected-to metric)
+            add     -> confirmed (reviewer-supplied, detected is NULL)
+            reject  -> detected (the metric the keyword rule proposed)
+        Rejects with detected_metric_id IS NULL (the no_relevant_metrics
+        sentinel) have no metric to attribute and are excluded.
+
+        Sorted DESC by confirmed_images = accept + correct + add.
+        """
+        sql = """
+            SELECT
+                COALESCE(imc.confirmed_metric_id, imc.detected_metric_id) AS metric_id,
+                COUNT(*) FILTER (WHERE imc.decision = 'accept')  AS accepted_count,
+                COUNT(*) FILTER (WHERE imc.decision = 'correct') AS corrected_count,
+                COUNT(*) FILTER (WHERE imc.decision = 'add')     AS added_count,
+                COUNT(*) FILTER (
+                    WHERE imc.decision = 'reject'
+                      AND imc.detected_metric_id IS NOT NULL
+                )                                                 AS rejected_count,
+                COUNT(*) FILTER (
+                    WHERE imc.decision IN ('accept', 'correct', 'add')
+                )                                                 AS confirmed_images,
+                CASE
+                    WHEN COUNT(*) FILTER (WHERE imc.decision IN ('accept', 'correct'))
+                       + COUNT(*) FILTER (
+                            WHERE imc.decision = 'reject'
+                              AND imc.detected_metric_id IS NOT NULL
+                         ) = 0 THEN NULL
+                    ELSE ROUND(
+                        100.0
+                        * COUNT(*) FILTER (WHERE imc.decision IN ('accept', 'correct'))
+                        / (
+                            COUNT(*) FILTER (WHERE imc.decision IN ('accept', 'correct'))
+                          + COUNT(*) FILTER (
+                                WHERE imc.decision = 'reject'
+                                  AND imc.detected_metric_id IS NOT NULL
+                            )
+                        ),
+                        1
+                    )
+                END                                               AS precision_pct
+            FROM v2_image_metric_confirmations imc
+            WHERE COALESCE(imc.confirmed_metric_id, imc.detected_metric_id) IS NOT NULL
+              AND imc.decision IN ('accept', 'correct', 'add', 'reject')
+            GROUP BY metric_id
+            ORDER BY confirmed_images DESC, rejected_count DESC, metric_id ASC
+        """
+        rows = self.query(sql)
+        return [dict(r) for r in rows]
+
     def count_image_metric_rejections_for_filing(self, filing_id: int) -> int:
         """
         Count v2_image_metric_confirmations rows with decision='reject' that
