@@ -126,6 +126,10 @@ class LLMPresenceClassifierStage:
         errors: list[str] = []
         keyword_count = 0
         paraphrase_count = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cache_read = 0
+        total_cache_create = 0
 
         for seg_id, metric_ids in kw_seg_metrics.items():
             segment = segment_by_id.get(seg_id)
@@ -137,7 +141,10 @@ class LLMPresenceClassifierStage:
                 continue
             try:
                 sec_type = segment.section_type.value if segment.section_type else None
-                for sc in client.classify_segment(segment.text, scoreable, section_type=sec_type):
+                classifications, seg_tokens = client.classify_segment(
+                    segment.text, scoreable, section_type=sec_type
+                )
+                for sc in classifications:
                     signals.append(
                         LLMPresenceSignal(
                             segment_id=seg_id,
@@ -153,6 +160,10 @@ class LLMPresenceClassifierStage:
                         )
                     )
                 keyword_count += 1
+                total_input_tokens += seg_tokens.get("input_tokens", 0)
+                total_output_tokens += seg_tokens.get("output_tokens", 0)
+                total_cache_read += seg_tokens.get("cache_read", 0)
+                total_cache_create += seg_tokens.get("cache_create", 0)
             except Exception as exc:
                 logger.warning(
                     "LLMPresenceClassifierStage: classify failed segment=%s metrics=%s: %s",
@@ -179,9 +190,10 @@ class LLMPresenceClassifierStage:
                         continue
                     try:
                         sec_type = segment.section_type.value
-                        for sc in client.classify_segment(
+                        classifications, seg_tokens = client.classify_segment(
                             segment.text, enrolled_with_prompts, section_type=sec_type
-                        ):
+                        )
+                        for sc in classifications:
                             signals.append(
                                 LLMPresenceSignal(
                                     segment_id=segment.segment_id,
@@ -197,6 +209,10 @@ class LLMPresenceClassifierStage:
                                 )
                             )
                         paraphrase_count += 1
+                        total_input_tokens += seg_tokens.get("input_tokens", 0)
+                        total_output_tokens += seg_tokens.get("output_tokens", 0)
+                        total_cache_read += seg_tokens.get("cache_read", 0)
+                        total_cache_create += seg_tokens.get("cache_create", 0)
                     except Exception as exc:
                         logger.warning(
                             "LLMPresenceClassifierStage: paraphrase classify failed segment=%s: %s",
@@ -235,6 +251,10 @@ class LLMPresenceClassifierStage:
                 "paraphrase_segments": paraphrase_count,
                 "total_signals": len(signals),
                 "error_count": len(errors),
+                "total_input_tokens": total_input_tokens,
+                "total_output_tokens": total_output_tokens,
+                "total_cache_read": total_cache_read,
+                "total_cache_create": total_cache_create,
             },
         )
 

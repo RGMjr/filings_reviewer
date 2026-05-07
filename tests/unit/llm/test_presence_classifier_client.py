@@ -244,8 +244,63 @@ def _make_client(
 
 def test_classify_segment_empty_metric_ids_returns_empty(config_root: Path) -> None:
     client, fake = _make_client(config_root, responses=[])
-    assert client.classify_segment("some text", []) == []
+    classifications, tokens = client.classify_segment("some text", [])
+    assert classifications == []
+    assert tokens == {}
     assert fake.calls == []  # no API call
+
+
+def test_classify_segment_returns_token_counts_single_pass(config_root: Path) -> None:
+    """Haiku-only call returns token counts from the usage object."""
+    response = _fake_response(
+        [
+            {
+                "metric_id": "cm_net_revenue_retention",
+                "present": True,
+                "score": 0.9,
+                "rationale": "x",
+            }
+        ],
+        usage={"input_tokens": 200, "output_tokens": 30, "cache_read_input_tokens": 50},
+    )
+    client, _fake = _make_client(config_root, responses=[response])
+    _out, tokens = client.classify_segment("text", ["cm_net_revenue_retention"])
+    assert tokens["input_tokens"] == 200
+    assert tokens["output_tokens"] == 30
+    assert tokens["cache_read"] == 50
+    assert tokens["cache_create"] == 0
+
+
+def test_classify_segment_returns_token_counts_two_pass(config_root: Path) -> None:
+    """Haiku + Sonnet two-pass accumulates tokens from both calls."""
+    haiku = _fake_response(
+        [
+            {
+                "metric_id": "cm_net_revenue_retention",
+                "present": False,
+                "score": 0.55,  # inside [0.40, 0.70] band → Sonnet retry
+                "rationale": "borderline",
+            }
+        ],
+        usage={"input_tokens": 100, "output_tokens": 20},
+    )
+    sonnet = _fake_response(
+        [
+            {
+                "metric_id": "cm_net_revenue_retention",
+                "present": True,
+                "score": 0.80,
+                "rationale": "yes",
+            }
+        ],
+        usage={"input_tokens": 120, "output_tokens": 25, "cache_read_input_tokens": 80},
+    )
+    client, _fake = _make_client(config_root, responses=[haiku, sonnet])
+    _out, tokens = client.classify_segment("text", ["cm_net_revenue_retention"])
+    assert tokens["input_tokens"] == 100 + 120
+    assert tokens["output_tokens"] == 20 + 25
+    assert tokens["cache_read"] == 0 + 80
+    assert tokens["cache_create"] == 0
 
 
 def test_classify_segment_unknown_metric_raises(config_root: Path) -> None:
@@ -274,7 +329,7 @@ def test_classify_segment_happy_path_no_sonnet_fallback(config_root: Path) -> No
         ]
     )
     client, fake = _make_client(config_root, responses=[response])
-    out = client.classify_segment(
+    out, tokens = client.classify_segment(
         "Net Dollar Retention was 132%.",
         ["cm_net_revenue_retention", "cm_revenue_concentration"],
     )
@@ -319,7 +374,7 @@ def test_classify_segment_sonnet_fallback_replaces_borderline_only(config_root: 
         ]
     )
     client, fake = _make_client(config_root, responses=[haiku, sonnet])
-    out = client.classify_segment(
+    out, tokens = client.classify_segment(
         "ambiguous prose",
         ["cm_net_revenue_retention", "cm_revenue_concentration"],
     )
@@ -358,7 +413,7 @@ def test_classify_segment_present_uses_threshold(config_root: Path) -> None:
         ]
     )
     client, _fake = _make_client(config_root, responses=[haiku, sonnet])
-    out = client.classify_segment("text", ["cm_net_revenue_retention"])
+    out, _tokens = client.classify_segment("text", ["cm_net_revenue_retention"])
     assert out[0].score == 0.30
     assert out[0].present is False  # 0.30 < 0.62 threshold
 
@@ -376,7 +431,7 @@ def test_classify_segment_clamps_score_to_unit_interval(config_root: Path) -> No
         ]
     )
     client, _fake = _make_client(config_root, responses=[response])
-    out = client.classify_segment("text", ["cm_net_revenue_retention"])
+    out, _tokens = client.classify_segment("text", ["cm_net_revenue_retention"])
     assert out[0].score == 1.0
 
 
@@ -456,7 +511,7 @@ def test_classify_segment_returns_in_input_order(config_root: Path) -> None:
         ]
     )
     client, _fake = _make_client(config_root, responses=[response])
-    out = client.classify_segment(
+    out, _tokens = client.classify_segment(
         "text",
         ["cm_net_revenue_retention", "cm_revenue_concentration"],
     )

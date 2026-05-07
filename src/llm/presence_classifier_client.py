@@ -371,6 +371,28 @@ def _estimate_cost_usd(usage: Any, model: str) -> float:
     ) / 1_000_000
 
 
+def estimate_cost_usd_from_counts(
+    input_tokens: int,
+    output_tokens: int,
+    cache_read: int,
+    cache_create: int,
+    model: str = DEFAULT_HAIKU_MODEL,
+) -> float:
+    """Estimate cost from raw token counts rather than a Usage object.
+
+    Defaults to Haiku pricing — the dominant model in a corpus validation
+    run. For aggregate totals that mix Haiku + Sonnet calls the cost is an
+    underestimate; accurate for Haiku-only runs.
+    """
+    in_rate, out_rate = _PRICING_PER_MTOK.get(model, _DEFAULT_PRICING)
+    return (
+        input_tokens * in_rate
+        + cache_read * in_rate * _CACHE_READ_MULTIPLIER
+        + cache_create * in_rate * _CACHE_WRITE_MULTIPLIER
+        + output_tokens * out_rate
+    ) / 1_000_000
+
+
 def _extract_json_text(response: Any) -> str:
     """Pull the JSON-bearing text block out of an Anthropic Message response."""
     content = getattr(response, "content", None) or []
@@ -437,18 +459,20 @@ class PresenceClassifierClient:
         segment_text: str,
         metric_ids: list[str],
         section_type: str | None = None,  # noqa: ARG002 — caller-side filter
-    ) -> list[SegmentClassification]:
+    ) -> tuple[list[SegmentClassification], dict[str, int]]:
         """Score a segment against multiple metrics in a single batched call.
 
-        Returns one ``SegmentClassification`` per requested metric_id, in
-        the input order. Raises ``ValueError`` if any requested metric_id
-        has no prompt YAML loaded, or if the API response is missing a
-        metric we asked about. Raises whatever the Anthropic SDK raises
+        Returns ``(classifications, token_counts)`` where ``classifications``
+        has one ``SegmentClassification`` per requested metric_id (in input
+        order) and ``token_counts`` is the sum of tokens across the Haiku call
+        and any Sonnet fallback call.  Raises ``ValueError`` if any requested
+        metric_id has no prompt YAML loaded, or if the API response is missing
+        a metric we asked about.  Raises whatever the Anthropic SDK raises
         (rate limit, server errors) — callers wrap the call in their own
         retry policy.
         """
         if not metric_ids:
-            return []
+            return [], {}
         missing = [m for m in metric_ids if m not in self.config.prompts]
         if missing:
             raise ValueError(
@@ -457,7 +481,7 @@ class PresenceClassifierClient:
                 f"and re-load the config."
             )
 
-        haiku_scores = self._call_model(
+        haiku_scores, haiku_tokens = self._call_model(
             model=self.config.haiku_model,
             metric_ids=metric_ids,
             segment_text=segment_text,
@@ -474,8 +498,14 @@ class PresenceClassifierClient:
                 borderline.append(mid)
 
         sonnet_scores: dict[str, dict[str, Any]] = {}
+        sonnet_tokens: dict[str, int] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read": 0,
+            "cache_create": 0,
+        }
         if borderline:
-            sonnet_scores = self._call_model(
+            sonnet_scores, sonnet_tokens = self._call_model(
                 model=self.config.sonnet_model,
                 metric_ids=borderline,
                 segment_text=segment_text,
@@ -504,7 +534,8 @@ class PresenceClassifierClient:
                     prompt_version=self.config.prompts[mid].prompt_version,
                 )
             )
-        return out
+        total_tokens = {k: haiku_tokens[k] + sonnet_tokens[k] for k in haiku_tokens}
+        return out, total_tokens
 
     # ----- internals -----
 
@@ -532,8 +563,8 @@ class PresenceClassifierClient:
         model: str,
         metric_ids: list[str],
         segment_text: str,
-    ) -> dict[str, dict[str, Any]]:
-        """Run one Anthropic call and return {metric_id: response_entry}.
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
+        """Run one Anthropic call and return ({metric_id: response_entry}, token_counts).
 
         Validates that every requested metric appears in the response and
         logs token usage + cost + cache hit rate.
@@ -563,12 +594,24 @@ class PresenceClassifierClient:
         )
 
         # Telemetry — log even if parsing fails so we still see the cost.
+        token_counts: dict[str, int] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read": 0,
+            "cache_create": 0,
+        }
         usage = getattr(response, "usage", None)
         if usage is not None:
             input_tokens = getattr(usage, "input_tokens", 0) or 0
             output_tokens = getattr(usage, "output_tokens", 0) or 0
             cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
             cache_create = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            token_counts = {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read": cache_read,
+                "cache_create": cache_create,
+            }
             cacheable = cache_read + cache_create + input_tokens
             hit_rate = (cache_read / cacheable) if cacheable > 0 else 0.0
             logger.info(
@@ -605,4 +648,4 @@ class PresenceClassifierClient:
                 f"Classifier response missing metrics={missing_in_response} "
                 f"(model={model}); got={list(by_metric)}"
             )
-        return by_metric
+        return by_metric, token_counts
