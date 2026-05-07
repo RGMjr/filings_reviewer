@@ -115,6 +115,9 @@ def _stub_analytics_helpers(mock_db) -> None:
     # so recs render with their action buttons; tests that exercise the
     # decided-state path stub a non-empty list explicitly.
     mock_db.get_recommendation_decisions.return_value = []
+    # Image Add Patterns substrate. Default empty so the panel is hidden;
+    # tests that exercise the populated panel override explicitly.
+    mock_db.get_image_add_substrate.return_value = []
 
 
 def test_stats_renders_empty(client, mock_db):
@@ -1180,3 +1183,71 @@ def test_legacy_accepts_banner_count_is_linked_to_backfill_queue(client, mock_db
     assert re.search(r"<a[^>]+legacy-backfill[^>]*>[^<]*<strong>48</strong>", body), (
         "48 must be wrapped in <strong> inside the legacy-backfill anchor"
     )
+
+
+def test_patterns_tab_image_add_panel_renders(client, mock_db):
+    """Image Add Patterns panel renders when substrate rows produce findings.
+
+    The panel is gated on non-empty image_add_findings; this test verifies
+    the full wire-up: substrate → compute_image_add_findings → template.
+    """
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 0,
+        "relevant_count": 0,
+        "not_relevant_count": 0,
+        "relevant_pct": 0.0,
+        "not_relevant_pct": 0.0,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 0,
+        "pending_count": 0,
+        "reviewed_count": 0,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 0.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    # Three Add rows for the same metric. Use text with tokens not suppressed
+    # by cm_purchase_transactions_overall's own keyword config. "volume" IS
+    # suppressed (pattern \border\s+volume\b → token "volume" extracted by
+    # _TOKEN_RE), so "quarterly growth" is the first surfaced bigram.
+    img_a = "aaaaaaaa-0000-0000-0000-000000000001"
+    img_b = "bbbbbbbb-0000-0000-0000-000000000002"
+    img_c = "cccccccc-0000-0000-0000-000000000003"
+    mock_db.get_image_add_substrate.return_value = [
+        {
+            "confirmed_metric_id": "cm_purchase_transactions_overall",
+            "img_id": img_a,
+            "filing_id": 101,
+            "nearby_text": "volume quarterly growth trend analysis chart",
+        },
+        {
+            "confirmed_metric_id": "cm_purchase_transactions_overall",
+            "img_id": img_b,
+            "filing_id": 102,
+            "nearby_text": "volume quarterly growth trend analysis chart",
+        },
+        {
+            "confirmed_metric_id": "cm_purchase_transactions_overall",
+            "img_id": img_c,
+            "filing_id": 103,
+            "nearby_text": "volume quarterly growth trend analysis chart",
+        },
+    ]
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # Panel heading renders.
+    assert "Image Add Patterns" in body
+    # Metric id renders.
+    assert "cm_purchase_transactions_overall" in body
+    # A repeated phrase surfaced ("quarterly growth" appears 3/3).
+    assert "quarterly growth" in body
+    # Sample image link resolves to the review page.
+    assert "/v2/review/101" in body

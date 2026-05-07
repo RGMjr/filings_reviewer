@@ -298,12 +298,16 @@ def stats():
         text_metric_summary = []
         text_phrase_findings = []
 
+    from src.web.image_pattern_recommendations import compute_image_add_findings
     from src.web.text_decision_category_actions import compute_category_rollup
     from src.web.text_pattern_recommendations import (
         compute_cross_metric_findings,
         compute_recommendations,
         interpret_finding_row,
     )
+
+    image_add_substrate = db.get_image_add_substrate()
+    image_add_findings = compute_image_add_findings(image_add_substrate)
 
     text_recommendation_decisions = db.get_recommendation_decisions(
         [s["metric_id"] for s in text_metric_summary] or None
@@ -381,6 +385,7 @@ def stats():
         cross_metric_findings=cross_metric_findings,
         covered_phrases=covered_phrases,
         interpretations=interpretations,
+        image_add_findings=image_add_findings,
     )
 
 

@@ -2982,6 +2982,30 @@ class DatabaseAdapter:
         rows = self.query(sql, {"limit": limit})
         return [dict(r) for r in rows]
 
+    def get_image_add_substrate(self) -> list[dict]:
+        """Per-Add row substrate for image-pattern mining.
+
+        Returns one row per decision='add' confirmation with nearby_text
+        populated (length >= 20 chars). Ordered by metric then created_at DESC
+        for stable sample-image selection. Used by
+        `src/web/image_pattern_recommendations.compute_image_add_findings`.
+        """
+        sql = """
+            SELECT
+                imc.confirmed_metric_id,
+                imc.img_id,
+                ia.filing_id,
+                ia.nearby_text
+              FROM v2_image_metric_confirmations imc
+              JOIN v2_image_assets ia ON ia.img_id = imc.img_id
+             WHERE imc.decision = 'add'
+               AND ia.nearby_text IS NOT NULL
+               AND length(ia.nearby_text) >= 20
+             ORDER BY imc.confirmed_metric_id, imc.created_at DESC
+        """
+        rows = self.query(sql)
+        return [dict(r) for r in rows]
+
     def get_recent_image_corrections(self, limit: int = 10) -> list[dict]:
         """Most recent image-metric corrections (decision='correct').
 
