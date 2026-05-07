@@ -3,18 +3,19 @@ id: 481
 source: gh
 slug: route-enforcement-integration-test
 title: "auth: add tests/integration/auth/test_route_enforcement.py (deferred from PR-C1)"
-status: open
+status: resolved
 severity: low
 autonomy: skip
 estimated: M
 touches:
   - tests/integration/auth/test_route_enforcement.py
 discovered: 2026-05-04
-updated: 2026-05-04
+updated: 2026-05-07
 gh_issue: 481
 pr_refs:
   - 479
-note: per-route-module integration suite for the flag-on enforcement contract; unit tests cover the decorator in isolation but not the wiring on every route
+  - 519
+note: Integration suite shipped in PR #519 (`315e68a8`, "test(auth): integration suite for @require flag-on enforcement (gh-481)"); `tests/integration/auth/test_route_enforcement.py` exists on main. Fragment was stale — pr_refs never updated past the deferral PR.
 ---
 
 ### Problem
