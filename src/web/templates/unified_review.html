@@ -513,20 +513,19 @@
           {# Reject form (hidden by default) #}
           <div id="reject-form" style="display: none;" class="border rounded p-3 mb-2">
             <div class="mb-2">
-              <label class="form-label mb-1">Category</label>
-              <select id="rejection-category" class="form-select form-select-sm">
+              <label class="form-label mb-1" for="rejection-category">Category</label>
+              <select id="rejection-category" class="form-select form-select-sm" onchange="updateRejectionCategoryHelp()">
                 <option value="">Select...</option>
-                <option value="wrong_metric">Wrong metric</option>
-                <option value="not_a_metric">Not a metric</option>
-                <option value="wrong_value">Wrong value</option>
-                <option value="wrong_period">Wrong period</option>
-                <option value="part_of_date">Part of a date</option>
-                <option value="duplicate">Duplicate</option>
-                <option value="other">Other</option>
+                {% for key, meta in rejection_categories.items() %}
+                <option value="{{ key }}"
+                        data-description="{{ meta.description }}"
+                        data-example="{{ meta.example }}">{{ meta.label }}</option>
+                {% endfor %}
               </select>
+              <div id="rejection-category-help" class="form-text small text-muted mt-1" aria-live="polite"></div>
             </div>
             <div class="mb-2">
-              <label class="form-label mb-1">Reason (optional)</label>
+              <label class="form-label mb-1" for="rejection-reason">Reason (optional)</label>
               <input type="text" id="rejection-reason" class="form-control form-control-sm" maxlength="500">
             </div>
             <button class="btn btn-sm btn-danger" onclick="submitDecision('reject')">Confirm Reject</button>
@@ -1375,9 +1374,34 @@ function showRejectForm() {
   document.getElementById('reject-form').style.display = 'block';
   document.getElementById('correct-form').style.display = 'none';
   document.getElementById('rejection-category').focus();
+  updateRejectionCategoryHelp();
 }
 function hideRejectForm() {
   document.getElementById('reject-form').style.display = 'none';
+}
+function updateRejectionCategoryHelp() {
+  const sel = document.getElementById('rejection-category');
+  const help = document.getElementById('rejection-category-help');
+  if (!sel || !help) return;
+  const opt = sel.selectedOptions[0];
+  const desc = opt && opt.dataset ? (opt.dataset.description || '') : '';
+  const ex = opt && opt.dataset ? (opt.dataset.example || '') : '';
+  if (!desc && !ex) {
+    help.textContent = '';
+    return;
+  }
+  help.innerHTML = '';
+  if (desc) {
+    const d = document.createElement('div');
+    d.textContent = desc;
+    help.appendChild(d);
+  }
+  if (ex) {
+    const e = document.createElement('div');
+    e.className = 'fst-italic';
+    e.textContent = 'Example: ' + ex;
+    help.appendChild(e);
+  }
 }
 function showCorrectForm() {
   document.getElementById('correct-form').style.display = 'block';

@@ -42,6 +42,7 @@ from src.review.models import (
 from src.web.app import get_db
 from src.web.middleware import require_api_key
 from src.web.routes._metrics import get_active_metrics
+from src.web.text_decision_category_actions import CATEGORY_ACTIONS
 from src.web.url_builders import build_sec_directory_url, resolve_sec_filing_url
 
 review_unified_bp = Blueprint("review_unified", __name__, url_prefix="/v2/review")
@@ -733,6 +734,7 @@ def review_filing(filing_id: int):
             rejected_count=rejected_count,
             review_statuses=V2_REVIEW_STATUSES,
             sort_options=V2_SORT_OPTIONS,
+            rejection_categories=CATEGORY_ACTIONS,
             page=page,
             per_page=per_page,
             total_pages=total_pages,

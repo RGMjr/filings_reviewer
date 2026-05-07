@@ -112,6 +112,8 @@ Run-scoped category rollup renders in the first collapsible panel above the per-
 
 To edit the action text or severity thresholds for a category, modify `CATEGORY_ACTIONS` in `src/web/text_decision_category_actions.py` — no DB migration needed. New `rejection_category` values not in `CATEGORY_ACTIONS` get a fallback entry (`(20.0, 40.0)` severity thresholds, generic action text).
 
+The same `CATEGORY_ACTIONS` dict also drives the Reject-form dropdown in `unified_review.html`: the route passes it as `rejection_categories=` and the template iterates `.items()` so dict insertion order = dropdown order. Each entry's `label`, `description`, and `example` fields surface as the option text and the inline help below the `<select>` (read client-side via `data-description` / `data-example` attributes by `updateRejectionCategoryHelp`). Renaming `label` cascades to the Patterns-tab category-rollup cards by design — same words for the same concept across reviewer surfaces. `tests/unit/web/test_text_decision_category_actions.py::test_reject_form_metadata_is_reviewer_facing` guards every `REJECTION_CATEGORIES` enum value against missing label/description/example.
+
 **Decisions on category-level recommendation cards are NOT persisted.** Category cards are render-only and do not participate in the `text_pattern_recommendation_decisions` accept/dismiss/defer flow — categories are run-scoped aggregations without a stable per-card `decision_key`.
 
 ## Image-confirmation reviewer notes
