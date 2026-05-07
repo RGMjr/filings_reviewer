@@ -15,6 +15,8 @@ touches:
 discovered: 2026-05-05
 updated: 2026-05-07
 gh_issue: 520
+pr_refs:
+  - 545
 note: v2_audit_log.user_id added (timestamp migration 202605071643_*); populated from flask.g.user.id in insert_audit_log_entry and the review_unified async audit path. Service-account sentinel seeded into auth_users so the FK can hold it. Canonical filter for automation traffic is `WHERE user_id = '00000000-0000-0000-0000-000000000000'`.
 ---
 
