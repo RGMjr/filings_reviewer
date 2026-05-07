@@ -2228,6 +2228,78 @@ class DatabaseAdapter:
         results[0]["is_stale_vs_decision"] = self._derive_is_stale_vs_decision(results[0])
         return results[0]
 
+    def get_images_with_decision_type(self, decision_type: str) -> list[dict]:
+        """Return all images matching a cross-filing decision-type set.
+
+        decision_type must be one of 'accepted', 'corrected', 'added'.
+
+        'accepted' unions legacy v2_image_review_decisions.decision='relevant'
+        with per-metric decisions IN ('accept','correct','add') — mirrors the
+        definition used by get_image_decision_breakdown_v2().
+
+        Ordered by (filing_id, img_id) for stable cross-filing navigation.
+        """
+        if decision_type == "accepted":
+            filter_clause = """
+                AND (
+                    EXISTS (
+                        SELECT 1 FROM v2_image_review_decisions ird
+                        WHERE ird.img_id = v.img_id AND ird.decision = 'relevant'
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM v2_image_metric_confirmations imc
+                        WHERE imc.img_id = v.img_id
+                          AND imc.decision IN ('accept', 'correct', 'add')
+                    )
+                )
+            """
+        elif decision_type == "corrected":
+            filter_clause = """
+                AND EXISTS (
+                    SELECT 1 FROM v2_image_metric_confirmations imc
+                    WHERE imc.img_id = v.img_id AND imc.decision = 'correct'
+                )
+            """
+        elif decision_type == "added":
+            filter_clause = """
+                AND EXISTS (
+                    SELECT 1 FROM v2_image_metric_confirmations imc
+                    WHERE imc.img_id = v.img_id AND imc.decision = 'add'
+                )
+            """
+        else:
+            raise ValueError(f"Unknown decision_type: {decision_type!r}")
+
+        sql = f"""
+            SELECT {self._V2_IMAGE_CANDIDATE_SELECT},
+                f.accession_number, c.company_name, c.cik, c.ticker,
+                ic.classification_id,
+                ic.predicted_metrics,
+                ic.confidence AS classification_confidence
+            FROM v2_image_assets v
+            JOIN filings f ON v.filing_id = f.filing_id
+            JOIN companies c ON f.company_id = c.company_id
+            LEFT JOIN v2_image_review_decisions d ON d.img_id = v.img_id
+            LEFT JOIN LATERAL (
+                SELECT classification_id, predicted_metrics, confidence
+                FROM v2_image_classifications
+                WHERE img_id = v.img_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) ic ON true
+            {self._V2_IMAGE_CONFIRMATION_ROLLUP_JOIN}
+            WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
+              AND v.filename IS NOT NULL
+              AND v.filename != ''
+              {filter_clause}
+            ORDER BY v.filing_id ASC, v.img_id ASC
+        """
+        results = self.query(sql)
+        for row in results:
+            row["image_review_state"] = self._derive_image_review_state(row)
+            row["is_stale_vs_decision"] = self._derive_is_stale_vs_decision(row)
+        return results
+
     def get_legacy_backfill_queue(self) -> list[dict]:
         """Ordered cross-filing list of legacy-relevant images awaiting backfill.
 
