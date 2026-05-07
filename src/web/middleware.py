@@ -164,6 +164,9 @@ def insert_audit_log_entry(
         if hasattr(g, "request_start_time"):
             response_time_ms = int((time.time() - g.request_start_time) * 1000)
 
+        user = getattr(g, "user", None)
+        user_id = user.id if user is not None else None
+
         db = get_db()
         db.insert_audit_log(
             session_id=session.get("_id"),
@@ -176,6 +179,7 @@ def insert_audit_log_entry(
             query_params=query_params,
             response_status=response.status_code,
             response_time_ms=response_time_ms,
+            user_id=user_id,
         )
     except Exception as e:
         if testing:

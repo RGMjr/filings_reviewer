@@ -177,11 +177,17 @@ Then complete a manual browser review workflow:
   `Authorization: ApiKey <key>`, `X-API-Key` header, or `?api_key=` arg. Per-route
   `@require(<perm>)` decorators then see `role='admin'` and pass. Test with a known automation
   call. **Service-account scope.** The bridge resolves to `email='api-key@service.local'`,
-  `id='00000000-0000-0000-0000-000000000000'`, `role='admin'`. The id is a sentinel — it
-  does NOT exist in `auth_users`, so allowlist management does not affect API-key callers. To
-  tighten scope (e.g. drop `ingest.run`), edit `_SERVICE_ACCOUNT.role` in
-  `src/auth/service_account.py`. `v2_audit_log.session_id` is `NULL` for these calls (no Flask
-  session) so they are identifiable as automation in retrospective queries.
+  `id='00000000-0000-0000-0000-000000000000'`, `role='admin'`. The id is a sentinel seeded
+  into `auth_users` (gh-520, migration `202605071643_*`) so audit-log FKs can hold the value.
+  The sentinel has no row in `auth_access_entries`, so allowlist management does not affect
+  API-key callers. To tighten scope (e.g. drop `ingest.run`), edit `_SERVICE_ACCOUNT.role` in
+  `src/auth/service_account.py`. **Audit-log filtering.** `v2_audit_log.user_id` is populated
+  for every authenticated request: real users see their `auth_users.id`, service-account
+  callers see the sentinel, and unauthenticated paths see `NULL`. The canonical filter for
+  retrospective automation queries is
+  `WHERE user_id = '00000000-0000-0000-0000-000000000000'`. The older `session_id IS NULL`
+  filter still works but is superseded — it conflated automation traffic with any future
+  session-less reviewer path.
 - **Same-origin browser requests without session are rejected.** A `curl` without a session
   cookie to a protected endpoint returns 401 / 302.
 - **Role restrictions work.** A `reviewer` cannot hit ingest endpoints (expects 403). A
