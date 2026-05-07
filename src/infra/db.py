@@ -22,7 +22,7 @@ from src.review.models import (
     IMAGE_CHART_TYPES,
     IMAGE_DECISIONS,
     IMAGE_REJECTION_REASONS,
-    IMAGE_REVIEW_STATUSES,
+    IMAGE_REVIEW_FILTER_STATUSES,
 )
 
 if TYPE_CHECKING:
@@ -875,6 +875,7 @@ class DatabaseAdapter:
         sort_by: str = "date",
         sort_dir: str = "desc",
         reviewer_ids: list[str] | None = None,
+        legacy_backfill_only: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Get filings combining V2 text fact counts and image candidate counts.
@@ -911,6 +912,7 @@ class DatabaseAdapter:
         doc_type_filter = tab_filter_sql(tab)
         completed_filter = ""
         reviewer_filter = ""
+        legacy_backfill_filter = ""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if hide_completed:
             completed_filter = (
@@ -921,6 +923,8 @@ class DatabaseAdapter:
                 "AND COALESCE(rp.reviewers, ARRAY[]::text[]) && %(reviewer_ids)s::text[]"
             )
             params["reviewer_ids"] = list(reviewer_ids)
+        if legacy_backfill_only:
+            legacy_backfill_filter = "AND COALESCE(ip.images_legacy_pending, 0) > 0"
 
         sql = f"""
             WITH text_progress AS (
@@ -956,7 +960,18 @@ class DatabaseAdapter:
                                 WHERE c.img_id = v.img_id
                             ) THEN 1
                         END
-                    )                                                                       AS images_reviewed
+                    )                                                                       AS images_reviewed,
+                    COUNT(DISTINCT CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM v2_image_review_decisions ird
+                            WHERE ird.img_id = v.img_id AND ird.decision = 'relevant'
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1 FROM v2_image_metric_confirmations imc
+                            WHERE imc.img_id = v.img_id
+                        )
+                        THEN v.img_id
+                    END)                                                                    AS images_legacy_pending
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
@@ -997,6 +1012,7 @@ class DatabaseAdapter:
                 COALESCE(ip.image_count,        0) AS image_count,
                 COALESCE(ip.images_pending,  0) AS images_pending,
                 COALESCE(ip.images_reviewed, 0) AS images_reviewed,
+                COALESCE(ip.images_legacy_pending, 0) AS images_legacy_pending,
                 COALESCE(rp.reviewers, ARRAY[]::text[]) AS reviewers
             FROM filings f
             JOIN companies c ON f.company_id = c.company_id
@@ -1008,6 +1024,7 @@ class DatabaseAdapter:
             {doc_type_filter}
             {completed_filter}
             {reviewer_filter}
+            {legacy_backfill_filter}
             ORDER BY {order_col} {order_dir} NULLS LAST{secondary}
             LIMIT %(limit)s OFFSET %(offset)s
         """
@@ -1018,6 +1035,7 @@ class DatabaseAdapter:
         tab: str | None = None,
         hide_completed: bool = False,
         reviewer_ids: list[str] | None = None,
+        legacy_backfill_only: bool = False,
     ) -> int:
         """Return total count of filings eligible for unified review.
 
@@ -1036,6 +1054,7 @@ class DatabaseAdapter:
         doc_type_filter = tab_filter_sql(tab)
         completed_filter = ""
         reviewer_filter = ""
+        legacy_backfill_filter = ""
         params: dict[str, Any] = {}
         if hide_completed:
             completed_filter = """
@@ -1046,6 +1065,8 @@ class DatabaseAdapter:
                 "AND COALESCE(rp.reviewers, ARRAY[]::text[]) && %(reviewer_ids)s::text[]"
             )
             params["reviewer_ids"] = list(reviewer_ids)
+        if legacy_backfill_only:
+            legacy_backfill_filter = "AND COALESCE(ip.images_legacy_pending, 0) > 0"
 
         sql = f"""
             WITH text_progress AS (
@@ -1058,7 +1079,18 @@ class DatabaseAdapter:
             image_progress AS (
                 SELECT
                     v.filing_id,
-                    COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending
+                    COUNT(CASE WHEN v.review_status = 'pending' THEN 1 END) AS images_pending,
+                    COUNT(DISTINCT CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM v2_image_review_decisions ird
+                            WHERE ird.img_id = v.img_id AND ird.decision = 'relevant'
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1 FROM v2_image_metric_confirmations imc
+                            WHERE imc.img_id = v.img_id
+                        )
+                        THEN v.img_id
+                    END) AS images_legacy_pending
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
@@ -1092,6 +1124,7 @@ class DatabaseAdapter:
             {doc_type_filter}
             {completed_filter}
             {reviewer_filter}
+            {legacy_backfill_filter}
         """
         result = self.query(sql, params if params else None)
         return result[0]["cnt"] if result else 0
@@ -1104,6 +1137,7 @@ class DatabaseAdapter:
         sort_by: str = "date",
         sort_dir: str = "desc",
         reviewer_ids: list[str] | None = None,
+        legacy_backfill_only: bool = False,
     ) -> int | None:
         """Return the filing_id of the next filing with pending review work.
 
@@ -1148,6 +1182,13 @@ class DatabaseAdapter:
                 "AND COALESCE(rp.reviewers, ARRAY[]::text[]) && %(reviewer_ids)s::text[]"
             )
             params["reviewer_ids"] = list(reviewer_ids)
+        # When filtering to legacy-backfill, replace the pending-work guard so filings
+        # whose only remaining work is legacy backfill (images_pending=0) are reachable.
+        pending_filter = (
+            "AND images_legacy_pending > 0"
+            if legacy_backfill_only
+            else "AND (facts_pending > 0 OR images_pending > 0)"
+        )
 
         sql = f"""
             WITH text_progress AS (
@@ -1174,7 +1215,18 @@ class DatabaseAdapter:
                                 WHERE c.img_id = v.img_id
                             ) THEN 1
                         END
-                    ) AS images_reviewed
+                    ) AS images_reviewed,
+                    COUNT(DISTINCT CASE
+                        WHEN EXISTS (
+                            SELECT 1 FROM v2_image_review_decisions ird
+                            WHERE ird.img_id = v.img_id AND ird.decision = 'relevant'
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1 FROM v2_image_metric_confirmations imc
+                            WHERE imc.img_id = v.img_id
+                        )
+                        THEN v.img_id
+                    END) AS images_legacy_pending
                 FROM v2_image_assets v
                 WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
                   AND v.filename IS NOT NULL AND v.filename != ''
@@ -1203,7 +1255,8 @@ class DatabaseAdapter:
                     f.filing_id,
                     ROW_NUMBER() OVER (ORDER BY {order_col} {order_dir} NULLS LAST, c.company_name) AS rn,
                     COALESCE(tp.facts_pending, 0) AS facts_pending,
-                    COALESCE(ip.images_pending, 0) AS images_pending
+                    COALESCE(ip.images_pending, 0) AS images_pending,
+                    COALESCE(ip.images_legacy_pending, 0) AS images_legacy_pending
                 FROM filings f
                 JOIN companies c ON f.company_id = c.company_id
                 JOIN v2_documents d ON d.filing_id = f.filing_id
@@ -1221,7 +1274,7 @@ class DatabaseAdapter:
             SELECT filing_id
             FROM candidates
             WHERE rn > (SELECT rn FROM current_rn)
-              AND (facts_pending > 0 OR images_pending > 0)
+              {pending_filter}
             ORDER BY rn ASC
             LIMIT 1
         """
@@ -1276,7 +1329,29 @@ class DatabaseAdapter:
         img_row = self.query(sql_img, {"filing_id": filing_id})
         images_pending = int(img_row[0]["images_pending"]) if img_row else 0
 
-        return {"facts_pending": facts_pending, "images_pending": images_pending}
+        sql_legacy = """
+            SELECT COUNT(DISTINCT ird.img_id) AS images_legacy_pending
+            FROM v2_image_review_decisions ird
+            WHERE ird.decision = 'relevant'
+              AND ird.img_id IN (
+                  SELECT img_id FROM v2_image_assets
+                  WHERE filing_id = %(filing_id)s
+                    AND classification NOT IN ('decorative', 'logo', 'signature')
+                    AND filename IS NOT NULL AND filename != ''
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM v2_image_metric_confirmations imc
+                  WHERE imc.img_id = ird.img_id
+              )
+        """
+        legacy_row = self.query(sql_legacy, {"filing_id": filing_id})
+        images_legacy_pending = int(legacy_row[0]["images_legacy_pending"]) if legacy_row else 0
+
+        return {
+            "facts_pending": facts_pending,
+            "images_pending": images_pending,
+            "images_legacy_pending": images_legacy_pending,
+        }
 
     def get_v2_facts_for_filing(
         self,
@@ -1926,6 +2001,7 @@ class DatabaseAdapter:
         v.created_at,
         d.image_decision_id,
         d.decision,
+        (d.decision = 'relevant') AS legacy_decision,
         d.chart_type,
         d.rejection_reason,
         d.reviewer_notes AS decision_notes,
@@ -2026,7 +2102,7 @@ class DatabaseAdapter:
         Sort options: 'relevance' (predicted then cohort), 'tier', 'position' (img_id).
         """
         if status is not None:
-            validate_enum(status, IMAGE_REVIEW_STATUSES, "review_status")
+            validate_enum(status, IMAGE_REVIEW_FILTER_STATUSES, "review_status")
 
         valid_sort_options = ("tier", "relevance", "position")
         if sort_by not in valid_sort_options:
@@ -2040,7 +2116,17 @@ class DatabaseAdapter:
             "limit": limit,
             "offset": offset,
         }
-        if status:
+        if status == "legacy_backfill":
+            status_filter = (
+                "AND EXISTS ("
+                "    SELECT 1 FROM v2_image_review_decisions ird"
+                "    WHERE ird.img_id = v.img_id AND ird.decision = 'relevant'"
+                ") AND NOT EXISTS ("
+                "    SELECT 1 FROM v2_image_metric_confirmations imc"
+                "    WHERE imc.img_id = v.img_id"
+                ")"
+            )
+        elif status:
             status_filter = "AND v.review_status = %(status)s"
             params["status"] = status
 

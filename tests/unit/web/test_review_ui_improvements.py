@@ -243,6 +243,7 @@ def test_next_filing_redirect_omits_tab_param_when_text_pending(client):
     mock_db.get_filing_pending_counts.return_value = {
         "facts_pending": 4,
         "images_pending": 0,
+        "images_legacy_pending": 0,
     }
 
     with patch("src.web.routes.review_unified.get_db", return_value=mock_db):

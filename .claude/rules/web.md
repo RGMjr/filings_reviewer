@@ -143,6 +143,10 @@ A warning banner above the cards surfaces `legacy_accepts_pending` — distinct 
 
 The banner's count and the trailing call-to-action both link to **`/v2/review/legacy-backfill`** — the guided cross-filing queue (see below).
 
+**`legacy_backfill` virtual image_status.** The image-queue dropdown on the review page includes a `legacy_backfill` option. This value does NOT map to any `v2_image_assets.review_status` enum value — it is a virtual filter implemented as EXISTS+NOT EXISTS correlated subqueries (`v2_image_review_decisions ird` / `v2_image_metric_confirmations imc`) in `get_image_review_candidates_for_filing_v2`. Validate with `IMAGE_REVIEW_FILTER_STATUSES` (in `src/review/models.py`), NOT with `IMAGE_REVIEW_STATUSES`. `IMAGE_REVIEW_STATUSES` is the DB enum; widening it would require a migration. `IMAGE_REVIEW_FILTER_STATUSES = IMAGE_REVIEW_STATUSES + ("legacy_backfill",)` is the UI-layer validation tuple.
+
+**`images_legacy_pending` column.** `get_unified_filings_for_review`, `get_unified_filings_for_review_count`, and `get_next_filing_with_pending_work` all project `images_legacy_pending` (COUNT DISTINCT via EXISTS+NOT EXISTS in an `image_progress` CTE). The value is available on every row dict returned by `get_unified_filings_for_review`. `get_filing_pending_counts` also returns `images_legacy_pending` so `next_filing()` can apply the smart-default `tab=images&image_status=legacy_backfill` landing when a filing only has legacy backfill work. Note: legacy-backfill images have `images_pending=0` (they have been reviewed but never assigned a metric), so the normal `(facts_pending > 0 OR images_pending > 0)` pending filter in `get_next_filing_with_pending_work` MUST be REPLACED (not stacked) by `images_legacy_pending > 0` when `legacy_backfill_only=True`.
+
 ## Legacy-backfill guided queue
 
 `/v2/review/legacy-backfill` and `/v2/review/legacy-backfill/next` are stateless 302 redirectors that walk the reviewer through every legacy-relevant image awaiting per-metric backfill, across whichever filings they live in. Both are click targets from the warning banner on the Images stats tab.

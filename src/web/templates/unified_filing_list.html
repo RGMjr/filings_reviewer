@@ -95,6 +95,13 @@
   </div>
 </div>
 
+{% if legacy_backfill_filter_active %}
+<div class="alert alert-warning py-1 px-2 mb-2 small d-flex align-items-center gap-2" role="alert">
+  Filtering: legacy-backfill candidates
+  <a href="{{ url_for('review_unified.filing_list') }}" class="ms-auto small">Clear</a>
+</div>
+{% endif %}
+
 {% if filings %}
 <div class="row">
   <div class="col-12">
@@ -218,6 +225,9 @@
               {% if image_count > 0 %}
               <small class="text-muted">
                 <span class="badge bg-warning text-dark">{{ images_pending }}</span> pending
+                {% if (f.images_legacy_pending or 0) > 0 %}
+                <span class="badge bg-warning text-dark ms-1">Legacy: {{ f.images_legacy_pending }}</span>
+                {% endif %}
                 &middot;
                 <span class="text-success">{{ images_reviewed }}</span> reviewed
               </small>
@@ -256,6 +266,8 @@
                 {% set _ = review_kwargs.update({'status': 'pending_review'}) %}
               {%- elif (f.images_pending or 0) > 0 -%}
                 {% set _ = review_kwargs.update({'tab': 'images'}) %}
+              {%- elif (f.images_legacy_pending or 0) > 0 -%}
+                {% set _ = review_kwargs.update({'tab': 'images', 'image_status': 'legacy_backfill'}) %}
               {%- else -%}
                 {% set _ = review_kwargs.update({'status': 'all'}) %}
               {%- endif -%}
@@ -264,6 +276,9 @@
               {%- endif -%}
               {%- if reviewers -%}
                 {% set _ = review_kwargs.update({'list_reviewer_id': reviewers}) %}
+              {%- endif -%}
+              {%- if legacy_backfill_filter_active -%}
+                {% set _ = review_kwargs.update({'list_legacy_backfill': '1'}) %}
               {%- endif -%}
               <a href="{{ url_for('review_unified.review_filing', **review_kwargs) }}"
                  class="btn btn-sm btn-outline-primary">

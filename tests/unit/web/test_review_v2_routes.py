@@ -132,6 +132,7 @@ def test_filing_list_default_pagination(client, mock_db, mock_render_template):
         sort_by="date",
         sort_dir="desc",
         reviewer_ids=None,
+        legacy_backfill_only=False,
     )
 
 
@@ -150,6 +151,7 @@ def test_filing_list_custom_page(client, mock_db, mock_render_template):
         sort_by="date",
         sort_dir="desc",
         reviewer_ids=None,
+        legacy_backfill_only=False,
     )
 
 
@@ -168,6 +170,7 @@ def test_filing_list_per_page_cap(client, mock_db, mock_render_template):
         sort_by="date",
         sort_dir="desc",
         reviewer_ids=None,
+        legacy_backfill_only=False,
     )
 
 
@@ -369,6 +372,7 @@ def test_next_filing_preserves_sort_order(client, mock_db, mock_render_template)
     mock_db.get_filing_pending_counts.return_value = {
         "facts_pending": 1,
         "images_pending": 0,
+        "images_legacy_pending": 0,
     }
 
     client.get("/v2/review/next-filing?current_filing_id=1&list_sort_by=company&list_sort_dir=asc")
@@ -380,6 +384,7 @@ def test_next_filing_preserves_sort_order(client, mock_db, mock_render_template)
         sort_by="company",
         sort_dir="asc",
         reviewer_ids=None,
+        legacy_backfill_only=False,
     )
 
 
@@ -391,6 +396,7 @@ def test_next_filing_threads_reviewer_filter(client, mock_db, mock_render_templa
     mock_db.get_filing_pending_counts.return_value = {
         "facts_pending": 1,
         "images_pending": 0,
+        "images_legacy_pending": 0,
     }
 
     response = client.get(
@@ -404,6 +410,7 @@ def test_next_filing_threads_reviewer_filter(client, mock_db, mock_render_templa
         sort_by="date",
         sort_dir="desc",
         reviewer_ids=["alice", "bob"],
+        legacy_backfill_only=False,
     )
     # Next filing URL should carry list_reviewer_id forward so the NEXT page
     # still knows the scope (regression: prior bug reset to full list).
@@ -444,6 +451,7 @@ def test_next_filing_smart_default_targets_images_when_text_done(
     mock_db.get_filing_pending_counts.return_value = {
         "facts_pending": 0,
         "images_pending": 5,
+        "images_legacy_pending": 0,
     }
 
     response = client.get("/v2/review/next-filing?current_filing_id=1")
@@ -463,6 +471,7 @@ def test_next_filing_smart_default_falls_back_to_all_when_nothing_pending(
     mock_db.get_filing_pending_counts.return_value = {
         "facts_pending": 0,
         "images_pending": 0,
+        "images_legacy_pending": 0,
     }
 
     response = client.get("/v2/review/next-filing?current_filing_id=1")
@@ -484,6 +493,7 @@ def test_next_filing_infers_tab_from_current_filing_when_list_tab_missing(
     mock_db.get_filing_pending_counts.return_value = {
         "facts_pending": 3,
         "images_pending": 0,
+        "images_legacy_pending": 0,
     }
 
     client.get("/v2/review/next-filing?current_filing_id=1")

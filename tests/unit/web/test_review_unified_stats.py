@@ -1130,3 +1130,53 @@ def test_legacy_backfill_next_empty_redirects_to_stats(client, mock_db):
     resp = client.get("/v2/review/legacy-backfill/next?after=cursor", follow_redirects=False)
     assert resp.status_code == 302
     assert "/v2/review/stats" in resp.headers["Location"]
+
+
+def test_legacy_accepts_banner_count_is_linked_to_backfill_queue(client, mock_db):
+    """The legacy-accepts-pending count in the banner must be wrapped in an
+    <a href> pointing to /v2/review/legacy-backfill so reviewers can navigate
+    directly from the count to the guided backfill queue."""
+    _stub_analytics_helpers(mock_db)
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 5,
+        "relevant_count": 5,
+        "not_relevant_count": 0,
+        "relevant_pct": 100.0,
+        "not_relevant_pct": 0.0,
+    }
+    mock_db.get_image_decision_breakdown_v2.return_value = {
+        "total": 5,
+        "accepted_images": 5,
+        "accepted_images_per_metric": 0,
+        "corrected": 0,
+        "added": 0,
+        "rejected": 0,
+        "skipped": 0,
+        "legacy_accepts_pending": 48,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 48,
+        "pending_count": 0,
+        "reviewed_count": 48,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 100.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    # Banner links to the dedicated guided queue route.
+    assert "/v2/review/legacy-backfill" in body, (
+        "Banner count must link to /v2/review/legacy-backfill"
+    )
+    # The count itself must appear inside an <a> tag (not bare text).
+    import re
+
+    assert re.search(r"<a[^>]+legacy-backfill[^>]*>[^<]*<strong>48</strong>", body), (
+        "48 must be wrapped in <strong> inside the legacy-backfill anchor"
+    )

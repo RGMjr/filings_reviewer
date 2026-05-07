@@ -37,7 +37,7 @@ from src.review.models import (
     IMAGE_DECISIONS,
     IMAGE_REJECTION_REASON_LABELS,
     IMAGE_REJECTION_REASONS,
-    IMAGE_REVIEW_STATUSES,
+    IMAGE_REVIEW_FILTER_STATUSES,
 )
 from src.web.app import get_db
 from src.web.middleware import require_api_key
@@ -158,12 +158,14 @@ def filing_list():
     sort_dir = "asc" if raw_sort_dir == "asc" else "desc"
 
     reviewer_ids = [r for r in request.args.getlist("reviewer_id") if r]
+    legacy_backfill = request.args.get("legacy_backfill") == "1"
 
     try:
         total = db.get_unified_filings_for_review_count(
             tab=tab,
             hide_completed=hide_completed,
             reviewer_ids=reviewer_ids or None,
+            legacy_backfill_only=legacy_backfill,
         )
         filings = db.get_unified_filings_for_review(
             tab=tab,
@@ -173,6 +175,7 @@ def filing_list():
             sort_by=sort_by,
             sort_dir=sort_dir,
             reviewer_ids=reviewer_ids or None,
+            legacy_backfill_only=legacy_backfill,
         )
         all_reviewers = db.get_distinct_reviewers()
     except Exception as e:
@@ -200,6 +203,7 @@ def filing_list():
         sort_dir=sort_dir,
         all_reviewers=all_reviewers,
         selected_reviewers=reviewer_ids,
+        legacy_backfill_filter_active=legacy_backfill,
     )
 
 
@@ -546,6 +550,7 @@ def review_filing(filing_id: int):
         list_document_type = raw_list_doc_type if raw_list_doc_type in VALID_TABS else None
         list_hide_completed = request.args.get("list_hide_completed", "0") == "1"
         list_reviewer_ids = [r for r in request.args.getlist("list_reviewer_id") if r]
+        list_legacy_backfill = request.args.get("list_legacy_backfill", "0")
 
         next_filing_params: list[tuple[str, Any]] = [
             ("current_filing_id", filing_id),
@@ -557,6 +562,8 @@ def review_filing(filing_id: int):
             next_filing_params.append(("list_document_type", list_document_type))
         for rid in list_reviewer_ids:
             next_filing_params.append(("list_reviewer_id", rid))
+        if list_legacy_backfill == "1":
+            next_filing_params.append(("list_legacy_backfill", "1"))
         next_filing_url = (
             url_for("review_unified.next_filing") + "?" + urlencode(next_filing_params)
         )
@@ -689,7 +696,7 @@ def review_filing(filing_id: int):
         )
 
         image_status = request.args.get("image_status", "all")
-        db_image_status = image_status if image_status in IMAGE_REVIEW_STATUSES else None
+        db_image_status = image_status if image_status in IMAGE_REVIEW_FILTER_STATUSES else None
 
         # Legacy-backfill mode (cross-filing guided queue). When the user
         # arrives via /v2/review/legacy-backfill, the entry route 302s here
@@ -861,7 +868,7 @@ def review_filing(filing_id: int):
             chart_types=chart_types,
             rejection_reasons=rejection_reasons,
             image_decisions=IMAGE_DECISIONS,
-            review_statuses_images=IMAGE_REVIEW_STATUSES,
+            review_statuses_images=IMAGE_REVIEW_FILTER_STATUSES,
             sec_url=sec_url,
             next_filing_url=next_filing_url,
             # Legacy-backfill guided queue (cross-filing)
@@ -894,6 +901,7 @@ def next_filing():
         list_tab = raw_list_tab if raw_list_tab in VALID_TABS else None
         hide_completed = request.args.get("list_hide_completed", "0") == "1"
         reviewer_ids = [r for r in request.args.getlist("list_reviewer_id") if r]
+        legacy_backfill = request.args.get("list_legacy_backfill") == "1"
 
         # Tab-scoping fallback: if the reviewer arrived from the "All" view of
         # the filings list (list_tab is None), keep advancement within the
@@ -924,6 +932,7 @@ def next_filing():
             sort_by=sort_by,
             sort_dir=sort_dir,
             reviewer_ids=reviewer_ids or None,
+            legacy_backfill_only=legacy_backfill,
         )
 
         if next_id:
@@ -941,12 +950,17 @@ def next_filing():
                 params_list.insert(0, ("status", "pending_review"))
             elif counts["images_pending"] > 0:
                 params_list.insert(0, ("tab", "images"))
+            elif counts["images_legacy_pending"] > 0:
+                params_list.insert(0, ("tab", "images"))
+                params_list.insert(1, ("image_status", "legacy_backfill"))
             else:
                 params_list.insert(0, ("status", "all"))
             if list_tab:
                 params_list.append(("list_document_type", list_tab))
             for rid in reviewer_ids:
                 params_list.append(("list_reviewer_id", rid))
+            if legacy_backfill:
+                params_list.append(("list_legacy_backfill", "1"))
             return redirect(f"/v2/review/{next_id}?{urlencode(params_list)}")
 
         flash("No more filings with pending facts.", "info")
@@ -958,6 +972,8 @@ def next_filing():
             list_params_list.append(("document_type", list_tab))
         for rid in reviewer_ids:
             list_params_list.append(("reviewer_id", rid))
+        if legacy_backfill:
+            list_params_list.append(("legacy_backfill", "1"))
         return redirect(url_for("review_unified.filing_list") + "?" + urlencode(list_params_list))
 
     except Exception as e:

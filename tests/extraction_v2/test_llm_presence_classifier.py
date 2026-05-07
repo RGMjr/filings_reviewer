@@ -90,7 +90,7 @@ def _make_client(
     client = MagicMock()
     client.config = config
     client.classify_segment = (
-        MagicMock(side_effect=classify_fn) if classify_fn else MagicMock(return_value=[])
+        MagicMock(side_effect=classify_fn) if classify_fn else MagicMock(return_value=([], {}))
     )
     return client
 
@@ -165,6 +165,63 @@ def test_stage_is_noop_when_api_key_missing() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Stage metadata — token fields
+# ---------------------------------------------------------------------------
+
+
+def test_stage_metadata_includes_token_fields_from_classify_calls() -> None:
+    """Token counts returned by classify_segment accumulate into StageResult.metadata."""
+    seg = _seg("X" * 80, section=SectionType.MDA, sid="seg-t")
+
+    def fake_classify(text, metric_ids, section_type=None):
+        return (
+            [_FakeSegmentClassification(metric_id=m, score=0.9, present=True) for m in metric_ids],
+            {"input_tokens": 150, "output_tokens": 40, "cache_read": 30, "cache_create": 10},
+        )
+
+    client = _make_client(prompts={"cm_net_revenue_retention"}, classify_fn=fake_classify)
+    stage = LLMPresenceClassifierStage(client=client)
+    ctx = _make_context(
+        segments=[seg],
+        candidates=[_candidate("cm_net_revenue_retention", seg)],
+    )
+
+    result = stage.process(ctx)
+
+    assert result.metadata["total_input_tokens"] == 150
+    assert result.metadata["total_output_tokens"] == 40
+    assert result.metadata["total_cache_read"] == 30
+    assert result.metadata["total_cache_create"] == 10
+
+
+def test_stage_metadata_accumulates_across_multiple_segments() -> None:
+    """Tokens from multiple classify_segment calls are summed."""
+    seg1 = _seg("A" * 80, section=SectionType.MDA, sid="seg-1")
+    seg2 = _seg("B" * 80, section=SectionType.MDA, sid="seg-2")
+
+    def fake_classify(text, metric_ids, section_type=None):
+        return (
+            [_FakeSegmentClassification(metric_id=m, score=0.9, present=True) for m in metric_ids],
+            {"input_tokens": 100, "output_tokens": 20, "cache_read": 0, "cache_create": 0},
+        )
+
+    client = _make_client(prompts={"cm_net_revenue_retention"}, classify_fn=fake_classify)
+    stage = LLMPresenceClassifierStage(client=client)
+    ctx = _make_context(
+        segments=[seg1, seg2],
+        candidates=[
+            _candidate("cm_net_revenue_retention", seg1),
+            _candidate("cm_net_revenue_retention", seg2),
+        ],
+    )
+
+    result = stage.process(ctx)
+
+    assert result.metadata["total_input_tokens"] == 200  # 2 × 100
+    assert result.metadata["total_output_tokens"] == 40  # 2 × 20
+
+
+# ---------------------------------------------------------------------------
 # Keyword path
 # ---------------------------------------------------------------------------
 
@@ -177,10 +234,13 @@ def test_keyword_path_scores_each_segment_with_its_keyword_metrics() -> None:
     )
 
     def fake_classify(text, metric_ids, section_type=None):
-        return [
-            _FakeSegmentClassification(metric_id=m, score=0.9, present=True, rationale="r")
-            for m in metric_ids
-        ]
+        return (
+            [
+                _FakeSegmentClassification(metric_id=m, score=0.9, present=True, rationale="r")
+                for m in metric_ids
+            ],
+            {},
+        )
 
     client = _make_client(prompts={"cm_net_revenue_retention"}, classify_fn=fake_classify)
     stage = LLMPresenceClassifierStage(client=client)
@@ -238,7 +298,7 @@ def test_keyword_path_continues_after_classify_error() -> None:
     def flaky(text, metric_ids, section_type=None):
         if "Y" in text[:5]:
             raise RuntimeError("rate limit")
-        return [_FakeSegmentClassification("cm_net_revenue_retention", 0.5, True)]
+        return ([_FakeSegmentClassification("cm_net_revenue_retention", 0.5, True)], {})
 
     client = _make_client(prompts={"cm_net_revenue_retention"}, classify_fn=flaky)
     stage = LLMPresenceClassifierStage(client=client)
@@ -270,7 +330,7 @@ def test_paraphrase_path_scans_whitelisted_sections_without_keyword_hits() -> No
     )
 
     def fake_classify(text, metric_ids, section_type=None):
-        return [_FakeSegmentClassification(m, 0.8, True) for m in metric_ids]
+        return ([_FakeSegmentClassification(m, 0.8, True) for m in metric_ids], {})
 
     client = _make_client(
         prompts={"cm_net_revenue_retention"},
@@ -299,9 +359,10 @@ def test_paraphrase_path_skips_segments_outside_whitelist() -> None:
         prompts={"cm_net_revenue_retention"},
         enrolled=frozenset({"cm_net_revenue_retention"}),
         section_whitelist=frozenset({"mda", "business", "risk_factors"}),
-        classify_fn=lambda *a, **kw: [
-            _FakeSegmentClassification("cm_net_revenue_retention", 0.9, True)
-        ],
+        classify_fn=lambda *a, **kw: (
+            [_FakeSegmentClassification("cm_net_revenue_retention", 0.9, True)],
+            {},
+        ),
     )
     stage = LLMPresenceClassifierStage(client=client)
     ctx = _make_context(segments=[seg])
@@ -318,7 +379,7 @@ def test_paraphrase_path_skips_segments_already_in_keyword_pass() -> None:
 
     def fake_classify(text, metric_ids, section_type=None):
         call_log.append(tuple(sorted(metric_ids)))
-        return [_FakeSegmentClassification(m, 0.7, True) for m in metric_ids]
+        return ([_FakeSegmentClassification(m, 0.7, True) for m in metric_ids], {})
 
     client = _make_client(
         prompts={"cm_net_revenue_retention", "cm_revenue_concentration"},
@@ -484,7 +545,7 @@ def test_integration_single_mda_segment_full_path() -> None:
                 out.append(_FakeSegmentClassification(m, 0.82, True, "found"))
             else:
                 out.append(_FakeSegmentClassification(m, 0.10, False, "miss"))
-        return out
+        return out, {}
 
     client = _make_client(
         prompts={"cm_net_revenue_retention", "cm_gross_revenue_retention"},
