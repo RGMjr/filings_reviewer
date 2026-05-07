@@ -3,7 +3,7 @@ id: 546
 source: gh
 slug: script-test-mocks-classify-segment-signature-drift
 title: "Script test mocks drift from PresenceClassifierClient.classify_segment signature"
-status: open
+status: resolved
 severity: medium
 autonomy: skip
 estimated: —

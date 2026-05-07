@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.scripts._fakes import assert_classify_segment_parity
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "run_phase1_eval.py"
 
@@ -383,6 +385,9 @@ class _FakeClassifierClient:
         ]
         tokens = {"input_tokens": 10, "output_tokens": 5, "cache_read": 0, "cache_create": 0}
         return classifications, tokens
+
+
+assert_classify_segment_parity(_FakeClassifierClient)
 
 
 def test_evaluate_filing_direct_unpacks_classify_segment_tuple(cli):

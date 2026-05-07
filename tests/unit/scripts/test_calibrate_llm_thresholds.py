@@ -26,6 +26,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from tests.unit.scripts._fakes import assert_classify_segment_parity
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -420,6 +422,9 @@ class _FakePresenceClient:
         classifications = [_FakeSC(m, self._scores.get((text, m), 0.0)) for m in metric_ids]
         tokens = {"input_tokens": 0, "output_tokens": 0, "cache_read": 0, "cache_create": 0}
         return classifications, tokens
+
+
+assert_classify_segment_parity(_FakePresenceClient)
 
 
 def _make_fake_client_cls(scores_map: dict, enrolled: list[str]) -> type:
