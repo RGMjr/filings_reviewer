@@ -397,3 +397,110 @@ class TestGetImageDecisionBreakdownV2:
             "legacy_accepts_pending": 48,
         }
         assert all(isinstance(v, int) for v in result.values())
+
+
+class TestGetLegacyBackfillQueue:
+    """SQL-shape tests for the cross-filing legacy-backfill queue helpers."""
+
+    def test_filters_decision_relevant_and_anti_joins_per_metric(self, db):
+        db.query.return_value = []
+        db.get_legacy_backfill_queue()
+        sql = db.query.call_args.args[0]
+        assert "v2_image_review_decisions ird" in sql
+        assert "ird.decision = 'relevant'" in sql
+        # Anti-join: image must NOT have any per-metric confirmation row.
+        assert "NOT EXISTS" in sql
+        assert "v2_image_metric_confirmations imc" in sql
+        assert "imc.img_id = v.img_id" in sql
+
+    def test_excludes_non_reviewable_classifications(self, db):
+        """Mirror the per-filing image-queue exclusions so the queue only
+        surfaces actionable images. Non-reviewable assets aren't shown to
+        the reviewer in the per-filing queue and shouldn't be here either."""
+        db.query.return_value = []
+        db.get_legacy_backfill_queue()
+        sql = db.query.call_args.args[0]
+        assert "classification NOT IN ('decorative', 'logo', 'signature')" in sql
+        assert "filename IS NOT NULL" in sql
+        assert "filename != ''" in sql
+
+    def test_orders_by_filing_id_then_img_id(self, db):
+        """Stable cross-filing ordering — the route's position lookup and the
+        cursor walk in get_legacy_backfill_after both rely on this."""
+        db.query.return_value = []
+        db.get_legacy_backfill_queue()
+        sql = db.query.call_args.args[0]
+        assert "ORDER BY v.filing_id ASC, v.img_id ASC" in sql
+
+    def test_first_returns_first_or_none(self, db):
+        db.query.return_value = []
+        assert db.get_legacy_backfill_first() is None
+
+        db.query.return_value = [
+            {"img_id": "a", "filing_id": 1, "legacy_decision_at": None, "legacy_decision_by": None},
+            {"img_id": "b", "filing_id": 1, "legacy_decision_at": None, "legacy_decision_by": None},
+        ]
+        first = db.get_legacy_backfill_first()
+        assert first is not None
+        assert first["img_id"] == "a"
+
+    def test_after_walks_by_filing_id_img_id_tuple(self, db):
+        """Cursor not in the queue → look up its filing_id from v2_image_assets,
+        then walk forward by (filing_id, img_id) tuple comparison. Handles the
+        common case where the just-submitted image got a per-metric row and
+        dropped out of the queue."""
+        # First call: cursor's filing_id from v2_image_assets.
+        # Second call: the queue itself.
+        cursor_lookup = [{"filing_id": 5}]
+        queue = [
+            {
+                "img_id": "img-low",
+                "filing_id": 4,
+                "legacy_decision_at": None,
+                "legacy_decision_by": None,
+            },
+            {
+                "img_id": "img-mid",
+                "filing_id": 5,
+                "legacy_decision_at": None,
+                "legacy_decision_by": None,
+            },
+            {
+                "img_id": "img-high",
+                "filing_id": 6,
+                "legacy_decision_at": None,
+                "legacy_decision_by": None,
+            },
+        ]
+        # Cursor at (filing_id=5, img_id="zzz-cursor") sorts after every
+        # filing_id=5 row but before filing_id=6 → next is img-high.
+        db.query.side_effect = [cursor_lookup, queue]
+        nxt = db.get_legacy_backfill_after("zzz-cursor")
+        assert nxt is not None
+        assert nxt["img_id"] == "img-high"
+
+    def test_after_handles_missing_cursor_returns_first(self, db):
+        """Cursor img_id has been deleted from v2_image_assets (re-extraction).
+        Helper treats that as 'before the queue' — returns the first row."""
+        cursor_lookup: list = []  # missing cursor
+        queue = [
+            {
+                "img_id": "first",
+                "filing_id": 1,
+                "legacy_decision_at": None,
+                "legacy_decision_by": None,
+            },
+        ]
+        db.query.side_effect = [cursor_lookup, queue]
+        nxt = db.get_legacy_backfill_after("ghost")
+        assert nxt is not None
+        assert nxt["img_id"] == "first"
+
+    def test_after_returns_none_at_end_of_queue(self, db):
+        cursor_lookup = [{"filing_id": 99}]
+        queue = [
+            {"img_id": "a", "filing_id": 1, "legacy_decision_at": None, "legacy_decision_by": None},
+        ]
+        db.query.side_effect = [cursor_lookup, queue]
+        nxt = db.get_legacy_backfill_after("zzz")
+        assert nxt is None

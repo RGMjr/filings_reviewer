@@ -280,3 +280,59 @@ def test_get_next_image_candidate_audit_filter_walks_linearly():
     assert out is not None
     assert out["img_id"] == "b"
     assert "image_status=reviewed" in out["url"]
+
+
+# ---------------------------------------------------------------------------
+# _get_next_image_candidate_info: legacy-backfill mode short-circuit
+# ---------------------------------------------------------------------------
+
+
+def test_get_next_image_candidate_legacy_backfill_mode_short_circuits():
+    """When view_filters['mode']='legacy_backfill' the helper bypasses the
+    per-filing candidate scan entirely and returns a redirect-into the
+    cross-filing /legacy-backfill/next route. The per-filing query must not
+    be called."""
+    db = MagicMock()
+    out = _get_next_image_candidate_info(
+        db,
+        filing_id=42,
+        current_img_id="abc-123",
+        view_filters={"mode": "legacy_backfill"},
+    )
+    assert out is not None
+    assert out["url"] == "/v2/review/legacy-backfill/next?after=abc-123"
+    assert out["img_id"] == "abc-123"
+    db.get_image_review_candidates_for_filing_v2.assert_not_called()
+
+
+def test_get_next_image_candidate_legacy_backfill_mode_ignores_status_and_sort():
+    """status / sort keys are noise in legacy-backfill mode — the cross-filing
+    queue has its own ordering. The return shape is identical regardless."""
+    db = MagicMock()
+    out = _get_next_image_candidate_info(
+        db,
+        filing_id=99,
+        current_img_id="cursor",
+        view_filters={"mode": "legacy_backfill", "status": "reviewed", "sort": "tier"},
+    )
+    assert out["url"] == "/v2/review/legacy-backfill/next?after=cursor"
+    db.get_image_review_candidates_for_filing_v2.assert_not_called()
+
+
+def test_get_next_image_candidate_no_mode_falls_through_to_existing_branches():
+    """Backward-compat: view_filters without 'mode' (or with mode set to
+    something else) hits the existing per-filing scan. Guards against the
+    new branch silently swallowing default traffic."""
+    db = MagicMock()
+    db.get_image_review_candidates_for_filing_v2.return_value = [
+        _image("a", "pending"),
+        _image("b", "pending"),
+    ]
+    out = _get_next_image_candidate_info(
+        db,
+        filing_id=1,
+        current_img_id="a",
+        view_filters={"status": "pending", "sort": "relevance"},
+    )
+    db.get_image_review_candidates_for_filing_v2.assert_called_once()
+    assert out["img_id"] == "b"

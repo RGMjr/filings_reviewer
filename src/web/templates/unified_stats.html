@@ -882,13 +882,18 @@
     <div class="row mb-3">
       <div class="col-12">
         <div class="alert alert-warning py-2 px-3 mb-0 small" role="alert">
-          <strong>{{ breakdown.legacy_accepts_pending }}</strong>
-          image{{ '' if breakdown.legacy_accepts_pending == 1 else 's' }}
+          <a href="{{ url_for('review_unified.legacy_backfill_entry') }}"
+             class="alert-link">
+            <strong>{{ breakdown.legacy_accepts_pending }}</strong>
+            image{{ '' if breakdown.legacy_accepts_pending == 1 else 's' }}
+          </a>
           accepted under the legacy flow
           {{ 'is' if breakdown.legacy_accepts_pending == 1 else 'are' }}
           awaiting per-metric backfill — the reviewer marked the image relevant
-          but never assigned a specific metric. Backfill is being addressed in a
-          separate task.
+          but never assigned a specific metric.
+          <a href="{{ url_for('review_unified.legacy_backfill_entry') }}">
+            Click here to start backfilling →
+          </a>
         </div>
       </div>
     </div>

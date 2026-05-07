@@ -2142,6 +2142,90 @@ class DatabaseAdapter:
         results[0]["is_stale_vs_decision"] = self._derive_is_stale_vs_decision(results[0])
         return results[0]
 
+    def get_legacy_backfill_queue(self) -> list[dict]:
+        """Ordered cross-filing list of legacy-relevant images awaiting backfill.
+
+        Returns one dict per pending image:
+        ``{img_id, filing_id, legacy_decision_at, legacy_decision_by}``.
+        Ordered by ``(filing_id ASC, img_id ASC)`` for stable cross-filing
+        navigation. Drives the dedicated ``/v2/review/legacy-backfill``
+        guided queue.
+
+        A pending image has a ``v2_image_review_decisions.decision='relevant'``
+        row but NO row in ``v2_image_metric_confirmations`` — i.e., the
+        reviewer marked the image relevant under the legacy flow but never
+        assigned a specific metric. Mirrors the anti-join inside
+        ``get_image_decision_breakdown_v2().legacy_accepts_pending`` so the
+        queue length tracks the warning banner on the Images-stats tab.
+
+        Filters out non-reviewable assets (decorative / logo / signature
+        and rows missing a filename) — these are excluded from the
+        per-filing image queue too. The breakdown banner does NOT apply
+        these filters, so the queue length may run slightly under the
+        banner number when reviewable images get reclassified later;
+        that's by design — the banner counts intent, the queue counts
+        actionable work.
+        """
+        sql = """
+            SELECT
+                v.img_id,
+                v.filing_id,
+                ird.created_at AS legacy_decision_at,
+                ird.reviewer_id AS legacy_decision_by
+              FROM v2_image_assets v
+              JOIN v2_image_review_decisions ird ON ird.img_id = v.img_id
+             WHERE ird.decision = 'relevant'
+               AND NOT EXISTS (
+                   SELECT 1 FROM v2_image_metric_confirmations imc
+                    WHERE imc.img_id = v.img_id
+               )
+               AND v.classification NOT IN ('decorative', 'logo', 'signature')
+               AND v.filename IS NOT NULL
+               AND v.filename != ''
+             ORDER BY v.filing_id ASC, v.img_id ASC
+        """
+        return self.query(sql)
+
+    def get_legacy_backfill_first(self) -> dict | None:
+        """Return the first image in the legacy-backfill queue, or None when empty."""
+        queue = self.get_legacy_backfill_queue()
+        return queue[0] if queue else None
+
+    def get_legacy_backfill_after(self, current_img_id: str) -> dict | None:
+        """Return the next legacy-backfill image after ``current_img_id``, or None.
+
+        ``current_img_id`` does not need to itself be in the queue — the
+        helper looks up the current image's ``(filing_id, img_id)`` cursor
+        from ``v2_image_assets`` (one tiny SELECT) and then finds the
+        first queue row whose ``(filing_id, img_id)`` tuple sorts
+        strictly after the cursor. This makes the helper robust to the
+        common case where the just-submitted image gains a per-metric
+        row and drops out of the queue between page render and the next
+        navigation call.
+
+        Returns None when the queue is empty OR when the cursor is past
+        the last row. Callers translate None to "all caught up — flash
+        and 302 to /v2/review/stats".
+        """
+        cursor_rows = self.query(
+            "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+            {"img_id": current_img_id},
+        )
+        if not cursor_rows:
+            # Cursor img_id doesn't exist (deleted / re-extracted). Treat
+            # as "before the queue" — return the first row, if any.
+            queue = self.get_legacy_backfill_queue()
+            return queue[0] if queue else None
+
+        cursor_filing_id = cursor_rows[0]["filing_id"]
+        queue = self.get_legacy_backfill_queue()
+        for row in queue:
+            row_filing_id = row["filing_id"]
+            row_img_id = str(row["img_id"])
+            if (row_filing_id, row_img_id) > (cursor_filing_id, current_img_id):
+                return row
+        return None
+
     def get_next_pending_image_candidate_v2(
         self,
         filing_id: int,

@@ -1830,8 +1830,24 @@ def _get_next_image_candidate_info(
 
     Returns None when no suitable next candidate exists; the cross-tab /
     cross-document cascade then fires client-side.
+
+    Legacy-backfill mode: when ``view_filters['mode'] == 'legacy_backfill'``,
+    bypass the per-filing candidate scan entirely and return a redirect-into
+    the dedicated cross-filing queue
+    (``/v2/review/legacy-backfill/next?after=<current_img_id>``). The route
+    at that path resolves the next image and 302s to the per-filing review
+    page with ``?legacy_backfill=1`` re-attached. This keeps cross-filing
+    navigation server-side.
     """
     view_filters = view_filters or {}
+
+    if view_filters.get("mode") == "legacy_backfill":
+        # The route handles "queue empty → 302 to stats" itself.
+        return {
+            "img_id": current_img_id,
+            "url": f"/v2/review/legacy-backfill/next?after={current_img_id}",
+        }
+
     raw_status = view_filters.get("status")
     db_status = raw_status if raw_status in _VALID_IMAGE_STATUSES else None
 
