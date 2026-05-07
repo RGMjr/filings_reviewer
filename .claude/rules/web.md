@@ -270,14 +270,14 @@ The unified review page (`unified_review.html`) binds shortcuts on both tabs. Cr
 | Key        | Action                                      |
 |------------|---------------------------------------------|
 | `S`        | Skip image                                  |
-| `U`        | Undo skip                                   |
+| `U`        | Undo previous image-level decision — dispatches by current `review_status`: fires `reopenImage()` when `#btn-reopen-image` is rendered (`review_status='reviewed'`), else `undoSkip()` when `#btn-undo` is rendered (`review_status='skipped'`). The two states are mutually exclusive on a single image, so the dispatch is unambiguous. No-op on pending images (neither button rendered). |
 | `←` / `→`  | Previous / next image                       |
 | `N` / `P`  | Next / previous image (alias)               |
 | `?` / `H`  | Toggle help overlay                         |
 | `F`        | Next filing                                 |
 | `X`        | Reject all (no relevant metrics) — fires regardless of row focus, triggers `#btn-reject-all-metrics` click |
 | `Shift+R`  | Reject all (deprecated alias for `X`, kept for muscle memory) |
-| `Shift+U`  | Re-open a fully-reviewed image (only effective when `#btn-reopen-image` is rendered) |
+| `Shift+U`  | Deprecated alias for `U` — same dispatch logic; kept for muscle memory |
 | `Shift+A`  | Open "Add metric the classifier missed" panel and focus the metric search input (`#add-missed-detected-input`); plain `A` is per-row accept so a chord is required |
 | `M`        | Submit decisions and mark image complete — triggers `#btn-submit-and-finalize` click |
 

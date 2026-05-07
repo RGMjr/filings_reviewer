@@ -976,7 +976,7 @@
               <button type="button" id="btn-reopen-image" class="btn btn-outline-secondary"
                       data-img-id="{{ current_image.img_id }}"
                       title="Return this image to the pending queue. Prior decisions are preserved.">
-                Re-open for review
+                Re-open for review <span class="kbd ms-1">U</span>
               </button>
             </div>
           </div>
@@ -990,7 +990,7 @@
               </button>
               <button type="button" id="btn-reject-all-metrics" class="btn btn-outline-danger"
                       title="Mark every unreviewed detected metric as 'not present' on this chart and move to the next image.">
-                Reject all (no relevant metrics)
+                Reject all (no relevant metrics) <span class="kbd ms-1">X</span>
               </button>
             </div>
             <a href="{{ url_for('review_unified.review_filing', filing_id=filing.filing_id, tab='images', image_status=image_filters.status) }}"
@@ -1246,11 +1246,11 @@
         <div class="hints-content">
           <kbd>S</kbd> Skip
           <span class="mx-1">|</span>
-          <kbd>U</kbd> Undo
+          <kbd>U</kbd> Undo / Re-open
           <span class="mx-1">|</span>
           <kbd>&larr;&rarr;</kbd> / <kbd>N</kbd>/<kbd>P</kbd> Navigate
           <span class="mx-1">|</span>
-          <kbd>Shift+R</kbd> Reject all
+          <kbd>X</kbd> Reject all
           <span class="mx-1">|</span>
           <kbd>F</kbd> Next filing
           <span class="mx-1">|</span>

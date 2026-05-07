@@ -86,12 +86,28 @@
             return;
         }
 
-        // Shift+U — re-open a fully-reviewed image. The button is only
-        // rendered when review_status == 'reviewed' (template branch); when
-        // it's absent, this is a no-op.
-        if (event.shiftKey && (event.key === 'U' || event.key === 'u')) {
-            event.preventDefault();
-            reopenImage();
+        // U / Shift+U — undo previous decision on this image. Dispatches based
+        // on which undo button the template rendered: '#btn-reopen-image' for
+        // review_status == 'reviewed', '#btn-undo' for review_status ==
+        // 'skipped'. The two states are mutually exclusive on a single image,
+        // so plain U is unambiguous. Shift+U is a deprecated alias kept for
+        // muscle memory (matches the X / Shift+R precedent above).
+        const isUndoChord =
+            (event.shiftKey && (event.key === 'U' || event.key === 'u')) ||
+            (!event.shiftKey && (event.key === 'u' || event.key === 'U'));
+        if (isUndoChord) {
+            if (document.getElementById('btn-reopen-image')) {
+                event.preventDefault();
+                reopenImage();
+                return;
+            }
+            if (document.getElementById('btn-undo')) {
+                event.preventDefault();
+                undoSkip();
+                return;
+            }
+            // Neither button rendered — no-op (fall through; nothing else
+            // below catches plain or chord U).
             return;
         }
 
@@ -140,10 +156,6 @@
                 // preventDefault+stopPropagation) when a row is focused.
                 event.preventDefault();
                 submitSkip();
-                break;
-            case 'u':
-                event.preventDefault();
-                undoSkip();
                 break;
             case 'arrowleft':
                 event.preventDefault();
