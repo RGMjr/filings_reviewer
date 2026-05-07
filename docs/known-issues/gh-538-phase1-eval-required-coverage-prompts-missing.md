@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-07
 updated: 2026-05-07
 gh_issue: 538
+pr_refs:
+  - 542
 note: cm_large_customers_period_end and cm_customer_retention_rate are named as required eval coverage but have no prompt YAML / are not enrolled
 ---
 
