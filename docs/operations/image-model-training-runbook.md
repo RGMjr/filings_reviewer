@@ -282,8 +282,71 @@ cannot be evaluated reliably.
 
 ### Results
 
-*(Fill in after running the script against the production database.)*
-
 | Run date | N pairs | AUC-ROC | AP | Phase 2b trigger met? |
 |----------|---------|---------|-----|----------------------|
-| TBD | — | — | — | — |
+| 2026-05-08 | 382 (45 pos / 337 neg) | 0.7893 | 0.5863 | **No** — AUC < 0.80 and best precision at ≥95% recall is 18% (need ≥40%) |
+
+The 2026-05-08 run was the first trustworthy result. An earlier run produced spurious AUC=1.0 / AP=1.0 because of a list-comprehension destructuring bug in `generate_report` (gh-577, fixed in PR #579). Phase 2b is on hold until either AUC organically crosses 0.80 with more reviewer data, or the per-metric model from PR #560 supersedes this filter approach.
+
+## Phase 1 — Binary Image Relevance Triage Gate
+
+The binary relevance model (Step 3 above) gates the image-level reviewer queue. When `USE_LEARNED_TRIAGE=true`, images with `predicted_relevance < LEARNED_TRIAGE_MIN` are not enqueued for review. The gate is a **soft skip**: rows still persist to `v2_image_assets`, so the gate is fully reversible by env-flip with no data loss.
+
+Code paths:
+- Gate check: `src/extraction_v2/stages/image_triage.py:52–57, 658–677`
+- Score computation: `src/shared/image_features.py::predict_relevance`
+- Threshold values are emitted in the model report by `scripts/train_image_relevance_model.py:130–145`
+
+### Rollout history
+
+| Date (UTC) | `USE_LEARNED_TRIAGE` | `LEARNED_TRIAGE_MIN` | Rationale |
+|------------|----------------------|----------------------|-----------|
+| Pre-2026-05-08 | `false` | — | Gate not enabled; all images enqueued |
+| **2026-05-08** | **`true`** | **`0.230`** | Phase 1 rollout. 90%-recall threshold from PR #559 model run (run id `cba5e60f`, 1713 training samples, 76 positives). |
+
+Set in Render env-group `filings-shared-secrets` (per memory `project_render_env_invisible_to_git_audit` — Render env changes are invisible to git, so this runbook is the audit trail).
+
+### Pre-rollout false-negative analysis (2026-05-08)
+
+Before flipping the gate, we enumerated which previously-reviewed images would have been filtered (i.e. `predicted_relevance < 0.230` AND any `accept|correct|add` confirmation), and checked whether the same metrics were captured elsewhere in the same filing.
+
+**Result: 3 FN images out of 70 known positives (95.7% recall in production), and every confirmed metric in those FNs is redundantly captured by text facts in the same filing.**
+
+| # | Image | Score | Filing | Metrics confirmed | Redundant text-fact coverage |
+|---|-------|-------|--------|-------------------|------------------------------|
+| 1 | GitLab `gitlab-s1xartworkcoverart3a.jpg` | 0.142 | GitLab S-1/A 2021-10-12 | (legacy "relevant" only — no per-metric data) | n/a |
+| 2 | GitLab `coverart4ba.jpg` | 0.142 | GitLab S-1/A 2021-10-12 | `cm_net_revenue_retention` (T1), `cm_large_customers_period_end` (T1), `cm_customers_period_end` | NRR: 5 text facts; large_customers: 4; customers_period_end: 4 |
+| 3 | Slack `mdaa3.jpg` | 0.227 | Slack S-1/A 2019-05-20 | `cm_customers_period_end` (T2) | 3 text facts + 1 presence row |
+
+The cover-art images are introductory hero pages with marketing-style stat callouts; the same numbers are quoted in prospectus body text, which is where the redundant facts come from. Filtering these images at the image-triage stage does not change the filing-level disclosure picture.
+
+The FN-redundancy check script lives at `/tmp/fn_redundancy_check.py` (was an ad-hoc one-off; not committed). To reproduce, see the SQL in `docs/operations/image-model-training-runbook.md` git history at this commit.
+
+### Watch window — what to monitor
+
+For 2 weeks post-rollout:
+
+- **Reviewer queue volume** in `v2_image_assets WHERE review_status='pending'` should drop noticeably (~50% based on the score distribution).
+- **Reviewer "missing image" reports** are the recall-failure signal. Any report where a reviewer expected to see an image but couldn't find it warrants checking `predicted_relevance` for that asset.
+- **Positive rate on queued images** in newly-confirmed `v2_image_metric_confirmations` rows should rise — the gate is buying precision at the cost of some recall.
+- **`v2_image_assets.predicted_relevance` distribution** for newly-extracted filings should match the training distribution (mostly 0.0–0.3 with a high-confidence tail).
+
+### Tightening to 0.317 (80%-recall threshold)
+
+If the 2-week watch window passes clean (no recall-failure reports), the next step is to tighten the threshold:
+
+```
+LEARNED_TRIAGE_MIN=0.317  # ~80% recall, ~72% queue reduction
+```
+
+This drops 18 of 90 known positives (per the model report) — more aggressive but recovers more reviewer time. Decide based on observed reviewer load and any false-negative complaints accumulated during the watch window.
+
+### Escape hatch
+
+If anything looks bad:
+
+```
+USE_LEARNED_TRIAGE=false
+```
+
+In Render env-group `filings-shared-secrets`. The gate at `src/extraction_v2/stages/image_triage.py:52–57` reads the env var per-call (gh-477), so the flip takes effect on the next request without a worker restart. No data loss because every image still persists to `v2_image_assets` regardless of the gate.
