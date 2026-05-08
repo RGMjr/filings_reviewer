@@ -2158,6 +2158,7 @@ class DatabaseAdapter:
         # rows per physical image. Keep the most recent row per filename —
         # prefer rows that already have a review decision so reviewer work
         # is not hidden behind a newer un-reviewed duplicate.
+        # FROM/JOIN mirrors get_image_review_candidate_v2 and get_images_with_decision_type — update in sync.
         sql = f"""
             WITH deduped_img AS (
                 SELECT DISTINCT ON (filing_id, filename) img_id
@@ -2205,6 +2206,7 @@ class DatabaseAdapter:
 
     def get_image_review_candidate_v2(self, img_id: str) -> dict | None:
         """V2-native single-image fetch with decision (if any)."""
+        # FROM/JOIN mirrors get_image_review_candidates_for_filing_v2 and get_images_with_decision_type — update in sync.
         sql = f"""
             SELECT {self._V2_IMAGE_CANDIDATE_SELECT},
                 f.accession_number, c.company_name, c.cik, c.ticker,
@@ -2274,6 +2276,7 @@ class DatabaseAdapter:
         else:
             raise ValueError(f"Unknown decision_type: {decision_type!r}")
 
+        # FROM/JOIN mirrors get_image_review_candidate_v2 and get_image_review_candidates_for_filing_v2 — update in sync.
         sql = f"""
             SELECT {self._V2_IMAGE_CANDIDATE_SELECT},
                 f.accession_number, c.company_name, c.cik, c.ticker,
