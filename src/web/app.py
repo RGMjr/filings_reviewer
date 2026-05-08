@@ -306,6 +306,9 @@ def create_app(
     # Register health check endpoint
     _register_health_check(app)
 
+    # Register version endpoint
+    _register_version_endpoint(app)
+
     # Register blueprints (routes will be added in later tasks)
     _register_blueprints(app)
 
@@ -447,6 +450,26 @@ def _register_health_check(app: Flask) -> None:
                 ),
                 503,
             )
+
+
+def _register_version_endpoint(app: Flask) -> None:
+    """
+    Register /version endpoint exposing the deployed git SHA.
+
+    Returns the value of the RENDER_GIT_COMMIT environment variable, which
+    Render injects automatically at deploy time. Returns "unknown" when the
+    variable is absent (local dev, test). Does not require authentication.
+    """
+
+    @app.route("/version")
+    def version():
+        """
+        Version endpoint for deploy verification.
+
+        Returns:
+            JSON response with the deployed git SHA.
+        """
+        return jsonify({"git_sha": os.environ.get("RENDER_GIT_COMMIT", "unknown")})
 
 
 def _register_blueprints(app: Flask) -> None:
