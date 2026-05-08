@@ -14,6 +14,7 @@ updated: 2026-05-08
 gh_issue: 548
 pr_refs:
   - 549
+  - 584
 note: two DB helpers share the same complex JOIN aliases with no shared helper; silent drift risk if primary method evolves
 ---
 
