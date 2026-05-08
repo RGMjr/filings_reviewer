@@ -9,7 +9,7 @@ pr_refs:
 severity: low
 slug: v2-metric-facts-doc-id-is-misleadingly-named
 source: legacy
-status: resolved
+status: archived
 title: '`v2_metric_facts.doc_id` Is Misleadingly Named'
 touches:
 - sql/*.sql

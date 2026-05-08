@@ -3,7 +3,7 @@ id: 415
 source: gh
 slug: docker-build-not-required-regression
 title: "Docker Build & Smoke should fail-closed (currently non-required, regressions sit on main)"
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —
