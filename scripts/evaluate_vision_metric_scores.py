@@ -260,8 +260,8 @@ def generate_report(
         lines.append("[DRY RUN — no output written]")
         lines.append("")
 
-    y_true = [label for _, _, _, label in pairs]
-    y_score = [score for _, _, _, score in pairs]
+    y_true = [p[3] for p in pairs]
+    y_score = [p[2] for p in pairs]
 
     n_total = len(pairs)
     n_pos = sum(y_true)
