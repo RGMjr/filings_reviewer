@@ -228,7 +228,7 @@ class TestHappyPath:
             assert isinstance(pms, list)
             assert len(pms) == 1
             assert pms[0]["metric_id"] == "cm_customers_period_end"
-            assert rows[0]["confidence"] == pytest.approx(0.85)
+            assert float(rows[0]["confidence"]) == pytest.approx(0.85)
 
 
 class TestIdempotency:
