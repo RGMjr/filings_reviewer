@@ -13,6 +13,8 @@ touches:
 discovered: 2026-05-07
 updated: 2026-05-08
 gh_issue: 554
+pr_refs:
+  - 586
 ---
 
 ### Problem
