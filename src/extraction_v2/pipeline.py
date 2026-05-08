@@ -132,6 +132,11 @@ class PipelineConfig:
     enable_llm_presence_classifier: bool = (
         False  # Shadow mode; enabled via PRESENCE_CLASSIFIER_ENABLED env or DB flag
     )
+    # Concurrency for LLMPresenceClassifierStage. Each segment-classify call
+    # is I/O-bound (Anthropic API), so threads work without GIL contention.
+    # Default 1 = serial (today's behavior, conservative for production).
+    # Eval / batch callers may bump to 4-8 to cut wall clock proportionally.
+    llm_presence_concurrency: int = 1
 
     # Quality thresholds
     min_confidence_auto_accept: float = 0.90  # Auto-accept above this

@@ -100,8 +100,12 @@ def _make_context(
     enable: bool = True,
     segments: list[Segment] | None = None,
     candidates: list[MetricCandidate] | None = None,
+    llm_presence_concurrency: int = 1,
 ) -> PipelineContext:
-    cfg = PipelineConfig(enable_llm_presence_classifier=enable)
+    cfg = PipelineConfig(
+        enable_llm_presence_classifier=enable,
+        llm_presence_concurrency=llm_presence_concurrency,
+    )
     ctx = PipelineContext(
         html_path=Path("/dev/null"),
         filing_id=42,
@@ -567,3 +571,68 @@ def test_integration_single_mda_segment_full_path() -> None:
     assert nrr.detected_at_stage == PipelineStage.LLM_PRESENCE_CLASSIFIER.value
     assert nrr.score == pytest.approx(0.82)
     assert nrr.classifier_metadata is not None
+
+
+# ---------------------------------------------------------------------------
+# Concurrency
+# ---------------------------------------------------------------------------
+
+
+def test_concurrency_produces_same_results_as_serial() -> None:
+    """concurrency=4 must produce the same signals as concurrency=1 (default).
+
+    Order of insertion into ``signals`` is preserved across both modes so
+    log determinism and downstream max-score aggregation are unchanged.
+    """
+    # 8 segments, all paraphrase-eligible (MDA, no keyword candidates).
+    segs = [_seg("X" * 80, section=SectionType.MDA, sid=f"seg-{i}") for i in range(8)]
+
+    def fake_classify(text, metric_ids, section_type=None):
+        # The fake doesn't know which segment it's scoring directly; encode
+        # the score in the segment text length variant. Simpler: same score
+        # for all metrics in this call, derived from text hash.
+        score = 0.10 + 0.10 * (sum(text[:5].encode()) % 8)
+        return (
+            [_FakeSegmentClassification(m, score=score, present=score >= 0.5) for m in metric_ids],
+            {"input_tokens": 100, "output_tokens": 20, "cache_read": 0, "cache_create": 0},
+        )
+
+    enrolled = frozenset({"cm_net_revenue_retention"})
+    section_whitelist = frozenset({"mda"})
+    prompts = {"cm_net_revenue_retention"}
+
+    # Serial baseline.
+    serial_client = _make_client(
+        prompts=prompts,
+        enrolled=enrolled,
+        section_whitelist=section_whitelist,
+        classify_fn=fake_classify,
+    )
+    serial_ctx = _make_context(segments=segs)
+    LLMPresenceClassifierStage(client=serial_client).process(serial_ctx)
+    serial_signals = sorted(
+        ((s.segment_id, s.metric_id, s.score, s.present) for s in serial_ctx.llm_presence_signals),
+    )
+
+    # Concurrent run.
+    concurrent_client = _make_client(
+        prompts=prompts,
+        enrolled=enrolled,
+        section_whitelist=section_whitelist,
+        classify_fn=fake_classify,
+    )
+    concurrent_ctx = _make_context(segments=segs, llm_presence_concurrency=4)
+    LLMPresenceClassifierStage(client=concurrent_client).process(concurrent_ctx)
+    concurrent_signals = sorted(
+        (
+            (s.segment_id, s.metric_id, s.score, s.present)
+            for s in concurrent_ctx.llm_presence_signals
+        ),
+    )
+
+    assert serial_signals == concurrent_signals
+    assert len(serial_signals) == 8
+    # Output order is preserved (submission order, regardless of completion order).
+    serial_seg_order = [s.segment_id for s in serial_ctx.llm_presence_signals]
+    concurrent_seg_order = [s.segment_id for s in concurrent_ctx.llm_presence_signals]
+    assert serial_seg_order == concurrent_seg_order
