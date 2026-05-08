@@ -727,6 +727,33 @@ def _enrich_filings_for_path_a(
     return result
 
 
+def _find_gold_filing_html(company: str, gold_root: Path) -> Path | None:
+    """Find a gold-standard cache directory for ``company`` regardless of
+    historical naming convention.
+
+    The local ``data/gold_standard/`` cache uses inconsistent slugs across
+    filings (some with trailing periods, some without; spaces, commas, and
+    periods all variously kept or replaced). This helper does a tolerant
+    match: lowercase, strip non-alphanumerics on both the company name and
+    each candidate directory name, then exact-match. Returns the path to
+    ``filing.html`` inside the matched directory if it exists.
+    """
+    if not gold_root.is_dir():
+        return None
+    needle = re.sub(r"[^a-z0-9]", "", company.lower())
+    if not needle:
+        return None
+    for d in gold_root.iterdir():
+        if not d.is_dir():
+            continue
+        slug = re.sub(r"[^a-z0-9]", "", d.name.lower())
+        if slug == needle:
+            html = d / "filing.html"
+            if html.exists():
+                return html
+    return None
+
+
 def _resolve_filing_html(paf: _PathAFiling) -> tuple[Path, Path | None]:
     """Resolve a filing's HTML to a local path, downloading from R2 if needed.
 
@@ -772,13 +799,16 @@ def _resolve_filing_html(paf: _PathAFiling) -> tuple[Path, Path | None]:
     if html_path:
         resolved = Path(html_path)
     else:
-        company_slug = (paf.selection.company or paf.selection.issuer_key).replace(" ", "_")
-        resolved = REPO_ROOT / "data" / "gold_standard" / company_slug / "filing.html"
         if os.environ.get("APP_ENV") == "production":
             raise RuntimeError(
                 f"Filing {paf.filing_id}: no html_storage_path; "
                 "refusing gold-standard fallback in production"
             )
+        company = paf.selection.company or paf.selection.issuer_key
+        gold_root = REPO_ROOT / "data" / "gold_standard"
+        resolved = _find_gold_filing_html(company, gold_root) or (
+            gold_root / company.replace(" ", "_") / "filing.html"
+        )
         logger.warning(
             "Path A filing %d: no html_storage_path; falling back to %s",
             paf.filing_id,
@@ -1211,8 +1241,14 @@ def run_eval(
     reviewed_only: bool,
     limit: int | None,
     dry_run: bool,
+    forced_gold_url: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
-    """Execute the eval. Returns (exit_code, summary_dict)."""
+    """Execute the eval. Returns (exit_code, summary_dict).
+
+    ``forced_gold_url`` (--filing-url) bypasses the deterministic greedy
+    gold corpus selector and forces a single gold filing by its split-JSON
+    URL. Reviewed corpus is suppressed when it is set.
+    """
     run_started_at = datetime.now(UTC).isoformat()
 
     if path_mode == "pipeline":
@@ -1250,7 +1286,34 @@ def run_eval(
     # ---- Gold corpus ----
     gold_filings: list[FilingSelection] = []
     gold_missing: list[str] = []
-    if not reviewed_only:
+    if forced_gold_url and not reviewed_only:
+        # --filing-url overrides the deterministic greedy selector. The URL
+        # must match a row in split_v1.json (test or calibration only —
+        # never train, since few-shots were mined from train).
+        eligible = splits.test_urls | splits.calibration_urls
+        if forced_gold_url not in eligible:
+            return 2, {
+                "error": (
+                    f"--filing-url {forced_gold_url!r} is not in test or "
+                    f"calibration split. Eligible URLs: see split_v1.json. "
+                    f"Train-split URLs are deliberately excluded."
+                ),
+                "run_started_at": run_started_at,
+            }
+        gold_filings = [
+            FilingSelection(
+                corpus="gold",
+                filing_url=forced_gold_url,
+                filing_id=None,
+                issuer_key=splits.issuer_lookup.get(forced_gold_url, ""),
+                company=splits.company_lookup.get(forced_gold_url),
+            )
+        ]
+        gold_missing = []
+        # --filing-url implies single-filing iteration; reviewed corpus is
+        # noisy in that mode, suppress it.
+        gold_only = True
+    elif not reviewed_only:
         eligible = splits.test_urls | splits.calibration_urls
         gold_metrics_per_filing = _gold_metrics_per_filing(GOLD_CSV, eligible)
         gold_filings, gold_missing = select_gold_corpus(
@@ -1531,6 +1594,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--reviewed-only", action="store_true", help="skip gold corpus")
     p.add_argument("--limit", type=int, default=None, help="filings per corpus (default 5)")
     p.add_argument(
+        "--filing-url",
+        default=None,
+        help=(
+            "force-select a single gold-corpus filing by its split-JSON URL "
+            "(bypasses the deterministic greedy selector). Useful for "
+            "iterating on a specific filing — e.g. validating a prompt "
+            "tweak. Reviewed corpus is skipped when this flag is set; "
+            "use Path A only."
+        ),
+    )
+    p.add_argument(
         "--run-id",
         default=None,
         help="override timestamp run_id (default: UTC YYYYMMDDTHHMM)",
@@ -1571,6 +1645,7 @@ def main(argv: list[str] | None = None) -> int:
         reviewed_only=args.reviewed_only,
         limit=args.limit,
         dry_run=args.dry_run,
+        forced_gold_url=args.filing_url,
     )
     if exit_code != 0:
         logger.error(

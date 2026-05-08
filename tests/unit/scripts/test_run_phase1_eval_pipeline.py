@@ -177,6 +177,47 @@ def test_resolve_filing_html_missing_disk_path_raises(cli, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# _find_gold_filing_html — robust slug match for the local cache
+# ---------------------------------------------------------------------------
+
+
+def test_find_gold_filing_html_alphanumeric_slug_match(cli, tmp_path):
+    """Finds a dir whose name normalizes to the same alphanum-only slug as
+    the company. Real-world: company 'Datadog, Inc.' → on-disk 'Datadog,_Inc_'.
+    """
+    gold_root = tmp_path
+    dir_actual = gold_root / "Datadog,_Inc_"
+    dir_actual.mkdir()
+    html = dir_actual / "filing.html"
+    html.write_text("<html/>")
+
+    found = cli._find_gold_filing_html("Datadog, Inc.", gold_root)
+    assert found == html
+
+
+def test_find_gold_filing_html_handles_mixed_case_punctuation(cli, tmp_path):
+    """Same company with different case + punctuation resolves to same dir."""
+    gold_root = tmp_path
+    (gold_root / "Snowflake_Inc").mkdir()
+    (gold_root / "Snowflake_Inc" / "filing.html").write_text("<html/>")
+
+    assert cli._find_gold_filing_html("Snowflake, Inc.", gold_root) is not None
+    assert cli._find_gold_filing_html("snowflake inc", gold_root) is not None
+    assert cli._find_gold_filing_html("SNOWFLAKE INC.", gold_root) is not None
+
+
+def test_find_gold_filing_html_returns_none_when_no_match(cli, tmp_path):
+    (tmp_path / "Other_Co").mkdir()
+    assert cli._find_gold_filing_html("Datadog, Inc.", tmp_path) is None
+
+
+def test_find_gold_filing_html_returns_none_when_html_missing(cli, tmp_path):
+    """Directory matches but filing.html doesn't exist → None."""
+    (tmp_path / "Datadog,_Inc_").mkdir()
+    assert cli._find_gold_filing_html("Datadog, Inc.", tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
 # evaluate_filing_pipeline — shape test
 # ---------------------------------------------------------------------------
 
