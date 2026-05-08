@@ -4,16 +4,18 @@
 # Checks (in order):
 #   1. All required GitHub Actions checks for <sha> have conclusion=success.
 #   2. The Render service /health endpoint returns 200.
+#   3. (optional) The Render service /version endpoint returns the expected SHA.
 #
 # Exit codes:
-#   0 — all required checks green AND /health returned 200
+#   0 — all required checks green AND /health returned 200 (AND SHA matched if --require-sha)
 #   1 — at least one required check failed/cancelled/timed_out
 #   2 — checks pending (no runs yet, or required check missing/in-progress/queued)
 #   3 — /health did not return 200
+#   4 — /version SHA mismatch (only when --require-sha is set)
 #   64 — usage error
 #
 # Usage:
-#   bash scripts/verify-deploy.sh <commit-sha> [--service filings-reviewer]
+#   bash scripts/verify-deploy.sh <commit-sha> [--service filings-reviewer] [--require-sha <SHA>]
 #
 # Required tools: git, gh (authenticated), curl, jq.
 
@@ -21,9 +23,10 @@ set -euo pipefail
 
 SERVICE="filings-reviewer"
 SHA=""
+REQUIRE_SHA=""
 
 usage() {
-    echo "Usage: $0 <commit-sha> [--service <name>]" >&2
+    echo "Usage: $0 <commit-sha> [--service <name>] [--require-sha <SHA>]" >&2
     exit 64
 }
 
@@ -31,6 +34,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --service)
             SERVICE="${2:?--service requires a value}"
+            shift 2
+            ;;
+        --require-sha)
+            REQUIRE_SHA="${2:?--require-sha requires a value}"
             shift 2
             ;;
         -h|--help)
@@ -152,7 +159,29 @@ if [[ "$http_code" != "200" ]]; then
     exit 3
 fi
 
-# --- Step 3: success ----------------------------------------------------------
+# --- Step 3: /version SHA assertion (only when --require-sha is set) ----------
 
-log "OK $SHA checks=green health=200"
+if [[ -n "$REQUIRE_SHA" ]]; then
+    version_url="https://${SERVICE}.onrender.com/version"
+    log "probing $version_url (require-sha=$REQUIRE_SHA)"
+
+    version_body="$(curl -sS --max-time 30 "$version_url" 2>/dev/null || true)"
+    deployed_sha="$(jq -r '.git_sha // empty' <<<"$version_body" 2>/dev/null || true)"
+
+    if [[ -z "$deployed_sha" ]]; then
+        log "FAILED /version returned unexpected body: $version_body"
+        exit 4
+    fi
+
+    if [[ "$deployed_sha" != "$REQUIRE_SHA" ]]; then
+        log "FAILED SHA mismatch: deployed=$deployed_sha expected=$REQUIRE_SHA"
+        exit 4
+    fi
+
+    log "SHA verified: deployed=$deployed_sha"
+fi
+
+# --- Step 4: success ----------------------------------------------------------
+
+log "OK $SHA checks=green health=200${REQUIRE_SHA:+ sha=verified}"
 exit 0
