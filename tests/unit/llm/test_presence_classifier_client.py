@@ -133,6 +133,85 @@ def test_load_metric_prompt(config_root: Path) -> None:
     assert prompt.decision_format.startswith('{"present"')
 
 
+def test_load_metric_prompt_merges_main_and_sidecar_few_shots(tmp_path: Path) -> None:
+    """Hand-authored examples in the main YAML must survive an empty or
+    populated sidecar. The loader merges main + sidecar, deduped by text.
+    """
+    prompts = tmp_path / "prompts"
+    _write(
+        prompts / "cm_test_metric.yaml",
+        """\
+        prompt_version: "0.2.0"
+        metric_id: cm_test_metric
+        definition: test
+        decision_format: "{}"
+        few_shot_examples:
+          - text: "hand-authored example A"
+            label: true
+            source: hand_authored
+        """,
+    )
+
+    # Case 1: sidecar absent → main-only.
+    p = load_metric_prompt("cm_test_metric", prompts_dir=prompts)
+    assert [ex["text"] for ex in p.few_shot_examples] == ["hand-authored example A"]
+
+    # Case 2: empty sidecar → main-only (regression: pre-merge code clobbered
+    # main-prompt examples with the empty list).
+    _write(
+        prompts / "cm_test_metric.few_shots.yaml",
+        """\
+        metric_id: cm_test_metric
+        few_shot_examples: []
+        """,
+    )
+    p = load_metric_prompt("cm_test_metric", prompts_dir=prompts)
+    assert [ex["text"] for ex in p.few_shot_examples] == ["hand-authored example A"]
+
+    # Case 3: populated sidecar → main-first union.
+    _write(
+        prompts / "cm_test_metric.few_shots.yaml",
+        """\
+        metric_id: cm_test_metric
+        few_shot_examples:
+          - text: "mined example B"
+            label: true
+            source: gold
+          - text: "mined example C"
+            label: true
+            source: gold
+        """,
+    )
+    p = load_metric_prompt("cm_test_metric", prompts_dir=prompts)
+    assert [ex["text"] for ex in p.few_shot_examples] == [
+        "hand-authored example A",
+        "mined example B",
+        "mined example C",
+    ]
+
+    # Case 4: dupe by text → kept once, hand-authored wins (it appears first).
+    _write(
+        prompts / "cm_test_metric.few_shots.yaml",
+        """\
+        metric_id: cm_test_metric
+        few_shot_examples:
+          - text: "hand-authored example A"
+            label: true
+            source: gold
+          - text: "mined example C"
+            label: true
+            source: gold
+        """,
+    )
+    p = load_metric_prompt("cm_test_metric", prompts_dir=prompts)
+    assert [ex["text"] for ex in p.few_shot_examples] == [
+        "hand-authored example A",
+        "mined example C",
+    ]
+    # The retained one must be the hand-authored copy (source=hand_authored).
+    assert p.few_shot_examples[0]["source"] == "hand_authored"
+
+
 def test_load_metric_prompt_rejects_mismatched_metric_id(tmp_path: Path) -> None:
     prompts = tmp_path / "prompts"
     _write(
