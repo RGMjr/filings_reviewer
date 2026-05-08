@@ -4,6 +4,8 @@ discovered: '2026-05-08'
 estimated: S
 gh_issue: 577
 id: 577
+pr_refs:
+  - 579
 severity: medium
 slug: eval-threshold-sweep-score-mismatch
 source: gh
