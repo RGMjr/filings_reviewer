@@ -198,7 +198,7 @@ class TestHappyPath:
 
         with (
             patch.object(cli, "_build_vision_client", return_value=mock_client),
-            patch("src.infra.image_storage.get_image_storage", return_value=mock_storage),
+            patch.object(cli, "get_image_storage", return_value=mock_storage),
         ):
             stats = cli.run(
                 clean_db,
@@ -249,7 +249,7 @@ class TestIdempotency:
 
         with (
             patch.object(cli, "_build_vision_client", return_value=mock_client),
-            patch("src.infra.image_storage.get_image_storage", return_value=mock_storage),
+            patch.object(cli, "get_image_storage", return_value=mock_storage),
         ):
             stats = cli.run(
                 clean_db,
@@ -278,7 +278,7 @@ class TestLimit:
 
         with (
             patch.object(cli, "_build_vision_client", return_value=mock_client),
-            patch("src.infra.image_storage.get_image_storage", return_value=mock_storage),
+            patch.object(cli, "get_image_storage", return_value=mock_storage),
         ):
             stats = cli.run(
                 clean_db,
@@ -305,7 +305,7 @@ class TestDryRun:
 
         with (
             patch.object(cli, "_build_vision_client", return_value=mock_client),
-            patch("src.infra.image_storage.get_image_storage", return_value=mock_storage),
+            patch.object(cli, "get_image_storage", return_value=mock_storage),
         ):
             stats = cli.run(
                 clean_db,
@@ -345,7 +345,7 @@ class TestMaxSpend:
 
         with (
             patch.object(cli, "_build_vision_client", return_value=mock_client),
-            patch("src.infra.image_storage.get_image_storage", return_value=mock_storage),
+            patch.object(cli, "get_image_storage", return_value=mock_storage),
         ):
             stats = cli.run(
                 clean_db,
@@ -373,7 +373,7 @@ class TestIneligibleClassification:
 
         with (
             patch.object(cli, "_build_vision_client", return_value=mock_client),
-            patch("src.infra.image_storage.get_image_storage", return_value=mock_storage),
+            patch.object(cli, "get_image_storage", return_value=mock_storage),
         ):
             stats = cli.run(
                 clean_db,
