@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-08
 updated: 2026-05-08
 gh_issue: 570
+pr_refs:
+- 582
 note: lets verify-deploy.sh strictly assert the running deploy matches a requested SHA
 ---
 
