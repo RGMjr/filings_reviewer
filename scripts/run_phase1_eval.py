@@ -824,16 +824,25 @@ def _resolve_filing_html(paf: _PathAFiling) -> tuple[Path, Path | None]:
 def evaluate_filing_pipeline(
     paf: _PathAFiling,
     metric_ids: list[str],
-) -> tuple[dict[str, _AggregatedScore], dict[str, bool], list[dict[str, Any]]]:
+) -> tuple[dict[str, _AggregatedScore], dict[str, bool], list[dict[str, Any]], dict[str, int]]:
     """Run the full V2 pipeline on a filing and extract LLM presence signals.
 
-    Returns ``(per_metric_aggregate, kw_present, errors)``.
+    Returns ``(per_metric_aggregate, kw_present, errors, token_totals)``.
 
     ``kw_present[metric_id]`` is True iff CandidateGenerationStage emitted at
     least one candidate for that metric — the keyword baseline for criterion #3.
-    """
-    from src.extraction_v2.pipeline import PipelineConfig, V2Pipeline
 
+    ``token_totals`` is ``{input_tokens, output_tokens, cache_read, cache_create}``
+    extracted from the LLMPresenceClassifierStage StageResult metadata.
+    """
+    from src.extraction_v2.pipeline import PipelineConfig, PipelineStage, V2Pipeline
+
+    _zero_tokens: dict[str, int] = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read": 0,
+        "cache_create": 0,
+    }
     errors: list[dict[str, Any]] = []
     resolved_path, temp_path = _resolve_filing_html(paf)
 
@@ -864,7 +873,7 @@ def evaluate_filing_pipeline(
                 "stage": "pipeline",
             }
         )
-        return {}, {}, errors
+        return {}, {}, errors, dict(_zero_tokens)
     finally:
         if temp_path is not None:
             try:
@@ -881,7 +890,19 @@ def evaluate_filing_pipeline(
                 "stage": "pipeline",
             }
         )
-        return {}, {}, errors
+        return {}, {}, errors, dict(_zero_tokens)
+
+    # Extract token counts from the LLMPresenceClassifierStage StageResult
+    # metadata. The stage accumulates per-segment token dicts and writes them
+    # into StageResult.metadata as total_input_tokens / total_output_tokens /
+    # total_cache_read / total_cache_create.
+    filing_tokens: dict[str, int] = dict(_zero_tokens)
+    for sr in result.stage_results:
+        if sr.stage == PipelineStage.LLM_PRESENCE_CLASSIFIER:
+            filing_tokens["input_tokens"] += sr.metadata.get("total_input_tokens", 0)
+            filing_tokens["output_tokens"] += sr.metadata.get("total_output_tokens", 0)
+            filing_tokens["cache_read"] += sr.metadata.get("total_cache_read", 0)
+            filing_tokens["cache_create"] += sr.metadata.get("total_cache_create", 0)
 
     # Max-score aggregation per metric across all LLM signals.
     aggregates: dict[str, _AggregatedScore] = {}
@@ -915,7 +936,7 @@ def evaluate_filing_pipeline(
     # one candidate for this metric.
     kw_present = {m: any(c.metric_id == m for c in result.context.candidates) for m in metric_ids}
 
-    return aggregates, kw_present, errors
+    return aggregates, kw_present, errors, filing_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -941,15 +962,17 @@ def evaluate_filing_direct(
     gold_quotes: list[str] | None = None,
     db_url: str | None = None,
     section_whitelist: list[str] | None = None,
-) -> tuple[dict[str, _AggregatedScore], list[dict[str, Any]]]:
+) -> tuple[dict[str, _AggregatedScore], list[dict[str, Any]], dict[str, int]]:
     """Run the classifier across one filing's relevant texts.
 
     For ``corpus='gold'``: ``gold_quotes`` MUST be provided.
     For ``corpus='reviewed'``: ``db_url`` and ``section_whitelist`` MUST be
     provided (segments are loaded from DB).
 
-    Returns ``(per_metric_aggregate, errors)`` — errors are a list of
-    ``{"filing_url", "metric_id"|None, "exception", "stage"}`` dicts.
+    Returns ``(per_metric_aggregate, errors, token_totals)`` — errors are a
+    list of ``{"filing_url", "metric_id"|None, "exception", "stage"}`` dicts.
+    ``token_totals`` is ``{input_tokens, output_tokens, cache_read, cache_create}``
+    accumulated across all ``classify_segment`` calls for this filing.
     """
     if filing.corpus == "gold":
         if gold_quotes is None:
@@ -965,14 +988,16 @@ def evaluate_filing_direct(
 
     aggregates: dict[str, _AggregatedScore] = {}
     errors: list[dict[str, Any]] = []
+    filing_tokens: dict[str, int] = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read": 0,
+        "cache_create": 0,
+    }
 
     for text, section_type in texts:
         try:
-            # ``classify_segment`` returns ``(classifications, token_counts)``
-            # since the gh-531 token-threading fix (PR #535). Token totals
-            # are discarded here — see follow-up fragment for surfacing them
-            # in summary.tokens.
-            results, _tokens = client.classify_segment(text, metric_ids)
+            results, seg_tokens = client.classify_segment(text, metric_ids)
         except ValueError as exc:  # parse / shape errors — hard fail per criterion #1
             errors.append(
                 {
@@ -993,6 +1018,11 @@ def evaluate_filing_direct(
                 }
             )
             continue
+        # Accumulate token counts from each classify_segment call.
+        filing_tokens["input_tokens"] += seg_tokens.get("input_tokens", 0)
+        filing_tokens["output_tokens"] += seg_tokens.get("output_tokens", 0)
+        filing_tokens["cache_read"] += seg_tokens.get("cache_read", 0)
+        filing_tokens["cache_create"] += seg_tokens.get("cache_create", 0)
         for sc in results:
             existing = aggregates.get(sc.metric_id)
             if existing is None or sc.score > existing.score:
@@ -1019,7 +1049,7 @@ def evaluate_filing_direct(
                 section_type=None,
             ),
         )
-    return aggregates, errors
+    return aggregates, errors, filing_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -1434,6 +1464,13 @@ def run_eval(
 
     rows: list[EvalRow] = []
     errors: list[dict[str, Any]] = []
+    # Accumulated token counts across all filings (both corpora, both paths).
+    total_tokens: dict[str, int] = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read": 0,
+        "cache_create": 0,
+    }
 
     if path_mode == "pipeline":
         # Path A: run V2 pipeline per filing; keyword baseline from context.candidates.
@@ -1443,8 +1480,12 @@ def run_eval(
             return 2, {"error": str(enrich_err), "run_started_at": run_started_at}
 
         for paf in enriched:
-            aggregates_a, kw_present_a, fil_errors = evaluate_filing_pipeline(paf, metric_ids)
+            aggregates_a, kw_present_a, fil_errors, fil_tokens = evaluate_filing_pipeline(
+                paf, metric_ids
+            )
             errors.extend(fil_errors)
+            for k in total_tokens:
+                total_tokens[k] += fil_tokens.get(k, 0)
             for metric in metric_ids:
                 if paf.selection.corpus == "gold":
                     gt = gold_labels.get((paf.selection.filing_url, metric))
@@ -1476,13 +1517,15 @@ def run_eval(
             )
             for filing in gold_filings:
                 quotes = gold_quotes_map.get(filing.filing_url, [])
-                aggregates, fil_errors = evaluate_filing_direct(
+                aggregates, fil_errors, fil_tokens = evaluate_filing_direct(
                     filing,
                     metric_ids,
                     client,
                     gold_quotes=quotes,
                 )
                 errors.extend(fil_errors)
+                for k in total_tokens:
+                    total_tokens[k] += fil_tokens.get(k, 0)
                 for metric in metric_ids:
                     gt = gold_labels.get((filing.filing_url, metric))
                     rows.append(
@@ -1500,7 +1543,7 @@ def run_eval(
 
         # Reviewed filings: score paraphrase-eligible v2_segments.
         for filing in reviewed_filings:
-            aggregates, fil_errors = evaluate_filing_direct(
+            aggregates, fil_errors, fil_tokens = evaluate_filing_direct(
                 filing,
                 metric_ids,
                 client,
@@ -1508,6 +1551,8 @@ def run_eval(
                 section_whitelist=section_whitelist,
             )
             errors.extend(fil_errors)
+            for k in total_tokens:
+                total_tokens[k] += fil_tokens.get(k, 0)
             for metric in metric_ids:
                 gt = reviewed_labels.get((filing.filing_id, metric))
                 kw = kw_baseline_reviewed.get((filing.filing_id, metric))
@@ -1530,6 +1575,18 @@ def run_eval(
 
     # Smoke-test criteria.
     smoke = compute_smoke_criteria(rows, errors)
+
+    # Token cost rollup — use Haiku pricing as the dominant model assumption.
+    # Mixed Haiku+Sonnet runs will underestimate cost; accurate for Haiku-only
+    # runs. The per-call Sonnet cost is already logged by classify_segment.
+    from src.llm.presence_classifier_client import estimate_cost_usd_from_counts
+
+    estimated_cost_usd = estimate_cost_usd_from_counts(
+        input_tokens=total_tokens["input_tokens"],
+        output_tokens=total_tokens["output_tokens"],
+        cache_read=total_tokens["cache_read"],
+        cache_create=total_tokens["cache_create"],
+    )
 
     # Output.
     csv_path = out_dir / f"phase1_10filing_{run_id}.csv"
@@ -1571,6 +1628,13 @@ def run_eval(
             "catastrophic_metrics": smoke.catastrophic_metrics,
             "disagreements_total": smoke.disagreements_total,
             "stratified_30_sample": smoke.stratified_30_sample,
+        },
+        "tokens": {
+            "input_tokens": total_tokens["input_tokens"],
+            "output_tokens": total_tokens["output_tokens"],
+            "cache_read_tokens": total_tokens["cache_read"],
+            "cache_create_tokens": total_tokens["cache_create"],
+            "estimated_cost_usd": round(estimated_cost_usd, 6),
         },
         "errors": errors,
     }

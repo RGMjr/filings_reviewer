@@ -244,7 +244,7 @@ def test_evaluate_filing_pipeline_max_score_aggregation(cli, tmp_path):
     with patch("src.extraction_v2.pipeline.V2Pipeline") as MockPipeline:
         MockPipeline.return_value.process.return_value = fake_result
         paf = _make_paf(cli, html_storage_path=str(html_file))
-        aggregates, kw_present, errors = cli.evaluate_filing_pipeline(paf, metric_ids)
+        aggregates, kw_present, errors, _tokens = cli.evaluate_filing_pipeline(paf, metric_ids)
 
     assert errors == []
     assert aggregates["cm_net_revenue_retention"].score == 0.9
@@ -280,7 +280,7 @@ def test_evaluate_filing_pipeline_keyword_baseline(cli, tmp_path):
     with patch("src.extraction_v2.pipeline.V2Pipeline") as MockPipeline:
         MockPipeline.return_value.process.return_value = fake_result
         paf = _make_paf(cli, html_storage_path=str(html_file))
-        _aggregates, kw_present, errors = cli.evaluate_filing_pipeline(paf, metric_ids)
+        _aggregates, kw_present, errors, _tokens = cli.evaluate_filing_pipeline(paf, metric_ids)
 
     assert errors == []
     assert kw_present["cm_net_revenue_retention"] is True
@@ -307,7 +307,7 @@ def test_evaluate_filing_pipeline_eval_row_keyword_present_set(cli, tmp_path):
     with patch("src.extraction_v2.pipeline.V2Pipeline") as MockPipeline:
         MockPipeline.return_value.process.return_value = fake_result
         paf = _make_paf(cli, html_storage_path=str(html_file))
-        aggregates, kw_present, errors = cli.evaluate_filing_pipeline(paf, metric_ids)
+        aggregates, kw_present, errors, _tokens = cli.evaluate_filing_pipeline(paf, metric_ids)
 
     row = cli._classify_eval_row(
         run_id="r",
@@ -333,7 +333,7 @@ def test_evaluate_filing_pipeline_pipeline_exception_returns_error(cli, tmp_path
     with patch("src.extraction_v2.pipeline.V2Pipeline") as MockPipeline:
         MockPipeline.return_value.process.side_effect = RuntimeError("pipeline exploded")
         paf = _make_paf(cli, html_storage_path=str(html_file))
-        aggregates, kw_present, errors = cli.evaluate_filing_pipeline(
+        aggregates, kw_present, errors, _tokens = cli.evaluate_filing_pipeline(
             paf, ["cm_net_revenue_retention"]
         )
 
