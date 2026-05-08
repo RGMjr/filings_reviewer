@@ -1,6 +1,6 @@
 # Supervise PRs Skill (project-local)
 
-**Purpose:** Single-shot PR-cohort status check. After a planning session dispatches N parallel implementation subagents, invoke via `/loop <interval> /supervise-prs <prs>` to periodically check status, dispatch `/ci-fix` when a required check fails, resolve `DIRTY` (merge-conflicted) PRs by merging `main` back into the PR branch, and hand off to `/cleanup` once every PR reaches a terminal state.
+**Purpose:** Single-shot PR-cohort status check. After a planning session dispatches N parallel implementation subagents, invoke via `/loop <interval> /supervise-prs <prs>` to periodically check status, dispatch `/ci-fix` when a required check fails, resolve `DIRTY` (merge-conflicted) PRs by merging `main` back into the PR branch, arm auto-merge on PRs whose CI is green but unmerged, and hand off to `/cleanup` once every PR reaches a terminal state.
 
 **Usage:** `/supervise-prs <pr_num>[,<pr_num>...]`
 
@@ -18,6 +18,7 @@ This skill does not loop internally. Repetition is provided by `/loop`.
    - `OPEN` with `mergeStateStatus == "DIRTY"` (or `mergeable == "CONFLICTING"`) → invoke a `dev-implementer` subagent (`Agent` with `subagent_type: "dev-implementer"`, `model: "sonnet"`, `isolation: "worktree"`) to merge `origin/main` into the PR's `headRefName`, push, and report. Cap total **dirty-resolve** attempts per PR at **1**; if it can't auto-resolve (true conflict requiring human judgment) or the cap is hit, escalate (report to user, mark the PR as `blocked_dirty`, drop from active set). Check this **before** the FAILURE branch — `DIRTY` typically cancels CI runs, so failed checks here are downstream of the conflict.
    - `OPEN` with `statusCheckRollup` showing any required check at `FAILURE` → invoke `/ci-fix <pr_num>` as a subagent: `Agent` with `isolation: "worktree"` and a prompt that reuses the PR's branch. Cap total `/ci-fix` attempts per PR at 2; if exceeded, escalate (report to user and mark the PR as blocked).
    - `OPEN` with checks pending/running → keep in active set.
+   - `OPEN`, `mergeable == "MERGEABLE"`, all check runs `COMPLETED` (none `IN_PROGRESS` / `QUEUED`), and no required check at `FAILURE` → ensure auto-merge is armed: `gh pr merge --auto --squash <pr_num>`. The command is idempotent — re-running on a PR that already has auto-merge armed is a no-op (gh returns success without changes). Keep in `active` set; GitHub will squash-merge once branch protection settles. This branch fires when auto-merge was never armed at PR creation (e.g. PR opened outside `/commit-proj`) or when arming was lost (e.g. force-push reset the merge state).
 3. **Report** current state: `deploy_green=<list>`, `deploy_pending=<list>`, `deploy_failed=<list>`, `failed=<list>`, `ci_fix_in_progress=<list>`, `dirty_resolve_in_progress=<list>`, `blocked_dirty=<list>`, `active=<list>`.
 4. **Termination signal.** When BOTH the `active` set AND the `deploy_pending` set are empty:
    - Print a clearly parseable completion line: `SUPERVISE_PRS_DONE deploy_green=<n> deploy_failed=<n> failed=<n>`.
@@ -27,7 +28,7 @@ This skill does not loop internally. Repetition is provided by `/loop`.
 
 ## Safety
 
-- Never call `gh pr merge --admin`.
+- Never call `gh pr merge --admin`. The auto-arm step uses `--auto --squash` only — GitHub still gates the actual merge on required checks and branch protection.
 - Never invoke `/ci-fix` more than 2 times for the same PR — report and stop.
 - Never invoke the dirty-resolve agent more than 1 time for the same PR — if a fresh merge of `origin/main` produces conflicts the agent can't trivially resolve, that's a signal a human should look at it. A second mechanical retry won't change the outcome.
 - The dirty-resolve agent must **only push to the PR's `headRefName`**, never to `main`. It must run inside an isolated worktree (`isolation: "worktree"`) so the supervisor's working directory is unaffected.
