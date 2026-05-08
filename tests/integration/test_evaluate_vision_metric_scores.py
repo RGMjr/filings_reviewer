@@ -457,3 +457,51 @@ class TestBuildLabelMap:
         label_map = cli.build_label_map(confirmations, vision_metrics)
         assert label_map[("img1", "cm_customers_period_end")] == 1  # accept wins
         assert label_map[("img1", "cm_net_revenue_retention")] == 0  # only sentinel
+
+
+class TestThresholdSweep:
+    """Threshold sweep must read score column (pos 2), not label column (pos 3).
+
+    Regression for gh-577: `[score for _, _, _, score in pairs]` extracts position 3
+    (the label) regardless of variable name, collapsing Predicted+ to a constant
+    (= count of positives) at every threshold and inflating AUC/AP to 1.0.
+    """
+
+    def _predicted_positive_at(self, report: str, threshold: float) -> int:
+        prefix = f"{threshold:>10.1f}"
+        for line in report.splitlines():
+            if line.startswith(prefix):
+                return int(line.split()[-1])
+        raise AssertionError(f"threshold {threshold} not found in report:\n{report}")
+
+    def test_sweep_uses_score_not_label(self, cli):
+        # 3 positives, 3 negatives. Score distribution chosen so each tested
+        # threshold yields a count different from 3 — the bug would always
+        # return 3 (count of positives) regardless of threshold.
+        pairs = [
+            ("img1", "m1", 0.95, 1),
+            ("img2", "m2", 0.85, 0),
+            ("img3", "m3", 0.55, 0),
+            ("img4", "m4", 0.55, 1),
+            ("img5", "m5", 0.15, 0),
+            ("img6", "m6", 0.15, 1),
+        ]
+        report = cli.generate_report(pairs)
+
+        assert self._predicted_positive_at(report, 0.1) == 6
+        assert self._predicted_positive_at(report, 0.5) == 4
+        assert self._predicted_positive_at(report, 0.9) == 1
+
+    def test_auc_reflects_score_distribution(self, cli):
+        # Negatives have higher scores than positives — AUC must be < 0.5,
+        # not 1.0 (which would mean y_score is being read as y_true).
+        pairs = [
+            ("img1", "m1", 0.1, 1),
+            ("img2", "m2", 0.2, 1),
+            ("img3", "m3", 0.8, 0),
+            ("img4", "m4", 0.9, 0),
+        ]
+        report = cli.generate_report(pairs)
+        auc_line = next(line for line in report.splitlines() if line.startswith("AUC-ROC"))
+        auc = float(auc_line.split(":")[1].strip())
+        assert auc < 0.5, f"AUC={auc} indicates score/label confusion (gh-577 regression)"

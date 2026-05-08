@@ -1,13 +1,15 @@
 ---
-autonomy: review
+autonomy: n/a
 discovered: '2026-05-08'
 estimated: S
 gh_issue: 577
 id: 577
+pr_refs:
+  - 579
 severity: medium
 slug: eval-threshold-sweep-score-mismatch
 source: gh
-status: open
+status: resolved
 title: evaluate_vision_metric_scores threshold sweep contradicts DB score distribution
 touches:
   - scripts/evaluate_vision_metric_scores.py
@@ -72,3 +74,23 @@ GROUP BY 1 ORDER BY 1;
 
 - Whether Vision per-metric scores are calibrated enough to filter on (that's the Phase 2b decision).
 - Sentinel-reject label semantics (separate question of whether expansion is appropriate).
+
+### Resolution
+
+None of the three hypotheses in this fragment was the actual cause. The bug was a list-comprehension destructuring error in `generate_report` (`scripts/evaluate_vision_metric_scores.py`):
+
+```python
+y_true = [label for _, _, _, label in pairs]
+y_score = [score for _, _, _, score in pairs]   # bug: extracts pos 4 (label), not pos 3 (score)
+```
+
+Both list comprehensions extract the same tuple position (the 4th, the label) — the variable name (`score` vs `label`) does not affect what gets bound. As a result `y_score` was actually the label list, and the threshold sweep collapsed to "Predicted+ = count of positives" at every threshold, with AUC and AP both spuriously 1.0.
+
+Fix: use index-based extraction so the column position is unambiguous:
+
+```python
+y_true = [p[3] for p in pairs]
+y_score = [p[2] for p in pairs]
+```
+
+Re-running the eval after the fix produces the expected varying threshold sweep that matches the DB score distribution (e.g. 382 Predicted+ at thresh=0.5, dropping to 75 at thresh=0.9). Regression coverage added in `tests/integration/test_evaluate_vision_metric_scores.py::TestThresholdSweep`: `test_sweep_uses_score_not_label` would return Predicted+ = 3 at every threshold under the bug; `test_auc_reflects_score_distribution` would return AUC=1.0 under the bug.
