@@ -7,11 +7,14 @@
 # typically references "cohort revenue", "revenue by signup year",
 # or "revenue by vintage".
 #
-# Few-shot examples are owned by automation; they live in the sidecar
-# cm_revenue_by_cohort.few_shots.yaml written by
-# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+# Few-shot examples come from two sources merged at load time:
+# 1. ``few_shot_examples:`` here (hand-authored, persistent across mining runs)
+# 2. ``cm_revenue_by_cohort.few_shots.yaml`` sidecar (automation-owned;
+#    overwritten by ``scripts/calibrate_llm_thresholds.py --mode mine``)
+# The loader dedupes by ``text``. Hand-author examples here when mining
+# cannot produce diverse-enough prose for a real disclosure shape.
 
-prompt_version: "0.1.0-template"
+prompt_version: "0.2.0"
 metric_id: cm_revenue_by_cohort
 
 definition: |
@@ -22,11 +25,29 @@ definition: |
   year", "revenue by customer tenure", "ARR by cohort", "GMV by cohort".
   Tracks how much each cohort contributes to total revenue over time.
 
+  Includes the simple two-bucket form: "X% of our revenue was derived
+  from existing customers, Y% from new customers" (or equivalent
+  phrasing splitting revenue between customers acquired in the current
+  period vs prior periods). This is a coarse tenure-cohort split and
+  qualifies as cohort revenue even though only two buckets are
+  reported.
+
 positive_signals:
   - Explicit phrase like "revenue by cohort", "cohort revenue", "revenue by signup year", "revenue by vintage"
   - Reference to a table or chart that splits revenue across acquisition years or tenure buckets
   - Discussion of cohort retention or expansion expressed in dollars (not just retention percentage)
   - Statements such as "our 2018 cohort generated $X in 2022", "older cohorts contribute Y% of revenue"
+  - Two-bucket revenue splits like "X% of our revenue was derived from existing customers, Y% from new customers" or "X% of revenue was attributable to customers acquired in fiscal year Y"
+
+# Hand-authored examples (loader merges these with the sidecar). Use this
+# slot when mining cannot produce a representative example. Each example's
+# ``text`` is what the classifier sees as the few-shot prose; other fields
+# are metadata for audit / future re-mining.
+few_shot_examples:
+  - text: "Approximately 70% of our revenue during the most recent fiscal year was derived from existing customers under their subscription agreements, while approximately 30% of our revenue was derived from new customers acquired during the period. We expect this mix to continue as our installed base grows."
+    label: true
+    issuer: synthetic_template
+    source: hand_authored
 
 negative_signals:
   - Revenue by product or geography without a cohort dimension (out of scope)

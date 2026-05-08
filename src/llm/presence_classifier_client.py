@@ -201,14 +201,21 @@ def load_thresholds(path: Path | None = None) -> ThresholdsConfig:
 
 
 def load_metric_prompt(metric_id: str, prompts_dir: Path | None = None) -> MetricPrompt:
-    """Load a metric prompt, merging an optional sidecar few-shots file.
+    """Load a metric prompt, merging hand-authored + mined few-shots.
 
     The main file ``<metric_id>.yaml`` is human-authored: definition, signals,
-    decision_format, prompt_version. The sidecar ``<metric_id>.few_shots.yaml``
-    is automation-owned (written by ``scripts/calibrate_llm_thresholds.py``).
-    Splitting them avoids the calibration script clobbering hand-authored
-    content. If the main file carries a ``few_shot_examples`` key (legacy or
-    inline overrides), the sidecar takes precedence when present.
+    decision_format, prompt_version, and (optionally) ``few_shot_examples``
+    that the maintainer wants to ship regardless of mining state.
+
+    The sidecar ``<metric_id>.few_shots.yaml`` is automation-owned (written
+    by ``scripts/calibrate_llm_thresholds.py``). Splitting them avoids the
+    calibration script clobbering hand-authored content.
+
+    Few-shot merge contract: hand-authored examples appear first, followed
+    by mined examples. Duplicates (same ``text`` field) are dropped. This
+    lets a maintainer hand-author an example for a metric where mining
+    can't produce diverse enough prose (e.g. tabular S-1 cohort tables)
+    without that example getting dropped on the next ``--mode mine`` run.
     """
     base_dir = prompts_dir or (CONFIG_ROOT / "prompts")
     main_path = base_dir / f"{metric_id}.yaml"
@@ -218,19 +225,31 @@ def load_metric_prompt(metric_id: str, prompts_dir: Path | None = None) -> Metri
         f"prompt YAML at {main_path} declares metric_id={raw['metric_id']!r} "
         f"but filename stem is {metric_id!r}; rename the file or fix the YAML"
     )
-    few_shots = raw.get("few_shot_examples", []) or []
+    main_few_shots: list[dict[str, Any]] = raw.get("few_shot_examples", []) or []
+    sidecar_few_shots: list[dict[str, Any]] = []
     sidecar_path = base_dir / f"{metric_id}.few_shots.yaml"
     if sidecar_path.exists():
         with sidecar_path.open() as f:
             sidecar = yaml.safe_load(f) or {}
-        few_shots = sidecar.get("few_shot_examples", []) or []
+        sidecar_few_shots = sidecar.get("few_shot_examples", []) or []
+
+    # Merge hand-authored first, then mined; dedupe by text.
+    seen_texts: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for ex in (*main_few_shots, *sidecar_few_shots):
+        text = (ex or {}).get("text") or ""
+        if text in seen_texts:
+            continue
+        seen_texts.add(text)
+        merged.append(ex)
+
     return MetricPrompt(
         metric_id=raw["metric_id"],
         prompt_version=raw["prompt_version"],
         definition=raw["definition"].strip(),
         positive_signals=tuple(raw.get("positive_signals", [])),
         negative_signals=tuple(raw.get("negative_signals", [])),
-        few_shot_examples=tuple(few_shots),
+        few_shot_examples=tuple(merged),
         decision_format=raw.get("decision_format", "").strip(),
     )
 
