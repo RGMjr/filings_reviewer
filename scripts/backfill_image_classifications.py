@@ -46,7 +46,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 from src.infra.db import DatabaseAdapter  # noqa: E402
-from src.infra.image_storage import get_image_storage  # noqa: E402
+from src.infra.image_storage import InvalidStorageKeyError, get_image_storage  # noqa: E402
 from src.infra.logging_config import configure_logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,7 @@ def _fetch_eligible_images(db: DatabaseAdapter) -> list[dict]:
         JOIN v2_image_metric_confirmations imc ON imc.img_id = ia.img_id
         WHERE ia.classification IN ('chart', 'table_image')
           AND ia.file_path IS NOT NULL
+          AND NOT starts_with(ia.file_path, '/')
           AND NOT EXISTS (
               SELECT 1
               FROM v2_image_classifications vic
@@ -173,7 +174,7 @@ def run(
 
         try:
             image_bytes = storage.get_bytes(file_path)
-        except (FileNotFoundError, OSError) as exc:
+        except (FileNotFoundError, OSError, InvalidStorageKeyError) as exc:
             logger.warning("img_id=%s: missing bytes path=%s err=%s", img_id, file_path, exc)
             api_errors += 1
             continue
