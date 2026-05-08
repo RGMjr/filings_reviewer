@@ -1060,105 +1060,116 @@
       </div>
     </div>
 
-    {# Detection Tier Table #}
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="card-title">Decisions by Detection Tier</h5>
-            {% if tier_stats %}
-            <div class="table-responsive">
-              <table class="table table-sm table-hover">
-                <thead>
-                  <tr>
-                    <th>Detection Tier</th>
-                    <th>Relevant</th>
-                    <th>Not Relevant</th>
-                    <th>Total</th>
-                    <th>Precision %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in tier_stats %}
-                  <tr>
-                    <td>
-                      {% if row.detection_tier == 'seed_list' %}
-                        <span class="badge bg-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% elif row.detection_tier == 'tier_1_cohort' %}
-                        <span class="badge bg-primary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% elif row.detection_tier == 'tier_2_large' %}
-                        <span class="badge bg-info text-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% elif row.detection_tier == 'tier_3_all' %}
-                        <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% else %}
-                        <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% endif %}
-                    </td>
-                    <td class="text-success">{{ row.relevant_count }}</td>
-                    <td class="text-danger">{{ row.not_relevant_count }}</td>
-                    <td>{{ row.total_decisions }}</td>
-                    <td>{{ row.precision_pct|round(1) }}%</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-            {% else %}
-            <p class="text-muted">No decision statistics available.</p>
-            {% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
+    {# Detection-tier diagnostics — collapsed by default; niche relevance-model
+       signal superseded by the per-metric card above as the primary view.
+       Queries (db.get_image_decisions_by_tier_v2,
+       db.get_image_rejection_reasons_by_tier_v2) are intact. #}
+    <details class="mb-4">
+      <summary class="text-muted" style="cursor: pointer; user-select: none;">
+        Detection-tier diagnostics (relevance-model)
+      </summary>
 
-    {# Rejection Reasons Table #}
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="card-title">Rejection Reasons by Detection Tier</h5>
-            {% if rejection_stats %}
-            <div class="table-responsive">
-              <table class="table table-sm table-hover">
-                <thead>
-                  <tr>
-                    <th>Detection Tier</th>
-                    <th>Rejection Reason</th>
-                    <th>Count</th>
-                    <th>% of Tier Rejections</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in rejection_stats %}
-                  <tr>
-                    <td>
-                      {% if row.detection_tier == 'seed_list' %}
-                        <span class="badge bg-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% elif row.detection_tier == 'tier_1_cohort' %}
-                        <span class="badge bg-primary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% elif row.detection_tier == 'tier_2_large' %}
-                        <span class="badge bg-info text-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% elif row.detection_tier == 'tier_3_all' %}
-                        <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% else %}
-                        <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
-                      {% endif %}
-                    </td>
-                    <td>{{ rejection_reason_labels.get(row.rejection_reason, row.rejection_reason) }}</td>
-                    <td>{{ row.rejection_count }}</td>
-                    <td>{{ row.pct_of_tier_rejections|round(1) }}%</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+      {# Detection Tier Table #}
+      <div class="row mb-3 mt-3">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Decisions by Detection Tier</h5>
+              {% if tier_stats %}
+              <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                  <thead>
+                    <tr>
+                      <th>Detection Tier</th>
+                      <th>Relevant</th>
+                      <th>Not Relevant</th>
+                      <th>Total</th>
+                      <th>Precision %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in tier_stats %}
+                    <tr>
+                      <td>
+                        {% if row.detection_tier == 'seed_list' %}
+                          <span class="badge bg-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% elif row.detection_tier == 'tier_1_cohort' %}
+                          <span class="badge bg-primary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% elif row.detection_tier == 'tier_2_large' %}
+                          <span class="badge bg-info text-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% elif row.detection_tier == 'tier_3_all' %}
+                          <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% else %}
+                          <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-success">{{ row.relevant_count }}</td>
+                      <td class="text-danger">{{ row.not_relevant_count }}</td>
+                      <td>{{ row.total_decisions }}</td>
+                      <td>{{ row.precision_pct|round(1) }}%</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="text-muted">No decision statistics available.</p>
+              {% endif %}
             </div>
-            {% else %}
-            <p class="text-muted">No rejection data yet.</p>
-            {% endif %}
           </div>
         </div>
       </div>
-    </div>
+
+      {# Rejection Reasons Table #}
+      <div class="row mb-3">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Rejection Reasons by Detection Tier</h5>
+              {% if rejection_stats %}
+              <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                  <thead>
+                    <tr>
+                      <th>Detection Tier</th>
+                      <th>Rejection Reason</th>
+                      <th>Count</th>
+                      <th>% of Tier Rejections</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in rejection_stats %}
+                    <tr>
+                      <td>
+                        {% if row.detection_tier == 'seed_list' %}
+                          <span class="badge bg-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% elif row.detection_tier == 'tier_1_cohort' %}
+                          <span class="badge bg-primary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% elif row.detection_tier == 'tier_2_large' %}
+                          <span class="badge bg-info text-dark">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% elif row.detection_tier == 'tier_3_all' %}
+                          <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% else %}
+                          <span class="badge bg-secondary">{{ row.detection_tier|replace('_', ' ')|title }}</span>
+                        {% endif %}
+                      </td>
+                      <td>{{ rejection_reason_labels.get(row.rejection_reason, row.rejection_reason) }}</td>
+                      <td>{{ row.rejection_count }}</td>
+                      <td>{{ row.pct_of_tier_rejections|round(1) }}%</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="text-muted">No rejection data yet.</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </details>
 
     {% endif %} {# end overall_stats check #}
 

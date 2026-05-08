@@ -405,7 +405,7 @@ def test_evaluate_filing_direct_unpacks_classify_segment_tuple(cli):
     client = _FakeClassifierClient(
         {"cm_net_revenue_retention": 0.92, "cm_revenue_concentration": 0.10}
     )
-    aggregates, errors = cli.evaluate_filing_direct(
+    aggregates, errors, _tokens = cli.evaluate_filing_direct(
         filing,
         ["cm_net_revenue_retention", "cm_revenue_concentration"],
         client,
