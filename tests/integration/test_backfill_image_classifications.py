@@ -357,8 +357,10 @@ class TestMaxSpend:
                 batch_size=25,
             )
 
-        assert stats["successes"] == 0
-        assert stats["processed"] == 0
+        # Script aborts after the first call exceeds budget — one image goes
+        # through, then the loop breaks before processing the remaining 4.
+        assert stats["successes"] == 1
+        assert stats["processed"] == 1
 
 
 class TestIneligibleClassification:
