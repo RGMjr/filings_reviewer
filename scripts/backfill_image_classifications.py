@@ -78,7 +78,6 @@ def _fetch_eligible_images(db: DatabaseAdapter) -> list[dict]:
               SELECT 1
               FROM v2_image_classifications vic
               WHERE vic.img_id = ia.img_id
-                AND jsonb_array_length(vic.predicted_metrics) > 0
           )
         GROUP BY ia.img_id, ia.file_path, ia.classification
         ORDER BY confirmation_count ASC, ia.img_id
