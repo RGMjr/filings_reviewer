@@ -5,11 +5,14 @@
 # unit-economics discussions. Distinguishing LTV alone from the combined
 # LTV/CAC ratio is the main FP risk.
 #
-# Few-shot examples are owned by automation; they live in the sidecar
-# cm_lifetime_value_per_customer.few_shots.yaml written by
-# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+# Few-shot examples come from two sources merged at load time:
+# 1. ``few_shot_examples:`` here (hand-authored, persistent across mining runs)
+# 2. ``cm_lifetime_value_per_customer.few_shots.yaml`` sidecar (automation-owned;
+#    overwritten by ``scripts/calibrate_llm_thresholds.py --mode mine``)
+# The loader dedupes by ``text``. Hand-author examples here when mining
+# cannot produce diverse-enough prose for a real disclosure shape.
 
-prompt_version: "0.1.0-template"
+prompt_version: "0.2.0"
 metric_id: cm_lifetime_value_per_customer
 
 definition: |
@@ -22,11 +25,18 @@ definition: |
   inverse of churn times margin per customer. Common paraphrases:
   "lifetime value", "customer lifetime value", "LTV", "CLV".
 
+  Includes chart- or table-driven disclosures that show LTV evolving
+  by years of customer tenure (e.g., a bar chart of cumulative
+  contribution per customer at year 1, year 2, … year N) even when
+  the surrounding prose is just a brief caption like "lifetime value
+  chart" or "LTV of customers at each year of tenure."
+
 positive_signals:
   - Explicit term "lifetime value", "LTV", "customer lifetime value", or "CLV"
   - A dollar amount described as the value of an average customer over time
-  - Disclosure of how LTV is computed (e.g., "ARPU divided by churn rate")
+  - Disclosure of how LTV is computed (e.g., "ARPU divided by churn rate", "cumulative contribution per cohort divided by customers acquired")
   - Cohort-level LTV figures showing how customer value evolves over tenure
+  - Chart or table captions naming LTV explicitly, e.g., "lifetime value chart", "LTV at each year of tenure", "cumulative LTV by cohort year" — the segment may be terse caption-only prose pointing at an accompanying figure
 
 negative_signals:
   - LTV/CAC ratio discussion (use cm_ltv_to_cac_ratio or cm_ltv_to_cac_ratio_by_cohort) — these often share the term "LTV"
@@ -34,6 +44,20 @@ negative_signals:
   - Generic average revenue per customer / ARPU without lifetime framing (use cm_revenue_per_customer)
   - References to "value of our customer base" in qualitative terms without a dollar LTV figure
   - '"Long-term value to shareholders" or similar enterprise-value language unrelated to per-customer LTV'
+
+# Hand-authored examples (loader merges these with the sidecar). Use this
+# slot when mining cannot produce a representative example. Each example's
+# ``text`` is what the classifier sees as the few-shot prose; other fields
+# are metadata for audit / future re-mining.
+few_shot_examples:
+  - text: "The following chart shows the lifetime value of customers acquired in each cohort at each year of tenure. Cumulative LTV per customer rises from approximately $50 in year one to roughly $310 by year five, reflecting repeat purchase behavior across the tenure curve."
+    label: true
+    issuer: synthetic_template
+    source: hand_authored
+  - text: "We estimate the lifetime value of an average customer to be approximately $1,200, calculated as average annual gross profit per customer divided by our annual customer churn rate. We use LTV as a directional input when evaluating customer acquisition spend."
+    label: true
+    issuer: synthetic_template
+    source: hand_authored
 
 decision_format: |
   Respond with a single JSON object:
