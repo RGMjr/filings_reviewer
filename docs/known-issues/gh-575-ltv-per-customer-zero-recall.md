@@ -13,7 +13,7 @@ touches:
 discovered: 2026-05-08
 updated: 2026-05-08
 gh_issue: 575
-note: classifier never predicts present for cm_lifetime_value_per_customer; Tier-1 metric, F1 0.00 on n=5 gold
+note: prompt v0.2.0 broadens definition + positive_signals to cover chart-caption "lifetime value chart" / "LTV at each year of tenure" variant; adds two hand-authored few-shots; smoke-eval re-run pending
 ---
 
 ### Problem
