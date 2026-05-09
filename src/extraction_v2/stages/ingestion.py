@@ -309,6 +309,25 @@ class IngestionStage:
 
         return True
 
+    def _has_anchor_target(self, element: etree._Element) -> bool:
+        """
+        Detect whether `element` contains an `<a name>` or `<a id>` anchor target.
+
+        Anchor *targets* (destinations) mark document structure — typically a
+        section heading. Anchor *links* (`<a href="#x">`) do not, and must not
+        admit short table-of-contents entries through the length floor.
+
+        Args:
+            element: lxml Element to inspect (descendant `<a>` tags considered).
+
+        Returns:
+            True if any descendant `<a>` has a `name` or `id` attribute.
+        """
+        for anchor in element.iter("a"):
+            if anchor.get("name") or anchor.get("id"):
+                return True
+        return False
+
     def _is_invisible_alt_text(self, element: etree._Element) -> bool:
         """
         Check if element contains only invisible accessibility fallback text.
@@ -586,8 +605,16 @@ class IngestionStage:
             text_content = element.text_content() if hasattr(element, "text_content") else ""
             normalized_text = normalize_text(text_content)
 
-            # Apply length filters
-            if len(normalized_text) < self.MIN_PARAGRAPH_CHARS:
+            # Apply length filters. Short paragraphs are retained when they
+            # carry an `<a name>` / `<a id>` anchor *target* — SEC S-1s
+            # (Datadog 2019 vintage, gh-574) place section-START headings in
+            # standalone <P> elements whose text falls below the floor; the
+            # anchor target marks them as document structure rather than body
+            # copy. Bare `<a href>` links are NOT a target signal — that would
+            # let table-of-contents entries flood through.
+            if len(normalized_text) < self.MIN_PARAGRAPH_CHARS and not self._has_anchor_target(
+                element
+            ):
                 continue
             if len(normalized_text) > self.MAX_PARAGRAPH_CHARS:
                 normalized_text = normalized_text[: self.MAX_PARAGRAPH_CHARS]

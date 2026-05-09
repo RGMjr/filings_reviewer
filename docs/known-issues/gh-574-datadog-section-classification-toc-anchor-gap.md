@@ -8,24 +8,30 @@ severity: medium
 autonomy: skip
 estimated: —
 touches:
-  - src/extraction_v2/stages/section_classification.py
-  - tests/unit/extraction_v2/stages/test_section_classification.py
+  - src/extraction_v2/stages/ingestion.py
+  - tests/unit/extraction_v2/test_ingestion.py
 discovered: 2026-05-08
 updated: 2026-05-08
 gh_issue: 574
-note: Datadog S-1 and similar TOC-anchor-wrapped markup match no SECTION_PATTERNS; paraphrase recall path completely inert
+note: "Root cause is the 50-char MIN_PARAGRAPH_CHARS floor in ingestion (not section_classification). Datadog's bare-heading <P>s carry an `<a name>` anchor target but text below the floor, and get filtered before Stage 2 sees them. Fix retains short paragraphs that carry an anchor target."
 ---
 
 ### Problem
 
 Phase-1 smoke eval (run_id `20260508T1743`) revealed Datadog's S-1 (filing 1539) is the only filing of 5 in the gold corpus where `section_classification` detects **zero** whitelisted sections (MDA, Business, Risk Factors). Detected map: `{COVER: 0, FINANCIALS: 3}`. As a result, the LLM paraphrase-recall path was completely inert — `paraphrase_segs=0` versus the other 4 filings' 604–891 paraphrase candidates.
 
-The other 4 gold filings (1545, 1550, 191794, 1146) all match `MDA: 1`, meaning the heading-pattern regex finds the start of MD&A and propagates the section tag forward. Datadog's HTML wraps heading text inside `<TD><P><A HREF="#anchor">RISK FACTORS</A></P></TD>` table cells — `_is_section_heading()` and the anchored regexes in `SECTION_PATTERNS` don't match the resulting segment text shape.
+### Root cause (verified 2026-05-08)
+
+The fragment originally hypothesized TOC-anchor markup in `<TD>` cells. **Re-investigation against the cached gold HTML showed a different cause** in ingestion, not section_classification:
+
+- Datadog's section-START headings are plain `<P>` elements containing an `<a name="...">` anchor target. Examples (`data/gold_standard/Datadog,_Inc_/filing.html`): line 2408 `<P ... ALIGN="center"><B><A NAME="toc745413_2"></A>RISK FACTORS </B></P>` (text length 12); lines 6036–6037 split MD&A across two short `<P>`s (39 + 45 chars).
+- All three are below `IngestionStage.DEFAULT_MIN_PARAGRAPH_CHARS = 50` and are dropped at `_extract_paragraph_segments_with_elements` line 590 — **before** they reach Stage 2. `SECTION_PATTERNS` and `_is_section_heading()` work correctly; the segments they would match are already gone.
+- Working filings (e.g., Maplebear) survive because the full title is in one paragraph (85 chars), comfortably above the floor.
 
 Not a smoke-gate blocker (catastrophic-regression check passed), but a systematic gap that hurts Tier-1 recall on Datadog-style filings and likely contributes to gh-575 (LTV-per-customer 0-recall).
 
-### Next Steps
+### Fix
 
-- Inspect the `segment.text` values around Datadog's MD&A / Risk Factors anchors after ingestion to see what shape they take.
-- Either extend `SECTION_PATTERNS` to cover the variants observed, or relax `_is_section_heading()` to admit TOC-anchor segment shapes.
-- Re-run Phase-1 smoke eval; confirm Datadog `paraphrase_segs > 0`.
+Retain short paragraphs (below `MIN_PARAGRAPH_CHARS`) when they contain an `<a name>` or `<a id>` anchor target — the standard SEC section-anchor signal. `<a href>` (link) does NOT count, to keep TOC entries from flooding through. Purely additive change: long paragraphs unaffected.
+
+Verification on filing 1539 post-fix: `section_classification` detects `risk_factors: 1`, `mda: 1`, `business: 1` (was zero).
