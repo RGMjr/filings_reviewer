@@ -606,6 +606,169 @@ class TestParagraphDetection:
         assert segments[2].sequence == 2
 
 
+class TestAnchorBearingShortHeadings:
+    """gh-574: short paragraphs carrying an `<a name>` / `<a id>` section anchor.
+
+    SEC S-1s (Datadog 2019 vintage) place section-START headings in standalone
+    `<P>` elements whose text is shorter than `MIN_PARAGRAPH_CHARS`. The default
+    length floor would drop them, leaving section_classification with nothing to
+    detect on. Paragraphs containing an anchor *target* (`<a name>` or `<a id>`,
+    not an `<a href>`) are retained regardless of length.
+    """
+
+    def test_retain_short_paragraph_with_a_name_anchor(self, tmp_path: Path) -> None:
+        """`<P><B><A NAME="x"></A>RISK FACTORS</B></P>` (12 chars) survives."""
+        html_content = b"""
+        <html>
+        <body>
+            <p><b><a name="toc745413_2"></a>RISK FACTORS </b></p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 1
+        assert segments[0].text == "RISK FACTORS"
+
+    def test_retain_short_paragraph_with_a_id_anchor(self, tmp_path: Path) -> None:
+        """`<a id="...">` (HTML5 form) is treated equivalently to `<a name>`."""
+        html_content = b"""
+        <html>
+        <body>
+            <p><a id="sec-mda"></a>MD&amp;A</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 1
+        assert segments[0].text == "MD&A"
+
+    def test_retain_split_mda_first_paragraph(self, tmp_path: Path) -> None:
+        """Datadog splits MD&A across two `<P>`s; the anchor-bearing first one survives."""
+        html_content = b"""
+        <html>
+        <body>
+            <p><b><a name="toc745413_10"></a>MANAGEMENT'S DISCUSSION AND ANALYSIS OF </b></p>
+            <p><b>FINANCIAL CONDITION AND RESULTS OF OPERATIONS </b></p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        # First paragraph has the anchor and survives. Second is below the
+        # floor with no anchor, so it gets filtered (acceptable — the first
+        # half is enough for `_detect_section_type` to match the MDA pattern).
+        assert len(segments) == 1
+        assert segments[0].text.startswith("MANAGEMENT'S DISCUSSION AND ANALYSIS")
+
+    def test_short_paragraph_without_anchor_still_filtered(self, tmp_path: Path) -> None:
+        """The retain rule is purely additive — non-anchor short paragraphs still drop."""
+        html_content = b"""
+        <html>
+        <body>
+            <p>NO ANCHOR HERE</p>
+            <p>This longer paragraph is over the fifty character floor and should survive.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 1
+        assert "longer paragraph" in segments[0].text
+
+    def test_anchor_link_href_does_not_count_as_anchor_target(self, tmp_path: Path) -> None:
+        """`<a href>` (link) is NOT an anchor *target*; short hyperlink paragraphs still drop.
+
+        Otherwise TOC entries would all flood through ingestion.
+        """
+        html_content = b"""
+        <html>
+        <body>
+            <p><a href="#toc745413_2">RISK FACTORS</a></p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=12345)
+
+        assert len(segments) == 0
+
+    def test_anchor_bearing_heading_flows_to_section_classification(self, tmp_path: Path) -> None:
+        """End-to-end: a Datadog-shaped fixture produces MDA + RISK_FACTORS detections."""
+        from src.extraction_v2.models import SectionType
+        from src.extraction_v2.pipeline import PipelineContext
+        from src.extraction_v2.stages.section_classification import (
+            SectionClassificationStage,
+        )
+
+        html_content = b"""
+        <html>
+        <body>
+            <p>This intro paragraph is long enough to clear the fifty character minimum and reach Stage 2.</p>
+            <p><b><a name="toc745413_2"></a>RISK FACTORS </b></p>
+            <p>This longer paragraph should be tagged RISK_FACTORS by section propagation across more than fifty characters.</p>
+            <p><b><a name="toc745413_10"></a>MANAGEMENT'S DISCUSSION AND ANALYSIS OF </b></p>
+            <p>This MD&amp;A body paragraph is also clearly over the fifty character floor and should pick up the MDA section tag.</p>
+        </body>
+        </html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        ingest = IngestionStage()
+        tree = ingest._parse_html(html_file)
+        assert tree is not None
+        segments = ingest._extract_paragraph_segments(tree, filing_id=42)
+
+        ctx = PipelineContext(
+            html_path=html_file,
+            filing_id=42,
+            config=PipelineConfig(),
+            segments=segments,
+        )
+
+        result = SectionClassificationStage().process(ctx)
+        assert result.success
+        sections = {k: v for k, v in result.metadata["sections_detected"].items()}
+        assert sections.get(SectionType.RISK_FACTORS.value, 0) >= 1, sections
+        assert sections.get(SectionType.MDA.value, 0) >= 1, sections
+
+
 class TestTableDetection:
     """Test table detection with div-wrapper deduplication (AC-6)."""
 
@@ -1643,9 +1806,7 @@ class TestInvisibleAltTextSuppression:
         from lxml import html as lhtml
 
         stage = IngestionStage()
-        element = lhtml.fragment_fromstring(
-            '<p style="font-size:1pt;color:white">Hidden text</p>'
-        )
+        element = lhtml.fragment_fromstring('<p style="font-size:1pt;color:white">Hidden text</p>')
         assert stage._is_invisible_alt_text(element) is True
 
     def test_is_invisible_alt_text_detects_with_spaces(self) -> None:
