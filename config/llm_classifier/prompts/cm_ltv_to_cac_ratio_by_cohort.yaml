@@ -9,11 +9,14 @@
 # Major FP source: a single overall LTV/CAC ratio that doesn't actually
 # segment by cohort (that's cm_ltv_to_cac_ratio).
 #
-# Few-shot examples are owned by automation; they live in the sidecar
-# cm_ltv_to_cac_ratio_by_cohort.few_shots.yaml written by
-# scripts/calibrate_llm_thresholds.py. Do not hand-edit them here.
+# Few-shot examples come from two sources merged at load time:
+# 1. ``few_shot_examples:`` here (hand-authored, persistent across mining runs)
+# 2. ``cm_ltv_to_cac_ratio_by_cohort.few_shots.yaml`` sidecar (automation-owned;
+#    overwritten by ``scripts/calibrate_llm_thresholds.py --mode mine``)
+# The loader dedupes by ``text``. Hand-author examples here when mining
+# cannot produce a representative example for a real disclosure shape.
 
-prompt_version: "0.1.0-template"
+prompt_version: "0.2.0"
 metric_id: cm_ltv_to_cac_ratio_by_cohort
 
 definition: |
@@ -26,17 +29,50 @@ definition: |
   "LTV-to-CAC by vintage", "LTV/CAC by acquisition year", "M-month
   LTV/CAC".
 
+  Includes chart- or table-driven disclosures where the section heading
+  or caption refers to LTV-to-CAC ratios (note: plural "Ratios") for
+  multiple acquisition cohorts or vintages, even when the surrounding
+  text is a terse caption and the cohort breakdown appears only in the
+  accompanying figure. The plural form — e.g., "Lifetime Value of a
+  Consumer to Consumer Acquisition Cost Ratios" — signals that multiple
+  cohort-level ratios are shown, distinguishing this from a single
+  blended "Ratio."
+
 positive_signals:
   - LTV/CAC discussed across multiple cohorts, vintages, or acquisition years
   - Temporal qualifiers tied to LTV/CAC ("6-month LTV/CAC", "LTV/CAC after 12 months")
   - A table or chart showing LTV/CAC ratios for each acquisition cohort
   - Statements like "our 2019 cohort reached an LTV/CAC of 4x by year three"
+  - Chart or table section headings that use the plural "Ratios" (not singular "Ratio") or otherwise signal multiple cohort-level values — terse caption-only prose is acceptable if the heading itself implies per-cohort disaggregation
 
 negative_signals:
   - A single overall LTV/CAC ratio that is NOT segmented by cohort (use cm_ltv_to_cac_ratio)
+  - A chart caption or heading for a single blended LTV/CAC figure with no cohort/vintage breakdown
   - LTV-only or CAC-only by cohort without the ratio (use cm_lifetime_value_per_customer or cm_customer_acquisition_cost)
   - Cohort revenue / retention tables that don't disclose an LTV/CAC ratio (use cm_revenue_by_cohort)
   - Generic unit-economics commentary without quantified per-cohort ratios
+
+# Hand-authored examples (loader merges these with the sidecar). Use this
+# slot when mining cannot produce a representative example. Each example's
+# ``text`` is what the classifier sees as the few-shot prose; other fields
+# are metadata for audit / future re-mining.
+few_shot_examples:
+  - text: "The chart below presents the lifetime value to customer acquisition cost ratios for customers acquired in each of the years 2018, 2019, and 2020. Ratios are shown at six and twelve months after acquisition. Customers acquired in 2018 achieved an LTV/CAC of 1.6x at six months and 2.4x at twelve months."
+    label: true
+    issuer: synthetic_template
+    source: hand_authored
+  - text: "Our 2020 cohort had an LTV/CAC ratio of 2.1x after six months and 3.8x after twelve months. The 2021 cohort reached 1.9x at six months. Across all vintages, LTV/CAC tends to expand as cohorts mature, reflecting the compounding effect of repeat purchases."
+    label: true
+    issuer: synthetic_template
+    source: hand_authored
+  - text: "Lifetime Value of a Consumer to Consumer Acquisition Cost Ratios"
+    label: true
+    issuer: synthetic_template
+    source: hand_authored
+  - text: "The following chart shows our blended LTV to CAC ratio for all customers acquired during fiscal year 2022. Our overall LTV/CAC ratio reached 4.5x as of year-end, reflecting efficient acquisition spend and strong retention across the base."
+    label: false
+    issuer: synthetic_template
+    source: hand_authored
 
 decision_format: |
   Respond with a single JSON object:
