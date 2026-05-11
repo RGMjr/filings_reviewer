@@ -246,12 +246,18 @@ def get_tier1_keywords_re(config_path: str | None = None) -> re.Pattern[str]:
     return re.compile(combined, re.IGNORECASE)
 
 
-def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
+def get_metric_keywords(
+    config_path: str | None = None,
+    override: dict[str, list[str]] | None = None,
+) -> dict[str, list[str]]:
     """
     Get all metric keyword patterns.
 
     Args:
         config_path: Optional path to config file.
+        override: If provided, per-metric pattern lists fully REPLACE the
+            YAML defaults for the keys present. Used by the simulate-and-
+            ship flow; when None, the cached YAML path is returned.
 
     Returns:
         Dictionary mapping metric_id to list of regex patterns.
@@ -259,59 +265,78 @@ def get_metric_keywords(config_path: str | None = None) -> dict[str, list[str]]:
     """
     config = _load_config(config_path)
     # Cast is safe: _validate_config() ensures patterns are list[str]
-    return {
+    result = {
         metric_id: cast(list[str], metric_config["patterns"])
         for metric_id, metric_config in config.items()
         if _is_metric_key(metric_id) and metric_config.get("status") != "deprecated"
     }
+    if override:
+        # Override replaces the per-metric list; never poisons the cached config.
+        return {**result, **{mid: list(p) for mid, p in override.items() if mid in result}}
+    return result
 
 
-def get_exclusion_patterns(config_path: str | None = None) -> dict[str, list[str]]:
+def get_exclusion_patterns(
+    config_path: str | None = None,
+    override: dict[str, list[str]] | None = None,
+) -> dict[str, list[str]]:
     """
     Get exclusion patterns for metrics.
 
     Args:
         config_path: Optional path to config file.
+        override: If provided, per-metric exclusion lists fully REPLACE the
+            YAML defaults for the keys present. Metric_ids not currently
+            having exclusions in YAML can be added by the override.
 
     Returns:
         Dictionary mapping metric_id to list of exclusion regex patterns.
-        Only includes metrics that have exclusions defined.
+        Only includes metrics that have exclusions defined (or are added
+        via override).
         Excludes YAML anchor keys (starting with underscore).
     """
     config = _load_config(config_path)
-    return {
+    result = {
         metric_id: metric_config["exclusions"]
         for metric_id, metric_config in config.items()
         if _is_metric_key(metric_id)
         and "exclusions" in metric_config
         and metric_config.get("status") != "deprecated"
     }
+    if override:
+        return {**result, **{mid: list(p) for mid, p in override.items()}}
+    return result
 
 
-def get_specific_patterns(config_path: str | None = None) -> list[str]:
+def get_specific_patterns(
+    config_path: str | None = None,
+    override: dict[str, list[str]] | None = None,
+) -> list[str]:
     """
     Get all specific (multi-word) patterns that get confidence bonuses.
 
     Args:
         config_path: Optional path to config file.
+        override: If provided, the flat list is recomputed by replacing each
+            metric_id's specific patterns in the per-metric dict with the
+            override and concatenating. See get_specific_patterns_by_metric
+            for the per-metric semantics.
 
     Returns:
         List of specific pattern strings (not compiled regex).
         Excludes YAML anchor keys (starting with underscore).
     """
-    config = _load_config(config_path)
-    patterns: list[str] = []
-    for metric_id, metric_config in config.items():
-        if (
-            _is_metric_key(metric_id)
-            and "specific_patterns" in metric_config
-            and metric_config.get("status") != "deprecated"
-        ):
-            patterns.extend(metric_config["specific_patterns"])
-    return patterns
+    by_metric = get_specific_patterns_by_metric(config_path, override=override)
+    flat: list[str] = []
+    for patterns in by_metric.values():
+        flat.extend(patterns)
+    return flat
 
 
-def get_specific_patterns_by_metric(config_path: str | None = None) -> dict[str, list[str]]:
+def get_specific_patterns_by_metric(
+    config_path: str | None = None,
+    override: dict[str, list[str]] | None = None,
+) -> dict[str, list[str]]:
     """
     Get specific (multi-word) patterns grouped by metric_id.
 
@@ -321,19 +346,26 @@ def get_specific_patterns_by_metric(config_path: str | None = None) -> dict[str,
 
     Args:
         config_path: Optional path to config file.
+        override: If provided, per-metric specific-pattern lists fully
+            REPLACE the YAML defaults for the keys present. Metric_ids not
+            currently having specific_patterns in YAML can be added by the
+            override.
 
     Returns:
         Dict mapping metric_id to list of specific pattern strings.
         Excludes YAML anchor keys (starting with underscore) and deprecated metrics.
     """
     config = _load_config(config_path)
-    return {
+    result = {
         metric_id: list(metric_config["specific_patterns"])
         for metric_id, metric_config in config.items()
         if _is_metric_key(metric_id)
         and "specific_patterns" in metric_config
         and metric_config.get("status") != "deprecated"
     }
+    if override:
+        return {**result, **{mid: list(p) for mid, p in override.items()}}
+    return result
 
 
 def reload_config() -> None:

@@ -49,7 +49,7 @@ from datetime import UTC, date, datetime
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict
 
 from src.extraction_v2.exceptions import V2FatalError, V2TransientError
 from src.extraction_v2.models import (
@@ -97,6 +97,49 @@ def _env_truthy(name: str) -> bool:
 DOC_TYPE_SEC_FILING = "sec_filing"
 DOC_TYPE_TRANSCRIPT = "transcript"
 DOC_TYPE_PRESENTATION = "investor_presentation"
+
+
+class KeywordPatchOverride(TypedDict, total=False):
+    """Per-metric pattern overrides applied to the in-memory keyword config.
+
+    Used by the simulate-and-ship flow on /v2/review/stats to run the
+    gold-standard validator with patched rules without touching disk.
+
+    Each field is a dict mapping metric_id -> list of regex patterns. When
+    a metric_id is present, its full pattern list for that field is
+    REPLACED (not appended) by the override. Metric_ids absent from the
+    override keep their YAML defaults.
+
+    Fields:
+        metric_keywords: replaces get_metric_keywords() per metric.
+        exclusion_patterns: replaces get_exclusion_patterns() per metric.
+        specific_patterns: replaces get_specific_patterns_by_metric() per
+            metric; flat get_specific_patterns() is recomputed from this.
+    """
+
+    metric_keywords: dict[str, list[str]]
+    exclusion_patterns: dict[str, list[str]]
+    specific_patterns: dict[str, list[str]]
+
+
+class FpFilterOverride(TypedDict, total=False):
+    """Overridable constructor kwargs for the V1 FalsePositiveFilter.
+
+    Passed via PipelineConfig.fp_filter_override to FalsePositiveFilterStage
+    so the simulate-and-ship flow can test FP-filter rule changes in-memory
+    without modifying the V1 filter class.  Only the fields listed here are
+    forwarded; all others keep their defaults.
+
+    Fields:
+        filter_financial_statements: Set False to disable the financial-statement
+            context check (useful for relaxed-mode simulation).
+        filter_years: Set False to disable the year-range filter.
+        min_value: Override the minimum count threshold (default 10).
+    """
+
+    filter_financial_statements: bool
+    filter_years: bool
+    min_value: float
 
 
 class PipelineStage(str, Enum):
@@ -184,6 +227,12 @@ class PipelineConfig:
     # Fiscal year configuration (for non-calendar fiscal years)
     fiscal_year_end_month: int | None = None  # e.g., 1 for January FYE
     fiscal_year_end_day: int | None = None  # e.g., 31 for Jan 31 FYE
+
+    # Simulation overrides — used by the simulate-and-ship flow to run the
+    # gold-standard validator with patched rules without touching disk.
+    # Both default to None so the standard cached path is byte-identical.
+    keyword_override: KeywordPatchOverride | None = None
+    fp_filter_override: FpFilterOverride | None = None
 
     # Chart fact bridge
     enable_chart_fact_bridge: bool = True
