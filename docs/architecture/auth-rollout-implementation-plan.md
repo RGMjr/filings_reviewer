@@ -307,6 +307,10 @@ Deferred until Stage C is stable for at least one week. Tracking placeholders on
 - E1 — Remove transitional dual-write to legacy reviewer text columns (after a soak window).
 - E2 — Plan admin UI and request-access workflow as separate cycles.
 
+## Note: admin tool hard-gate
+
+`src/auth/admin.py::admin_required` (introduced PR #597) is a **hard-gate** decorator: it checks `flask.g.user.role == 'admin'` directly and does **not** consult the `auth_enforcement_enabled` feature flag. It therefore blocks non-admins regardless of Stage B/C state and continues to work unchanged after Stage C enforcement flips on. Used by the admin review tool at `/admin/review` (`src/web/routes/admin_review.py`, PR #601); future admin surfaces should use the same decorator to avoid coupling admin-only gates to the rollout-stage feature flag.
+
 ## Parallel-dispatch guidance
 
 After A1 merges, A2 / A3 / A4 / A6 / A7 are all dispatchable as parallel worktree agents. Use:

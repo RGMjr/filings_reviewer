@@ -202,7 +202,14 @@ class TestAdminGate:
         client = _client_as(app, _admin_user(admin_user_id))
         resp = client.get("/admin/review")
         assert resp.status_code == 200
+        # PR 3: page now renders the full composite template with both tabs.
         assert b"Admin Review Tool" in resp.data
+        assert b"Suppressed Images" in resp.data
+        assert b"Reviewer Audit" in resp.data
+        # Override modal markup is present
+        assert b"overrideModal" in resp.data
+        # JS asset is referenced
+        assert b"admin_review.js" in resp.data
 
 
 # ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ import uuid as _uuid
 from typing import Any
 
 import psycopg
-from flask import Blueprint, g, jsonify, render_template_string, request
+from flask import Blueprint, g, jsonify, render_template, request
 
 from src.auth.admin import admin_required
 from src.web.app import get_db
@@ -107,10 +107,24 @@ def _audit(
 @admin_review_bp.route("/admin/review", methods=["GET"])
 @admin_required
 def admin_review_index():
-    """Placeholder for the admin review tool UI (ships in PR 3)."""
-    return render_template_string(
-        "<h1>Admin Review Tool</h1><p>UI ships in PR 3. This route confirms admin gate works.</p>"
-    )
+    """Composite admin review tool — Suppressed Images + Reviewer Audit tabs."""
+    db = get_db()
+    try:
+        recent_reviewers = db.query(
+            """
+            SELECT reviewer_id, MAX(created_at) AS last_seen
+            FROM v2_image_metric_confirmations
+            WHERE reviewer_id IS NOT NULL AND reviewer_id != ''
+            GROUP BY reviewer_id
+            ORDER BY MAX(created_at) DESC
+            LIMIT 10
+            """,
+            {},
+        )
+    except psycopg.DatabaseError:
+        logger.exception("Failed to fetch recent reviewers for admin page")
+        recent_reviewers = []
+    return render_template("admin_review.html", recent_reviewers=recent_reviewers)
 
 
 # ---------------------------------------------------------------------------

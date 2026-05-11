@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Review — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <h2>Admin Review Tool</h2>
+  <p class="text-muted small mb-3">
+    Audit suppressed images and reviewer decisions. All actions are recorded in
+    <code>admin_audit_log</code>. See
+    <a href="https://github.com/RGMjr/filings_reviewer/blob/main/docs/operations/admin-review-runbook.md">runbook</a>.
+  </p>
+
+  <ul class="nav nav-tabs mb-3" id="adminTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="suppressed-tab" data-bs-toggle="tab"
+              data-bs-target="#suppressed-pane" type="button" role="tab">
+        Suppressed Images
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="audit-tab" data-bs-toggle="tab"
+              data-bs-target="#audit-pane" type="button" role="tab">
+        Reviewer Audit
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- ============================================================ -->
+    <!-- Tab 1: Suppressed Images                                     -->
+    <!-- ============================================================ -->
+    <div class="tab-pane fade show active" id="suppressed-pane" role="tabpanel">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5 class="card-title">Filters</h5>
+          <form id="suppressed-filters" class="row g-2">
+            <div class="col-md-3">
+              <label class="form-label small">Suppression reason</label>
+              <div>
+                <label class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="suppression_reason" value="skipped">
+                  <span class="form-check-label small">Skipped</span>
+                </label>
+                <label class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="suppression_reason" value="low_score">
+                  <span class="form-check-label small">Low score</span>
+                </label>
+              </div>
+              <div>
+                <label class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="suppression_reason" value="hidden_classification">
+                  <span class="form-check-label small">Hidden class</span>
+                </label>
+                <label class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="suppression_reason" value="sentinel_reject">
+                  <span class="form-check-label small">Sentinel reject</span>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small">Score range</label>
+              <div class="input-group input-group-sm">
+                <input type="number" step="0.01" min="0" max="1" class="form-control" name="score_min" placeholder="min">
+                <input type="number" step="0.01" min="0" max="1" class="form-control" name="score_max" placeholder="max">
+              </div>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small">Company</label>
+              <input type="text" class="form-control form-control-sm" name="company" placeholder="substring">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small">Filing date from</label>
+              <input type="date" class="form-control form-control-sm" name="filing_date_from">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small">Filing date to</label>
+              <input type="date" class="form-control form-control-sm" name="filing_date_to">
+            </div>
+            <div class="col-md-1 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="suppressed-summary" class="text-muted small mb-2"></div>
+      <div id="suppressed-grid" class="row g-3"></div>
+      <div id="suppressed-pagination" class="mt-3 text-center"></div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Tab 2: Reviewer Audit                                        -->
+    <!-- ============================================================ -->
+    <div class="tab-pane fade" id="audit-pane" role="tabpanel">
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5 class="card-title">Filters</h5>
+          <form id="audit-filters" class="row g-2">
+            <div class="col-md-3">
+              <label class="form-label small">Reviewer ID <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" name="reviewer_id" required>
+              {% if recent_reviewers %}
+              <div class="form-text small">
+                Recent:
+                {% for r in recent_reviewers %}
+                  <a href="#" class="recent-reviewer-link" data-reviewer-id="{{ r.reviewer_id }}">{{ r.reviewer_id[:8] }}</a>{% if not loop.last %},{% endif %}
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Decision</label>
+              <div>
+                {% for d in ['accept', 'reject', 'correct', 'add', 'skip'] %}
+                <label class="form-check form-check-inline">
+                  <input class="form-check-input" type="checkbox" name="decision" value="{{ d }}">
+                  <span class="form-check-label small">{{ d }}</span>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small">From</label>
+              <input type="date" class="form-control form-control-sm" name="date_from">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small">To</label>
+              <input type="date" class="form-control form-control-sm" name="date_to">
+            </div>
+            <div class="col-md-1">
+              <label class="form-label small">Override?</label>
+              <select class="form-select form-select-sm" name="has_admin_override">
+                <option value="">any</option>
+                <option value="true">yes</option>
+                <option value="false">no</option>
+              </select>
+            </div>
+            <div class="col-md-1 d-flex align-items-end">
+              <button type="submit" class="btn btn-primary btn-sm w-100">Apply</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="audit-summary" class="text-muted small mb-2"></div>
+      <div id="audit-list"></div>
+      <div id="audit-pagination" class="mt-3 text-center"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- Override modal                                                   -->
+<!-- ================================================================ -->
+<div class="modal fade" id="overrideModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Admin override</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="override-context" class="alert alert-info small"></div>
+        <form id="override-form">
+          <input type="hidden" id="override-img-id">
+          <input type="hidden" id="override-supersedes-id">
+
+          <div class="mb-3">
+            <label class="form-label">Action</label>
+            <select id="override-decision" class="form-select" required>
+              <option value="add">Add — mark image relevant for the chosen metric</option>
+              <option value="accept">Accept — confirm an existing detected metric</option>
+              <option value="reject">Reject — mark not relevant for the chosen metric</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Metric ID <span class="text-danger">*</span></label>
+            <input type="text" id="override-metric-id" class="form-control"
+                   placeholder="cm_net_revenue_retention" required
+                   list="known-metric-ids">
+            <datalist id="known-metric-ids">
+              <option value="cm_customer_retention_rate">
+              <option value="cm_net_revenue_retention">
+              <option value="cm_gross_revenue_retention">
+              <option value="cm_revenue_by_cohort">
+              <option value="cm_transactions_by_cohort">
+              <option value="cm_balance_by_cohort">
+              <option value="cm_gross_margin_by_cohort">
+              <option value="cm_revenue_concentration">
+              <option value="cm_lifetime_value_per_customer">
+              <option value="cm_customer_acquisition_cost">
+              <option value="cm_ltv_to_cac_ratio">
+              <option value="cm_ltv_to_cac_ratio_by_cohort">
+              <option value="cm_large_customers_period_end">
+              <option value="cm_new_customers_acquired">
+              <option value="cm_customers_period_end_by_tenure">
+              <option value="cm_customers_period_end">
+              <option value="cm_active_customers_total">
+              <option value="cm_monthly_active_users">
+              <option value="cm_daily_active_users">
+              <option value="cm_average_revenue_per_user">
+            </datalist>
+            <div class="form-text small">Tier-1 metrics suggested. Free-text — any <code>cm_*</code> identifier accepted.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Override reason <span class="text-danger">*</span></label>
+            <textarea id="override-reason" class="form-control" rows="3" required minlength="5"
+                      placeholder="Why is the model/reviewer wrong here? (min 5 chars)"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="override-submit" class="btn btn-warning">Submit override</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+  <div id="adminToast" class="toast align-items-center text-white bg-success border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="adminToastBody">Done.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin_review.js') }}"></script>
+{% endblock %}
