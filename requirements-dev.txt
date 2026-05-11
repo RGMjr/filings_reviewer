@@ -33,4 +33,4 @@ types-psycopg2>=2.9.21.20260422
 pip-audit>=2.7.0
 
 # S3-compatible mock for R2Storage tests (tests/unit/infra/test_image_storage.py)
-moto[s3]>=5.2.0
+moto[s3]>=5.2.1
