@@ -65,6 +65,10 @@ def app(monkeypatch, test_db_adapter):
     from src.web.app import create_app
 
     app = create_app("testing")
+    # TestingConfig.DATABASE_URL is frozen at module-import time (before xdist
+    # rewrites TEST_DATABASE_URL to the worker-specific DB). Override here so
+    # the Flask test client hits the same database as test_db_adapter.
+    app.config["DATABASE_URL"] = test_db_adapter.connection_string
     app.config["TESTING"] = True
     return app
 
