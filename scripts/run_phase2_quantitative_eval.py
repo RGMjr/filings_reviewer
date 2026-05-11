@@ -925,13 +925,12 @@ def run_eval(
         )
 
         fil_t0 = time.monotonic()
-        aggregates, kw_present, fil_errors = p1.evaluate_filing_pipeline(paf, metric_ids)
+        aggregates, kw_present, fil_errors, _fil_tokens = p1.evaluate_filing_pipeline(
+            paf, metric_ids
+        )
         fil_elapsed = time.monotonic() - fil_t0
         errors.extend(fil_errors)
 
-        # Approximate cost from token counts if available (pipeline errors → 0).
-        # The pipeline doesn't surface token counts directly via Path A; use
-        # filing-count × average estimate for now.
         total_cost_usd += _COST_PER_FILING_USD
 
         filing_rows: list[Phase2Row] = []
