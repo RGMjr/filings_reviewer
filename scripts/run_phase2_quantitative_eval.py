@@ -703,6 +703,21 @@ def run_eval(
     run_started_at = datetime.now(UTC).isoformat()
     p1 = _phase1()
 
+    # ---- Pre-flight: output collision guard (checked first — fast, no external deps) ----
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = out_dir / f"phase2_quantitative_{run_id}.csv"
+    summary_path = out_dir / f"phase2_quantitative_{run_id}_summary.json"
+    partial_path = out_dir / f"phase2_quantitative_{run_id}.partial.csv"
+
+    if csv_path.exists() and not resume:
+        return 2, {
+            "error": (
+                f"Output file already exists: {csv_path}. "
+                "Use a different --run-id or --resume to continue a partial run."
+            ),
+            "run_started_at": run_started_at,
+        }
+
     # ---- Pre-flight: API key ----
     db_url = os.environ.get("DATABASE_URL")
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -733,21 +748,6 @@ def run_eval(
             "error": (
                 "DATABASE_URL is required for Path A (gold filings need DB for "
                 "html_storage_path resolution)."
-            ),
-            "run_started_at": run_started_at,
-        }
-
-    # ---- Pre-flight: output collision guard ----
-    out_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = out_dir / f"phase2_quantitative_{run_id}.csv"
-    summary_path = out_dir / f"phase2_quantitative_{run_id}_summary.json"
-    partial_path = out_dir / f"phase2_quantitative_{run_id}.partial.csv"
-
-    if csv_path.exists() and not resume:
-        return 2, {
-            "error": (
-                f"Output file already exists: {csv_path}. "
-                "Use a different --run-id or --resume to continue a partial run."
             ),
             "run_started_at": run_started_at,
         }
