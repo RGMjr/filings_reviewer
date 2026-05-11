@@ -509,6 +509,11 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(ingest_bp)
     app.register_blueprint(api_ingest_bp)
 
+    # Admin review tool (suppressed images + reviewer audit)
+    from src.web.routes.admin_review import admin_review_bp
+
+    app.register_blueprint(admin_review_bp)
+
 
 def _wants_json_response() -> bool:
     """Check if the client prefers JSON over HTML."""

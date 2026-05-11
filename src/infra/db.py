@@ -3798,6 +3798,472 @@ class DatabaseAdapter:
         """
         return self.query(sql, {"img_id": img_id})
 
+    # -------------------------------------------------------------------------
+    # Admin review tool helpers (PR 2)
+    # -------------------------------------------------------------------------
+
+    #: Relevance score below which an image is considered low-score suppressed.
+    #: Matches the Phase-1 triage threshold documented in CLAUDE.md.
+    _LOW_SCORE_THRESHOLD = 0.230
+
+    def get_admin_suppressed_images(
+        self,
+        filters: dict[str, Any],
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return paginated images that are suppressed by one or more categories.
+
+        Suppression categories:
+          - skipped: review_status = 'skipped'
+          - hidden_classification: classification IN ('decorative','logo','signature')
+          - low_score: predicted_relevance < _LOW_SCORE_THRESHOLD
+          - sentinel_reject: has a sentinel v2_image_metric_confirmations row
+
+        *filters* keys (all optional):
+          suppression_reason: list[str]  — one or more of the four category names
+          classification: list[str]
+          score_min: float
+          score_max: float
+          company: str               — substring match on company_name
+          filing_date_from: str      — ISO date
+          filing_date_to: str        — ISO date
+
+        Returns (rows, total_count).
+        """
+        threshold = self._LOW_SCORE_THRESHOLD
+
+        # Build category predicates
+        category_clauses = {
+            "skipped": "ia.review_status = 'skipped'",
+            "hidden_classification": "ia.classification IN ('decorative', 'logo', 'signature')",
+            "low_score": f"ia.predicted_relevance < {threshold}",
+            "sentinel_reject": (
+                "EXISTS ("
+                "  SELECT 1 FROM v2_image_metric_confirmations sc"
+                "  WHERE sc.img_id = ia.img_id"
+                "    AND sc.detected_metric_id IS NULL"
+                "    AND sc.confirmed_metric_id IS NULL"
+                "    AND sc.decision = 'reject'"
+                "    AND sc.rejection_reason = 'no_relevant_metrics'"
+                ")"
+            ),
+        }
+
+        requested_reasons: list[str] = filters.get("suppression_reason") or []
+        if requested_reasons:
+            active_clauses = {k: v for k, v in category_clauses.items() if k in requested_reasons}
+        else:
+            active_clauses = dict(category_clauses)
+
+        suppression_where = "(" + " OR ".join(active_clauses.values()) + ")"
+
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        extra_wheres: list[str] = []
+
+        classification_filter: list[str] = filters.get("classification") or []
+        if classification_filter:
+            params["classifications"] = classification_filter
+            extra_wheres.append("ia.classification = ANY(%(classifications)s)")
+
+        score_min = filters.get("score_min")
+        if score_min is not None:
+            params["score_min"] = float(score_min)
+            extra_wheres.append("ia.predicted_relevance >= %(score_min)s")
+
+        score_max = filters.get("score_max")
+        if score_max is not None:
+            params["score_max"] = float(score_max)
+            extra_wheres.append("ia.predicted_relevance <= %(score_max)s")
+
+        company_sub: str = filters.get("company") or ""
+        if company_sub:
+            params["company_sub"] = f"%{company_sub}%"
+            extra_wheres.append("c.company_name ILIKE %(company_sub)s")
+
+        filing_date_from: str = filters.get("filing_date_from") or ""
+        if filing_date_from:
+            params["filing_date_from"] = filing_date_from
+            extra_wheres.append("f.filing_date >= %(filing_date_from)s")
+
+        filing_date_to: str = filters.get("filing_date_to") or ""
+        if filing_date_to:
+            params["filing_date_to"] = filing_date_to
+            extra_wheres.append("f.filing_date <= %(filing_date_to)s")
+
+        extra_clause = ""
+        if extra_wheres:
+            extra_clause = "AND " + " AND ".join(extra_wheres)
+
+        base_sql = f"""
+            SELECT
+                ia.img_id::text,
+                ia.filename,
+                ia.classification,
+                ia.predicted_relevance,
+                ia.review_status,
+                ia.file_path,
+                f.filing_id,
+                f.accession_number,
+                f.filing_date::text AS filing_date,
+                c.company_name
+            FROM v2_image_assets ia
+            JOIN filings f ON f.filing_id = ia.filing_id
+            JOIN companies c ON c.company_id = f.company_id
+            WHERE {suppression_where}
+            {extra_clause}
+        """
+
+        count_sql = f"SELECT COUNT(*) AS total FROM ({base_sql}) sub"
+        count_rows = self.query(count_sql, params)
+        total = int(count_rows[0]["total"]) if count_rows else 0
+
+        paged_sql = base_sql + " ORDER BY ia.img_id ASC LIMIT %(limit)s OFFSET %(offset)s"
+        rows = self.query(paged_sql, params)
+
+        for row in rows:
+            reasons: list[str] = []
+            for cat, _clause in category_clauses.items():
+                # Re-evaluate each category against the fetched row values
+                if cat == "skipped" and row.get("review_status") == "skipped":
+                    reasons.append(cat)
+                elif cat == "hidden_classification" and row.get("classification") in (
+                    "decorative",
+                    "logo",
+                    "signature",
+                ):
+                    reasons.append(cat)
+                elif cat == "low_score" and (
+                    row.get("predicted_relevance") is not None
+                    and row["predicted_relevance"] < threshold
+                ):
+                    reasons.append(cat)
+                elif cat == "sentinel_reject":
+                    # Already included only if the SQL filter matched — verify via separate query
+                    sentinel_rows = self.query(
+                        """
+                        SELECT 1 FROM v2_image_metric_confirmations
+                        WHERE img_id = %(img_id)s
+                          AND detected_metric_id IS NULL
+                          AND confirmed_metric_id IS NULL
+                          AND decision = 'reject'
+                          AND rejection_reason = 'no_relevant_metrics'
+                        LIMIT 1
+                        """,
+                        {"img_id": row["img_id"]},
+                    )
+                    if sentinel_rows:
+                        reasons.append(cat)
+            row["suppression_reasons"] = reasons
+
+        return rows, total
+
+    def get_decisions_by_reviewer(
+        self,
+        reviewer_id: str,
+        filters: dict[str, Any],
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return paginated confirmation rows for a given reviewer.
+
+        *filters* keys (all optional):
+          decision: list[str]
+          metric_id: list[str]
+          date_from: str
+          date_to: str
+          rejection_reason: list[str]
+          has_admin_override: bool — True = rows that have been overridden;
+                                     False = rows that have NOT been overridden
+
+        Each returned row includes an *image* sub-dict and an *admin_override*
+        sub-dict (or None).
+        """
+        params: dict[str, Any] = {
+            "reviewer_id": reviewer_id,
+            "limit": limit,
+            "offset": offset,
+        }
+        extra_wheres: list[str] = ["imc.reviewer_id = %(reviewer_id)s"]
+
+        decision_filter: list[str] = filters.get("decision") or []
+        if decision_filter:
+            params["decisions"] = decision_filter
+            extra_wheres.append("imc.decision = ANY(%(decisions)s)")
+
+        metric_filter: list[str] = filters.get("metric_id") or []
+        if metric_filter:
+            params["metric_ids"] = metric_filter
+            extra_wheres.append(
+                "(imc.detected_metric_id = ANY(%(metric_ids)s)"
+                " OR imc.confirmed_metric_id = ANY(%(metric_ids)s))"
+            )
+
+        date_from: str = filters.get("date_from") or ""
+        if date_from:
+            params["date_from"] = date_from
+            extra_wheres.append("imc.created_at >= %(date_from)s")
+
+        date_to: str = filters.get("date_to") or ""
+        if date_to:
+            params["date_to"] = date_to
+            extra_wheres.append("imc.created_at <= %(date_to)s")
+
+        rejection_reason_filter: list[str] = filters.get("rejection_reason") or []
+        if rejection_reason_filter:
+            params["rejection_reasons"] = rejection_reason_filter
+            extra_wheres.append("imc.rejection_reason = ANY(%(rejection_reasons)s)")
+
+        has_admin_override = filters.get("has_admin_override")
+        if has_admin_override is True:
+            extra_wheres.append(
+                "EXISTS ("
+                "  SELECT 1 FROM v2_image_metric_confirmations ov"
+                "  WHERE ov.supersedes_confirmation_id = imc.id"
+                ")"
+            )
+        elif has_admin_override is False:
+            extra_wheres.append(
+                "NOT EXISTS ("
+                "  SELECT 1 FROM v2_image_metric_confirmations ov"
+                "  WHERE ov.supersedes_confirmation_id = imc.id"
+                ")"
+            )
+
+        where_clause = " AND ".join(extra_wheres)
+
+        base_sql = f"""
+            SELECT
+                imc.id::text AS confirmation_id,
+                imc.img_id::text AS img_id,
+                imc.decision,
+                imc.confirmed_metric_id,
+                imc.detected_metric_id,
+                imc.rejection_reason,
+                imc.reviewer_id,
+                imc.created_at,
+                ia.filename,
+                c.company_name,
+                f.accession_number,
+                f.filing_date::text AS filing_date,
+                ia.classification,
+                ia.predicted_relevance,
+                ia.file_path
+            FROM v2_image_metric_confirmations imc
+            JOIN v2_image_assets ia ON ia.img_id = imc.img_id
+            JOIN filings f ON f.filing_id = ia.filing_id
+            JOIN companies c ON c.company_id = f.company_id
+            WHERE {where_clause}
+        """
+
+        count_sql = f"SELECT COUNT(*) AS total FROM ({base_sql}) sub"
+        count_rows = self.query(count_sql, params)
+        total = int(count_rows[0]["total"]) if count_rows else 0
+
+        paged_sql = base_sql + " ORDER BY imc.created_at DESC LIMIT %(limit)s OFFSET %(offset)s"
+        rows = self.query(paged_sql, params)
+
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            # Fetch admin override row if any
+            override_rows = self.query(
+                """
+                SELECT
+                    id::text AS confirmation_id,
+                    reviewer_id,
+                    decision,
+                    confirmed_metric_id,
+                    detected_metric_id,
+                    rejection_reason,
+                    override_reason,
+                    created_at
+                FROM v2_image_metric_confirmations
+                WHERE supersedes_confirmation_id = %(id)s
+                LIMIT 1
+                """,
+                {"id": row["confirmation_id"]},
+            )
+            admin_override = dict(override_rows[0]) if override_rows else None
+
+            results.append(
+                {
+                    "confirmation_id": row["confirmation_id"],
+                    "img_id": row["img_id"],
+                    "decision": row["decision"],
+                    "confirmed_metric_id": row["confirmed_metric_id"],
+                    "detected_metric_id": row["detected_metric_id"],
+                    "rejection_reason": row["rejection_reason"],
+                    "reviewer_id": row["reviewer_id"],
+                    "created_at": row["created_at"],
+                    "image": {
+                        "filename": row["filename"],
+                        "company_name": row["company_name"],
+                        "accession_number": row["accession_number"],
+                        "filing_date": row["filing_date"],
+                        "classification": row["classification"],
+                        "predicted_relevance": row["predicted_relevance"],
+                        "file_path": row["file_path"],
+                    },
+                    "admin_override": admin_override,
+                }
+            )
+
+        return results, total
+
+    def insert_admin_override(
+        self,
+        img_id: str,
+        decisions: list[dict[str, Any]],
+        override_reason: str,
+        supersedes_id: str | None,
+        admin_user_id: str,
+    ) -> list[str]:
+        """Insert admin override rows into v2_image_metric_confirmations.
+
+        One row is inserted per entry in *decisions*. Each entry should have:
+          decision, detected_metric_id (optional), confirmed_metric_id (optional),
+          rejection_reason (optional).
+
+        Calls _promote_chart_fact for accept/correct/add decisions.
+        Returns the list of new confirmation id strings.
+        """
+        if not decisions:
+            return []
+
+        upsert_sql = """
+            INSERT INTO v2_image_metric_confirmations (
+                img_id, detected_metric_id, confirmed_metric_id,
+                decision, rejection_reason, reviewer_id,
+                override_reason, supersedes_confirmation_id
+            ) VALUES (
+                %(img_id)s, %(detected_metric_id)s, %(confirmed_metric_id)s,
+                %(decision)s, %(rejection_reason)s, %(reviewer_id)s,
+                %(override_reason)s, %(supersedes_confirmation_id)s
+            )
+            ON CONFLICT (img_id, reviewer_id, COALESCE(detected_metric_id, confirmed_metric_id, ''))
+            DO UPDATE SET
+                decision                  = EXCLUDED.decision,
+                confirmed_metric_id       = EXCLUDED.confirmed_metric_id,
+                rejection_reason          = EXCLUDED.rejection_reason,
+                override_reason           = EXCLUDED.override_reason,
+                supersedes_confirmation_id = EXCLUDED.supersedes_confirmation_id,
+                updated_at                = now()
+            RETURNING id::text AS id
+        """
+
+        new_ids: list[str] = []
+
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+                    {"img_id": img_id},
+                )
+                doc_row = cur.fetchone()
+                if doc_row is None:
+                    raise ValueError(f"Image not found: img_id={img_id}")
+                filing_id = doc_row["filing_id"]
+
+                for entry in decisions:
+                    decision = entry["decision"]
+                    detected_metric_id = entry.get("detected_metric_id") or None
+                    confirmed_metric_id = entry.get("confirmed_metric_id") or None
+
+                    cur.execute(
+                        upsert_sql,
+                        {
+                            "img_id": img_id,
+                            "detected_metric_id": detected_metric_id,
+                            "confirmed_metric_id": confirmed_metric_id,
+                            "decision": decision,
+                            "rejection_reason": entry.get("rejection_reason") or None,
+                            "reviewer_id": admin_user_id,
+                            "override_reason": override_reason,
+                            "supersedes_confirmation_id": supersedes_id or None,
+                        },
+                    )
+                    inserted = cur.fetchone()
+                    if inserted:
+                        new_ids.append(inserted["id"])
+
+                    if decision == "accept":
+                        self._promote_chart_fact(
+                            cur, filing_id, img_id, detected_metric_id, admin_user_id
+                        )
+                    elif decision == "correct":
+                        self._demote_chart_fact(cur, filing_id, img_id, detected_metric_id)
+                        self._promote_chart_fact(
+                            cur, filing_id, img_id, confirmed_metric_id, admin_user_id
+                        )
+                    elif decision == "add":
+                        self._promote_chart_fact(
+                            cur, filing_id, img_id, confirmed_metric_id, admin_user_id
+                        )
+                    elif decision in ("reject", "skip"):
+                        self._demote_chart_fact(cur, filing_id, img_id, detected_metric_id)
+
+        logger.debug(
+            "Inserted %d admin override rows: img_id=%s admin=%s",
+            len(new_ids),
+            img_id,
+            admin_user_id,
+        )
+        return new_ids
+
+    def delete_admin_override(
+        self,
+        override_id: str,
+        admin_user_id: str,
+    ) -> dict[str, Any] | None:
+        """Delete an admin override row and roll back any promoted chart fact.
+
+        Returns the deleted row snapshot or None if not found or not an admin row.
+        Validates that the row has override_reason set (i.e., is an admin row).
+        """
+        with self.get_connection() as conn:
+            with conn.cursor() as cur:
+                # Only delete if it's an admin row (override_reason IS NOT NULL)
+                cur.execute(
+                    """
+                    DELETE FROM v2_image_metric_confirmations
+                    WHERE id = %(override_id)s
+                      AND reviewer_id = %(admin_user_id)s
+                      AND override_reason IS NOT NULL
+                    RETURNING
+                        id::text AS confirmation_id,
+                        img_id::text AS img_id,
+                        detected_metric_id,
+                        confirmed_metric_id,
+                        decision,
+                        rejection_reason,
+                        override_reason,
+                        supersedes_confirmation_id::text AS supersedes_confirmation_id,
+                        reviewer_id
+                    """,
+                    {"override_id": override_id, "admin_user_id": admin_user_id},
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+
+                cur.execute(
+                    "SELECT filing_id FROM v2_image_assets WHERE img_id = %(img_id)s",
+                    {"img_id": row["img_id"]},
+                )
+                asset_row = cur.fetchone()
+                if asset_row is not None:
+                    filing_id = asset_row["filing_id"]
+                    metric_id = row["confirmed_metric_id"] or row["detected_metric_id"]
+                    self._demote_chart_fact(cur, filing_id, row["img_id"], metric_id)
+
+        logger.debug(
+            "Deleted admin override %s (admin=%s, decision=%s)",
+            override_id,
+            admin_user_id,
+            row["decision"],
+        )
+        return dict(row)
+
 
 # =============================================================================
 # Convenience Functions
