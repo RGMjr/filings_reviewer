@@ -113,9 +113,9 @@ def _insert_image(
     rows = db.query(
         """
         INSERT INTO v2_image_assets (
-            filing_id, filename, classification, review_status, predicted_relevance, processed
+            filing_id, filename, dom_locator, classification, review_status, predicted_relevance, processed
         ) VALUES (
-            %(filing_id)s, %(filename)s, %(classification)s, %(review_status)s,
+            %(filing_id)s, %(filename)s, '/html/body/img[1]', %(classification)s, %(review_status)s,
             %(predicted_relevance)s, true
         )
         RETURNING img_id::text AS img_id
