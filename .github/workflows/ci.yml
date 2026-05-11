@@ -283,6 +283,16 @@ jobs:
       - name: Apply migrations
         run: uv run python3 scripts/apply_migrations.py --test
 
+      - name: Enable auth enforcement for smoke tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d filings_analysis_test -c "
+            INSERT INTO feature_flags (key, value)
+            VALUES ('auth_enforcement_enabled', 'true')
+            ON CONFLICT (key) DO UPDATE SET value='true', updated_at=NOW();
+          "
+
       - name: Build Docker image
         run: docker build -t filings-reviewer-test .
 
