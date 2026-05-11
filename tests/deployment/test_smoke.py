@@ -47,12 +47,19 @@ class TestHealthEndpoint:
 
 class TestPublicPages:
     def test_filing_list_loads(self, base_url: str) -> None:
-        r = requests.get(f"{base_url}/", timeout=10)
-        assert r.status_code == 200
+        """Root URL is a 301 shim to /v2/review/filings — works regardless of auth."""
+        r = requests.get(f"{base_url}/", timeout=10, allow_redirects=False)
+        assert r.status_code == 301, f"expected 301 shim, got {r.status_code}"
 
     def test_v2_review_page_loads(self, base_url: str) -> None:
-        r = requests.get(f"{base_url}/v2/review/filings", timeout=10)
-        assert r.status_code == 200
+        """V2 review filings route is wired.
+
+        Under Stage-C enforcement (auth_enforcement_enabled=true), unauthenticated
+        requests return 401 (or 302 redirect to /auth/login). Pre-enforcement
+        they return 200. Either shape proves the route exists and is reachable.
+        """
+        r = requests.get(f"{base_url}/v2/review/filings", timeout=10, allow_redirects=False)
+        assert r.status_code in (200, 302, 401), f"expected 200 / 302 / 401, got {r.status_code}"
 
 
 class TestApiAuth:
