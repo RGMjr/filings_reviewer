@@ -81,6 +81,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 - Extraction improvements (keywords, FP rules, value binding) should prioritize Tier 1 recall gaps first
 - Gold standard coverage expansion should target Tier 1 metrics with low coverage
 - Tier definitions live in `config/metric_keywords.yaml` (authoritative) and `src/gold_standard/v2_validator.py` (runtime)
+- **Phase-2 LLM presence classifier gate** (`scripts/run_phase2_quantitative_eval.py`) must pass (exit 0, go_no_go=GO) before flipping `presence_classifier_enabled` in production; run `python3 scripts/run_phase2_quantitative_eval.py --dry-run --gold-only` to validate corpus/label plumbing without API calls. See `docs/operations/llm-presence-classifier-phase2-quantitative-eval-runbook.md`.
 
 ## Core Design Principles
 
