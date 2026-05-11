@@ -432,14 +432,14 @@ def select_reviewed_corpus(
     sql = """
         SELECT f.filing_id,
                f.sec_html_url AS html_url,
-               c.name AS company_name,
+               c.company_name AS company_name,
                COUNT(rd.decision_id) AS decision_count
           FROM v2_review_decisions rd
           JOIN v2_metric_facts mf ON mf.fact_id = rd.fact_id
           JOIN filings f ON f.filing_id = mf.filing_id
           JOIN companies c ON c.cik = f.cik
          WHERE mf.source_type = 'text'
-         GROUP BY f.filing_id, f.sec_html_url, c.name
+         GROUP BY f.filing_id, f.sec_html_url, c.company_name
          ORDER BY decision_count DESC, f.filing_id ASC
          LIMIT 50
     """
