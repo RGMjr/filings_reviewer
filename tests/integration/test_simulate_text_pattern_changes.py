@@ -165,7 +165,7 @@ def test_happy_path_one_accepted_exclusion_rec(cli, clean_db, monkeypatch, test_
     monkeypatch.setattr(
         cli,
         "_compute_coverage",
-        lambda metric_ids: {m: {"filings": 5, "facts": 12} for m in metric_ids},
+        lambda metric_ids: {m: {"coverage_filings": 5, "coverage_facts": 12} for m in metric_ids},
     )
 
     args = _make_args(test_db_url, run_id=run_id)
