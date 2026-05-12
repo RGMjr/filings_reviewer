@@ -41,6 +41,7 @@ register_timing(api_unified_bp)
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _RETRAIN_SCRIPT = _PROJECT_ROOT / "scripts" / "retrain_image_triage.py"
 _TEXT_ANALYSIS_SCRIPT = _PROJECT_ROOT / "scripts" / "analyze_text_decision_patterns.py"
+_SIMULATION_SCRIPT = _PROJECT_ROOT / "scripts" / "simulate_text_pattern_changes.py"
 
 # Image-classifier retrain thresholds. Both must be exceeded for the UI button
 # to activate AND for the endpoint to accept a retrain request. Configurable
@@ -1571,6 +1572,195 @@ def get_text_analysis_run_status(run_id):
         row["started_at"] = row["started_at"].isoformat()
     if row.get("completed_at"):
         row["completed_at"] = row["completed_at"].isoformat()
+    return jsonify(row), 200
+
+
+# =============================================================================
+# Text-pattern simulation (Track B of the simulate-and-ship flow)
+# =============================================================================
+
+
+def _spawn_simulation_runner(run_id: str, *, database_url: str) -> bool:
+    """Spawn the simulation script as a detached subprocess. Fire-and-forget;
+    subprocess writes status back via --run-id.
+    """
+    log_dir = _PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"simulation_{run_id}.log"
+    log_fh = open(log_path, "ab")
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                str(_SIMULATION_SCRIPT),
+                "--run-id",
+                run_id,
+                "--database-url",
+                database_url,
+            ],
+            start_new_session=True,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            cwd=str(_PROJECT_ROOT),
+        )
+        logger.info("Spawned simulation runner for run_id=%s", run_id)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to spawn simulation runner for run_id=%s: %s", run_id, exc)
+        return False
+    finally:
+        log_fh.close()
+
+
+@api_unified_bp.route("/extraction/simulate-accepted", methods=["POST"])
+@require(INGEST_RUN)
+def trigger_text_pattern_simulation():
+    """Kick off a simulation run over accepted-but-not-shipped recommendations.
+
+    Gates:
+      - Reviewer name required (matches per-decision-write contract).
+      - Stale-row sweep: any 'running' row older than 1 hour is flipped to
+        'failed' before the concurrency check (SIGKILL/OOM bypass guard,
+        mirrors the analysis sweep above).
+      - Concurrency: rejects if a 'running' simulation row already exists.
+      - Affected-recs: rejects if zero accepted (pr_number IS NULL) recs
+        exist — there's nothing to simulate.
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    db = get_db()
+
+    db.execute(
+        """
+        UPDATE text_pattern_simulation_runs
+           SET status = 'failed',
+               error  = 'auto-cleanup: stale running row (>1h)',
+               completed_at = NOW()
+         WHERE status = 'running'
+           AND started_at < NOW() - INTERVAL '1 hour'
+        """
+    )
+
+    running_rows = db.query(
+        "SELECT id FROM text_pattern_simulation_runs WHERE status = 'running' LIMIT 1"
+    )
+    if running_rows:
+        return (
+            jsonify(
+                {
+                    "error": "simulation_already_running",
+                    "running_run_id": str(running_rows[0]["id"]),
+                }
+            ),
+            409,
+        )
+
+    accepted_rows = db.query(
+        """
+        SELECT COUNT(*) AS n
+          FROM text_pattern_recommendation_decisions
+         WHERE decision = 'accepted'
+           AND pr_number IS NULL
+        """
+    )
+    if not accepted_rows or (accepted_rows[0]["n"] or 0) == 0:
+        return jsonify({"error": "no_accepted_recs"}), 409
+
+    run_id = str(_uuid.uuid4())
+    database_url = os.environ.get("DATABASE_URL", "")
+    db.execute(
+        """
+        INSERT INTO text_pattern_simulation_runs (id, status, triggered_by)
+        VALUES (%(id)s, 'running', %(triggered_by)s)
+        """,
+        {"id": run_id, "triggered_by": reviewer_id},
+    )
+
+    spawned = _spawn_simulation_runner(run_id, database_url=database_url)
+    if not spawned:
+        db.execute(
+            """
+            UPDATE text_pattern_simulation_runs
+               SET status = 'failed',
+                   error  = 'subprocess_spawn_failed',
+                   completed_at = NOW()
+             WHERE id = %(id)s
+            """,
+            {"id": run_id},
+        )
+        return jsonify({"error": "subprocess_spawn_failed", "run_id": run_id}), 500
+
+    return jsonify({"run_id": run_id, "status": "running"}), 202
+
+
+@api_unified_bp.route("/extraction/simulation-runs/<uuid:run_id>/status", methods=["GET"])
+@require(PROTECTED_READ)
+def get_text_pattern_simulation_status(run_id):
+    """Return the simulation run row plus all delta rows for the polling UI."""
+    db = get_db()
+    rows = db.query(
+        """
+        SELECT id, status, started_at, completed_at,
+               num_recs_simulated, num_companies_validated,
+               tier1_presence_recall_baseline, tier1_presence_recall_patched,
+               tier2_presence_recall_baseline, tier2_presence_recall_patched,
+               tier1_regressed, runs_agree, config_snapshot_hash,
+               triggered_by, error
+          FROM text_pattern_simulation_runs
+         WHERE id = %(id)s
+        """,
+        {"id": str(run_id)},
+    )
+    if not rows:
+        return jsonify({"error": "not_found"}), 404
+    row = dict(rows[0])
+    row["id"] = str(row["id"])
+    for ts_field in ("started_at", "completed_at"):
+        if row.get(ts_field):
+            row[ts_field] = row[ts_field].isoformat()
+    # Decimal -> float for JSON serialization
+    for num_field in (
+        "tier1_presence_recall_baseline",
+        "tier1_presence_recall_patched",
+        "tier2_presence_recall_baseline",
+        "tier2_presence_recall_patched",
+    ):
+        if row.get(num_field) is not None:
+            row[num_field] = float(row[num_field])
+
+    delta_rows = db.query(
+        """
+        SELECT id, recommendation_decision_id, metric_id,
+               baseline_recall, baseline_precision, baseline_f1,
+               patched_recall, patched_precision, patched_f1,
+               coverage_filings, coverage_facts
+          FROM text_pattern_simulation_deltas
+         WHERE run_id = %(run_id)s
+         ORDER BY metric_id
+        """,
+        {"run_id": str(run_id)},
+    )
+    deltas = []
+    for d in delta_rows:
+        d = dict(d)
+        d["id"] = str(d["id"])
+        if d.get("recommendation_decision_id"):
+            d["recommendation_decision_id"] = str(d["recommendation_decision_id"])
+        for num in (
+            "baseline_recall",
+            "baseline_precision",
+            "baseline_f1",
+            "patched_recall",
+            "patched_precision",
+            "patched_f1",
+        ):
+            if d.get(num) is not None:
+                d[num] = float(d[num])
+        deltas.append(d)
+    row["deltas"] = deltas
     return jsonify(row), 200
 
 
