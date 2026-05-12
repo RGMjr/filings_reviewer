@@ -78,10 +78,19 @@ Third leg of the 2026-04-23 vision sweep; benchmarks metric-CLASSIFY mode across
 
 ---
 
+### llm-presence-classifier-phase2-eval-results-20260511.md
+
+**Status**: Complete — gate decision: NO-GO
+**Date**: 2026-05-11
+
+First live Phase-2 quantitative gate run (`scripts/run_phase2_quantitative_eval.py`, run_id `20260511T1416live`). 55 filings (8 gold + 47 reviewed), $13.75 spend, 0 errors of 550 calls. Headline: classifier recall == keyword recall to 3 decimals on all 10 scoreable Tier-1 metrics; C3 (+5pt improvement gate) structurally unreachable from the 98.8% keyword baseline. 5 Tier-1 metrics skipped for insufficient coverage. Surfaced gh-602 (dedup-by-URL), gh-612 (section_classification variant), gh-613 (cache counter bug).
+
+---
+
 ## Archive
 
 Completed tasks, superseded reports, and research spikes are in `docs/archive/analysis/`. This includes all HRV-3 through HRV-6 validation docs, IMG-1-x completion summaries, GR-series validation reports, VIS-series chart extraction research, the beyond-SEC spike, and the 2025-12-26 comprehensive evaluation plan.
 
 ---
 
-**Last Updated**: 2026-05-01
+**Last Updated**: 2026-05-12
