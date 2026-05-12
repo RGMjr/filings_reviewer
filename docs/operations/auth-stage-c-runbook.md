@@ -25,9 +25,11 @@ are met and both PR-C1 and PR-C2 have merged.
 ## 1. Purpose
 
 Stage C is **full enforcement**: routes now gate on `require(<permission>)` (PR-C1), the
-same-origin API-key bypass has been permanently removed (PR-C1), and after this runbook's
-flag flip `auth_enforcement_enabled=true`, every request to a protected surface requires a
-valid session.
+unconditional same-origin API-key bypass has been removed (PR-C1) and the residual
+transitional bypass at `src/web/middleware.py:52-60` only fires while
+`auth_enforcement_enabled=false`. After this runbook's flag flip
+`auth_enforcement_enabled=true`, every request to a protected surface requires a valid
+session.
 
 What changes when the flag flips:
 
@@ -36,10 +38,11 @@ What changes when the flag flips:
   `/auth/login` (HTML pages).
 - **Role-based access is enforced.** `reviewer` cannot trigger ingest. `viewer` cannot write
   decisions. `admin` can do everything.
-- **Same-origin API-key bypass is gone — permanently.** PR-C1 deleted this bypass from
-  `src/web/middleware.py`. Browser traffic must authenticate via session cookie. There is no
-  code path to restore the bypass without reverting the PR-C1 commit. See **Rollback** section
-  for critical implications.
+- **Same-origin API-key bypass is gated off.** The unconditional bypass is gone (PR-C1);
+  the residual transitional bypass at `src/web/middleware.py:52-60` only fires while
+  `auth_enforcement_enabled=false`. With the flag flipped on, browser traffic must
+  authenticate via session cookie — no same-origin shortcut is reachable in this mode.
+  See **Rollback** section for what flips back into effect if the flag is later turned off.
 - **4-hour legacy-session bound.** Sessions created before this flip are forcibly invalidated
   at most 4 hours after the flag is set. After 4 hours all users must re-authenticate.
 - **CSRF middleware activates.** Cross-origin POST requests to state-changing endpoints are
@@ -201,25 +204,29 @@ Then complete a manual browser review workflow:
 
 ## 5. Rollback procedure
 
-> **CRITICAL WARNING — read before rolling back.**
+> **Read before rolling back.**
 >
-> Stage C rollback is **not a simple flag flip**. PR-C1 permanently deleted the same-origin
-> API-key bypass from `src/web/middleware.py`. There is no code path left that allows
-> browser traffic to bypass authentication — even with `auth_enforcement_enabled=false`, the
-> bypass code does not exist.
+> Stage C rollback has two distinct modes — pick the right one for the failure you're
+> recovering from. Most of the time the **flag-only** mode is correct and clean; the
+> **code-revert** mode is for the rare cases where you specifically need pre-PR-C1
+> route-level behavior back.
 >
-> **Consequence:** If you flip the flag back to `false`, the `require()` decorators become
-> no-ops (behavior reverts to pre-enforcement), BUT browser traffic that relied on the
-> same-origin bypass (e.g., a user with the API key in their browser session but no session
-> cookie) will now receive 401 from the missing bypass — not from the decorators.
+> - **Flag-only rollback** (clean): set `auth_enforcement_enabled=false` and restart. The
+>   `require()` decorators become no-ops, and the residual transitional bypass at
+>   `src/web/middleware.py:52-60` re-activates for same-origin browser traffic. Behavior
+>   returns to the Stage-B / pre-flip state without any code change. Verified in production
+>   on 2026-05-11 when a flag-only rollback let reviewer decision-submit recover immediately.
 >
-> **Incomplete rollback** = `auth_enforcement_enabled=false` with bypass deleted = browser
-> sessions without session cookies get 401 unexpectedly.
+> - **Code rollback** (revert PR-C1): use only if you specifically want the
+>   `require()` decorators removed from routes. Flag-only does not undo the per-route
+>   decorator wiring — it only neutralizes their behavior at the permission-check layer.
 >
-> **If browser traffic must be fully restored:** The only complete rollback is reverting the
-> PR-C1 commit. Coordinate with the team before proceeding.
+> One concern stays irreversible in both modes: the Stage-C legacy-alias backfill
+> populates `user_id` on `v2_review_decisions`, `v2_image_metric_confirmations`, and
+> `v2_ingest_batches`. Neither rollback path NULLs those columns; manual remediation is
+> required if you want them cleared.
 
-### Flag-only rollback (partial — use only if all active users have valid session cookies)
+### Flag-only rollback (preferred — clean revert to pre-flip behavior)
 
 ```bash
 # Disable enforcement.
@@ -233,15 +240,22 @@ WHERE key='auth_enforcement_enabled';
 
 After restart:
 - `require()` decorators become no-ops; existing session-cookie users are unaffected.
-- Users without session cookies to API-key-gated endpoints receive 401 (bypass is gone).
+- The residual same-origin API-key bypass at `src/web/middleware.py:52-60` re-activates,
+  so same-origin browser requests (with or without a session cookie) continue to be
+  accepted without authentication for the duration of the rollback window.
+- Non-browser API-key callers (`Authorization: ApiKey ...`) continue to work as before —
+  unchanged in either rollback mode.
 - The backfill applied to `user_id` columns is **not reversed** by this flag flip.
 
-### Full rollback (restores browser API-key bypass)
+### Code rollback (revert PR-C1 — removes route-level `require()` decorators)
 
 Revert the PR-C1 commit and deploy the reverted code. Steps:
 1. `git revert <pr-c1-merge-sha>` on a new branch.
 2. Open a PR and merge it.
 3. After deployment, flip `auth_enforcement_enabled` to `false` via SQL + restart.
+
+Use this mode if a flag-only rollback isn't sufficient — e.g., a broken `@require()`
+decorator on a specific route is causing 500s independent of the flag state.
 
 ---
 
