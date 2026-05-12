@@ -3,6 +3,7 @@
  * Backend: src/web/routes/admin_review.py
  *   GET    /admin/review/suppressed
  *   GET    /admin/review/by-reviewer
+ *   GET    /admin/review/image-detail/<img_id>   (read-only detail panel)
  *   POST   /api/admin/image-decision-override
  *   DELETE /api/admin/image-decision-override/<id>
  */
@@ -14,6 +15,8 @@
     suppressed: { offset: 0, lastFilters: {} },
     audit: { offset: 0, lastFilters: {} },
   };
+  // Session-scoped cache of detail responses keyed by img_id.
+  const detailCache = new Map();
 
   // ----------------------------------------------------------------
   // Helpers
@@ -79,6 +82,180 @@
   }
 
   // ----------------------------------------------------------------
+  // Image detail panel (read-only inspection)
+  // ----------------------------------------------------------------
+  async function loadImageDetail(imgId) {
+    if (!imgId) return null;
+    if (detailCache.has(imgId)) return detailCache.get(imgId);
+    const resp = await fetch(`/admin/review/image-detail/${encodeURIComponent(imgId)}`, {
+      credentials: "same-origin",
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      toast(`Detail load failed: ${body.error || resp.status}`, true);
+      return null;
+    }
+    const data = await resp.json();
+    detailCache.set(imgId, data);
+    return data;
+  }
+
+  function buildDetailHtml(detail, opts) {
+    const compact = opts && opts.compact;
+    const img = detail.image || {};
+    const filing = detail.filing || {};
+    const confs = detail.confirmations || [];
+    const deepLink = detail.deep_link_url || "";
+
+    const detectedMetrics = Array.isArray(img.detected_metrics) ? img.detected_metrics : [];
+    const chipRail = detectedMetrics.length
+      ? detectedMetrics.map((m) => {
+          const metricId = m && (m.metric_id || m.id || m.name) || String(m);
+          const score = m && (m.score != null ? m.score : m.confidence);
+          const scoreTxt = score != null ? ` <span class="text-muted">(${Number(score).toFixed(2)})</span>` : "";
+          return `<span class="badge bg-light text-dark border me-1">${escapeHtml(metricId)}${scoreTxt}</span>`;
+        }).join("")
+      : "<span class='text-muted small'>(no detected metrics)</span>";
+
+    const nearby = img.nearby_text || "";
+    const nearbyLong = nearby.length > 500;
+    const nearbyHtml = nearby
+      ? `<details ${nearbyLong ? "" : "open"}>
+           <summary class="small text-muted">Nearby text${nearbyLong ? ` (${nearby.length} chars — click to expand)` : ""}</summary>
+           <pre class="small bg-light p-2 mt-1" style="white-space:pre-wrap;max-height:300px;overflow:auto">${escapeHtml(nearby)}</pre>
+         </details>`
+      : "<div class='small text-muted'>(no nearby text)</div>";
+
+    const ocr = img.ocr_text || "";
+    const ocrHtml = ocr
+      ? `<details>
+           <summary class="small text-muted">OCR text (${ocr.length} chars)</summary>
+           <pre class="small bg-light p-2 mt-1" style="white-space:pre-wrap;max-height:240px;overflow:auto">${escapeHtml(ocr)}</pre>
+         </details>`
+      : "<div class='small text-muted'>(no OCR text)</div>";
+
+    const confRows = confs.map((c) => {
+      const isAdmin = !!c.override_reason;
+      const metric = c.confirmed_metric_id || c.detected_metric_id || "(sentinel)";
+      const reviewer = (c.reviewer_id || "").slice(0, 12);
+      const cls = isAdmin ? "table-warning" : "";
+      const adminBadge = isAdmin ? `<span class="badge bg-warning text-dark ms-1">admin</span>` : "";
+      const overrideReason = isAdmin
+        ? `<div class="text-muted" style="font-size:0.75em">${escapeHtml(c.override_reason || "")}</div>`
+        : "";
+      return `<tr class="${cls}">
+        <td class="small">${escapeHtml(fmtDate(c.created_at))}</td>
+        <td class="small">${escapeHtml(reviewer)}${adminBadge}</td>
+        <td class="small">${escapeHtml(c.decision || "")}</td>
+        <td class="small">${escapeHtml(metric)}</td>
+        <td class="small">${escapeHtml(c.rejection_reason || "")}${overrideReason}</td>
+      </tr>`;
+    }).join("");
+    const confTable = confs.length
+      ? `<table class="table table-sm mb-0">
+           <thead><tr><th>When</th><th>Reviewer</th><th>Decision</th><th>Metric</th><th>Notes</th></tr></thead>
+           <tbody>${confRows}</tbody>
+         </table>`
+      : "<div class='small text-muted'>(no confirmations on this image)</div>";
+
+    const imgUrl = img.image_url || "";
+    const imgStyle = compact
+      ? "max-height:160px;max-width:240px;object-fit:contain"
+      : "max-height:480px;max-width:100%;object-fit:contain";
+    const imageBlock = imgUrl
+      ? `<img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(img.filename || "")}" style="${imgStyle}" class="border bg-white">`
+      : `<div class="text-muted small">(image bytes unavailable)</div>`;
+
+    const dims = img.width && img.height ? `${img.width}×${img.height}` : "—";
+    const sectionPath = Array.isArray(img.section_path) ? img.section_path.join(" › ") : (img.section_path || "");
+    const meta = `
+      <div class="small text-muted">
+        <strong>${escapeHtml(filing.company_name || "")}</strong>
+        — ${escapeHtml(filing.form_type || "")} ${escapeHtml(fmtDate(filing.filing_date))}
+        — accession ${escapeHtml(filing.accession_number || "")}
+      </div>
+      <div class="small text-muted">
+        <span class="badge bg-info">${escapeHtml(img.classification || "")}</span>
+        relevance ${fmtScore(img.relevance_score)} · predicted ${fmtScore(img.predicted_relevance)}
+        · status <code>${escapeHtml(img.review_status || "")}</code>
+        · dims ${escapeHtml(dims)}
+        ${sectionPath ? `· section <em>${escapeHtml(sectionPath)}</em>` : ""}
+      </div>
+    `;
+
+    const deepLinkBtn = deepLink
+      ? `<a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener" href="${escapeHtml(deepLink)}">
+           View in regular review →
+         </a>`
+      : "";
+
+    if (compact) {
+      return `
+        <div class="border rounded p-2 bg-light">
+          <div class="d-flex gap-2 align-items-start">
+            <div>${imageBlock}</div>
+            <div class="flex-grow-1">
+              ${meta}
+              <div class="mt-1">${chipRail}</div>
+              <div class="mt-2">${deepLinkBtn}</div>
+            </div>
+          </div>
+          <div class="mt-2"><strong class="small">Other confirmations on this image:</strong> ${confs.length}</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="border rounded p-3 bg-white admin-detail-panel">
+        <div class="row g-3">
+          <div class="col-md-5">
+            ${imageBlock}
+          </div>
+          <div class="col-md-7">
+            ${meta}
+            <div class="mt-2"><strong class="small">Detected metrics:</strong></div>
+            <div>${chipRail}</div>
+            <div class="mt-2">${deepLinkBtn}</div>
+          </div>
+        </div>
+        <hr>
+        <div class="mb-2">${nearbyHtml}</div>
+        <div class="mb-2">${ocrHtml}</div>
+        <div>
+          <div class="small text-muted mb-1">Confirmations on this image (${confs.length}, oldest first, up to 50):</div>
+          ${confTable}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDetailPanel(detail, containerEl, opts) {
+    if (!detail || !containerEl) return;
+    containerEl.innerHTML = buildDetailHtml(detail, opts || {});
+  }
+
+  async function toggleInspectPanel(slotEl, imgId) {
+    if (!slotEl || !imgId) return;
+    if (slotEl.dataset.open === "1") {
+      slotEl.dataset.open = "0";
+      slotEl.classList.add("d-none");
+      return;
+    }
+    slotEl.classList.remove("d-none");
+    slotEl.dataset.open = "1";
+    if (slotEl.dataset.loaded !== "1") {
+      slotEl.innerHTML = "<div class='text-muted small p-2'>Loading…</div>";
+      const detail = await loadImageDetail(imgId);
+      if (!detail) {
+        slotEl.innerHTML = "<div class='text-danger small p-2'>Failed to load detail.</div>";
+        return;
+      }
+      renderDetailPanel(detail, slotEl);
+      slotEl.dataset.loaded = "1";
+    }
+  }
+
+  // ----------------------------------------------------------------
   // Suppressed Images tab
   // ----------------------------------------------------------------
   async function loadSuppressed(filters, offset) {
@@ -116,33 +293,42 @@
 
   function suppressedCard(img) {
     const div = document.createElement("div");
-    div.className = "col-md-4 col-lg-3";
+    div.className = "col-12";
     const reasonBadges = (img.suppression_reasons || [])
       .map((r) => `<span class="badge bg-secondary me-1">${escapeHtml(r)}</span>`)
       .join("");
     div.innerHTML = `
-      <div class="card h-100">
+      <div class="card">
         <div class="card-body">
-          <h6 class="card-title small text-truncate" title="${escapeHtml(img.filename || "")}">
-            ${escapeHtml(img.filename || "(no name)")}
-          </h6>
-          <div class="small text-muted mb-1">
-            ${escapeHtml(img.company_name || "")}
+          <div class="row g-2 align-items-start">
+            <div class="col-md-6">
+              <h6 class="card-title small text-truncate mb-1" title="${escapeHtml(img.filename || "")}">
+                ${escapeHtml(img.filename || "(no name)")}
+              </h6>
+              <div class="small text-muted">${escapeHtml(img.company_name || "")}</div>
+              <div class="small text-muted">
+                ${escapeHtml(img.accession_number || "")} · ${escapeHtml(fmtDate(img.filing_date))}
+              </div>
+            </div>
+            <div class="col-md-3 small">
+              <span class="badge bg-info">${escapeHtml(img.classification || "")}</span>
+              <span class="text-muted ms-1">score ${fmtScore(img.predicted_relevance)}</span>
+              <div class="mt-1">${reasonBadges}</div>
+            </div>
+            <div class="col-md-3 d-flex gap-2 justify-content-end">
+              <button class="btn btn-sm btn-outline-secondary inspect-btn"
+                      data-img-id="${escapeHtml(img.img_id)}"
+                      title="Inspect in context">
+                Inspect
+              </button>
+              <button class="btn btn-sm btn-warning override-btn"
+                      data-img-id="${escapeHtml(img.img_id)}"
+                      data-context="${escapeHtml(img.company_name || "")} / ${escapeHtml(img.filename || "")}">
+                Override
+              </button>
+            </div>
           </div>
-          <div class="small mb-2">
-            <span class="badge bg-info">${escapeHtml(img.classification || "")}</span>
-            <span class="text-muted ms-1">score ${fmtScore(img.predicted_relevance)}</span>
-          </div>
-          <div class="mb-2">${reasonBadges}</div>
-          <div class="small text-muted mb-2">
-            ${escapeHtml(img.accession_number || "")}<br>
-            ${escapeHtml(fmtDate(img.filing_date))}
-          </div>
-          <button class="btn btn-sm btn-warning override-btn"
-                  data-img-id="${escapeHtml(img.img_id)}"
-                  data-context="${escapeHtml(img.company_name || "")} / ${escapeHtml(img.filename || "")}">
-            Override
-          </button>
+          <div class="admin-inspect-slot d-none mt-3" data-img-id="${escapeHtml(img.img_id)}"></div>
         </div>
       </div>
     `;
@@ -200,7 +386,8 @@
     `;
     const tbody = table.querySelector("tbody");
     for (const d of data.decisions || []) {
-      tbody.appendChild(auditRow(d));
+      const rows = auditRow(d);
+      rows.forEach((r) => tbody.appendChild(r));
     }
     list.appendChild(table);
     renderPagination("audit", data.total || 0);
@@ -220,6 +407,8 @@
          </div>`
       : "<span class='text-muted small'>none</span>";
     const img = d.image || {};
+    // metric_id for modal pre-fill — confirmed wins, detected falls back, sentinel rows stay blank
+    const prefillMetric = d.confirmed_metric_id || d.detected_metric_id || "";
     tr.innerHTML = `
       <td><span class="badge bg-secondary">${escapeHtml(d.decision || "")}</span></td>
       <td class="small">${escapeHtml(metric)}<br><span class="text-muted">${escapeHtml(d.rejection_reason || "")}</span></td>
@@ -227,15 +416,28 @@
       <td class="small">${escapeHtml(fmtDate(d.created_at))}</td>
       <td>${overrideCell}</td>
       <td>
+        <button class="btn btn-sm btn-outline-secondary inspect-btn me-1"
+                data-img-id="${escapeHtml(d.img_id)}"
+                title="Inspect in context">
+          Inspect
+        </button>
         <button class="btn btn-sm btn-outline-warning override-btn"
                 data-img-id="${escapeHtml(d.img_id)}"
                 data-supersedes-id="${escapeHtml(d.confirmation_id || "")}"
+                data-prefill-metric="${escapeHtml(prefillMetric)}"
                 data-context="Reverse ${escapeHtml(d.decision || "")} on ${escapeHtml(metric)} for ${escapeHtml(img.company_name || "")}">
           Override
         </button>
       </td>
     `;
-    return tr;
+    const slotTr = document.createElement("tr");
+    slotTr.innerHTML = `
+      <td colspan="6" class="p-0">
+        <div class="admin-inspect-slot d-none p-2 bg-body-tertiary"
+             data-img-id="${escapeHtml(d.img_id)}"></div>
+      </td>
+    `;
+    return [tr, slotTr];
   }
 
   // ----------------------------------------------------------------
@@ -260,14 +462,28 @@
   // ----------------------------------------------------------------
   // Override modal
   // ----------------------------------------------------------------
-  function openOverrideModal(imgId, supersedesId, context) {
+  async function openOverrideModal(imgId, supersedesId, context, prefillMetric) {
     document.getElementById("override-img-id").value = imgId || "";
     document.getElementById("override-supersedes-id").value = supersedesId || "";
     document.getElementById("override-reason").value = "";
-    document.getElementById("override-metric-id").value = "";
+    document.getElementById("override-metric-id").value = prefillMetric || "";
     document.getElementById("override-context").textContent = context || "";
+    const slot = document.getElementById("override-detail-slot");
+    if (slot) {
+      slot.innerHTML = imgId
+        ? "<div class='text-muted small'>Loading detail…</div>"
+        : "";
+    }
     const modal = new bootstrap.Modal(document.getElementById("overrideModal"));
     modal.show();
+    if (slot && imgId) {
+      const detail = await loadImageDetail(imgId);
+      if (detail) {
+        renderDetailPanel(detail, slot, { compact: true });
+      } else {
+        slot.innerHTML = "<div class='text-danger small'>Failed to load detail.</div>";
+      }
+    }
   }
 
   async function submitOverride() {
@@ -367,12 +583,33 @@
 
     // Delegate clicks for dynamic buttons
     document.body.addEventListener("click", (e) => {
+      const inspBtn = e.target.closest(".inspect-btn");
+      if (inspBtn) {
+        const imgId = inspBtn.dataset.imgId;
+        // Find the panel slot scoped to this card/row.
+        // Suppressed card: slot is a sibling inside the same .card-body.
+        // Audit row: slot lives in the next <tr>.
+        let slot = null;
+        const cardBody = inspBtn.closest(".card-body");
+        if (cardBody) {
+          slot = cardBody.querySelector(":scope > .admin-inspect-slot");
+        }
+        if (!slot) {
+          const tr = inspBtn.closest("tr");
+          if (tr && tr.nextElementSibling) {
+            slot = tr.nextElementSibling.querySelector(".admin-inspect-slot");
+          }
+        }
+        toggleInspectPanel(slot, imgId);
+        return;
+      }
       const ovrBtn = e.target.closest(".override-btn");
       if (ovrBtn) {
         openOverrideModal(
           ovrBtn.dataset.imgId,
           ovrBtn.dataset.supersedesId,
           ovrBtn.dataset.context,
+          ovrBtn.dataset.prefillMetric,
         );
         return;
       }

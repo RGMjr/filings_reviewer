@@ -2,14 +2,16 @@
 Admin review tool endpoints.
 
 All routes are protected by @admin_required (flag-independent, always active).
-Provides five endpoints for auditing suppressed images, reviewing decisions by
-reviewer, and writing / undoing admin override rows on v2_image_metric_confirmations.
+Provides endpoints for auditing suppressed images, reviewing decisions by
+reviewer, inspecting an image in context, and writing / undoing admin
+override rows on v2_image_metric_confirmations.
 
 Endpoints:
-  GET  /admin/review                          — placeholder HTML (PR 3 ships the real UI)
-  GET  /admin/review/suppressed               — JSON: paginated suppressed images
-  GET  /admin/review/by-reviewer              — JSON: paginated decisions for one reviewer
-  POST /api/admin/image-decision-override     — write an admin override row
+  GET  /admin/review                            — composite UI
+  GET  /admin/review/suppressed                 — JSON: paginated suppressed images
+  GET  /admin/review/by-reviewer                — JSON: paginated decisions for one reviewer
+  GET  /admin/review/image-detail/<img_id>      — JSON: read-only image context
+  POST /api/admin/image-decision-override       — write an admin override row
   DELETE /api/admin/image-decision-override/<id> — undo an admin override row
 """
 
@@ -21,10 +23,11 @@ import uuid as _uuid
 from typing import Any
 
 import psycopg
-from flask import Blueprint, g, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request, url_for
 
 from src.auth.admin import admin_required
 from src.web.app import get_db
+from src.web.url_builders import build_image_cache_url
 
 admin_review_bp = Blueprint("admin_review", __name__)
 logger = logging.getLogger(__name__)
@@ -283,6 +286,60 @@ def admin_review_by_reviewer():
                 dec[k] = v.isoformat()
 
     return jsonify({"decisions": decisions, "total": total, "limit": limit, "offset": offset})
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/review/image-detail/<img_id>
+# ---------------------------------------------------------------------------
+
+
+@admin_review_bp.route("/admin/review/image-detail/<uuid:img_id>", methods=["GET"])
+@admin_required
+def admin_review_image_detail(img_id):
+    """Return read-only context for a single image in the admin tool.
+
+    Response shape:
+      {
+        "image": {...image cols + image_url for <img src>...},
+        "filing": {...filing + company cols...},
+        "confirmations": [...per-metric rows, ASC by created_at, up to 50...],
+        "deep_link_url": "/v2/review/<filing_id>?img_id=<uuid>&tab=images"
+      }
+
+    Read-only: does NOT write to admin_audit_log.
+    """
+    db = get_db()
+    try:
+        detail = db.get_image_detail_for_admin(str(img_id))
+    except psycopg.DatabaseError as exc:
+        logger.error("DB error in admin_review_image_detail: %s", exc, exc_info=True)
+        return jsonify({"error": "database error"}), 500
+
+    if detail is None:
+        return jsonify({"error": "image not found"}), 404
+
+    filing = detail["filing"]
+    image = detail["image"]
+
+    image["image_url"] = build_image_cache_url(
+        filing.get("cik"),
+        filing.get("accession_number"),
+        image["filename"],
+    )
+
+    deep_link_path = url_for("review_unified.review_filing", filing_id=filing["filing_id"])
+    detail["deep_link_url"] = f"{deep_link_path}?img_id={image['img_id']}&tab=images"
+
+    for section in (image, filing):
+        for k, v in list(section.items()):
+            if hasattr(v, "isoformat"):
+                section[k] = v.isoformat()
+    for conf in detail["confirmations"]:
+        for k, v in list(conf.items()):
+            if hasattr(v, "isoformat"):
+                conf[k] = v.isoformat()
+
+    return jsonify(detail)
 
 
 # ---------------------------------------------------------------------------
