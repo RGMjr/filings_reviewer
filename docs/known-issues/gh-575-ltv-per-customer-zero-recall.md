@@ -15,6 +15,7 @@ updated: 2026-05-08
 gh_issue: 575
 pr_refs:
   - 588
+  - 614
 note: prompt v0.2.0 broadens definition + positive_signals to cover chart-caption "lifetime value chart" / "LTV at each year of tenure" variant; adds two hand-authored few-shots; smoke-eval re-run pending
 ---
 
@@ -38,4 +39,4 @@ The cohort-revenue fix (PR #568) provides a working template — `cm_revenue_by_
 
 Fixed by PR #588 (merged 2026-05-09). Prompt `cm_lifetime_value_per_customer.yaml` bumped to `prompt_version: 0.2.0` — broadened definition and `positive_signals` to cover chart-caption variants ("lifetime value chart", "LTV at each year of tenure", "cumulative LTV by cohort year"); two hand-authored few-shot examples added. Smoke-eval re-run not yet executed against post-fix prompt; gold-corpus recall verification pending.
 
-Bookkeeping closed by PR #TBD_CLOSURE.
+Bookkeeping closed by PR #614.

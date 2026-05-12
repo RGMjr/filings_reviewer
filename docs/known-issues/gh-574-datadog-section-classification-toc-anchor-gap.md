@@ -15,6 +15,7 @@ updated: 2026-05-08
 gh_issue: 574
 pr_refs:
   - 589
+  - 614
 note: "Root cause is the 50-char MIN_PARAGRAPH_CHARS floor in ingestion (not section_classification). Datadog's bare-heading <P>s carry an `<a name>` anchor target but text below the floor, and get filtered before Stage 2 sees them. Fix retains short paragraphs that carry an anchor target."
 ---
 
@@ -42,4 +43,4 @@ Verification on filing 1539 post-fix: `section_classification` detects `risk_fac
 
 Fixed by PR #589 (merged 2026-05-09). Added `_has_anchor_target()` predicate to `IngestionStage` that retains short paragraphs carrying an `<a name>` or `<a id>` anchor target, allowing Datadog-style section headings below `MIN_PARAGRAPH_CHARS` to survive ingestion and reach `section_classification`. Smoke-eval verification: confirmed post-fix that filing 1539 now detects `risk_factors: 1`, `mda: 1`, `business: 1` (was all zero).
 
-Bookkeeping closed by PR #TBD_CLOSURE.
+Bookkeeping closed by PR #614.
