@@ -463,3 +463,109 @@ class TestOverrideDelete:
         resp = client.delete(f"/api/admin/image-decision-override/{reviewer_conf_id}")
         assert resp.status_code == 400
         assert "not an admin override" in resp.get_json()["error"]
+
+
+# ---------------------------------------------------------------------------
+# Image-detail (read-only inspection panel)
+# ---------------------------------------------------------------------------
+
+
+class TestImageDetailEndpoint:
+    def test_reviewer_blocked(self, app, clean_db, reviewer_user_id):
+        client = _client_as(app, _reviewer_user(reviewer_user_id))
+        bogus = str(_uuid.uuid4())
+        resp = client.get(f"/admin/review/image-detail/{bogus}")
+        assert resp.status_code == 403
+
+    def test_404_on_unknown_img(self, app, clean_db, admin_user_id):
+        client = _client_as(app, _admin_user(admin_user_id))
+        bogus = str(_uuid.uuid4())
+        resp = client.get(f"/admin/review/image-detail/{bogus}")
+        assert resp.status_code == 404
+
+    def test_200_returns_expected_shape(self, app, clean_db, admin_user_id, reviewer_user_id):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_image(
+            clean_db, filing_id, classification="chart", predicted_relevance=0.42
+        )
+        # One reviewer row + one admin override row on the same image
+        reviewer_conf_id = _insert_confirmation(
+            clean_db,
+            img_id,
+            reviewer_user_id,
+            decision="reject",
+            detected_metric_id="cm_customers_period_end",
+            confirmed_metric_id=None,
+            rejection_reason="not_present",
+        )
+        _insert_confirmation(
+            clean_db,
+            img_id,
+            admin_user_id,
+            decision="accept",
+            detected_metric_id="cm_customers_period_end",
+            confirmed_metric_id="cm_customers_period_end",
+            override_reason="reviewer wrong; chart clearly shows customers",
+            supersedes_id=reviewer_conf_id,
+        )
+
+        client = _client_as(app, _admin_user(admin_user_id))
+        resp = client.get(f"/admin/review/image-detail/{img_id}")
+        assert resp.status_code == 200, resp.data
+        body = resp.get_json()
+
+        assert set(body.keys()) >= {"image", "filing", "confirmations", "deep_link_url"}
+
+        # Image block carries the columns the panel needs
+        image = body["image"]
+        assert image["img_id"] == img_id
+        for key in (
+            "filename",
+            "classification",
+            "predicted_relevance",
+            "review_status",
+            "nearby_text",
+            "ocr_text",
+            "detected_metrics",
+            "image_url",
+        ):
+            assert key in image, f"image missing {key!r}: {image}"
+
+        # Filing block carries company + accession + cik for the deep-link
+        filing = body["filing"]
+        assert filing["filing_id"] == filing_id
+        assert filing["accession_number"] == "0001234567-24-000001"
+        assert filing["cik"] == "0001234567"
+        assert filing["company_name"] == "Test Corp"
+
+        # Confirmations carry both rows (reviewer + admin)
+        confs = body["confirmations"]
+        assert len(confs) == 2
+        reviewer_ids = {c["reviewer_id"] for c in confs}
+        assert reviewer_user_id in reviewer_ids
+        assert admin_user_id in reviewer_ids
+        admin_rows = [c for c in confs if c["override_reason"]]
+        assert len(admin_rows) == 1
+        assert admin_rows[0]["supersedes_confirmation_id"] == reviewer_conf_id
+
+        # Deep link is well-formed
+        assert body["deep_link_url"] == f"/v2/review/{filing_id}?img_id={img_id}&tab=images"
+
+    def test_read_only_no_audit_log_write(self, app, clean_db, admin_user_id):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_image(clean_db, filing_id)
+
+        before = clean_db.query(
+            "SELECT COUNT(*) AS n FROM admin_audit_log WHERE actor_user_id = %(uid)s",
+            {"uid": admin_user_id},
+        )[0]["n"]
+
+        client = _client_as(app, _admin_user(admin_user_id))
+        resp = client.get(f"/admin/review/image-detail/{img_id}")
+        assert resp.status_code == 200
+
+        after = clean_db.query(
+            "SELECT COUNT(*) AS n FROM admin_audit_log WHERE actor_user_id = %(uid)s",
+            {"uid": admin_user_id},
+        )[0]["n"]
+        assert before == after, "read-only GET must not write admin_audit_log"

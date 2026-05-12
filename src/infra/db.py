@@ -4110,6 +4110,105 @@ class DatabaseAdapter:
 
         return results, total
 
+    def get_image_detail_for_admin(self, img_id: str) -> dict[str, Any] | None:
+        """Return merged image + filing + confirmations context for the admin
+        review tool's in-context inspection panel.
+
+        Read-only. Used by ``GET /admin/review/image-detail/<img_id>``.
+
+        Returns a dict with keys ``image``, ``filing``, ``confirmations`` — or
+        ``None`` if *img_id* is unknown. The ``confirmations`` list is ordered
+        ASC by ``created_at`` and capped at 50 rows to bound the response on
+        heavily-reviewed images.
+        """
+        image_rows = self.query(
+            """
+            SELECT
+                ia.img_id::text AS img_id,
+                ia.filename,
+                ia.file_path,
+                ia.width,
+                ia.height,
+                ia.nearby_text,
+                ia.section_path,
+                ia.section_type,
+                ia.classification,
+                ia.relevance_score,
+                ia.predicted_relevance,
+                ia.review_status,
+                ia.ocr_text,
+                ia.detected_metrics,
+                ia.created_at,
+                f.filing_id,
+                f.accession_number,
+                f.form_type,
+                f.filing_date::text AS filing_date,
+                c.company_id,
+                c.cik,
+                c.company_name
+            FROM v2_image_assets ia
+            JOIN filings f ON f.filing_id = ia.filing_id
+            JOIN companies c ON c.company_id = f.company_id
+            WHERE ia.img_id = %(img_id)s
+            """,
+            {"img_id": img_id},
+        )
+        if not image_rows:
+            return None
+        row = image_rows[0]
+
+        confirmation_rows = self.query(
+            """
+            SELECT
+                id::text AS confirmation_id,
+                reviewer_id,
+                decision,
+                detected_metric_id,
+                confirmed_metric_id,
+                rejection_reason,
+                reviewer_notes,
+                override_reason,
+                supersedes_confirmation_id::text AS supersedes_confirmation_id,
+                created_at,
+                updated_at
+            FROM v2_image_metric_confirmations
+            WHERE img_id = %(img_id)s
+            ORDER BY created_at ASC
+            LIMIT 50
+            """,
+            {"img_id": img_id},
+        )
+
+        return {
+            "image": {
+                "img_id": row["img_id"],
+                "filename": row["filename"],
+                "file_path": row["file_path"],
+                "width": row["width"],
+                "height": row["height"],
+                "nearby_text": row["nearby_text"],
+                "section_path": row["section_path"],
+                "section_type": row["section_type"],
+                "classification": row["classification"],
+                "relevance_score": row["relevance_score"],
+                "predicted_relevance": row["predicted_relevance"],
+                "review_status": row["review_status"],
+                "ocr_text": row["ocr_text"],
+                "detected_metrics": row["detected_metrics"],
+                "created_at": row["created_at"],
+            },
+            "filing": {
+                "filing_id": row["filing_id"],
+                "accession_number": row["accession_number"],
+                "form_type": row["form_type"],
+                "filing_date": row["filing_date"],
+                "company_id": row["company_id"],
+                "cik": row["cik"],
+                "company_name": row["company_name"],
+            },
+            "confirmations": confirmation_rows,
+        }
+
     def insert_admin_override(
         self,
         img_id: str,

@@ -67,6 +67,26 @@ Submitting an override here writes:
 - Audit-log `before_state` JSONB captures a snapshot of the reviewer row being superseded
 - The reviewer's original row is **kept** (not modified) — the admin's row coexists with it. The training pipeline sees both rows; the "any accept wins" aggregation in `scripts/export_image_training_data.py` means an admin accept overrides a reviewer reject at training-label level.
 
+## Inspecting an image in context
+
+Every Suppressed-Images card and every Reviewer-Audit row carries an **Inspect** button next to its **Override** button. Clicking **Inspect** expands an inline read-only panel below the card/row with everything a reviewer would see on `/v2/review/<filing_id>`:
+
+- Full-size image (served via `build_image_cache_url(...)`).
+- Filing / company / accession / form-type / filing-date header.
+- `classification`, `relevance_score`, `predicted_relevance`, `review_status`, image dimensions, and `section_path`.
+- Detected metrics chip rail (`v2_image_assets.detected_metrics`).
+- `nearby_text` and `ocr_text` blocks (collapsible — `nearby_text` auto-collapses when > 500 chars; OCR is collapsed by default).
+- The full chronological list of `v2_image_metric_confirmations` rows on the image (up to 50, oldest first). Admin rows (non-NULL `override_reason`) render with a warning highlight; their `override_reason` text appears under the metric cell.
+- A **View in regular review →** button that opens `/v2/review/<filing_id>?img_id=<uuid>&tab=images` in a new tab — useful when the inline panel isn't enough and you need the full reviewer interface (zoom, lightbox, navigation strip).
+
+The panel is **read-only**. It writes nothing to the database, does not change `v2_image_assets.review_status`, and does NOT write to `admin_audit_log`. All write actions still flow through the Override modal and the existing `/api/admin/image-decision-override` endpoints.
+
+The Override modal itself also renders a **compact** version of the same panel at the top (thumbnail + filing header + chip rail + confirmation count + "View in regular review" deep-link), so the admin can see what they are acting on while filling out the form. Opening the Override modal from a Reviewer-Audit row additionally pre-fills the Metric ID field with the row's `confirmed_metric_id` (or `detected_metric_id` when the row is a reject without a correction).
+
+Detail responses are cached per-session in the JS client, so re-toggling the same image's panel does not refetch.
+
+Backend: `GET /admin/review/image-detail/<uuid:img_id>` (admin-gated, returns the merged image + filing + confirmations + `deep_link_url` JSON blob).
+
 ## Useful audit queries
 
 **Recent admin actions:**
