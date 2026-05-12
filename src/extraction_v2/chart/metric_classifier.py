@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from src.extraction_v2.chart.unit_inference import infer_unit_and_currency
 from src.extraction_v2.models import ChartData, ChartType, Unit
@@ -9,6 +10,9 @@ from src.shared.keyword_config import (
     get_metric_keywords,
     get_specific_patterns_by_metric,
 )
+
+if TYPE_CHECKING:
+    from src.extraction_v2.pipeline import PipelineConfig
 
 # ---------------------------------------------------------------------------
 # Supported metrics — expanded to cover Tier-1 chart-friendly metrics (gh-289).
@@ -277,10 +281,13 @@ def _score_metric(
 
 
 class ChartMetricClassifier:
-    def __init__(self) -> None:
-        self._keywords = get_metric_keywords()
-        self._specific = get_specific_patterns_by_metric()
-        self._exclusions = get_exclusion_patterns()
+    def __init__(self, config: PipelineConfig | None = None) -> None:
+        kw_override = (config.keyword_override or {}) if config else {}
+        self._keywords = get_metric_keywords(override=kw_override.get("metric_keywords"))
+        self._specific = get_specific_patterns_by_metric(
+            override=kw_override.get("specific_patterns")
+        )
+        self._exclusions = get_exclusion_patterns(override=kw_override.get("exclusion_patterns"))
 
     def _build_candidates(self, chart: ChartData, nearby_text: str) -> list[tuple[str, float]]:
         """Compute gated candidate list (shared by classify and classify_all)."""

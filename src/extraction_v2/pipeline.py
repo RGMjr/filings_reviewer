@@ -678,7 +678,9 @@ class V2Pipeline:
             self._stages.append((PipelineStage.IMAGE_CLASSIFY, ImageClassifyStage()))
 
         # Stage 6: Metric Candidate Generation
-        self._stages.append((PipelineStage.CANDIDATE_GENERATION, CandidateGenerationStage()))
+        self._stages.append(
+            (PipelineStage.CANDIDATE_GENERATION, CandidateGenerationStage(config=self.config))
+        )
 
         # Stage 6.5: LLM Presence Classifier (shadow mode — no-op when flag is off)
         if self.config.enable_llm_presence_classifier:
@@ -687,10 +689,12 @@ class V2Pipeline:
             )
 
         # Stage 7: Value Binding
-        self._stages.append((PipelineStage.VALUE_BINDING, ValueBindingStage()))
+        self._stages.append((PipelineStage.VALUE_BINDING, ValueBindingStage(config=self.config)))
 
         # Stage 7.5: False Positive Filter
-        self._stages.append((PipelineStage.FALSE_POSITIVE_FILTER, FalsePositiveFilterStage()))
+        self._stages.append(
+            (PipelineStage.FALSE_POSITIVE_FILTER, FalsePositiveFilterStage(config=self.config))
+        )
 
         # Stage 8: Period Inference
         self._stages.append((PipelineStage.PERIOD_INFERENCE, PeriodInferenceStage()))

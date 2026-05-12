@@ -37,7 +37,7 @@ from src.shared.keyword_config import (
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Segment, Table
-    from src.extraction_v2.pipeline import PipelineContext, StageResult
+    from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +71,13 @@ class CandidateGenerationStage:
     SECTION_BONUS: float = 0.1
     HIGH_VALUE_SECTIONS: set[SectionType] = {SectionType.MDA, SectionType.BUSINESS}
 
-    def __init__(self) -> None:
-        """Initialize stage with compiled regex patterns from V1 config."""
+    def __init__(self, config: PipelineConfig | None = None) -> None:
+        """Initialize stage with compiled regex patterns from V1 config.
+
+        When `config.keyword_override` is set (simulate-and-ship flow), each
+        per-metric override REPLACES the YAML pattern list for that metric.
+        """
+        self._config = config
         self._keywords: dict[str, list[str]] = {}
         self._exclusions: dict[str, list[str]] = {}
         self._specific_patterns: list[str] = []
@@ -94,16 +99,20 @@ class CandidateGenerationStage:
         if self._initialized:
             return True
 
+        kw_override = (self._config.keyword_override or {}) if self._config else {}
+
         try:
-            all_keywords = get_metric_keywords()
+            all_keywords = get_metric_keywords(override=kw_override.get("metric_keywords"))
             self._keywords = {
                 mid: p for mid, p in all_keywords.items() if not is_metric_deprecated(mid)
             }
-            all_exclusions = get_exclusion_patterns()
+            all_exclusions = get_exclusion_patterns(override=kw_override.get("exclusion_patterns"))
             self._exclusions = {
                 mid: p for mid, p in all_exclusions.items() if not is_metric_deprecated(mid)
             }
-            self._specific_patterns = get_specific_patterns()
+            self._specific_patterns = get_specific_patterns(
+                override=kw_override.get("specific_patterns")
+            )
             self._compile_patterns()
             self._initialized = True
             deprecated_count = len(all_keywords) - len(self._keywords)

@@ -40,7 +40,7 @@ from src.review.number_parsing import NumberMatch
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Segment, Table
-    from src.extraction_v2.pipeline import PipelineContext, StageResult
+    from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +74,7 @@ _RANKING_NAME_RE = re.compile(
 # (e.g., "3 million", "1.5 billion", "400,000").  Bare single/double-digit
 # numbers without these suffixes are almost always noise in transcript text
 # (slide numbers, quarter refs like "Q4", "5G", multipliers like "4 times").
-_HAS_SCALE_SUFFIX_RE = re.compile(
-    r"(?:million|billion|thousand|,\d{3})", re.IGNORECASE
-)
+_HAS_SCALE_SUFFIX_RE = re.compile(r"(?:million|billion|thousand|,\d{3})", re.IGNORECASE)
 
 _BARE_SMALL_NUMBER_THRESHOLD = 50
 # Prepared-remarks sections in transcript mode: raise the threshold to 400 to
@@ -93,49 +91,57 @@ _BARE_SMALL_NUMBER_THRESHOLD_QA = 500
 # (e.g., "$224 million" extracted as cm_monthly_active_users).
 # Used for percent-rejection in _rule_percent_on_count_metric (MAU/DAU have
 # a special YoY escape hatch, so other count metrics are listed separately).
-_COUNT_ONLY_METRICS = frozenset({
-    "cm_monthly_active_users",
-    "cm_daily_active_users",
-    "cm_active_customers_total",
-    "cm_customers_period_end",
-    "cm_new_customers_acquired",
-    "cm_large_customers_period_end",
-})
+_COUNT_ONLY_METRICS = frozenset(
+    {
+        "cm_monthly_active_users",
+        "cm_daily_active_users",
+        "cm_active_customers_total",
+        "cm_customers_period_end",
+        "cm_new_customers_acquired",
+        "cm_large_customers_period_end",
+    }
+)
 
 # Extended set for currency-unit rejection: adds metrics where dollar values
 # are always FPs but percent growth rates may appear in transcripts (so they
 # are not gated by _COUNT_ONLY_METRICS percent check above).
-_DOLLAR_REJECT_METRICS = _COUNT_ONLY_METRICS | frozenset({
-    "cm_customers_period_end_by_tenure",
-    "cm_purchase_transactions_overall",
-    "cm_transactions_by_cohort",
-    "cm_cac_payback_period",
-})
+_DOLLAR_REJECT_METRICS = _COUNT_ONLY_METRICS | frozenset(
+    {
+        "cm_customers_period_end_by_tenure",
+        "cm_purchase_transactions_overall",
+        "cm_transactions_by_cohort",
+        "cm_cac_payback_period",
+    }
+)
 
 # Retention metrics that can legitimately co-occur in the same filing segment.
 # GRR, NRR, and customer retention rate measure different retention concepts
 # and should not be cross-metric-deduped against each other.
-_RETENTION_FAMILY = frozenset({
-    "cm_gross_revenue_retention",
-    "cm_net_revenue_retention",
-    "cm_customer_retention_rate",
-})
+_RETENTION_FAMILY = frozenset(
+    {
+        "cm_gross_revenue_retention",
+        "cm_net_revenue_retention",
+        "cm_customer_retention_rate",
+    }
+)
 
 # Metrics whose values (percentages, ratios, small counts) are semantically
 # incompatible with financial statement line items. V1 financial_line_item
 # positional checks can fire for these metrics when they appear near financial
 # tables, but the extracted values can never be revenue, cost, or balance-sheet
 # amounts. Override V1 fp classification for this set.
-_V1_FINANCIAL_OVERRIDE_METRICS = frozenset({
-    "cm_repeat_purchase_rate",
-    "cm_customer_retention_rate",
-    "cm_customer_churn_rate",
-    "cm_net_revenue_retention",
-    "cm_gross_revenue_retention",
-    "cm_ltv_to_cac_ratio",
-    "cm_ltv_to_cac_ratio_by_cohort",
-    "cm_cac_payback_period",
-})
+_V1_FINANCIAL_OVERRIDE_METRICS = frozenset(
+    {
+        "cm_repeat_purchase_rate",
+        "cm_customer_retention_rate",
+        "cm_customer_churn_rate",
+        "cm_net_revenue_retention",
+        "cm_gross_revenue_retention",
+        "cm_ltv_to_cac_ratio",
+        "cm_ltv_to_cac_ratio_by_cohort",
+        "cm_cac_payback_period",
+    }
+)
 
 # Metrics whose values are expressed in time units (days/weeks/months/years) and
 # thus legitimately use bare word-numbers like "six months" — without a scale
@@ -143,17 +149,21 @@ _V1_FINANCIAL_OVERRIDE_METRICS = frozenset({
 # See ValueBindingStage.TIME_UNIT_VALUED_METRICS in value_binding.py — the two
 # sets must stay consistent; both are kept local to their respective stages so
 # each change is reviewed against its own FP/binding surface.
-_V1_SPELLED_OUT_OVERRIDE_METRICS = frozenset({
-    "cm_cac_payback_period",
-})
+_V1_SPELLED_OUT_OVERRIDE_METRICS = frozenset(
+    {
+        "cm_cac_payback_period",
+    }
+)
 
 # Metrics where percent values need conjunction-clause gating (relaxed mode).
 # In transcript text like "TPV grew 50% and MAAs grew 30%", both values
 # fall in the 400-char proximity window, but only "30%" belongs to MAU.
-_PERCENT_CLAUSE_GATE_METRICS = frozenset({
-    "cm_monthly_active_users",
-    "cm_daily_active_users",
-})
+_PERCENT_CLAUSE_GATE_METRICS = frozenset(
+    {
+        "cm_monthly_active_users",
+        "cm_daily_active_users",
+    }
+)
 
 # Conjunction/clause boundary pattern for splitting compound sentences.
 _CONJUNCTION_RE = re.compile(r"\b(?:and|or|but|while)\b|;", re.IGNORECASE)
@@ -384,8 +394,9 @@ def _rule_truncated_year(bv: BoundValue, source_text: str, metric_id: str) -> st
             n = int(raw)
             prev_str = str(n - 1).zfill(2)
             next_str = str(n + 1).zfill(2)
-            if re.search(rf"\b{re.escape(prev_str)}\b", source_text) or \
-               re.search(rf"\b{re.escape(next_str)}\b", source_text):
+            if re.search(rf"\b{re.escape(prev_str)}\b", source_text) or re.search(
+                rf"\b{re.escape(next_str)}\b", source_text
+            ):
                 return "v2_two_digit_year_header"
 
     return None
@@ -416,9 +427,7 @@ _POSITIVE_ONLY_METRICS: frozenset[str] = frozenset(
 )
 
 
-def _rule_negative_value(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_negative_value(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block negative values on metrics that are definitionally non-negative.
 
     Negative metric values arise when a proximity window captures a subtraction
@@ -495,7 +504,9 @@ def _rule_per_share(bv: BoundValue, source_text: str, metric_id: str) -> str | N
     return None
 
 
-def _rule_revenue_concentration_context(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
+def _rule_revenue_concentration_context(
+    bv: BoundValue, source_text: str, metric_id: str
+) -> str | None:
     """Geographic, CapEx, or cost-structure revenue context for cm_revenue_concentration.
 
     Fires when the percent value is near:
@@ -523,7 +534,9 @@ def _rule_revenue_concentration_context(bv: BoundValue, source_text: str, metric
         return "v2_capex_revenue"
     # Use finditer to find the nearest cost-structure pattern occurrence;
     # source_text.search() only finds the first match which may be far from the value.
-    if any(abs(m.start() - value_pos) <= 200 for m in _COST_STRUCTURE_REVENUE_RE.finditer(source_text)):
+    if any(
+        abs(m.start() - value_pos) <= 200 for m in _COST_STRUCTURE_REVENUE_RE.finditer(source_text)
+    ):
         return "v2_cost_structure_revenue"
     # "Repeat/existing customers accounted for X% of net sales" describes
     # repeat purchase rate, not customer revenue concentration.
@@ -605,9 +618,7 @@ def _rule_tier_qualifier(bv: BoundValue, source_text: str, metric_id: str) -> st
     return "v2_tier_qualifier"
 
 
-def _rule_dollar_threshold_customer(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_dollar_threshold_customer(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Dollar-threshold customer subset counts.
 
     Suppresses FPs where source context contains a dollar threshold customer
@@ -625,7 +636,10 @@ def _rule_dollar_threshold_customer(
     dollar threshold is a legitimate NRR/GRR disclosure, not a count FP.
     (Flywire NRR 110-125% was incorrectly filtered by this rule.)
     """
-    if not source_text or metric_id in ("cm_large_customers_period_end", "cm_revenue_concentration"):
+    if not source_text or metric_id in (
+        "cm_large_customers_period_end",
+        "cm_revenue_concentration",
+    ):
         return None
     if bv.unit == Unit.PERCENT:
         return None
@@ -655,23 +669,27 @@ _SCALE_COUNT_RE = re.compile(
 )
 
 # Metrics that are counts — a percent value for these metrics may be a growth rate.
-_COUNT_TYPE_METRICS: frozenset[str] = frozenset({
-    "cm_monthly_active_users",
-    "cm_daily_active_users",
-    "cm_active_customers_total",
-    "cm_customers_period_end",
-    "cm_new_customers_acquired",
-    "cm_large_customers_period_end",
-})
+_COUNT_TYPE_METRICS: frozenset[str] = frozenset(
+    {
+        "cm_monthly_active_users",
+        "cm_daily_active_users",
+        "cm_active_customers_total",
+        "cm_customers_period_end",
+        "cm_new_customers_acquired",
+        "cm_large_customers_period_end",
+    }
+)
 
 # Pure count metrics — MAU, DAU.  For these, a percent value with a growth-rate
 # verb prefix is ALWAYS a growth rate (not the metric value), even when no
 # scale-suffixed count appears in the same segment.  Unlike generic count metrics,
 # MAU/DAU are never reported as percentages in earnings disclosures.
-_PURE_COUNT_METRICS: frozenset[str] = frozenset({
-    "cm_monthly_active_users",
-    "cm_daily_active_users",
-})
+_PURE_COUNT_METRICS: frozenset[str] = frozenset(
+    {
+        "cm_monthly_active_users",
+        "cm_daily_active_users",
+    }
+)
 
 
 # Delta/growth count patterns — "increase of", "up by", "net additions of".
@@ -720,12 +738,14 @@ _TRANSACTIONS_PER_ACCOUNT_RE = re.compile(
     re.IGNORECASE,
 )
 
-_CUSTOMER_COUNT_METRICS: frozenset[str] = frozenset({
-    "cm_customers_period_end",
-    "cm_active_customers_total",
-    "cm_new_customers_acquired",
-    "cm_large_customers_period_end",
-})
+_CUSTOMER_COUNT_METRICS: frozenset[str] = frozenset(
+    {
+        "cm_customers_period_end",
+        "cm_active_customers_total",
+        "cm_new_customers_acquired",
+        "cm_large_customers_period_end",
+    }
+)
 
 
 def _rule_content_engagement(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
@@ -744,9 +764,7 @@ def _rule_content_engagement(bv: BoundValue, source_text: str, metric_id: str) -
     return None
 
 
-def _rule_transactions_per_account(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_transactions_per_account(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Suppress TPA (transactions per active account) ratio values mis-classified
     as active account counts.
 
@@ -986,6 +1004,7 @@ def _rule_percent_on_count_metric(bv: BoundValue, source_text: str, metric_id: s
 # registry loop because they require the section_type argument, which rule
 # functions in the registry do not receive.
 
+
 def _qa_hedging_percent_near_value(source_text: str, value_raw: str) -> bool:
     """
     Return True if Q&A hedging language appears within ~10 words of the value.
@@ -1006,7 +1025,6 @@ def _qa_hedging_percent_near_value(source_text: str, value_raw: str) -> bool:
     return bool(_QA_HEDGING_RE.search(window))
 
 
-
 # NRR context keywords — net revenue retention / net dollar retention.
 # Used to suppress cm_customer_retention_rate FPs where the source text
 # describes NRR/NDR (which can exceed 100%) rather than customer retention.
@@ -1018,9 +1036,7 @@ _NRR_CONTEXT_RE = re.compile(
 )
 
 
-def _rule_retention_rate_over_100(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_retention_rate_over_100(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block cm_customer_retention_rate for values >100 or in NRR context.
 
     Customer retention rate is 0-100%. Any value above 100 is NRR (net
@@ -1049,28 +1065,25 @@ def _rule_retention_rate_over_100(
     return None
 
 
-
 # Maximum plausible values per metric (to catch magnitude errors from cross-metric mis-binding).
 _METRIC_MAX_VALUE: dict[str, float] = {
-    "cm_lifetime_value_per_customer": 10_000_000,   # $10M max LTV
-    "cm_ltv_to_cac_ratio": 25,                       # 25x max LTV/CAC; real ratios rarely exceed 20x
-    "cm_customer_acquisition_cost": 50_000,          # $50K max CAC; larger values are financial figures
-    "cm_revenue_per_customer": 100_000,              # $100K max ARPU
-    "cm_large_customers_period_end": 20_000,         # >20K would be total customers, not "large" segment
-    "cm_net_revenue_retention": 250,                 # >250% NRR is a financial figure, not NRR
+    "cm_lifetime_value_per_customer": 10_000_000,  # $10M max LTV
+    "cm_ltv_to_cac_ratio": 25,  # 25x max LTV/CAC; real ratios rarely exceed 20x
+    "cm_customer_acquisition_cost": 50_000,  # $50K max CAC; larger values are financial figures
+    "cm_revenue_per_customer": 100_000,  # $100K max ARPU
+    "cm_large_customers_period_end": 20_000,  # >20K would be total customers, not "large" segment
+    "cm_net_revenue_retention": 250,  # >250% NRR is a financial figure, not NRR
 }
 
 # Minimum plausible values for specific metrics.
 # Used by _rule_magnitude_sanity alongside _METRIC_MAX_VALUE.
 _METRIC_MIN_VALUE: dict[str, float] = {
-    "cm_net_revenue_retention": 31,                  # <31% NRR is implausible; blocks 30.0 mis-binding; active gold min is 44% (Samsara)
-    "cm_customer_retention_rate": 50,                # <50% CRR is implausible; active gold min is 66% (Chewy)
+    "cm_net_revenue_retention": 31,  # <31% NRR is implausible; blocks 30.0 mis-binding; active gold min is 44% (Samsara)
+    "cm_customer_retention_rate": 50,  # <50% CRR is implausible; active gold min is 66% (Chewy)
 }
 
 
-def _rule_magnitude_sanity(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_magnitude_sanity(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block values outside the plausible range for a metric.
 
     Catches cross-metric mis-binding where financial figures (revenue,
@@ -1114,10 +1127,12 @@ _LTV_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 
-_CUSTOMER_COUNT_METRICS = frozenset({
-    "cm_active_customers_total",
-    "cm_customers_period_end",
-})
+_CUSTOMER_COUNT_METRICS = frozenset(
+    {
+        "cm_active_customers_total",
+        "cm_customers_period_end",
+    }
+)
 
 
 _TABLE_BINDING_TYPES = frozenset({"table_header", "table_stub"})
@@ -1229,9 +1244,11 @@ _FINANCIAL_CONTEXT_KEYWORD_RE = re.compile(
 # appears in their disclosures. Table bindings use the rule broadly; text
 # bindings require proximity since financial keywords may appear in the same
 # section without directly labeling the value.
-_FINANCIAL_CONTEXT_BLOCKED_METRICS = _COUNT_ONLY_METRICS | frozenset({
-    "cm_large_customers_period_end",
-})
+_FINANCIAL_CONTEXT_BLOCKED_METRICS = _COUNT_ONLY_METRICS | frozenset(
+    {
+        "cm_large_customers_period_end",
+    }
+)
 
 
 def _rule_financial_context_on_customer_metric(
@@ -1261,10 +1278,7 @@ def _rule_financial_context_on_customer_metric(
         # blocking when value is in a plausible customer count range (100-1M).
         # Large customer counts commonly appear in tables alongside financial
         # keywords (gross margin, total revenue) without being financial values.
-        if (
-            metric_id == "cm_large_customers_period_end"
-            and 100 <= bv.value <= 1_000_000
-        ):
+        if metric_id == "cm_large_customers_period_end" and 100 <= bv.value <= 1_000_000:
             return None
         if _FINANCIAL_CONTEXT_KEYWORD_RE.search(source_text):
             return "v2_financial_context_customer_metric"
@@ -1278,7 +1292,7 @@ def _rule_financial_context_on_customer_metric(
     if loc is None:
         return None
     _, value_pos = loc
-    pre_window = source_text[max(0, value_pos - 100):value_pos]
+    pre_window = source_text[max(0, value_pos - 100) : value_pos]
     if _FINANCIAL_CONTEXT_KEYWORD_RE.search(pre_window):
         return "v2_financial_context_customer_metric"
     return None
@@ -1321,9 +1335,7 @@ _METRIC_DEFINITION_THRESHOLD_POST_RE = re.compile(
 )
 
 
-def _rule_metric_definition_value(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_metric_definition_value(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block currency values that represent metric definition thresholds, not reported values.
 
     Customer tier descriptions like 'customers with >$100K ARR' or 'defined as
@@ -1347,7 +1359,7 @@ def _rule_metric_definition_value(
     # Post-value window: catches "$X ARR customers", "$X or more in ARR"
     raw_len = len(bv.value_raw or "")
     post_end = min(len(source_text), value_pos + raw_len + 80)
-    post_window = source_text[value_pos + raw_len:post_end]
+    post_window = source_text[value_pos + raw_len : post_end]
     if _METRIC_DEFINITION_THRESHOLD_POST_RE.search(post_window):
         return "v2_metric_definition_value"
     return None
@@ -1370,9 +1382,7 @@ _CHART_CAGR_RE = re.compile(
 _CHART_BINDING_TYPES = frozenset({"chart_label", "chart_annotation"})
 
 
-def _rule_chart_pricing_label(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_chart_pricing_label(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block chart-sourced values with pricing or CAGR labels.
 
     Chart extractions that carry pricing language ("per user per month", "per seat")
@@ -1408,12 +1418,14 @@ _TAM_MARKET_SIZE_RE = re.compile(
 )
 
 # Metrics that should never take a total-market-size value.
-_TAM_BLOCKED_METRICS = _FINANCIAL_CONTEXT_BLOCKED_METRICS | frozenset({
-    "cm_lifetime_value_per_customer",
-    "cm_ltv_to_cac_ratio",
-    "cm_revenue_per_customer",
-    "cm_revenue_by_cohort",
-})
+_TAM_BLOCKED_METRICS = _FINANCIAL_CONTEXT_BLOCKED_METRICS | frozenset(
+    {
+        "cm_lifetime_value_per_customer",
+        "cm_ltv_to_cac_ratio",
+        "cm_revenue_per_customer",
+        "cm_revenue_by_cohort",
+    }
+)
 
 
 def _rule_tam_market_size(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
@@ -1560,9 +1572,7 @@ _STUB_DOMAIN_CONTRADICTIONS: dict[str, re.Pattern] = {
 }
 
 
-def _rule_stub_metric_contradiction(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_stub_metric_contradiction(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block table column-header bindings where the stub row labels a different metric.
 
     When a column header contains a metric keyword, the value-binding stage binds
@@ -1591,9 +1601,7 @@ def _rule_stub_metric_contradiction(
     return None
 
 
-def _rule_stub_financial_line_item(
-    bv: BoundValue, source_text: str, metric_id: str
-) -> str | None:
+def _rule_stub_financial_line_item(bv: BoundValue, source_text: str, metric_id: str) -> str | None:
     """Block table column-header bindings where source text contains a financial
     statement line-item label (margin, EBITDA, gross profit, accounts payable, etc.).
 
@@ -1678,30 +1686,32 @@ def _rule_revenue_concentration_ratio_suffix(
 # `cm_revenue_concentration` has its own rule (_rule_revenue_concentration_ratio_suffix).
 # Ratio metrics explicitly NOT in this set: cm_ltv_to_cac_ratio,
 # cm_ltv_to_cac_ratio_by_cohort.
-_RATIO_SUFFIX_COUNT_METRICS = frozenset({
-    # Count metrics
-    "cm_new_customers_acquired",
-    "cm_customers_period_end",
-    "cm_active_customers_total",
-    "cm_large_customers_period_end",
-    "cm_customers_period_end_by_tenure",
-    "cm_purchase_transactions_overall",
-    "cm_transactions_by_cohort",
-    # Currency metrics
-    "cm_customer_acquisition_cost",
-    "cm_lifetime_value_per_customer",
-    "cm_average_order_value",
-    "cm_arpu",
-    "cm_revenue_by_cohort",
-    "cm_balance_by_cohort",
-    # Rate / percentage metrics
-    "cm_customer_retention_rate",
-    "cm_net_revenue_retention",
-    "cm_gross_revenue_retention",
-    "cm_gross_margin_by_cohort",
-    # Time metrics
-    "cm_cac_payback_period",
-})
+_RATIO_SUFFIX_COUNT_METRICS = frozenset(
+    {
+        # Count metrics
+        "cm_new_customers_acquired",
+        "cm_customers_period_end",
+        "cm_active_customers_total",
+        "cm_large_customers_period_end",
+        "cm_customers_period_end_by_tenure",
+        "cm_purchase_transactions_overall",
+        "cm_transactions_by_cohort",
+        # Currency metrics
+        "cm_customer_acquisition_cost",
+        "cm_lifetime_value_per_customer",
+        "cm_average_order_value",
+        "cm_arpu",
+        "cm_revenue_by_cohort",
+        "cm_balance_by_cohort",
+        # Rate / percentage metrics
+        "cm_customer_retention_rate",
+        "cm_net_revenue_retention",
+        "cm_gross_revenue_retention",
+        "cm_gross_margin_by_cohort",
+        # Time metrics
+        "cm_cac_payback_period",
+    }
+)
 
 
 def _rule_ratio_suffix_on_count_metric(
@@ -1875,7 +1885,8 @@ def _is_v2_false_positive(
     # Slide numbers, footnote references, and other ordinals appear as small
     # integers (< 1000) in presentation context without scale suffixes.
     if (
-        section_type in (SectionType.PRESENTATION_SLIDE, SectionType.TITLE_SLIDE, SectionType.APPENDIX)
+        section_type
+        in (SectionType.PRESENTATION_SLIDE, SectionType.TITLE_SLIDE, SectionType.APPENDIX)
         and bv.value is not None
         and bv.value < 1000
         and bv.unit in (Unit.COUNT, Unit.OTHER)
@@ -1923,7 +1934,6 @@ def _is_v2_false_positive(
 
     # Q&A-specific rules (only applied in Q&A sections in relaxed mode).
     if relaxed and section_type == SectionType.QA:
-
         # Rule: Q&A hedging percent.
         # Analysts frequently repeat growth rates speculatively or ask
         # "was it 20%?" / "assuming 15% margin" — these are not metric
@@ -2105,19 +2115,31 @@ class FalsePositiveFilterStage:
     checks that cause excessive false negatives on spoken content.
     """
 
-    def __init__(self) -> None:
-        """Initialize with V1 FalsePositiveFilter instances (normal + relaxed)."""
-        self._filter = FalsePositiveFilter()
+    def __init__(self, config: PipelineConfig | None = None) -> None:
+        """Initialize with V1 FalsePositiveFilter instances (normal + relaxed).
+
+        When `config.fp_filter_override` is set (simulate-and-ship flow), the
+        override TypedDict kwargs (filter_financial_statements / filter_years /
+        min_value) are forwarded into BOTH V1 filter instantiations.
+        """
+        fp_override = (
+            dict(config.fp_filter_override) if (config and config.fp_filter_override) else {}
+        )
+        self._filter = FalsePositiveFilter(**fp_override)
         # Relaxed filter for transcripts/presentations:
         # - Disables financial statement context check (SEC-specific)
         # - Disables V1 year filtering (V2 rule 1 already catches year values)
         # - Lowers min_metric_value to 2 (transcripts report small growth
         #   percentages like "4%" that would be filtered at the default of 10)
-        self._filter_relaxed = FalsePositiveFilter(
-            filter_financial_statements=False,
-            filter_years=False,
-            min_value=2,
-        )
+        relaxed_kwargs: dict[str, Any] = {
+            "filter_financial_statements": False,
+            "filter_years": False,
+            "min_value": 2,
+        }
+        # Override wins over relaxed defaults so simulation can patch the
+        # transcript path too.
+        relaxed_kwargs.update(fp_override)
+        self._filter_relaxed = FalsePositiveFilter(**relaxed_kwargs)
 
     def process(self, context: PipelineContext) -> StageResult:
         """
@@ -2212,8 +2234,10 @@ class FalsePositiveFilterStage:
                         is_fp
                         and reason is not None
                         and reason.startswith("financial_line_item")
-                        and (metric_id in _V1_FINANCIAL_OVERRIDE_METRICS
-                             or bv.binding_confidence >= _SOFT_RULE_CONFIDENCE_FLOOR)
+                        and (
+                            metric_id in _V1_FINANCIAL_OVERRIDE_METRICS
+                            or bv.binding_confidence >= _SOFT_RULE_CONFIDENCE_FLOOR
+                        )
                     ):
                         is_fp = False
                         reason = None
@@ -2252,22 +2276,16 @@ class FalsePositiveFilterStage:
                     # percent is in the same clause as the keyword.
                     if relaxed and bv.unit == Unit.PERCENT:
                         cand_gate = candidate_map.get(bv.candidate_id)
-                        if (
-                            cand_gate
-                            and cand_gate.metric_id in _PERCENT_CLAUSE_GATE_METRICS
-                        ):
+                        if cand_gate and cand_gate.metric_id in _PERCENT_CLAUSE_GATE_METRICS:
                             if not _is_percent_in_keyword_clause(
                                 source_text,
                                 cand_gate.source_locator.text_span,
                                 bv.value_raw or "",
                             ):
                                 reason_str = "v2_percent_wrong_clause"
-                                filter_reasons[reason_str] = (
-                                    filter_reasons.get(reason_str, 0) + 1
-                                )
+                                filter_reasons[reason_str] = filter_reasons.get(reason_str, 0) + 1
                                 logger.debug(
-                                    "FP filter rejected percent in wrong clause "
-                                    "for %s: %s raw=%r",
+                                    "FP filter rejected percent in wrong clause for %s: %s raw=%r",
                                     cand_gate.metric_id,
                                     bv.value,
                                     bv.value_raw,
@@ -2283,9 +2301,7 @@ class FalsePositiveFilterStage:
                     if bv.unit == Unit.CURRENCY:
                         if candidate and candidate.metric_id in _DOLLAR_REJECT_METRICS:
                             reason_str = "v2_currency_on_count_metric"
-                            filter_reasons[reason_str] = (
-                                filter_reasons.get(reason_str, 0) + 1
-                            )
+                            filter_reasons[reason_str] = filter_reasons.get(reason_str, 0) + 1
                             logger.debug(
                                 "FP filter rejected currency on count metric %s: %s raw=%r",
                                 candidate.metric_id,
