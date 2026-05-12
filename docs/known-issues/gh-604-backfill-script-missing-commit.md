@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-11
 updated: 2026-05-12
 gh_issue: 604
+pr_refs:
+  - 610
 note: Diagnosis incorrect — framework auto-commits and apply() does persist UPDATEs durably. Added regression test; prod root cause unidentified.
 ---
 
