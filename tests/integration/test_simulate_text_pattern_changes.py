@@ -46,6 +46,20 @@ def cli():
     return _load_script_module()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_simulation_tables(clean_db):
+    """Truncate simulation-related tables before each test.
+
+    `clean_db` doesn't include text_pattern_recommendation_decisions or
+    text_pattern_simulation_{runs,deltas}, so rows from sibling tests
+    (e.g. test_link_text_recommendation_to_pr.py) leak across the xdist
+    worker and inflate the script's accepted-rec count.
+    """
+    clean_db.execute("TRUNCATE TABLE text_pattern_simulation_deltas CASCADE")
+    clean_db.execute("TRUNCATE TABLE text_pattern_simulation_runs CASCADE")
+    clean_db.execute("TRUNCATE TABLE text_pattern_recommendation_decisions CASCADE")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
