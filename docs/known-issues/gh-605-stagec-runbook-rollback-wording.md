@@ -11,6 +11,8 @@ touches: []
 discovered: 2026-05-11
 updated: 2026-05-12
 gh_issue: 605
+pr_refs:
+  - 611
 note: docs/operations/auth-stage-c-runbook.md §5 says flag-only rollback is unsafe because the same-origin bypass is gone; in fact the bypass is flag-gated and returns when auth_enforcement_enabled flips off
 ---
 
