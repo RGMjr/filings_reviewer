@@ -109,7 +109,7 @@ def _make_args(database_url: str, run_id: str | None = None) -> Namespace:
 # ---------------------------------------------------------------------------
 
 
-def test_happy_path_one_accepted_exclusion_rec(cli, clean_db, monkeypatch, test_database_url):
+def test_happy_path_one_accepted_exclusion_rec(cli, clean_db, monkeypatch, test_db_url):
     """Seed one accepted exclusion_pattern rec, run script, assert persistence."""
     metric_id = "cm_active_customers_total"
     _seed_accepted_rec(
@@ -168,7 +168,7 @@ def test_happy_path_one_accepted_exclusion_rec(cli, clean_db, monkeypatch, test_
         lambda metric_ids: {m: {"filings": 5, "facts": 12} for m in metric_ids},
     )
 
-    args = _make_args(test_database_url, run_id=run_id)
+    args = _make_args(test_db_url, run_id=run_id)
     cli._orchestrate(args)
 
     # Assert run row succeeded
@@ -204,7 +204,7 @@ def test_happy_path_one_accepted_exclusion_rec(cli, clean_db, monkeypatch, test_
     assert delta["coverage_filings"] == 5
 
 
-def test_no_accepted_recs_still_succeeds(cli, clean_db, monkeypatch, test_database_url):
+def test_no_accepted_recs_still_succeeds(cli, clean_db, monkeypatch, test_db_url):
     """Zero accepted recs is a valid (no-op) run — script should still succeed.
 
     The endpoint blocks this case with 409 'no_accepted_recs', but the script
@@ -225,7 +225,7 @@ def test_no_accepted_recs_still_succeeds(cli, clean_db, monkeypatch, test_databa
     monkeypatch.setattr(cli, "_load_affected_companies", lambda metric_ids, max_companies: [])
     monkeypatch.setattr(cli, "_compute_coverage", lambda metric_ids: {})
 
-    args = _make_args(test_database_url, run_id=run_id)
+    args = _make_args(test_db_url, run_id=run_id)
     cli._orchestrate(args)
 
     run_rows = clean_db.query(
@@ -237,7 +237,7 @@ def test_no_accepted_recs_still_succeeds(cli, clean_db, monkeypatch, test_databa
     assert run_rows[0]["num_recs_simulated"] == 0
 
 
-def test_unsupported_rule_type_silently_skipped(cli, clean_db, monkeypatch, test_database_url):
+def test_unsupported_rule_type_silently_skipped(cli, clean_db, monkeypatch, test_db_url):
     """keyword_overlap recs are skipped; num_recs_simulated reflects supported only."""
     _seed_accepted_rec(
         clean_db,
@@ -261,7 +261,7 @@ def test_unsupported_rule_type_silently_skipped(cli, clean_db, monkeypatch, test
     monkeypatch.setattr(cli, "_load_affected_companies", lambda metric_ids, max_companies: [])
     monkeypatch.setattr(cli, "_compute_coverage", lambda metric_ids: {})
 
-    args = _make_args(test_database_url, run_id=run_id)
+    args = _make_args(test_db_url, run_id=run_id)
     cli._orchestrate(args)
 
     run_rows = clean_db.query(
