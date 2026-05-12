@@ -3,9 +3,9 @@ id: 576
 source: gh
 slug: ltv-to-cac-by-cohort-zero-recall
 title: "Phase-1 eval: cm_ltv_to_cac_ratio_by_cohort 0 recall on gold corpus"
-status: open
+status: resolved
 severity: medium
-autonomy: skip
+autonomy: n/a
 estimated: —
 touches:
   - config/llm_classifier/prompts/cm_ltv_to_cac_ratio_by_cohort.yaml
@@ -13,6 +13,8 @@ touches:
 discovered: 2026-05-08
 updated: 2026-05-08
 gh_issue: 576
+pr_refs:
+  - 590
 note: root cause was chart-caption variant — all gold positives are terse section headings ("Lifetime Value of a Consumer to Consumer Acquisition Cost Ratios") pointing at a chart; prompt extended to cover plural-"Ratios" chart-caption shape with hand-authored few-shots
 ---
 
@@ -34,3 +36,9 @@ Extended `cm_ltv_to_cac_ratio_by_cohort.yaml`:
 - Strengthened negative_signals: single-blended LTV/CAC chart captions excluded
 - Four hand-authored few_shot_examples (3 label=true including bare heading case; 1 label=false boundary guard)
 - prompt_version bumped to 0.2.0
+
+### Resolution
+
+Fixed by PR #590 (merged 2026-05-09). Prompt `cm_ltv_to_cac_ratio_by_cohort.yaml` bumped to `prompt_version: 0.2.0` — definition extended to cover plural-"Ratios" chart-caption disclosures; new `positive_signals` bullet for terse chart/table headings using plural "Ratios"; four hand-authored `few_shot_examples` added (3 label=true including bare heading case; 1 label=false boundary guard). Smoke-eval re-run not yet executed against post-fix prompt; gold-corpus recall verification pending.
+
+Bookkeeping closed by PR #TBD_CLOSURE.
