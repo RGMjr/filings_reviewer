@@ -225,3 +225,11 @@ CI never runs the live path — do not add `--i-accept-cost` to CI commands.
   first live runs. Once queries are validated, add them under
   `tests/integration/test_run_phase2_quantitative_eval.py` using the
   `clean_db` fixture.
+
+## Run history
+
+| Run ID | Date | Decision | Notes |
+|---|---|---|---|
+| `20260511T1416live` | 2026-05-11 | **NO-GO** (C3) | First live run. Surfaced latent SQL + arity bugs (PR #600), dup-by-URL gap (gh-602), section_classification variant gap (gh-612), cache counter bug (gh-613). Findings: classifier recall == keyword recall on all 10 scoreable Tier-1 metrics; 5 Tier-1 metrics skipped for insufficient coverage. Full analysis: [`docs/analysis/llm-presence-classifier-phase2-eval-results-20260511.md`](../analysis/llm-presence-classifier-phase2-eval-results-20260511.md). |
+
+Before launching a new run, read the most recent run's analysis doc. The 2026-05-11 run is the canonical reference for what the gate's pass/fail rubric does and does not measure.
