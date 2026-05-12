@@ -35,6 +35,7 @@ src.shared.keyword_config.
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
 from src.extraction_v2.models import Table
 from src.shared.keyword_config import (
@@ -42,6 +43,9 @@ from src.shared.keyword_config import (
     get_metric_keywords,
     get_specific_patterns_by_metric,
 )
+
+if TYPE_CHECKING:
+    from src.extraction_v2.pipeline import KeywordPatchOverride
 
 # Must stay in sync with ChartMetricClassifier._SUPPORTED_METRICS
 # (src/extraction_v2/chart/metric_classifier.py).
@@ -188,6 +192,8 @@ def _score_metric_on_table(
 def score_ocr_table(
     table: Table,
     nearby_text: str = "",
+    *,
+    keyword_override: KeywordPatchOverride | None = None,
 ) -> list[tuple[str, float]]:
     """Score an OCR-reconstructed table for per-metric presence.
 
@@ -198,14 +204,17 @@ def score_ocr_table(
     Args:
         table: Reconstructed Table from OCR (header_path / stub_path populated).
         nearby_text: Caption or nearby paragraph text used as a title proxy.
+        keyword_override: Optional per-metric pattern overrides
+            (simulate-and-ship flow). When None, YAML defaults are used.
 
     Returns:
         List of (metric_id, score) tuples sorted score-descending.
         All supported metrics are always included (score may be 0.0).
     """
-    keywords = get_metric_keywords()
-    specific = get_specific_patterns_by_metric()
-    exclusions = get_exclusion_patterns()
+    override = keyword_override or {}
+    keywords = get_metric_keywords(override=override.get("metric_keywords"))
+    specific = get_specific_patterns_by_metric(override=override.get("specific_patterns"))
+    exclusions = get_exclusion_patterns(override=override.get("exclusion_patterns"))
 
     results: list[tuple[str, float]] = []
     for metric_id in _SUPPORTED_METRICS:

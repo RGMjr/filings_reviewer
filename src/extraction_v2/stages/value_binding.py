@@ -39,17 +39,19 @@ from src.shared.keyword_config import get_specific_patterns_by_metric
 
 if TYPE_CHECKING:
     from src.extraction_v2.models import Cell, Segment, Table
-    from src.extraction_v2.pipeline import PipelineContext, StageResult
+    from src.extraction_v2.pipeline import PipelineConfig, PipelineContext, StageResult
 
 logger = logging.getLogger(__name__)
 
-_WIDER_PROXIMITY_METRICS: frozenset[str] = frozenset({
-    "cm_balance_by_cohort",
-    "cm_gross_margin_by_cohort",
-    "cm_ltv_to_cac_ratio",
-    "cm_ltv_to_cac_ratio_by_cohort",
-    "cm_cac_payback_period",
-})
+_WIDER_PROXIMITY_METRICS: frozenset[str] = frozenset(
+    {
+        "cm_balance_by_cohort",
+        "cm_gross_margin_by_cohort",
+        "cm_ltv_to_cac_ratio",
+        "cm_ltv_to_cac_ratio_by_cohort",
+        "cm_cac_payback_period",
+    }
+)
 
 # Pattern matching financial statement line-item labels in table stub rows.
 # When a customer-metric keyword triggers a column-header binding, rows whose
@@ -72,10 +74,12 @@ _FINANCIAL_LINE_ITEM_STUB_RE: re.Pattern = re.compile(
 
 # Metrics for which financial line-item stubs are acceptable row labels
 # (e.g., cm_gross_margin_by_cohort legitimately measures a margin metric).
-_FINANCIAL_LINE_ITEM_STUB_ALLOW: frozenset[str] = frozenset({
-    "cm_gross_margin_by_cohort",
-    "cm_revenue_concentration",
-})
+_FINANCIAL_LINE_ITEM_STUB_ALLOW: frozenset[str] = frozenset(
+    {
+        "cm_gross_margin_by_cohort",
+        "cm_revenue_concentration",
+    }
+)
 
 
 class ValueBindingStage:
@@ -179,18 +183,28 @@ class ValueBindingStage:
     # Metrics whose gold values are expressed in time units (days/weeks/months/years/quarters).
     # Only candidates for these metrics get the WORD_NUMBER_TIME_PATTERN parser run on their
     # proximity window. Widening this set requires re-checking for FP risk across the GS suite.
-    TIME_UNIT_VALUED_METRICS: frozenset[str] = frozenset({
-        "cm_cac_payback_period",
-    })
+    TIME_UNIT_VALUED_METRICS: frozenset[str] = frozenset(
+        {
+            "cm_cac_payback_period",
+        }
+    )
 
-    def __init__(self, proximity_window: int = 100) -> None:
+    def __init__(
+        self,
+        proximity_window: int = 100,
+        config: PipelineConfig | None = None,
+    ) -> None:
         """
         Initialize the value binding stage.
 
         Args:
             proximity_window: Max characters to search for values near text keywords (default: 100)
+            config: When set, `config.keyword_override["specific_patterns"]`
+                replaces YAML specific_patterns per metric (simulate-and-ship
+                flow).
         """
         self.proximity_window = proximity_window
+        self._config = config
         self._unit_filtered_count = 0
         # Lazily populated: metric_id -> compiled specific_patterns.
         # Used by _stub_matches_different_metric() to detect when a cell's
@@ -209,7 +223,8 @@ class ValueBindingStage:
         """
         if self._stub_metric_patterns is not None:
             return
-        raw = get_specific_patterns_by_metric()
+        kw_override = (self._config.keyword_override or {}) if self._config else {}
+        raw = get_specific_patterns_by_metric(override=kw_override.get("specific_patterns"))
         self._stub_metric_patterns = {
             metric_id: [re.compile(r"\A" + p, re.IGNORECASE) for p in patterns]
             for metric_id, patterns in raw.items()
@@ -616,13 +631,10 @@ class ValueBindingStage:
             # the matched keyword in that case, so binding is correct by construction.
             if iterate_rows and cell.stub_path:
                 stub_text = " ".join(cell.stub_path)
-                conflicting = self._stub_matches_different_metric(
-                    stub_text, candidate.metric_id
-                )
+                conflicting = self._stub_matches_different_metric(stub_text, candidate.metric_id)
                 if conflicting:
                     logger.debug(
-                        "Skipping column-scan binding for %s at row %d: "
-                        "stub_path %r matches %s",
+                        "Skipping column-scan binding for %s at row %d: stub_path %r matches %s",
                         candidate.metric_id,
                         idx,
                         cell.stub_path,
@@ -630,7 +642,11 @@ class ValueBindingStage:
                     )
                     continue
 
-            if iterate_rows and cell.stub_path and candidate.metric_id not in _FINANCIAL_LINE_ITEM_STUB_ALLOW:
+            if (
+                iterate_rows
+                and cell.stub_path
+                and candidate.metric_id not in _FINANCIAL_LINE_ITEM_STUB_ALLOW
+            ):
                 stub_text = " ".join(cell.stub_path)
                 if _FINANCIAL_LINE_ITEM_STUB_RE.search(stub_text):
                     logger.debug(
@@ -1340,9 +1356,7 @@ class ValueBindingStage:
 
         return results
 
-    def _parse_word_number_time(
-        self, match: re.Match[str]
-    ) -> tuple[float, Unit, str] | None:
+    def _parse_word_number_time(self, match: re.Match[str]) -> tuple[float, Unit, str] | None:
         """Parse a word-number + time-unit match (e.g., 'six months' → 6).
 
         Returns (value, unit, raw) where unit is Unit.COUNT (the number itself is

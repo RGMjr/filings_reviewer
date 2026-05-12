@@ -30,7 +30,8 @@ class ChartFactBridgeStage:
                 items_output=0,
             )
 
-        classifier = ChartMetricClassifier()
+        classifier = ChartMetricClassifier(config=context.config)
+        kw_override = context.config.keyword_override
 
         images_scanned = 0
         metrics_detected = 0
@@ -72,7 +73,11 @@ class ChartFactBridgeStage:
                 # v2_image_assets.detected_metrics via the same channel charts use.
                 images_scanned += 1
 
-                candidates = score_ocr_table(image.ocr_table, image.nearby_text or "")
+                candidates = score_ocr_table(
+                    image.ocr_table,
+                    image.nearby_text or "",
+                    keyword_override=kw_override,
+                )
                 image.detected_metrics = [
                     DetectedMetric(metric_id=m, score=s)
                     for m, s in candidates
