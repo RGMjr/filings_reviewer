@@ -55,7 +55,8 @@ services:
     region: ohio
     runtime: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: python3 scripts/batch_v2_extraction.py --status fetched --workers 2 --limit 50
+    plan: standard
+    dockerCommand: python3 scripts/batch_v2_extraction.py --status fetched --workers 1 --limit 50
     schedule: "0 6 * * *"  # Daily at 6am UTC
     envVars:
       - fromGroup: filings-shared-secrets
