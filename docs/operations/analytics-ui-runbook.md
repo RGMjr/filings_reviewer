@@ -4,13 +4,14 @@
 pointed at the filings database. Covers the read-only DB role, the
 `v_analytics_*` views, and the (future) self-hosted Metabase deployment.
 
-> **Pivot status (2026-04-25):** The presence-pivot adds a new doc-grain
-> view `v_doc_metric_presence` (UNION of `v2_text_metric_presence` and the
-> per-image `v2_image_metric_presence`, the latter landing with image-review
-> Wave 2). Existing `v_analytics_fact_wide` and `v_analytics_coverage_matrix`
-> views remain valid for advisory-fact analyses; presence-aware analytics
-> views are pending PR2 of the text-presence pivot. See
-> [`text-pipeline-presence-pivot-plan.md`](text-pipeline-presence-pivot-plan.md).
+> **Pivot status (2026-05-13):** The presence-aware analytics surface
+> landed as `v_analytics_metric_presence` (and the company/tier-1 rollup
+> views) in migration `202605131507_tier1_disclosure_analytics.sql`. The
+> earlier-planned `v_doc_metric_presence` name is superseded. Existing
+> `v_analytics_fact_wide` and `v_analytics_coverage_matrix` remain valid
+> for advisory-fact analyses. See
+> [`text-pipeline-presence-pivot-plan.md`](text-pipeline-presence-pivot-plan.md)
+> and [`metabase-tier1-reporting.md`](metabase-tier1-reporting.md).
 
 ## What this layer is for
 
@@ -53,8 +54,18 @@ is deployed later via `render.yaml`.
 | View | Grain | Use |
 |------|-------|-----|
 | `v_analytics_fact_wide` | 1 row / primary `v2_metric_fact` (advisory under the pivot) | Surface for advisory-fact analysis (trends, QA, per-company values). Note: chart-native metrics no longer auto-populate facts post-#86. |
-| `v_analytics_coverage_matrix` | 1 row / (company × active metric) | Powers "who discloses what" heatmap dashboards. Includes `has_fact` / `has_accepted_fact` flags. PR2 of the text-presence pivot will switch the headline coverage flag from fact-presence to **doc-grain presence** via `v_doc_metric_presence`. |
-| `v_doc_metric_presence` (UNION view, planned) | 1 row / (filing × metric × source) | Primary presence surface — UNION of `v2_text_metric_presence` and per-image `v2_image_metric_presence`. Lands with image-review Wave 2; consumed by PR2 of the text-presence pivot for the Tier-1 gate. Pre-launch, query `v2_text_metric_presence` directly. |
+| `v_analytics_coverage_matrix` | 1 row / (company × active metric) | Powers "who discloses what" heatmap dashboards. Includes `has_fact` / `has_accepted_fact` flags. Superseded for presence-based coverage by `v_analytics_metric_presence` (below). |
+
+### Tier-1 disclosure views — `sql/202605131507_tier1_disclosure_analytics.sql`
+
+| View | Grain | Use |
+|------|-------|-----|
+| `v_analytics_metric_tiers` | 1 row / metric | Catalog of `metric_id → tier (1|2)`. Tier-1 list mirrors `config/metric_keywords.yaml`; if that set changes, edit the inline `CASE` and re-apply the migration. |
+| `v_analytics_metric_presence` | 1 row / (filing × metric) | Unified presence surface: FULL OUTER JOIN of `v2_text_metric_presence` and reviewer-confirmed `v2_image_metric_confirmations` (decisions `accept|correct|add`, superseded admin rows excluded). Carries `evidence_segment_ids` / `image_ids` JSONB for future drill-through. Supersedes the planned `v_doc_metric_presence` referenced in earlier drafts. |
+| `v_analytics_company_metric_disclosure` | 1 row / (company × metric) | Dedup of `v_analytics_metric_presence` across in-scope filings per company (`is_in_scope_phase1 = TRUE`). Joined to `industry_sic_buckets` and `v_analytics_metric_tiers`. |
+| `v_analytics_company_tier1_summary` | 1 row / in-scope company | Distinct count of Tier-1 metrics disclosed per company, plus the `0/1/2/3/4/5+` `disclosure_bucket` and `industry_bucket`. Primary surface for the four Metabase tier-1 reports — see [`metabase-tier1-reporting.md`](metabase-tier1-reporting.md). |
+
+The migration also creates the seed table `industry_sic_buckets` (SIC code → primary bucket, snapshot of `config/industry_sic_codes.yaml`). The companion doc `metabase-tier1-reporting.md` has copy-pastable SQL for the four reports.
 
 Both views use `CREATE OR REPLACE`, so the migration is safe to re-apply after
 editing. If a column or join changes, bump the migration number and add a new
