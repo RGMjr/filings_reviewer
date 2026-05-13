@@ -6,7 +6,7 @@ title: "nightly-sweep: late-failing GH_TOKEN 401 — add gh api user probe to fa
 status: open
 severity: low
 autonomy: safe
-estimated: 15min
+estimated: XS
 touches:
   - scripts/run_nightly_sweep.sh
 discovered: 2026-05-13
