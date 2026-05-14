@@ -1873,3 +1873,184 @@ class TestInvisibleAltTextSuppression:
         assert len(context.segments) == 1
         assert "hidden alt text" not in context.segments[0].text.lower()
         assert "daily active users" in context.segments[0].text.lower()
+
+
+class TestGh612SectionHeadingVariants:
+    """gh-612: section heading markup variants missed by the gh-574 anchor fix.
+
+    Three new retention paths:
+      A. Element itself carries id= attribute (e.g. <div id="rom...">RISK FACTORS</div>)
+      B. Short bare-text heading matching _SECTION_HEADING_TEXT_RE (no anchor needed)
+      C. Company-prefixed MDA headings ("DraftKings' Management's Discussion...")
+         classified by section_classification.py after ingestion retains them.
+
+    Regression guards: Datadog <a name> pattern still works; TOC <a href> still drops.
+    """
+
+    # ── Fix A: element id= ────────────────────────────────────────────────────
+
+    def test_div_with_id_risk_factors_retained(self, tmp_path: Path) -> None:
+        """<div id="rom...">RISK FACTORS</div> survives even though text is short."""
+        html_content = b"""
+        <html><body>
+            <div id="rom156556_4">RISK FACTORS</div>
+        </body></html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=99)
+        assert len(segments) == 1
+        assert segments[0].text == "RISK FACTORS"
+
+    def test_div_with_id_short_non_heading_still_retained(self, tmp_path: Path) -> None:
+        """Any element with id= passes Fix-A regardless of text (structural element)."""
+        html_content = b"""
+        <html><body>
+            <div id="s1_cover">Cover</div>
+        </body></html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=99)
+        # "Cover" (5 chars) passes because the div has an id= attribute
+        assert len(segments) == 1
+        assert segments[0].text == "Cover"
+
+    # ── Fix B: bare-text section heading retention ────────────────────────────
+
+    def test_bare_risk_factors_heading_retained(self, tmp_path: Path) -> None:
+        """Plain <p>RISK FACTORS</p> (no anchor, no id) retained by Fix B."""
+        html_content = b"""
+        <html><body>
+            <p>RISK FACTORS</p>
+        </body></html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=99)
+        assert len(segments) == 1
+        assert segments[0].text == "RISK FACTORS"
+
+    def test_bare_item_heading_retained(self, tmp_path: Path) -> None:
+        """Plain <p>ITEM 1A</p> (short, no anchor) retained by Fix B."""
+        html_content = b"""
+        <html><body>
+            <p>ITEM 1A</p>
+        </body></html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=99)
+        assert len(segments) == 1
+        assert segments[0].text == "ITEM 1A"
+
+    def test_toc_href_risk_factors_still_filtered_by_fix_b(self, tmp_path: Path) -> None:
+        """TOC <a href> wrapping 'RISK FACTORS' text is still filtered even with Fix B."""
+        html_content = b"""
+        <html><body>
+            <p><a href="#sec-risk">RISK FACTORS</a></p>
+        </body></html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=99)
+        assert len(segments) == 0, "TOC href link must not pass Fix B"
+
+    def test_non_heading_short_text_still_filtered(self, tmp_path: Path) -> None:
+        """Short arbitrary text without heading pattern or anchor is still filtered."""
+        html_content = b"""
+        <html><body>
+            <p>See above</p>
+        </body></html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=99)
+        assert len(segments) == 0
+
+    # ── Fix C: company-prefixed MDA classified after ingestion retains ─────────
+
+    def test_company_prefixed_mda_classified_as_mda(self) -> None:
+        """'DraftKings' Management's Discussion...' is detected as MDA by section_classification."""
+        from src.extraction_v2.models import SectionType
+        from src.extraction_v2.stages.section_classification import SectionClassificationStage
+
+        stage = SectionClassificationStage()
+        text = "DraftKings' Management's Discussion and Analysis of Financial Condition"
+        assert stage._detect_section_type(text) == SectionType.MDA
+
+    def test_waldencast_prefixed_mda_classified_as_mda(self) -> None:
+        """'Waldencast's Management's Discussion...' is detected as MDA by section_classification."""
+        from src.extraction_v2.models import SectionType
+        from src.extraction_v2.stages.section_classification import SectionClassificationStage
+
+        stage = SectionClassificationStage()
+        text = "Waldencast's Management's Discussion and Analysis of Financial Condition"
+        assert stage._detect_section_type(text) == SectionType.MDA
+
+    def test_company_prefixed_mda_is_section_heading(self) -> None:
+        """Company-prefixed MDA text (< 200 chars) is detected as a section heading."""
+        from src.extraction_v2.models import Segment, SegmentType
+        from src.extraction_v2.stages.section_classification import SectionClassificationStage
+
+        stage = SectionClassificationStage()
+        text = "DraftKings' Management's Discussion and Analysis of Financial Condition"
+        segment = Segment(
+            filing_id=1,
+            segment_id="seg-mda",
+            segment_type=SegmentType.PARAGRAPH,
+            text=text,
+            dom_locator="/html/body[1]/p[1]",
+            sequence=0,
+        )
+        assert stage._is_section_heading(segment) is True
+
+    # ── Datadog regression guard ──────────────────────────────────────────────
+
+    def test_a_name_anchor_heading_still_works(self, tmp_path: Path) -> None:
+        """Regression: Datadog <a name> anchor-bearing short heading still retained."""
+        html_content = b"""
+        <html><body>
+            <p><b><a name="toc745413_2"></a>RISK FACTORS </b></p>
+        </body></html>
+        """
+        html_file = tmp_path / "test.html"
+        html_file.write_bytes(html_content)
+
+        stage = IngestionStage()
+        tree = stage._parse_html(html_file)
+        assert tree is not None
+
+        segments = stage._extract_paragraph_segments(tree, filing_id=99)
+        assert len(segments) == 1
+        assert "RISK FACTORS" in segments[0].text

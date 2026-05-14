@@ -37,6 +37,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# gh-612: Retain short paragraphs whose text matches a known SEC section heading
+# pattern even when they carry no anchor target and fall below MIN_PARAGRAPH_CHARS.
+# Covers heading variants that appear as short standalone text nodes (e.g. a bare
+# "RISK FACTORS" line, or "Management's Discussion and Analysis of Financial
+# Condition and Results of Operations" split across elements).
+_SECTION_HEADING_TEXT_RE = re.compile(
+    r"^(?:RISK\s*FACTORS?|ITEM\s*\d+[A-Z]?|MANAGEMENT.{0,15}S?\s*DISCUSSION"
+    r"|DESCRIPTION\s*OF\s*BUSINESS|PART\s+[IVX]+|RESULTS\s*OF\s*OPERATIONS)\b",
+    re.IGNORECASE,
+)
+
 # Mapping of data-section-type attribute values to SectionType enum.
 # "operator_instructions" (legacy) maps to OPERATOR for backwards compatibility
 # with pre-existing HTML files produced by earlier converter versions.
@@ -311,18 +322,26 @@ class IngestionStage:
 
     def _has_anchor_target(self, element: etree._Element) -> bool:
         """
-        Detect whether `element` contains an `<a name>` or `<a id>` anchor target.
+        Detect whether `element` is or contains an anchor target.
 
         Anchor *targets* (destinations) mark document structure — typically a
         section heading. Anchor *links* (`<a href="#x">`) do not, and must not
         admit short table-of-contents entries through the length floor.
 
+        Two forms are detected:
+        1. Descendant `<a>` with a `name` or `id` attribute (classic SEC pattern).
+        2. The element itself carries an `id=` attribute (gh-612: div-with-id
+           headings, e.g. `<div id="rom156556_4">RISK FACTORS</div>`).
+
         Args:
             element: lxml Element to inspect (descendant `<a>` tags considered).
 
         Returns:
-            True if any descendant `<a>` has a `name` or `id` attribute.
+            True if the element itself or any descendant `<a>` has an anchor target.
         """
+        # gh-612: element itself may carry an id= (e.g. <div id="rom156556_4">)
+        if element.get("id"):
+            return True
         for anchor in element.iter("a"):
             if anchor.get("name") or anchor.get("id"):
                 return True
@@ -612,10 +631,19 @@ class IngestionStage:
             # anchor target marks them as document structure rather than body
             # copy. Bare `<a href>` links are NOT a target signal — that would
             # let table-of-contents entries flood through.
-            if len(normalized_text) < self.MIN_PARAGRAPH_CHARS and not self._has_anchor_target(
-                element
-            ):
-                continue
+            #
+            # gh-612: Also retain short paragraphs whose text matches a known
+            # SEC section heading pattern (e.g. bare "RISK FACTORS" text lines)
+            # BUT only when the element is not a hyperlink wrapper — TOC entries
+            # use `<a href>` with heading text and must still be filtered.
+            if len(normalized_text) < self.MIN_PARAGRAPH_CHARS:
+                has_anchor = self._has_anchor_target(element)
+                is_href_only = not has_anchor and any(a.get("href") for a in element.iter("a"))
+                is_section_heading_text = (
+                    not is_href_only and _SECTION_HEADING_TEXT_RE.match(normalized_text) is not None
+                )
+                if not has_anchor and not is_section_heading_text:
+                    continue
             if len(normalized_text) > self.MAX_PARAGRAPH_CHARS:
                 normalized_text = normalized_text[: self.MAX_PARAGRAPH_CHARS]
 
