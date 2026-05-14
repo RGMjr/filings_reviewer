@@ -311,13 +311,116 @@ def test_c2_skips_metrics_below_min_filings(cli):
     assert c2.passed is True
 
 
-def test_c3_fails_when_aggregate_recall_below_kw_plus_5pt(cli):
-    """C3 fires when aggregate Tier-1 classifier recall < keyword recall + 5pt."""
+def _make_c3_rows(
+    cli,
+    metric_id: str,
+    *,
+    ground_truths: list[bool],
+    clf_presents: list[bool | None],
+    kw_presents: list[bool | None],
+) -> list[object]:
+    """Build rows for C3 clf_only gate testing.
+
+    All three lists must be the same length; each index is one filing.
+    ``keyword_present`` controls the kw_recall (used to determine if the metric
+    has headroom < 0.95), and also whether a clf-only TP is counted.
+    """
+    assert len(ground_truths) == len(clf_presents) == len(kw_presents)
+    rows = []
+    for i, (gt, clf, kw) in enumerate(zip(ground_truths, clf_presents, kw_presents, strict=True)):
+        # Derive agreement/classification for the row factory.
+        if gt is None or clf is None:
+            agreement = "n/a"
+            classification = "skipped"
+        elif gt and clf:
+            agreement = "agree" if kw else "disagree"
+            classification = "TP"
+        elif gt and not clf:
+            agreement = "disagree"
+            classification = "FN"
+        elif not gt and clf:
+            agreement = "disagree"
+            classification = "FP"
+        else:
+            agreement = "agree"
+            classification = "TN"
+        rows.append(
+            cli.Phase2Row(
+                run_id="test",
+                run_started_at="2026-01-01T00:00:00",
+                run_finished_at="2026-01-01T00:01:00",
+                corpus="gold",
+                filing_url=f"https://example.com/c3f{i}.htm",
+                filing_id=None,
+                issuer_key="testco",
+                metric_id=metric_id,
+                ground_truth=gt,
+                classifier_present=clf,
+                classifier_score=0.9 if clf else 0.1,
+                classifier_model="claude-haiku-4-5",
+                classifier_sonnet_fallback=False,
+                keyword_present=kw,
+                agreement=agreement,
+                classification=classification,
+                prompt_version="0.1.0",
+                section_type=None,
+                notes="",
+            )
+        )
+    return rows
+
+
+def test_c3_passes_when_clf_only_tp_meets_threshold(cli):
+    """C3 passes when ≥1 headroom metric has clf_only_tp ≥ 3 and precision ≥ 0.50."""
     tier1 = cli._get_tier1_metrics()
     metric_id = sorted(tier1)[0]
 
-    # Classifier: 4/6 = 67%, keyword: 6/6 = 100% — delta is -33%, not +5%
-    rows = _make_tier1_rows_for_c2(cli, metric_id, n_filings=6, clf_recall=0.667, kw_recall=1.0)
+    # Build 10 filings. kw_recall = 5/10 = 0.50 (< 0.95 → headroom exists).
+    # 5 kw positives (gt=T, kw=T, clf=T) → agree TP, NOT clf_only
+    # 3 clf_only TP: gt=T, kw=F, clf=T  → clf_only TP = 3
+    # 1 clf_only FP: gt=F, kw=F, clf=T  → clf_only total = 4, precision = 3/4 = 0.75 ≥ 0.50
+    # 1 FN: gt=T, kw=F, clf=F
+    ground_truths = [True] * 5 + [True] * 3 + [False] + [True]
+    clf_presents = [True] * 5 + [True] * 3 + [True] + [False]
+    kw_presents = [True] * 5 + [False] * 3 + [False] + [False]
+    rows = _make_c3_rows(
+        cli,
+        metric_id,
+        ground_truths=ground_truths,
+        clf_presents=clf_presents,
+        kw_presents=kw_presents,
+    )
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=10,
+        cache_reads=8,
+        total_cost_usd=2.5,
+        cost_budget_usd=25.0,
+    )
+    c3 = next(c for c in criteria if c.id == "C3")
+    assert c3.hard is True
+    assert c3.passed is True, f"C3 should pass but failed: {c3.detail}"
+
+
+def test_c3_fails_when_clf_only_tp_below_threshold(cli):
+    """C3 fails when no headroom metric reaches clf_only_tp ≥ 3."""
+    tier1 = cli._get_tier1_metrics()
+    metric_id = sorted(tier1)[0]
+
+    # kw_recall = 2/6 = 33% (< 0.95 → headroom exists).
+    # clf_only TP = 2 (below threshold of 3), clf_only total = 3, precision = 2/3 = 0.67 ≥ 0.50
+    # But clf_only_tp < 3 → fails.
+    ground_truths = [True] * 2 + [True] * 2 + [False] + [True]
+    clf_presents = [True] * 2 + [True] * 2 + [True] + [False]
+    kw_presents = [True] * 2 + [False] * 2 + [False] + [False]
+    rows = _make_c3_rows(
+        cli,
+        metric_id,
+        ground_truths=ground_truths,
+        clf_presents=clf_presents,
+        kw_presents=kw_presents,
+    )
     criteria = cli.evaluate_criteria(
         rows,
         [],
@@ -328,16 +431,16 @@ def test_c3_fails_when_aggregate_recall_below_kw_plus_5pt(cli):
     )
     c3 = next(c for c in criteria if c.id == "C3")
     assert c3.hard is True
-    assert c3.passed is False
+    assert c3.passed is False, f"C3 should fail but passed: {c3.detail}"
 
 
-def test_c3_passes_when_aggregate_recall_meets_threshold(cli):
-    """C3 passes when aggregate classifier recall exceeds keyword recall + 5pt."""
+def test_c3_vacuously_true_when_no_headroom_metrics(cli):
+    """C3 is vacuously true when all Tier-1 metrics have kw_recall ≥ 0.95."""
     tier1 = cli._get_tier1_metrics()
     metric_id = sorted(tier1)[0]
 
-    # Classifier: 6/6 = 100%, keyword: 5/6 = 83% → delta +17%, meets +5pt threshold.
-    rows = _make_tier1_rows_for_c2(cli, metric_id, n_filings=6, clf_recall=1.0, kw_recall=0.833)
+    # kw_recall = 6/6 = 100% → no headroom → C3 vacuously true.
+    rows = _make_tier1_rows_for_c2(cli, metric_id, n_filings=6, clf_recall=1.0, kw_recall=1.0)
     criteria = cli.evaluate_criteria(
         rows,
         [],
@@ -347,7 +450,9 @@ def test_c3_passes_when_aggregate_recall_meets_threshold(cli):
         cost_budget_usd=25.0,
     )
     c3 = next(c for c in criteria if c.id == "C3")
+    assert c3.hard is True
     assert c3.passed is True
+    assert "vacuously true" in c3.detail
 
 
 def test_c4_fails_when_f1_below_threshold(cli):
@@ -590,3 +695,174 @@ def test_output_collision_exits_2(cli, tmp_path, monkeypatch):
     )
     assert exit_code == 2
     assert "already exists" in summary.get("error", "").lower()
+
+
+# ---------------------------------------------------------------------------
+# _dedup_by_filing_id: gh-602
+# ---------------------------------------------------------------------------
+
+
+def test_dedup_by_filing_id_removes_duplicate_filing(cli):
+    """Two filings with the same filing_id: only the first survives."""
+    f1 = _make_filing(url="https://example.com/f1.htm", filing_id=42)
+    f2 = _make_filing(url="https://example.com/f2.htm", filing_id=42)
+    result = cli._dedup_by_filing_id([f1, f2])
+    assert len(result) == 1
+    assert result[0].filing_url == "https://example.com/f1.htm"
+
+
+def test_dedup_by_filing_id_none_is_not_a_sentinel(cli):
+    """Two filings with filing_id=None are both kept (None is not a dedup key)."""
+    f1 = _make_filing(url="https://example.com/f1.htm", filing_id=None)
+    f2 = _make_filing(url="https://example.com/f2.htm", filing_id=None)
+    result = cli._dedup_by_filing_id([f1, f2])
+    assert len(result) == 2
+
+
+def test_dedup_by_filing_id_distinct_ids_all_kept(cli):
+    """Three filings with distinct non-None filing_ids: all survive."""
+    f1 = _make_filing(url="https://example.com/f1.htm", filing_id=1)
+    f2 = _make_filing(url="https://example.com/f2.htm", filing_id=2)
+    f3 = _make_filing(url="https://example.com/f3.htm", filing_id=3)
+    result = cli._dedup_by_filing_id([f1, f2, f3])
+    assert len(result) == 3
+
+
+def test_dedup_by_filing_id_seen_ids_excludes_pre_existing(cli):
+    """seen_ids pre-populates the set; a filing in seen_ids is dropped."""
+    f1 = _make_filing(url="https://example.com/f1.htm", filing_id=99)
+    result = cli._dedup_by_filing_id([f1], seen_ids=frozenset({99}))
+    assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# Token aggregation → cache_reads (gh-613)
+# ---------------------------------------------------------------------------
+
+
+def test_token_aggregation_cache_reads_computed(cli):
+    """cache_reads is proportional to cache_read / input_tokens ratio in summary cost."""
+    # The cache_reads field in the live path is computed from token totals
+    # after the loop. We test the formula by calling evaluate_criteria with
+    # a known cache_reads value — the live computation feeds it.
+    # Direct test: evaluate_criteria with explicit cache_reads reports correctly.
+    rows = [_make_row(cli, filing_url=f"https://example.com/f{i}.htm") for i in range(6)]
+    # 9 out of 10 calls "cached" → 90% hit rate → C6 passes.
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=10,
+        cache_reads=9,
+        total_cost_usd=1.0,
+        cost_budget_usd=25.0,
+    )
+    c6 = next(c for c in criteria if c.id == "C6")
+    assert c6.passed is True
+    assert "90.0%" in c6.detail or "9/10" in c6.detail
+
+
+def test_token_aggregation_zero_cache_reads_fails_c6(cli):
+    """cache_reads=0 produces 0% hit rate → C6 fails (informational)."""
+    rows = [_make_row(cli)]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=10,
+        cache_reads=0,
+        total_cost_usd=1.0,
+        cost_budget_usd=25.0,
+    )
+    c6 = next(c for c in criteria if c.id == "C6")
+    assert c6.passed is False
+    assert c6.hard is False  # informational only
+
+
+# ---------------------------------------------------------------------------
+# C8: classifier–keyword agreement rate (informational)
+# ---------------------------------------------------------------------------
+
+
+def test_c8_passes_when_agreement_rate_high(cli):
+    """C8 passes when classifier and keyword agree on ≥85% of scored rows."""
+    rows = [
+        # 9 rows where both classifier and keyword agree (both True or both False)
+        _make_row(
+            cli,
+            filing_url=f"https://example.com/a{i}.htm",
+            ground_truth=True,
+            classifier_present=True,
+            keyword_present=True,
+        )
+        for i in range(9)
+    ] + [
+        # 1 disagreement (clf=True, kw=False)
+        _make_row(
+            cli,
+            filing_url="https://example.com/dis.htm",
+            ground_truth=True,
+            classifier_present=True,
+            keyword_present=False,
+        ),
+    ]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=10,
+        cache_reads=8,
+        total_cost_usd=2.5,
+        cost_budget_usd=25.0,
+    )
+    c8 = next(c for c in criteria if c.id == "C8")
+    assert c8.hard is False  # informational
+    assert c8.passed is True  # 9/10 = 90% ≥ 85%
+
+
+def test_c8_fails_when_agreement_rate_low(cli):
+    """C8 fails (informational) when agreement rate < 85%."""
+    rows = [
+        # 5 agree, 5 disagree → 50% agreement < 85%
+        _make_row(
+            cli,
+            filing_url=f"https://example.com/a{i}.htm",
+            ground_truth=True,
+            classifier_present=True,
+            keyword_present=True,
+        )
+        for i in range(5)
+    ] + [
+        _make_row(
+            cli,
+            filing_url=f"https://example.com/d{i}.htm",
+            ground_truth=True,
+            classifier_present=True,
+            keyword_present=False,
+        )
+        for i in range(5)
+    ]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=10,
+        cache_reads=8,
+        total_cost_usd=2.5,
+        cost_budget_usd=25.0,
+    )
+    c8 = next(c for c in criteria if c.id == "C8")
+    assert c8.hard is False
+    assert c8.passed is False
+
+
+def test_c8_present_in_criteria_list(cli):
+    """C8 always appears in evaluate_criteria output."""
+    rows = [_make_row(cli)]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=1,
+        cache_reads=0,
+        total_cost_usd=0.25,
+        cost_budget_usd=25.0,
+    )
+    ids = [c.id for c in criteria]
+    assert "C8" in ids
+    assert "C3_aggregate_recall_delta" in ids  # informational demoted criterion
