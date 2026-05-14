@@ -146,32 +146,25 @@
     - Otherwise: `gh pr create --fill` (auto-title from commit subject, auto-body from commit body + PR template). Capture the URL.
     - On `gh` failure (auth, rate-limit, etc.): report the exact error and stop. Do NOT fall back to any other form of merge.
 
-16. **Enable auto-merge.** The `gh pr merge --auto --squash` CLI and the GraphQL `enablePullRequestAutoMerge` mutation both fail with auth errors in this environment (keyring token scope). Use the REST API directly instead:
+16. **Merge when green.** The `gh pr merge --auto --squash` CLI and the GraphQL `enablePullRequestAutoMerge` mutation both fail with auth errors in this environment (keyring token scope). Use `mcp__github__merge_pull_request` (squash) instead — it calls the REST endpoint directly and works regardless of keyring scope.
 
-    ```
-    gh api --method PUT repos/RGMjr/filings_reviewer/pulls/<num>/merge --field merge_method=squash
-    ```
-
-    This is idempotent-safe when CI is green and squash-merges immediately. `--squash` keeps main's history linear, matching the repo's existing pattern. Never use `--admin`.
-
-    **If CI is still running**, do not merge yet — wait for required checks (Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright)) to complete first, then issue the PUT.
-
-17. **Conflict guard.** Before issuing the merge PUT, check:
-    ```
-    gh api repos/RGMjr/filings_reviewer/pulls/<num> --jq '{mergeable_state,mergeable}'
-    ```
-    - `mergeable_state: dirty`: run `gh pr update-branch --rebase <num>` to bring the branch up to date. If it fails (real content conflict), warn: "Branch is DIRTY and update-branch failed — manual conflict resolution required." Do not merge.
-    - `mergeable_state: unknown`: GitHub is still computing — the REST PUT will still succeed if CI is green; proceed.
-    - `mergeable_state: clean` or `unstable`: proceed with the PUT. `unstable` means a non-required check is failing; as long as all 5 required checks are `SUCCESS`, a direct merge is permitted.
+    **Conflict guard first.** Before merging, call `mcp__github__pull_request_read` (method `get`) and check `mergeable_state`:
+    - `dirty`: call `mcp__github__update_pull_request_branch` to rebase. If that fails, warn "Branch is DIRTY — manual conflict resolution required" and stop.
+    - `unknown`: GitHub is still computing — proceed; the merge call will succeed if CI is green.
+    - `clean` or `unstable`: proceed. `unstable` means a non-required check is failing; as long as all required checks pass, merge is permitted.
     - `mergeable: false`: do not merge; report the exact state.
 
-18. **Report.** Final one-line summary to the user, naming the actual PR head branch (which may differ from the local branch if a follow-up rename happened):
+    **If CI is already green** (all required checks `success`): call `mcp__github__merge_pull_request` with `merge_method=squash` immediately.
+
+    **If CI is still running**: call `mcp__github__subscribe_pr_activity` for the PR, then end this turn. When CI completion events arrive, re-check required checks; once all pass, call `mcp__github__merge_pull_request` with `merge_method=squash`. Required checks: Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright), Docker Build & Smoke.
+
+17. **Report.** Final one-line summary to the user, naming the actual PR head branch (which may differ from the local branch if a follow-up rename happened):
     ```
-    PR #<n> opened/updated on <headRefName>: <url>. Will merge via REST PUT once CI passes. Waits on: Lint, Unit Tests, Vulnerability Scan, Integration Tests, UI E2E (Playwright). Run /ci-fix if checks go red.
+    PR #<n> opened/updated on <headRefName>: <url>. [Merged immediately | Subscribed — will squash-merge once CI passes]. Run /ci-fix if checks go red.
     ```
     Get `<headRefName>` from `gh pr view --json headRefName -q .headRefName`.
 
-19. **Concurrent-PR check.** After reporting, run:
+18. **Concurrent-PR check.** After reporting, run:
     ```
     gh api repos/RGMjr/filings_reviewer/pulls --jq '[.[] | select(.state=="open")] | length'
     ```
