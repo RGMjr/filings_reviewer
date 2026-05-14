@@ -103,6 +103,15 @@ fi
 # Idempotent; safe to run on every invocation.
 gh auth setup-git 2>/dev/null || { log "FATAL: gh auth setup-git failed (GH_TOKEN invalid?)"; exit 1; }
 
+# Probe the API immediately so an expired/revoked GH_TOKEN fails in one line
+# instead of scattering 401 symptoms across dozens of log lines mid-run.
+# One retry absorbs a transient network hiccup without masking a real token fault.
+_gh_probe() { gh api user --jq .login >/dev/null 2>&1; }
+if ! _gh_probe; then
+  sleep 3
+  _gh_probe || { log "FATAL: gh api user failed (GH_TOKEN expired/revoked? rotate in Render env group filings-claude-secrets)"; exit 1; }
+fi
+
 # Commit author identity is required downstream — the per-issue Claude session
 # runs /commit, which calls `git commit`, which aborts without user.email/name.
 git config --global user.email "${GIT_AUTHOR_EMAIL:-sweeper@users.noreply.github.com}"

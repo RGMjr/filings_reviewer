@@ -3,7 +3,7 @@ id: 620
 source: gh
 slug: sweeper-gh-token-401-fail-fast
 title: "nightly-sweep: late-failing GH_TOKEN 401 — add gh api user probe to fail-fast"
-status: open
+status: resolved
 severity: low
 autonomy: safe
 estimated: XS
