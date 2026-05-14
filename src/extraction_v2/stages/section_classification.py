@@ -112,6 +112,10 @@ class SectionClassificationStage:
             r"^MANAGEMENT.{0,5}S?\s*DISCUSSION\s*(AND|&)\s*ANALYSIS",
             r"^MD\s*&?\s*A$",
             r"^RESULTS\s*OF\s*OPERATIONS$",
+            # gh-612: company-prefixed MDA headings, e.g.
+            # "DraftKings' Management's Discussion..." or
+            # "Waldencast's Management's Discussion..."
+            r"^[A-Z][A-Z\s&\.\,'\-]{0,40}(?:S|'S)?\s*MANAGEMENT.{0,15}S?\s*DISCUSSION",
         ],
         SectionType.BUSINESS: [
             r"^ITEM\s*1[\.\:]?\s*BUSINESS$",
@@ -244,6 +248,14 @@ class SectionClassificationStage:
         # Check XPath for heading elements
         xpath_lower = segment.dom_locator.lower()
         if any(tag in xpath_lower for tag in ["/h1[", "/h2[", "/h3[", "/h4[", "/h5[", "/h6["]):
+            return True
+
+        # gh-612: For short segments (< MAX_HEADING_LENGTH already passed above),
+        # fall back to pattern matching — if the text matches a known section
+        # pattern then it IS a heading regardless of casing. This handles:
+        # - mixed-case MDA prefixed by company name ("DraftKings' Management's...")
+        # - ingestion-retained short headings that are not all-uppercase
+        if self._detect_section_type(segment.text) != SectionType.UNKNOWN:
             return True
 
         return False
