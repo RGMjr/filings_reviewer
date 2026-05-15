@@ -87,6 +87,15 @@ First live Phase-2 quantitative gate run (`scripts/run_phase2_quantitative_eval.
 
 ---
 
+### llm-presence-classifier-phase2-eval-results-20260514.md
+
+**Status**: Complete — gate decision: NO-GO (gate v2)
+**Date**: 2026-05-14
+
+Phase-2 gate v2 re-run (run_id `20260512Trerun`) on the same corpus shape as 2026-05-11, after the C3 reframe (net-new positives), gh-602 filing_id dedup, and gh-613 real cost/cache counters. 52 filings (4 dropped by dedup), 56,905 classify_segment calls, $194.79 real spend (cache hit rate 97.0%; the worker prompt's ≤$2 expectation was off by ~100×). Headline: classifier is **non-additive** on the enrolled metric set — only 1 of 15 Tier-1 metrics (`cm_large_customers_period_end`) had headroom and the classifier caught 0 net-new TPs / 1 net-new FP. Closes the ambiguity of the 2026-05-11 NO-GO with a decisive "doesn't add value" answer; rollout decision deferred to operator (close out, retarget, or expand gold coverage).
+
+---
+
 ## Archive
 
 Completed tasks, superseded reports, and research spikes are in `docs/archive/analysis/`. This includes all HRV-3 through HRV-6 validation docs, IMG-1-x completion summaries, GR-series validation reports, VIS-series chart extraction research, the beyond-SEC spike, and the 2025-12-26 comprehensive evaluation plan.

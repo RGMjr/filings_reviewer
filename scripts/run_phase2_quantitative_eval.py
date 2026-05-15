@@ -36,13 +36,18 @@ Corpus
 Pass/fail criteria
 ------------------
 
-  C1. Zero prompt/parse errors from classify_segment          — Hard
-  C2. Per-Tier-1-metric classifier recall ≥ kw recall − 5pt  — Hard
-  C3. Aggregate Tier-1 classifier recall ≥ kw recall + 5pt   — Hard
-  C4. No Tier-1 metric with classifier F1 < 0.40             — Hard
-  C5. Classifier error rate ≤ 0.5% of calls                  — Hard
-  C6. Cache hit rate ≥ 85%                                    — Informational
-  C7. Total cost ≤ --cost-budget USD                          — Informational
+  C1. Zero prompt/parse errors from classify_segment             — Hard
+  C2. Per-Tier-1-metric classifier recall ≥ kw recall − 5pt     — Hard
+  C3. ≥1 Tier-1 metric with classifier catching ≥3 net-new      — Hard
+      positives at clf-only precision ≥ 50% (where kw < 95%)
+  C4. No Tier-1 metric with classifier F1 < 0.40                — Hard
+  C5. Classifier error rate ≤ 0.5% of calls                     — Hard
+  C3_aggregate_recall_delta. Aggregate Tier-1 clf recall ≥      — Informational
+      kw recall + 5pt (was hard C3; demoted post-2026-05-11
+      because kw baseline is at-ceiling and headroom is < 5pt)
+  C6. Cache hit rate ≥ 85%                                       — Informational
+  C7. Total cost ≤ --cost-budget USD                             — Informational
+  C8. Classifier-vs-keyword agreement rate ≥ 85%                 — Informational
 
 ``go_no_go = "GO"`` iff all hard criteria (C1–C5) pass.
 
@@ -112,7 +117,19 @@ MAX_ERROR_RATE = 0.005  # C5: ≤ 0.5% of classify_segment calls may error
 
 # Cost estimation: ~$0.25 per filing (Haiku, includes prompt-cache amortised).
 # Real cost varies by filing length; this is a conservative planning estimate.
+# Used only for the pre-flight cost estimate and the in-loop ETA log line —
+# real cost reporting (summary.cost.total_usd) now comes from token totals
+# via ``estimate_cost_usd_from_counts`` (gh-613).
 _COST_PER_FILING_USD = 0.25
+
+# C8 (informational): minimum classifier-vs-keyword agreement rate.
+C8_AGREEMENT_TARGET = 0.85
+# New C3: keyword-recall ceiling above which a metric has no headroom for
+# the classifier to add net-new positives.
+C3_KEYWORD_RECALL_CEILING = 0.95
+# New C3 pass thresholds for net-new positives per Tier-1 metric.
+C3_MIN_CLF_ONLY_TP = 3
+C3_MIN_CLF_ONLY_PRECISION = 0.50
 
 logger = logging.getLogger("run_phase2_quantitative_eval")
 
@@ -299,6 +316,45 @@ def _select_all_gold_corpus(
     ]
 
 
+def _dedup_enriched_by_filing_id(
+    enriched: list[Any],
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """Drop later occurrences of the same ``paf.filing_id`` (gh-602).
+
+    URL-based dedup (against gold URLs) runs earlier in
+    ``_select_reviewed_corpus_phase2``. This is a second pass that catches
+    cross-corpus dups (distinct URLs, same filing_id, e.g. an S-1 followed
+    by an S-1/A) and intra-gold dups, neither of which the URL dedup
+    detects. Preserves first occurrence and order; gold comes before
+    reviewed in the enriched list.
+
+    Returns ``(deduped_list, dropped_records)``. Each dropped record is
+    ``{filing_id, filing_url, corpus}`` for logging.
+    """
+    seen: set[int] = set()
+    deduped: list[Any] = []
+    dropped: list[dict[str, Any]] = []
+    for paf in enriched:
+        fid = paf.filing_id
+        # Defensive: enrichment always populates filing_id as an int, but
+        # if any caller bypasses enrichment a None means "keep, do not dedup".
+        if fid is None:
+            deduped.append(paf)
+            continue
+        if fid in seen:
+            dropped.append(
+                {
+                    "filing_id": fid,
+                    "filing_url": paf.selection.filing_url,
+                    "corpus": paf.selection.corpus,
+                }
+            )
+            continue
+        seen.add(fid)
+        deduped.append(paf)
+    return deduped, dropped
+
+
 def _select_reviewed_corpus_phase2(
     db_url: str,
     *,
@@ -445,8 +501,16 @@ def evaluate_criteria(
     cache_reads: int,
     total_cost_usd: float,
     cost_budget_usd: float,
+    input_tokens: int = 0,
 ) -> list[CriterionResult]:
-    """Evaluate C1–C7 against the accumulated rows and cost metrics."""
+    """Evaluate C1–C8 against the accumulated rows and cost metrics.
+
+    ``cache_reads`` is the cumulative ``cache_read_input_tokens`` summed
+    across all classify_segment calls; ``input_tokens`` is the cumulative
+    fresh ``input_tokens``. C6 reports the token-weighted cache hit rate
+    ``cache_reads / (cache_reads + input_tokens)``. ``total_calls`` is the
+    classify_segment call count (used by C5).
+    """
     tier1 = _get_tier1_metrics()
     prf = per_metric_prf(rows)
 
@@ -498,8 +562,71 @@ def evaluate_criteria(
     )
     results.append(c2)
 
-    # C3 — aggregate Tier-1 classifier recall ≥ keyword recall + 5pt (weighted).
+    # C3 — net-new positives (gh-602 reframe). The classifier must catch
+    # real new Tier-1 positives that the keyword baseline misses, on at
+    # least one metric where keyword has headroom (kw_recall < 0.95).
+    #
+    # Aggregate-recall delta is preserved as informational
+    # (C3_aggregate_recall_delta) — useful for diagnosis but not a gate when
+    # the keyword baseline is at-ceiling.
     tier1_rows = [r for r in rows if r.metric_id in tier1 and r.ground_truth is not None]
+    # Per-metric clf-only attribution. Requires both signals present (None
+    # rows don't tell us whether the classifier added anything).
+    c3_metric_details: list[str] = []
+    c3_passing_metrics: list[str] = []
+    for mid in sorted(tier1):
+        m = prf.get(mid)
+        if m is None or m["n"] < MIN_FILINGS_FOR_METRIC_GATE:
+            continue
+        kw_r = m.get("kw_recall")
+        if kw_r is None or kw_r >= C3_KEYWORD_RECALL_CEILING:
+            # No headroom for the classifier to add net-new positives.
+            continue
+        m_rows = [
+            r
+            for r in tier1_rows
+            if r.metric_id == mid
+            and r.classifier_present is not None
+            and r.keyword_present is not None
+        ]
+        clf_only_tp = sum(
+            1 for r in m_rows if r.classifier_present and not r.keyword_present and r.ground_truth
+        )
+        clf_only_fp = sum(
+            1
+            for r in m_rows
+            if r.classifier_present and not r.keyword_present and not r.ground_truth
+        )
+        denom = clf_only_tp + clf_only_fp
+        clf_only_precision = (clf_only_tp / denom) if denom > 0 else 0.0
+        c3_metric_details.append(
+            f"{mid}: clf_only_tp={clf_only_tp} clf_only_fp={clf_only_fp} "
+            f"clf_only_precision={clf_only_precision:.3f}"
+        )
+        if clf_only_tp >= C3_MIN_CLF_ONLY_TP and clf_only_precision >= C3_MIN_CLF_ONLY_PRECISION:
+            c3_passing_metrics.append(mid)
+    c3_passed = len(c3_passing_metrics) > 0
+    c3_detail = (
+        f"passing metrics: {', '.join(c3_passing_metrics)}; "
+        f"all considered: {'; '.join(c3_metric_details) or 'none'}"
+        if c3_metric_details
+        else "No Tier-1 metric has headroom (kw_recall < 0.95) AND ≥5 filings"
+    )
+    c3 = CriterionResult(
+        id="C3",
+        description=(
+            f"≥1 Tier-1 metric with classifier catching ≥{C3_MIN_CLF_ONLY_TP} net-new "
+            f"positives at clf-only precision ≥ {C3_MIN_CLF_ONLY_PRECISION:.0%} "
+            f"(where kw_recall < {C3_KEYWORD_RECALL_CEILING:.0%})"
+        ),
+        hard=True,
+        passed=c3_passed,
+        detail=c3_detail,
+    )
+    results.append(c3)
+
+    # C3_aggregate_recall_delta — informational (demoted from hard gate).
+    # Original C3 logic: aggregate Tier-1 clf recall vs kw recall delta.
     clf_positives = [r for r in tier1_rows if r.ground_truth]
     kw_rows = [r for r in clf_positives if r.keyword_present is not None]
     agg_clf_recall: float | None = None
@@ -508,30 +635,29 @@ def evaluate_criteria(
         agg_clf_recall = sum(1 for r in clf_positives if r.classifier_present) / len(clf_positives)
     if kw_rows:
         agg_kw_recall = sum(1 for r in kw_rows if r.keyword_present) / len(kw_rows)
-    c3_passed = False
-    c3_detail = ""
     if agg_clf_recall is None or agg_kw_recall is None:
-        c3_detail = "Insufficient data to compute aggregate Tier-1 recall"
-        c3_passed = False
+        c3_agg_passed = False
+        c3_agg_detail = "Insufficient data to compute aggregate Tier-1 recall"
     else:
         delta = agg_clf_recall - agg_kw_recall
-        c3_passed = delta >= AGGREGATE_RECALL_IMPROVEMENT
-        c3_detail = (
+        c3_agg_passed = delta >= AGGREGATE_RECALL_IMPROVEMENT
+        c3_agg_detail = (
             f"clf={agg_clf_recall:.3f} kw={agg_kw_recall:.3f} delta={delta:+.3f} "
-            f"(required +{AGGREGATE_RECALL_IMPROVEMENT:.3f})"
+            f"(informational target +{AGGREGATE_RECALL_IMPROVEMENT:.3f})"
         )
-    c3 = CriterionResult(
-        id="C3",
+    c3_agg = CriterionResult(
+        id="C3_aggregate_recall_delta",
         description=(
-            f"Aggregate Tier-1 classifier recall ≥ kw recall + {AGGREGATE_RECALL_IMPROVEMENT:.0%}"
+            f"Aggregate Tier-1 classifier recall ≥ kw recall + "
+            f"{AGGREGATE_RECALL_IMPROVEMENT:.0%} (informational)"
         ),
-        hard=True,
-        passed=c3_passed,
-        detail=c3_detail,
+        hard=False,
+        passed=c3_agg_passed,
+        detail=c3_agg_detail,
         value=agg_clf_recall,
         threshold=None,
     )
-    results.append(c3)
+    results.append(c3_agg)
 
     # C4 — no Tier-1 metric with classifier F1 < 0.40 (≥5-filing coverage).
     c4_breaches: list[str] = []
@@ -572,14 +698,18 @@ def evaluate_criteria(
     )
     results.append(c5)
 
-    # C6 — cache hit rate ≥ 85% (informational).
-    cache_rate = cache_reads / total_calls if total_calls > 0 else 0.0
+    # C6 — token-weighted cache hit rate ≥ 85% (informational).
+    # cache_reads and input_tokens are both token counts; the ratio
+    # cache_reads / (cache_reads + input_tokens) is the canonical
+    # Anthropic prompt-cache hit rate (matches per-call client logs).
+    total_input_tokens = cache_reads + input_tokens
+    cache_rate = cache_reads / total_input_tokens if total_input_tokens > 0 else 0.0
     c6 = CriterionResult(
         id="C6",
-        description="Cache hit rate ≥ 85% (informational)",
+        description="Token-weighted cache hit rate ≥ 85% (informational)",
         hard=False,
         passed=cache_rate >= 0.85,
-        detail=f"{cache_reads}/{total_calls} cached = {cache_rate:.1%}",
+        detail=(f"{cache_reads}/{total_input_tokens} cached tokens = {cache_rate:.1%}"),
         value=round(cache_rate, 4),
         threshold=0.85,
     )
@@ -596,6 +726,34 @@ def evaluate_criteria(
         threshold=cost_budget_usd,
     )
     results.append(c7)
+
+    # C8 — classifier-vs-keyword agreement rate (informational). Across
+    # all (filing, metric) pairs where both signals are non-None, the
+    # fraction where clf_present == kw_present. High agreement + a few
+    # high-precision clf-only TPs is the GO signal under the gate v2
+    # framing (see C3 above).
+    agreement_rows = [
+        r for r in rows if r.classifier_present is not None and r.keyword_present is not None
+    ]
+    if agreement_rows:
+        agree_count = sum(1 for r in agreement_rows if r.classifier_present == r.keyword_present)
+        agreement_rate = agree_count / len(agreement_rows)
+        c8_detail = f"{agree_count}/{len(agreement_rows)} pairs agree = {agreement_rate:.1%}"
+    else:
+        agreement_rate = 0.0
+        c8_detail = "Insufficient data (no rows with both signals non-None)"
+    c8 = CriterionResult(
+        id="C8",
+        description=(
+            f"Classifier-vs-keyword agreement rate ≥ {C8_AGREEMENT_TARGET:.0%} (informational)"
+        ),
+        hard=False,
+        passed=agreement_rate >= C8_AGREEMENT_TARGET,
+        detail=c8_detail,
+        value=round(agreement_rate, 4),
+        threshold=C8_AGREEMENT_TARGET,
+    )
+    results.append(c8)
 
     return results
 
@@ -823,7 +981,14 @@ def run_eval(
             "per_metric": {"gold": {}, "reviewed": {}, "merged": {}},
             "criteria": [],
             "errors": [],
-            "cost": {"total_usd": 0.0, "total_calls": 0, "cache_reads": 0},
+            "cost": {
+                "total_usd": 0.0,
+                "total_calls": 0,
+                "cache_reads": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_create": 0,
+            },
         }
         _write_summary(summary, summary_path)
         return 0, summary
@@ -869,6 +1034,19 @@ def run_eval(
     except RuntimeError as enrich_err:
         return 2, {"error": str(enrich_err), "run_started_at": run_started_at}
 
+    # ---- gh-602: dedup by filing_id (catches cross-corpus + intra-gold dups
+    # that the URL-based dedup in _select_reviewed_corpus_phase2 misses) ----
+    enriched, dropped_dups = _dedup_enriched_by_filing_id(enriched)
+    if dropped_dups:
+        logger.info(
+            "filing_id dedup dropped %d duplicate(s): %s",
+            len(dropped_dups),
+            ", ".join(
+                f"filing_id={d['filing_id']} corpus={d['corpus']} url={d['filing_url']}"
+                for d in dropped_dups
+            ),
+        )
+
     # ---- Resume: skip already-done filings ----
     done_pairs: frozenset[tuple[str, str]] = frozenset()
     if resume and partial_path.exists():
@@ -885,11 +1063,23 @@ def run_eval(
     else:
         partial_fh, partial_writer = _open_csv_writer(partial_path)
 
+    # Defer cost-helper import until run-time to keep --dry-run / unit tests
+    # off the src.llm dependency tree (avoids requiring anthropic SDK for
+    # plumbing tests).
+    from src.llm.presence_classifier_client import (
+        DEFAULT_HAIKU_MODEL,
+        estimate_cost_usd_from_counts,
+    )
+
     rows: list[Phase2Row] = []
     errors: list[dict[str, Any]] = []
+    # gh-613: real token + call counters, replacing the flat $0.25/filing
+    # estimate. Cache hit rate (C6) and total cost (C7) now derive from these.
+    total_input_tokens = 0
+    total_output_tokens = 0
+    total_cache_read = 0
+    total_cache_create = 0
     total_calls = 0
-    cache_reads = 0
-    total_cost_usd = 0.0
     run_start_ts = time.monotonic()
 
     n_total = len(enriched)
@@ -914,24 +1104,36 @@ def run_eval(
             eta_min = remaining / rate / 60.0
         else:
             eta_min = (n_total - idx) * _COST_PER_FILING_USD / 0.25 * 60  # rough
+        running_cost = estimate_cost_usd_from_counts(
+            total_input_tokens,
+            total_output_tokens,
+            total_cache_read,
+            total_cache_create,
+            model=DEFAULT_HAIKU_MODEL,
+        )
         logger.info(
             "Filing %d/%d: %s (%s), cumulative cost $%.4f, ETA ~%.0f min",
             idx,
             n_total,
             paf.selection.company or url,
             corpus,
-            total_cost_usd,
+            running_cost,
             eta_min,
         )
 
         fil_t0 = time.monotonic()
-        aggregates, kw_present, fil_errors, _fil_tokens = p1.evaluate_filing_pipeline(
+        aggregates, kw_present, fil_errors, fil_tokens = p1.evaluate_filing_pipeline(
             paf, metric_ids
         )
         fil_elapsed = time.monotonic() - fil_t0
         errors.extend(fil_errors)
 
-        total_cost_usd += _COST_PER_FILING_USD
+        # gh-613: accumulate real token counters across filings.
+        total_input_tokens += int(fil_tokens.get("input_tokens", 0))
+        total_output_tokens += int(fil_tokens.get("output_tokens", 0))
+        total_cache_read += int(fil_tokens.get("cache_read", 0))
+        total_cache_create += int(fil_tokens.get("cache_create", 0))
+        total_calls += int(fil_tokens.get("n_calls", 0))
 
         filing_rows: list[Phase2Row] = []
         for metric in metric_ids:
@@ -1017,14 +1219,25 @@ def run_eval(
     # Rename partial → final.
     partial_path.rename(csv_path)
 
+    # gh-613: compute real cost from accumulated token counts via the
+    # canonical helper (Haiku pricing + correct cache_read/write multipliers).
+    total_cost_usd = estimate_cost_usd_from_counts(
+        total_input_tokens,
+        total_output_tokens,
+        total_cache_read,
+        total_cache_create,
+        model=DEFAULT_HAIKU_MODEL,
+    )
+
     # ---- Criteria evaluation ----
     criteria = evaluate_criteria(
         rows,
         errors,
         total_calls=total_calls if total_calls > 0 else len(rows),
-        cache_reads=cache_reads,
+        cache_reads=total_cache_read,
         total_cost_usd=total_cost_usd,
         cost_budget_usd=cost_budget_usd,
+        input_tokens=total_input_tokens,
     )
 
     hard_failures = [c for c in criteria if c.hard and not c.passed]
@@ -1035,6 +1248,13 @@ def run_eval(
     prf_reviewed = per_metric_prf(rows, "reviewed")
     prf_merged = per_metric_prf(rows)
 
+    # Derive the "selected" lists from the post-dedup enriched corpus so
+    # consumers of summary.json see what actually ran (gh-602 follow-up).
+    # The pre-dedup gold_filings / reviewed_filings still exist in memory
+    # but populating selected_* from them would disagree with per_metric.n
+    # (which counts deduped rows).
+    enriched_gold = [p.selection for p in enriched if p.selection.corpus == "gold"]
+    enriched_reviewed = [p.selection for p in enriched if p.selection.corpus == "reviewed"]
     summary = {
         "run_id": run_id,
         "run_started_at": run_started_at,
@@ -1043,11 +1263,12 @@ def run_eval(
         "go_no_go": go_no_go,
         "gold_only": gold_only,
         "limit": limit,
-        "selected_gold_filings": [f.filing_url for f in gold_filings],
+        "selected_gold_filings": [f.filing_url for f in enriched_gold],
         "selected_reviewed_filings": [
             {"filing_url": f.filing_url, "filing_id": f.filing_id, "company": f.company}
-            for f in reviewed_filings
+            for f in enriched_reviewed
         ],
+        "dedup_dropped": dropped_dups,
         "metric_ids": metric_ids,
         "per_metric": {
             "gold": prf_gold,
@@ -1069,8 +1290,12 @@ def run_eval(
         "cost": {
             "total_usd": round(total_cost_usd, 4),
             "total_calls": total_calls,
-            "cache_reads": cache_reads,
+            "cache_reads": total_cache_read,
             "budget_usd": cost_budget_usd,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "cache_create": total_cache_create,
+            "model": DEFAULT_HAIKU_MODEL,
         },
         "errors": errors,
         "gold_negative_caveat": (

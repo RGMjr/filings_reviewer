@@ -79,13 +79,28 @@ python3 scripts/run_phase2_quantitative_eval.py --gold-only --limit 1 --i-accept
 |----|-----------|-----------|------|
 | C1 | Zero prompt/parse errors from `classify_segment` | == 0 errors | **Hard** |
 | C2 | Per-Tier-1-metric classifier recall ≥ keyword recall − 5pt (≥5-filing coverage) | all Tier-1 metrics | **Hard** |
-| C3 | Aggregate Tier-1 classifier recall ≥ keyword recall + 5pt (weighted) | across merged corpus | **Hard** |
+| C3 | ≥1 Tier-1 metric where the classifier catches ≥3 net-new positives (`classifier_present` ∧ ¬`keyword_present` ∧ `ground_truth`) at clf-only precision ≥ 50%, restricted to metrics with `kw_recall < 0.95` and ≥5-filing coverage | "at least one wins" | **Hard** |
 | C4 | No Tier-1 metric with classifier F1 < 0.40 (≥5-filing coverage) | all Tier-1 metrics | **Hard** |
 | C5 | Classifier error rate ≤ 0.5% of calls | hard cap | **Hard** |
+| C3_aggregate_recall_delta | Aggregate Tier-1 classifier recall ≥ kw recall + 5pt (weighted) | informational | No |
 | C6 | Cache hit rate ≥ 85% | informational | No |
 | C7 | Total cost ≤ `--cost-budget` USD (default $25) | informational | No |
+| C8 | Classifier-vs-keyword agreement rate ≥ 85% (rows where both signals are non-None) | informational | No |
 
-`go_no_go = "GO"` iff all hard criteria (C1–C5) pass.
+`go_no_go = "GO"` iff all hard criteria (C1, C2, C3, C4, C5) pass.
+
+### Why C3 measures net-new positives, not aggregate-recall delta
+
+The original C3 ("aggregate Tier-1 clf recall ≥ kw recall + 5pt") is unreachable when the keyword baseline is at or near ceiling. The 2026-05-11 live run measured a 98.8% keyword recall on the 10 scoreable Tier-1 metrics — the maximum delta the classifier could ever register is +1.2pt, below the +5pt gate. Aggregate-recall delta is preserved as `C3_aggregate_recall_delta` (informational) for diagnostic use.
+
+The new C3 instead asks the actionable question: **does the classifier catch real positives that the keyword baseline misses, on metrics where keyword has headroom?** Pass conditions:
+
+- `clf_only_tp ≥ 3` — the classifier catches at least 3 (filing, metric) positives that have `keyword_present=False` and `ground_truth=True`.
+- `clf_only_precision ≥ 0.50` — at least half of those clf-only hits are real (i.e., not FPs), controlling for the gold-negative bias.
+- Restricted to Tier-1 metrics with `kw_recall < 0.95` (the "headroom" gate).
+- "At least one Tier-1 metric satisfies both" is enough to pass — uncovered metrics are noise, but a single decisive win is signal.
+
+C8 (informational, ≥85% agreement) is the second leg of the GO signal: when overall agreement is high AND the classifier catches a handful of high-precision net-new positives on at least one headroom metric, the classifier is additive without being noisy.
 
 ## Exit codes
 
@@ -111,9 +126,23 @@ breakdown.
   recall is >5pt below its keyword baseline. The `detail` field names the
   metric(s) and the delta. Check the prompt YAML for that metric; bump
   `prompt_version` and re-smoke (Phase 1) before re-running Phase 2.
-- **C3 (aggregate recall)**: The classifier is not outperforming the keyword
-  baseline by ≥5pt across Tier-1 metrics. Often co-occurs with C2 breaches.
-  Investigate the metrics with the largest negative deltas.
+- **C3 (net-new positives)**: No Tier-1 metric satisfies the
+  ≥3 clf-only TP / ≥50% clf-only precision pair. The `detail` field
+  lists every metric considered (post-headroom-gate) with its
+  `clf_only_tp`, `clf_only_fp`, and `clf_only_precision`. Two common
+  shapes:
+  - Every considered metric has `clf_only_tp = 0` → the classifier is
+    not catching anything the keyword baseline misses; classifier may
+    be redundant. Investigate via the per-segment paraphrase candidates
+    — is the prompt firing at all?
+  - One metric has `clf_only_tp ≥ 3` but `clf_only_precision < 0.50`
+    → the classifier is over-triggering on that metric's negatives.
+    Inspect the FPs and tune the prompt's hedging / scope language.
+  - `detail` says "No Tier-1 metric has headroom" → every Tier-1
+    metric measured has `kw_recall ≥ 0.95`. The classifier has nowhere
+    to add value on the current corpus; expand coverage on
+    low-baseline metrics (Tier-1 LTV pair, cohort metrics) before
+    re-gating.
 - **C4 (F1 floor)**: A Tier-1 metric has both poor precision and recall.
   Symptom of over-triggering (high FP) or under-triggering (high FN).
   Inspect per-metric rows in the CSV for that metric.
@@ -230,6 +259,7 @@ CI never runs the live path — do not add `--i-accept-cost` to CI commands.
 
 | Run ID | Date | Decision | Notes |
 |---|---|---|---|
-| `20260511T1416live` | 2026-05-11 | **NO-GO** (C3) | First live run. Surfaced latent SQL + arity bugs (PR #600), dup-by-URL gap (gh-602), section_classification variant gap (gh-612), cache counter bug (gh-613). Findings: classifier recall == keyword recall on all 10 scoreable Tier-1 metrics; 5 Tier-1 metrics skipped for insufficient coverage. Full analysis: [`docs/analysis/llm-presence-classifier-phase2-eval-results-20260511.md`](../analysis/llm-presence-classifier-phase2-eval-results-20260511.md). |
+| `20260511T1416live` | 2026-05-11 | **NO-GO** (C3, original) | First live run. Surfaced latent SQL + arity bugs (PR #600), dup-by-URL gap (gh-602), section_classification variant gap (gh-612), cache counter bug (gh-613). Findings: classifier recall == keyword recall on all 10 scoreable Tier-1 metrics; 5 Tier-1 metrics skipped for insufficient coverage. Full analysis: [`docs/analysis/llm-presence-classifier-phase2-eval-results-20260511.md`](../analysis/llm-presence-classifier-phase2-eval-results-20260511.md). |
+| `20260512Trerun` | 2026-05-14 | **NO-GO** (C3 new) | v2 re-run with gh-602 filing_id dedup, gh-613 real cost/cache counters, and C3 reframed as net-new positives. Corpus 52 (4 dropped). Real cost $194.79 (the prompt's ≤$2 estimate was off by ~100×; cache hit rate 97.0% but per-call cost floor is ~$0.003 × 57k calls). Decision: classifier is non-additive on the enrolled metric set — only 1 of 15 Tier-1 metrics had headroom (`cm_large_customers_period_end`) and it caught 0 net-new TPs / 1 net-new FP. Full analysis: [`docs/analysis/llm-presence-classifier-phase2-eval-results-20260514.md`](../analysis/llm-presence-classifier-phase2-eval-results-20260514.md). |
 
 Before launching a new run, read the most recent run's analysis doc. The 2026-05-11 run is the canonical reference for what the gate's pass/fail rubric does and does not measure.

@@ -832,8 +832,11 @@ def evaluate_filing_pipeline(
     ``kw_present[metric_id]`` is True iff CandidateGenerationStage emitted at
     least one candidate for that metric — the keyword baseline for criterion #3.
 
-    ``token_totals`` is ``{input_tokens, output_tokens, cache_read, cache_create}``
+    ``token_totals`` is ``{input_tokens, output_tokens, cache_read, cache_create, n_calls}``
     extracted from the LLMPresenceClassifierStage StageResult metadata.
+    ``n_calls`` is the number of classify_segment API calls
+    (= ``items_processed`` on the stage result). Phase-2 sums this across
+    filings for real cost + cache-rate reporting (gh-613).
     """
     from src.extraction_v2.pipeline import PipelineConfig, PipelineStage, V2Pipeline
 
@@ -842,6 +845,7 @@ def evaluate_filing_pipeline(
         "output_tokens": 0,
         "cache_read": 0,
         "cache_create": 0,
+        "n_calls": 0,
     }
     errors: list[dict[str, Any]] = []
     resolved_path, temp_path = _resolve_filing_html(paf)
@@ -903,6 +907,7 @@ def evaluate_filing_pipeline(
             filing_tokens["output_tokens"] += sr.metadata.get("total_output_tokens", 0)
             filing_tokens["cache_read"] += sr.metadata.get("total_cache_read", 0)
             filing_tokens["cache_create"] += sr.metadata.get("total_cache_create", 0)
+            filing_tokens["n_calls"] += int(sr.items_processed or 0)
 
     # Max-score aggregation per metric across all LLM signals.
     aggregates: dict[str, _AggregatedScore] = {}
