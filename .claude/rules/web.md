@@ -145,6 +145,40 @@ Powers the **Simulate Recommendations** card on `/v2/review/stats` (Summary tab)
 
 Manual escape hatch for a stuck row (SIGKILL / OOM leaks past Python so terminal status never lands): the 1-hour sweep on the next click clears it, or `UPDATE text_pattern_simulation_runs SET status='failed', error='manual cleanup', completed_at=NOW() WHERE id = '<uuid>'`.
 
+## Text-pattern ship-to-PR endpoint
+
+Powers the "Ship to PR" button on `/v2/review/stats` (Track D of the simulate-and-ship flow; the button itself lands in Track C-2). Closes the loop from "admin clicks Ship" to "PR exists in GitHub awaiting human review." Built on the same worker-queue pattern as the image-classifier retrain (`src/ml/retrain_runner.py`) because the work — git push + `gh pr create` — runs on the `filings-onboarding-runner` Render worker where `gh` is installed (`Dockerfile`, mirroring `Dockerfile.nightly-sweep`).
+
+- `POST /api/v2/extraction/ship-to-pr` — INSERT a `text_pattern_ship_runs` row with `status='queued'` and return `202 {run_id, status}`. The worker daemon at `src/universe/onboarding_runner.py` drains the queue and shells out to `scripts/open_pattern_recommendation_pr.py`. Gates (each returns a distinct 409 error shape):
+  - `_require_reviewer_id` → 403 `{error: "reviewer_name_required"}`.
+  - **Stale-row sweep on entry**: any `text_pattern_ship_runs` row with `status='running' AND started_at < NOW() - INTERVAL '1 hour'` is auto-flipped to `'failed'` before the concurrency check. Mirrors the simulate-accepted sweep — covers SIGKILL/OOM bypass cases.
+  - **Concurrency**: any `(queued | running)` row → 409 `{error: "ship_already_running", running_run_id}`. Counts both states so two clicks can't pile up parallel ships.
+  - **Affected-recs**: zero accepted exclusion_pattern recs with `pr_number IS NULL` → 409 `{error: "no_accepted_recs"}`.
+  - **Covering simulation**: most recent succeeded `text_pattern_simulation_runs` whose delta set is a superset of the accepted-rec ids — SQL is `GROUP BY run_id HAVING COUNT(DISTINCT recommendation_decision_id) = N`. Missing → 409 `{error: "no_covering_simulation"}`.
+  - **Sim safety**: `tier1_regressed=True` → 409 `{error: "tier1_regressed", simulation_run_id}`. `runs_agree=False` → 409 `{error: "runs_disagree", simulation_run_id}` (gh-273 retry pattern; both patched runs must produce the same Tier-1 number).
+  - **Coverage warning**: any `text_pattern_simulation_deltas.coverage_filings < 3` for the gating sim run → 409 `{error: "weak_coverage", metrics: [...]}` unless body has `admin_override=true`.
+- `GET /api/v2/extraction/ship-runs/<uuid:run_id>/status` — polled by Track C-2. Returns the row including `recommendation_decision_ids` (JSONB array of UUID strings), `simulation_run_id`, `branch_name`, `pr_number`, `pr_url`, `error`. 404 on unknown id. No auth (consistent with sim-status endpoint).
+
+**Schema** (timestamp migration `sql/202605141809_text_pattern_ship_runs.sql`): `text_pattern_ship_runs` — one row per ship attempt. Columns: `id`, `status IN ('queued','running','succeeded','failed')`, `run_lock_until`, `recommendation_decision_ids JSONB`, `simulation_run_id` (FK to `text_pattern_simulation_runs(id) ON DELETE SET NULL`), `branch_name`, `pr_number`, `pr_url`, `triggered_by`, `started_at`, `completed_at`, `error`.
+
+**Worker drain** (`src/ml/retrain_runner.py::claim_next_queued_ship_pr` + `run_ship_pr`): mirrors `claim_next_queued_retrain` / `run_retrain` exactly — `FOR UPDATE SKIP LOCKED` atomic transition, heartbeat to extend `run_lock_until`, post-exit `_SHIP_PR_FAIL_NO_STATUS_SQL` flips a still-`running` row to `'failed'` with `error='ship_subprocess_died_no_status'` only for SIGKILL/OOM cases. Hooked into the daemon at `src/universe/onboarding_runner.py` immediately after the retrain drain — same UI-blocking precedence.
+
+**Script** (`scripts/open_pattern_recommendation_pr.py --run-id <uuid>`):
+1. Reads the queued row (UUID arrives via `--run-id` from the worker after the queued→running transition).
+2. Fetches the recs (`rule='exclusion_pattern'` only — other rules are silently skipped; matches Track B's simulation scope) and the gating sim run for the audit-trail PR body.
+3. Edits `config/metric_keywords.yaml` in-place via `ruamel.yaml` round-trip (preserves comments + ordering). Each rec's `decision_key` (the phrase) is appended to its metric's `exclusions` list; phrases already present are skipped (idempotent).
+4. Creates a branch `ship/pattern-recs-<run_id_short>`, commits with `--no-verify`, pushes.
+5. `gh pr create` **without `--auto`** — the admin reviews the diff in GitHub and merges manually. PR title carries the sim-run short id; body carries per-rec evidence + per-metric simulation deltas + coverage stats + the `--no-verify` rationale.
+6. In one transaction: UPDATE `text_pattern_recommendation_decisions.{pr_number, pr_url}` on every shipped rec, then flip the ship row to `'succeeded'` with `branch_name` + `pr_number` + `pr_url`.
+
+Top-level try/except in `main()` flips the ship row to `'failed'` with the exception text via `_mark_failed` (same pattern as `simulate_text_pattern_changes.py`).
+
+**`--no-verify` exception**: the worker commit deliberately bypasses the local extraction-guard pre-commit hook because the `filings-onboarding-runner` container has no gold-standard corpus to run the validator against. CI runs the same Tier-1 regression gate on the resulting PR — that is the final independent safety net beyond the simulation. Documented inline in the script and in the PR body for every shipped PR.
+
+**Dockerfile change**: the main `Dockerfile` now installs `gh` (pinned `GH_VERSION=2.91.0`) plus `git`, `curl`, `ca-certificates` so the `filings-onboarding-runner` worker can shell out. The `filings-reviewer` web service also picks this up (same Dockerfile). **A redeploy of `filings-onboarding-runner` is required after this PR merges** before any ship click can succeed — the worker pulls the image at deploy time.
+
+**Tests** (`tests/integration/test_open_pattern_recommendation_pr.py`): happy path (seed + monkey-patched git/gh → assert YAML edit + DB writeback), endpoint `tier1_regressed` denial, endpoint stale-row sweep.
+
 ## Image-confirmation reviewer notes
 
 `v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.

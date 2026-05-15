@@ -6,6 +6,7 @@ into a single blueprint under /api/v2. Also provides a new endpoint for
 manually adding metric facts that the pipeline missed.
 """
 
+import json
 import logging
 import os
 import subprocess
@@ -1761,6 +1762,220 @@ def get_text_pattern_simulation_status(run_id):
                 d[num] = float(d[num])
         deltas.append(d)
     row["deltas"] = deltas
+    return jsonify(row), 200
+
+
+# =============================================================================
+# Text-pattern ship-to-PR (Track D)
+# =============================================================================
+# Closes the loop from "admin clicks Ship" to "PR exists in GitHub awaiting
+# human review." Endpoint enqueues a text_pattern_ship_runs row; the worker
+# daemon at src/universe/onboarding_runner.py drains it and shells out to
+# scripts/open_pattern_recommendation_pr.py. No --auto on `gh pr create` —
+# the admin reviews the diff in GitHub and merges manually.
+
+
+_COVERING_SIMULATION_SQL = """\
+SELECT r.id, r.tier1_regressed, r.runs_agree
+  FROM text_pattern_simulation_runs r
+  JOIN text_pattern_simulation_deltas d ON d.run_id = r.id
+ WHERE r.status = 'succeeded'
+   AND d.recommendation_decision_id = ANY(%(rec_ids)s::uuid[])
+ GROUP BY r.id, r.started_at, r.tier1_regressed, r.runs_agree
+HAVING COUNT(DISTINCT d.recommendation_decision_id) = %(rec_count)s
+ ORDER BY r.started_at DESC
+ LIMIT 1
+"""
+
+
+@api_unified_bp.route("/extraction/ship-to-pr", methods=["POST"])
+@require(INGEST_RUN)
+def trigger_text_pattern_ship_to_pr():
+    """Enqueue a Ship-to-PR run that opens a GitHub PR with accepted-rec edits.
+
+    Gates (each returns a distinct 409 error shape):
+      - `_require_reviewer_id` → 403 reviewer_name_required.
+      - Stale-row sweep: any 'running' row older than 1 hour is auto-failed
+        before the concurrency check (SIGKILL/OOM bypass guard).
+      - Concurrency: any (queued | running) row in text_pattern_ship_runs
+        blocks a second click.
+      - Affected-recs: zero accepted exclusion_pattern recs with NULL
+        pr_number → no_accepted_recs.
+      - Sim gate: most recent succeeded text_pattern_simulation_runs whose
+        delta set is a superset of the accepted-rec ids must exist
+        (no_covering_simulation), must not have tier1_regressed=True
+        (tier1_regressed), and must have runs_agree=True (runs_disagree).
+      - Coverage warning: any per-rec metric with coverage_filings < 3
+        blocks unless body has admin_override=true (weak_coverage).
+
+    On success, INSERTs status='queued' and returns 202 {run_id, status}.
+    Worker drains.
+    """
+    data = request.get_json(silent=True) or {}
+    reviewer_id, gate_reject = _require_reviewer_id(data)
+    if gate_reject is not None:
+        return gate_reject
+
+    admin_override = bool(data.get("admin_override"))
+    db = get_db()
+
+    # Stale-row sweep — mirrors simulate-accepted shape.
+    db.execute(
+        """
+        UPDATE text_pattern_ship_runs
+           SET status = 'failed',
+               error  = 'auto-cleanup: stale running row (>1h)',
+               completed_at = NOW(),
+               run_lock_until = NULL
+         WHERE status = 'running'
+           AND started_at < NOW() - INTERVAL '1 hour'
+        """
+    )
+
+    running_rows = db.query(
+        """
+        SELECT id FROM text_pattern_ship_runs
+         WHERE status IN ('queued', 'running')
+         LIMIT 1
+        """
+    )
+    if running_rows:
+        return (
+            jsonify(
+                {
+                    "error": "ship_already_running",
+                    "running_run_id": str(running_rows[0]["id"]),
+                }
+            ),
+            409,
+        )
+
+    accepted_rec_rows = db.query(
+        """
+        SELECT id
+          FROM text_pattern_recommendation_decisions
+         WHERE decision = 'accepted'
+           AND rule     = 'exclusion_pattern'
+           AND pr_number IS NULL
+         ORDER BY updated_at ASC
+        """
+    )
+    if not accepted_rec_rows:
+        return jsonify({"error": "no_accepted_recs"}), 409
+
+    rec_ids = [str(r["id"]) for r in accepted_rec_rows]
+
+    covering = db.query(
+        _COVERING_SIMULATION_SQL,
+        {"rec_ids": rec_ids, "rec_count": len(rec_ids)},
+    )
+    if not covering:
+        return (
+            jsonify(
+                {
+                    "error": "no_covering_simulation",
+                    "message": "Run a simulation first.",
+                }
+            ),
+            409,
+        )
+
+    sim_row = covering[0]
+    simulation_run_id = str(sim_row["id"])
+
+    if sim_row["tier1_regressed"]:
+        return (
+            jsonify(
+                {
+                    "error": "tier1_regressed",
+                    "simulation_run_id": simulation_run_id,
+                }
+            ),
+            409,
+        )
+
+    if not sim_row["runs_agree"]:
+        return (
+            jsonify(
+                {
+                    "error": "runs_disagree",
+                    "simulation_run_id": simulation_run_id,
+                }
+            ),
+            409,
+        )
+
+    if not admin_override:
+        weak = db.query(
+            """
+            SELECT DISTINCT metric_id
+              FROM text_pattern_simulation_deltas
+             WHERE run_id = %(run_id)s
+               AND coverage_filings IS NOT NULL
+               AND coverage_filings < 3
+             ORDER BY metric_id ASC
+            """,
+            {"run_id": simulation_run_id},
+        )
+        if weak:
+            return (
+                jsonify(
+                    {
+                        "error": "weak_coverage",
+                        "metrics": [w["metric_id"] for w in weak],
+                        "message": "Set admin_override=true to proceed.",
+                    }
+                ),
+                409,
+            )
+
+    run_id = str(_uuid.uuid4())
+    db.execute(
+        """
+        INSERT INTO text_pattern_ship_runs (
+            id, status, recommendation_decision_ids, simulation_run_id, triggered_by
+        ) VALUES (
+            %(id)s, 'queued', %(rec_ids)s::jsonb, %(sim_id)s, %(triggered_by)s
+        )
+        """,
+        {
+            "id": run_id,
+            "rec_ids": json.dumps(rec_ids),
+            "sim_id": simulation_run_id,
+            "triggered_by": reviewer_id,
+        },
+    )
+
+    return jsonify({"run_id": run_id, "status": "queued"}), 202
+
+
+@api_unified_bp.route("/extraction/ship-runs/<uuid:run_id>/status", methods=["GET"])
+@require(PROTECTED_READ)
+def get_text_pattern_ship_run_status(run_id):
+    """Return the ship-run row plus parsed recommendation_decision_ids."""
+    db = get_db()
+    rows = db.query(
+        """
+        SELECT id, status, started_at, completed_at,
+               recommendation_decision_ids, simulation_run_id,
+               branch_name, pr_number, pr_url, triggered_by, error
+          FROM text_pattern_ship_runs
+         WHERE id = %(id)s
+        """,
+        {"id": str(run_id)},
+    )
+    if not rows:
+        return jsonify({"error": "not_found"}), 404
+    row = dict(rows[0])
+    row["id"] = str(row["id"])
+    if row.get("simulation_run_id"):
+        row["simulation_run_id"] = str(row["simulation_run_id"])
+    for ts_field in ("started_at", "completed_at"):
+        if row.get(ts_field):
+            row[ts_field] = row[ts_field].isoformat()
+    # recommendation_decision_ids is JSONB — psycopg returns it as a Python list.
+    if row.get("recommendation_decision_ids") is None:
+        row["recommendation_decision_ids"] = []
     return jsonify(row), 200
 
 

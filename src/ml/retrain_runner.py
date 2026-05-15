@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _RETRAIN_SCRIPT = _PROJECT_ROOT / "scripts" / "retrain_image_triage.py"
+_SHIP_PR_SCRIPT = _PROJECT_ROOT / "scripts" / "open_pattern_recommendation_pr.py"
 
 # Default TTL on a claim. Retrains take ~3 min on the current corpus, so 15
 # minutes is comfortably long enough for one to finish without heartbeat
@@ -166,5 +167,133 @@ def run_retrain(
         )
     else:
         logger.info("run_retrain: run_id=%s completed (rc=0)", run_id)
+
+    return rc
+
+
+# ---------------------------------------------------------------------------
+# Ship-to-PR (Track D)
+# ---------------------------------------------------------------------------
+#
+# Same queue+worker shape as the image-classifier retrain, but draining a
+# different table. Endpoint INSERTs a text_pattern_ship_runs row with
+# status='queued'; the daemon at src/universe/onboarding_runner.py drains
+# it and shells out to scripts/open_pattern_recommendation_pr.py to edit
+# config/metric_keywords.yaml, push a branch, and open a GitHub PR. The
+# admin reviews the resulting PR and merges manually (no --auto).
+
+_CLAIM_NEXT_SHIP_PR_SQL = """\
+UPDATE text_pattern_ship_runs
+SET status         = 'running',
+    run_lock_until = NOW() + (INTERVAL '1 second' * %(ttl)s)
+WHERE id = (
+    SELECT id FROM text_pattern_ship_runs
+    WHERE status = 'queued'
+      AND (run_lock_until IS NULL OR run_lock_until < NOW())
+    ORDER BY started_at
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, status, started_at, triggered_by, simulation_run_id,
+          recommendation_decision_ids;
+"""
+
+_SHIP_PR_HEARTBEAT_SQL = """\
+UPDATE text_pattern_ship_runs
+SET run_lock_until = NOW() + (INTERVAL '1 second' * %(ttl)s)
+WHERE id = %(run_id)s
+  AND status = 'running';
+"""
+
+_SHIP_PR_FAIL_NO_STATUS_SQL = """\
+UPDATE text_pattern_ship_runs
+SET status         = 'failed',
+    error          = 'ship_subprocess_died_no_status',
+    completed_at   = NOW(),
+    run_lock_until = NULL
+WHERE id = %(run_id)s
+  AND status = 'running';
+"""
+
+
+def claim_next_queued_ship_pr(
+    db: DatabaseAdapter,
+    lock_ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
+) -> dict[str, Any] | None:
+    """Atomically claim the oldest queued text-pattern ship-to-PR row.
+
+    Returns the row dict on success, or None when no queued row is available
+    (or another worker won the race). Mirrors claim_next_queued_retrain.
+    """
+    rows = db.query(_CLAIM_NEXT_SHIP_PR_SQL, {"ttl": lock_ttl_seconds})
+    return dict(rows[0]) if rows else None
+
+
+def extend_ship_pr_lock(
+    db: DatabaseAdapter,
+    run_id: uuid.UUID | str,
+    lock_ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
+) -> None:
+    """Heartbeat: extend run_lock_until on a 'running' ship-PR row."""
+    db.execute(_SHIP_PR_HEARTBEAT_SQL, {"run_id": str(run_id), "ttl": lock_ttl_seconds})
+
+
+def run_ship_pr(
+    db: DatabaseAdapter,
+    run_row: dict[str, Any],
+    *,
+    lock_ttl_seconds: int = DEFAULT_LOCK_TTL_SECONDS,
+) -> int:
+    """Shell out to scripts/open_pattern_recommendation_pr.py for a claimed row.
+
+    Returns the subprocess exit code. The script writes its own terminal
+    status; this wrapper flips the row to 'failed' only if the subprocess
+    exits non-zero AND the row is still 'running' (true SIGKILL/OOM case).
+    """
+    run_id = str(run_row["id"])
+    database_url = os.environ.get("DATABASE_URL", "")
+
+    log_dir = _PROJECT_ROOT / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"ship_pr_{run_id}.log"
+
+    logger.info("run_ship_pr: starting run_id=%s", run_id)
+    poll_interval = max(1, min(30, lock_ttl_seconds // 3))
+
+    with open(log_path, "ab") as log_fh:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                str(_SHIP_PR_SCRIPT),
+                "--run-id",
+                run_id,
+                "--database-url",
+                database_url,
+            ],
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            cwd=str(_PROJECT_ROOT),
+        )
+        try:
+            while proc.poll() is None:
+                time.sleep(poll_interval)
+                try:
+                    extend_ship_pr_lock(db, run_id, lock_ttl_seconds)
+                except Exception:  # noqa: BLE001
+                    logger.exception("run_ship_pr: heartbeat failed for run_id=%s", run_id)
+            rc = proc.returncode
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+
+    if rc != 0:
+        db.execute(_SHIP_PR_FAIL_NO_STATUS_SQL, {"run_id": run_id})
+        logger.warning(
+            "run_ship_pr: run_id=%s exited rc=%d (any 'running' state forced to 'failed')",
+            run_id,
+            rc,
+        )
+    else:
+        logger.info("run_ship_pr: run_id=%s completed (rc=0)", run_id)
 
     return rc

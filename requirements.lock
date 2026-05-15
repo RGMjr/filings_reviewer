@@ -80,8 +80,10 @@ fsspec==2026.2.0
     # via
     #   datasets
     #   huggingface-hub
-google-auth==2.49.2
-    # via google-genai
+google-auth==2.52.0
+    # via
+    #   -r requirements.txt
+    #   google-genai
 google-genai==1.73.1
     # via -r requirements.txt
 h11==0.16.0
@@ -140,7 +142,7 @@ multiprocess==0.70.19
     # via datasets
 nh3==0.3.4
     # via -r requirements.txt
-numpy==2.4.3
+numpy==2.4.4
     # via
     #   -r requirements.txt
     #   datasets
@@ -218,6 +220,8 @@ requests==2.33.0
     #   tiktoken
 rich==14.3.3
     # via typer
+ruamel-yaml==0.19.1
+    # via -r requirements.txt
 s3transfer==0.16.1
     # via boto3
 scikit-learn==1.8.0
@@ -255,14 +259,11 @@ types-pyyaml==6.0.12.20260408
     # via -r requirements.txt
 typing-extensions==4.15.0
     # via
-    #   aiosignal
     #   anthropic
-    #   anyio
     #   beautifulsoup4
     #   google-genai
     #   huggingface-hub
     #   openai
-    #   psycopg
     #   psycopg-pool
     #   pydantic
     #   pydantic-core

@@ -32,14 +32,34 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PATH="/opt/venv/bin:${PATH}"
 
-# libpq5 is the runtime shared library that psycopg links against.
-# libpq-dev (with headers) is only needed at build time and stays in the
-# builder stage.
+# Runtime system deps:
+#   libpq5         — psycopg's runtime shared library.
+#   ca-certificates, curl — needed to fetch the pinned gh CLI .deb at build time
+#                    and (for curl) by the gh CLI at run time.
+#   git            — used by scripts/open_pattern_recommendation_pr.py (worker
+#                    branches, commits, and pushes the patched
+#                    config/metric_keywords.yaml). libpq-dev (with headers) is
+#                    only needed at build time and stays in the builder stage.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# GitHub CLI (gh) — pinned to a specific release via the official .deb from
+# GitHub Releases. Bypasses the apt repo entirely so the version is explicit.
+# Architecture is detected at build time so amd64 (Render prod) and arm64
+# (local Mac Docker) both work without changes. Mirrors Dockerfile.nightly-sweep.
+# To bump: update GH_VERSION to the new tag (without the leading "v").
+ARG GH_VERSION=2.91.0
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL -o /tmp/gh.deb \
+        "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.deb" \
+    && dpkg -i /tmp/gh.deb \
+    && rm /tmp/gh.deb
 
 ARG UID=10001
 RUN adduser \
