@@ -38,11 +38,14 @@ Pass/fail criteria
 
   C1. Zero prompt/parse errors from classify_segment          — Hard
   C2. Per-Tier-1-metric classifier recall ≥ kw recall − 5pt  — Hard
-  C3. Aggregate Tier-1 classifier recall ≥ kw recall + 5pt   — Hard
+  C3. For ≥1 Tier-1 metric with kw_recall < 0.95:            — Hard
+        clf_only_tp ≥ 3 AND clf_only_precision ≥ 0.50
+        (clf_only = classifier-present but keyword-absent)
   C4. No Tier-1 metric with classifier F1 < 0.40             — Hard
   C5. Classifier error rate ≤ 0.5% of calls                  — Hard
   C6. Cache hit rate ≥ 85%                                    — Informational
   C7. Total cost ≤ --cost-budget USD                          — Informational
+  C8. Classifier–keyword agreement rate ≥ 85%                 — Informational
 
 ``go_no_go = "GO"`` iff all hard criteria (C1–C5) pass.
 
@@ -106,9 +109,15 @@ MIN_FILINGS_FOR_METRIC_GATE = 5
 
 # Hard gate thresholds.
 RECALL_DELTA_TOLERANCE = 0.05  # C2: per-metric may be up to 5pt below keyword
-AGGREGATE_RECALL_IMPROVEMENT = 0.05  # C3: aggregate must be 5pt above keyword
+# C3 (new, hard): net-new positives test on Tier-1 metrics with kw_recall < 0.95.
+# The classifier must find ≥3 clf-only TPs with ≥50% precision on at least one such metric.
+C3_KW_RECALL_HEADROOM_THRESHOLD = 0.95  # only score metrics below this kw recall
+C3_MIN_CLF_ONLY_TP = 3  # need ≥3 classifier-only TPs
+C3_MIN_CLF_ONLY_PRECISION = 0.50  # need ≥50% precision on classifier-only calls
 MIN_F1_THRESHOLD = 0.40  # C4: no Tier-1 metric F1 below 0.40
 MAX_ERROR_RATE = 0.005  # C5: ≤ 0.5% of classify_segment calls may error
+# C8: informational classifier–keyword agreement rate target.
+C8_AGREEMENT_TARGET = 0.85
 
 # Cost estimation: ~$0.25 per filing (Haiku, includes prompt-cache amortised).
 # Real cost varies by filing length; this is a conservative planning estimate.
@@ -299,28 +308,55 @@ def _select_all_gold_corpus(
     ]
 
 
+def _dedup_by_filing_id(
+    filings: list[Any],
+    *,
+    seen_ids: frozenset[int] | None = None,
+) -> list[Any]:
+    """Remove filings whose filing_id already appeared earlier in the list.
+
+    Filings with ``filing_id is None`` are never deduped against each other
+    (None is not a meaningful identity key). ``seen_ids`` can pre-populate
+    the set with IDs already present in an upstream corpus (e.g. gold).
+
+    Order-preserving: first occurrence wins.
+    """
+    result: list[Any] = []
+    seen: set[int] = set(seen_ids) if seen_ids else set()
+    for f in filings:
+        fid = f.filing_id
+        if fid is None:
+            result.append(f)
+        elif fid not in seen:
+            seen.add(fid)
+            result.append(f)
+        # else: duplicate filing_id — drop
+    return result
+
+
 def _select_reviewed_corpus_phase2(
     db_url: str,
     *,
     exclude_urls: frozenset[str],
+    exclude_filing_ids: frozenset[int],
     min_reviewed: int,
     limit: int | None,
 ) -> tuple[list[Any], str | None]:
     """Select reviewed filings; return (filings, error_msg).
 
     Queries up to 200 candidates and deduplicates; fails if fewer than
-    ``min_reviewed`` survive after deduplication against gold URLs.
+    ``min_reviewed`` survive after deduplication against gold URLs AND
+    gold filing_ids.
     """
     p1 = _phase1()
     # Pull a larger pool so dedup doesn't under-deliver.
     large_limit = max(min_reviewed * 3, 200)
     filings = p1.select_reviewed_corpus(db_url, exclude_urls=exclude_urls, limit=large_limit)
-    # select_reviewed_corpus already deduplicates by URL via exclude_urls.
+    # Second-pass dedup: drop any filing whose filing_id already appeared in gold.
+    filings = _dedup_by_filing_id(filings, seen_ids=exclude_filing_ids)
     effective_limit = limit if limit is not None else None
     if effective_limit is not None:
         filings = filings[:effective_limit]
-    else:
-        filings = filings  # all of them
     if len(filings) < min_reviewed:
         return filings, (
             f"Reviewed corpus has only {len(filings)} eligible filings after "
@@ -498,40 +534,99 @@ def evaluate_criteria(
     )
     results.append(c2)
 
-    # C3 — aggregate Tier-1 classifier recall ≥ keyword recall + 5pt (weighted).
-    tier1_rows = [r for r in rows if r.metric_id in tier1 and r.ground_truth is not None]
-    clf_positives = [r for r in tier1_rows if r.ground_truth]
-    kw_rows = [r for r in clf_positives if r.keyword_present is not None]
-    agg_clf_recall: float | None = None
-    agg_kw_recall: float | None = None
-    if clf_positives:
-        agg_clf_recall = sum(1 for r in clf_positives if r.classifier_present) / len(clf_positives)
-    if kw_rows:
-        agg_kw_recall = sum(1 for r in kw_rows if r.keyword_present) / len(kw_rows)
-    c3_passed = False
-    c3_detail = ""
-    if agg_clf_recall is None or agg_kw_recall is None:
-        c3_detail = "Insufficient data to compute aggregate Tier-1 recall"
-        c3_passed = False
-    else:
-        delta = agg_clf_recall - agg_kw_recall
-        c3_passed = delta >= AGGREGATE_RECALL_IMPROVEMENT
+    # C3 (hard) — for ≥1 Tier-1 metric with kw_recall < 0.95:
+    #   clf_only_tp ≥ 3  AND  clf_only_precision ≥ 0.50.
+    # "clf_only" = classifier says present, keyword says absent (net-new discoveries).
+    # This fires only on metrics where keyword headroom exists (kw_recall < 0.95).
+    # If no such metric has ≥5-filing coverage, C3 is vacuously true (skipped).
+    c3_metric_results: list[str] = []  # metrics that meet the headroom threshold
+    c3_passing_metrics: list[str] = []  # metrics that pass the clf_only test
+    for mid in sorted(tier1):
+        m = prf.get(mid)
+        if m is None or m["n"] < MIN_FILINGS_FOR_METRIC_GATE:
+            continue
+        kw_r = m.get("kw_recall")
+        if kw_r is None or kw_r >= C3_KW_RECALL_HEADROOM_THRESHOLD:
+            continue
+        # This metric has headroom — compute clf_only stats.
+        mid_rows = [r for r in rows if r.metric_id == mid and r.ground_truth is not None]
+        # clf_only TP: ground_truth=True, classifier=True, keyword=False
+        clf_only_tp = sum(
+            1
+            for r in mid_rows
+            if r.ground_truth and r.classifier_present and r.keyword_present is False
+        )
+        # clf_only total positives (TP + FP among clf-present, kw-absent):
+        clf_only_total = sum(
+            1 for r in mid_rows if r.classifier_present and r.keyword_present is False
+        )
+        clf_only_precision = clf_only_tp / clf_only_total if clf_only_total > 0 else 0.0
+        passes = (
+            clf_only_tp >= C3_MIN_CLF_ONLY_TP and clf_only_precision >= C3_MIN_CLF_ONLY_PRECISION
+        )
+        status_str = (
+            f"{mid}: clf_only_tp={clf_only_tp} clf_only_prec={clf_only_precision:.2f} "
+            f"kw_recall={kw_r:.3f} → {'PASS' if passes else 'FAIL'}"
+        )
+        c3_metric_results.append(status_str)
+        if passes:
+            c3_passing_metrics.append(mid)
+
+    if not c3_metric_results:
+        # No Tier-1 metric had both ≥5-filing coverage and kw_recall < 0.95.
+        c3_passed = True
         c3_detail = (
-            f"clf={agg_clf_recall:.3f} kw={agg_kw_recall:.3f} delta={delta:+.3f} "
-            f"(required +{AGGREGATE_RECALL_IMPROVEMENT:.3f})"
+            f"No Tier-1 metrics with kw_recall < {C3_KW_RECALL_HEADROOM_THRESHOLD:.0%} "
+            "and ≥5-filing coverage — C3 vacuously true (skipped)"
+        )
+    else:
+        c3_passed = len(c3_passing_metrics) >= 1
+        c3_detail = (
+            f"{len(c3_passing_metrics)}/{len(c3_metric_results)} headroom-eligible metrics pass "
+            f"clf_only gate (need ≥1): {'; '.join(c3_metric_results)}"
         )
     c3 = CriterionResult(
         id="C3",
         description=(
-            f"Aggregate Tier-1 classifier recall ≥ kw recall + {AGGREGATE_RECALL_IMPROVEMENT:.0%}"
+            f"For ≥1 Tier-1 metric with kw_recall < {C3_KW_RECALL_HEADROOM_THRESHOLD:.0%}: "
+            f"clf_only_tp ≥ {C3_MIN_CLF_ONLY_TP} AND clf_only_precision ≥ {C3_MIN_CLF_ONLY_PRECISION:.0%}"
         ),
         hard=True,
         passed=c3_passed,
         detail=c3_detail,
-        value=agg_clf_recall,
-        threshold=None,
+        value=float(len(c3_passing_metrics)),
+        threshold=1.0,
     )
     results.append(c3)
+
+    # C3_aggregate_recall_delta — informational aggregate Tier-1 recall delta.
+    # Demoted from hard criterion; now informational context alongside C3.
+    tier1_rows = [r for r in rows if r.metric_id in tier1 and r.ground_truth is not None]
+    clf_positives = [r for r in tier1_rows if r.ground_truth]
+    kw_rows_for_agg = [r for r in clf_positives if r.keyword_present is not None]
+    agg_clf_recall: float | None = None
+    agg_kw_recall: float | None = None
+    if clf_positives:
+        agg_clf_recall = sum(1 for r in clf_positives if r.classifier_present) / len(clf_positives)
+    if kw_rows_for_agg:
+        agg_kw_recall = sum(1 for r in kw_rows_for_agg if r.keyword_present) / len(kw_rows_for_agg)
+    if agg_clf_recall is None or agg_kw_recall is None:
+        agg_delta_detail = "Insufficient data to compute aggregate Tier-1 recall"
+        agg_delta_value: float | None = None
+    else:
+        agg_delta = agg_clf_recall - agg_kw_recall
+        agg_delta_value = round(agg_delta, 4)
+        agg_delta_detail = f"clf={agg_clf_recall:.3f} kw={agg_kw_recall:.3f} delta={agg_delta:+.3f}"
+    c3_delta = CriterionResult(
+        id="C3_aggregate_recall_delta",
+        description="Aggregate Tier-1 classifier recall vs keyword recall (informational)",
+        hard=False,
+        passed=True,  # always informational
+        detail=agg_delta_detail,
+        value=agg_delta_value,
+        threshold=None,
+    )
+    results.append(c3_delta)
 
     # C4 — no Tier-1 metric with classifier F1 < 0.40 (≥5-filing coverage).
     c4_breaches: list[str] = []
@@ -596,6 +691,33 @@ def evaluate_criteria(
         threshold=cost_budget_usd,
     )
     results.append(c7)
+
+    # C8 — classifier–keyword agreement rate ≥ 85% (informational).
+    # Agreement = rows where both classifier and keyword agree (both present or both absent).
+    # Only rows where both classifier_present and keyword_present are non-None are counted.
+    scored_rows = [
+        r for r in rows if r.classifier_present is not None and r.keyword_present is not None
+    ]
+    if scored_rows:
+        agree_count = sum(1 for r in scored_rows if r.classifier_present == r.keyword_present)
+        agreement_rate = agree_count / len(scored_rows)
+    else:
+        agree_count = 0
+        agreement_rate = 0.0
+    c8 = CriterionResult(
+        id="C8",
+        description=f"Classifier–keyword agreement rate ≥ {C8_AGREEMENT_TARGET:.0%} (informational)",
+        hard=False,
+        passed=agreement_rate >= C8_AGREEMENT_TARGET,
+        detail=(
+            f"{agree_count}/{len(scored_rows)} rows agree = {agreement_rate:.1%}"
+            if scored_rows
+            else "No rows with both classifier and keyword scores"
+        ),
+        value=round(agreement_rate, 4),
+        threshold=C8_AGREEMENT_TARGET,
+    )
+    results.append(c8)
 
     return results
 
@@ -774,9 +896,12 @@ def run_eval(
     reviewed_filings: list[Any] = []
     if not gold_only:
         gold_urls = frozenset(f.filing_url for f in gold_filings)
+        # Gold filing_ids are None at this stage (resolved later in _enrich_filings_for_path_a).
+        # Pass an empty set here; post-enrichment dedup below catches gold↔reviewed conflicts.
         reviewed_filings, rev_err = _select_reviewed_corpus_phase2(
             db_url,  # type: ignore[arg-type]
             exclude_urls=gold_urls,
+            exclude_filing_ids=frozenset(),
             min_reviewed=min_reviewed,
             limit=limit,
         )
@@ -869,6 +994,23 @@ def run_eval(
     except RuntimeError as enrich_err:
         return 2, {"error": str(enrich_err), "run_started_at": run_started_at}
 
+    # ---- Post-enrichment dedup by filing_id ----
+    # After enrichment, gold filings have real filing_ids (resolved from DB).
+    # Drop any reviewed filing whose filing_id matches a gold filing_id.
+    # This catches gold↔reviewed duplicates where the same filing was indexed
+    # under two different sec_html_url values (gh-602).
+    pre_dedup_count = len(enriched)
+    enriched = _dedup_by_filing_id(enriched)
+    if len(enriched) < pre_dedup_count:
+        n_dropped = pre_dedup_count - len(enriched)
+        logger.info(
+            "Post-enrichment filing_id dedup: dropped %d duplicate filing(s). "
+            "Corpus size: %d → %d.",
+            n_dropped,
+            pre_dedup_count,
+            len(enriched),
+        )
+
     # ---- Resume: skip already-done filings ----
     done_pairs: frozenset[tuple[str, str]] = frozenset()
     if resume and partial_path.exists():
@@ -890,6 +1032,10 @@ def run_eval(
     total_calls = 0
     cache_reads = 0
     total_cost_usd = 0.0
+    input_tokens_total = 0
+    output_tokens_total = 0
+    cache_read_total = 0
+    cache_create_total = 0
     run_start_ts = time.monotonic()
 
     n_total = len(enriched)
@@ -925,13 +1071,33 @@ def run_eval(
         )
 
         fil_t0 = time.monotonic()
-        aggregates, kw_present, fil_errors, _fil_tokens = p1.evaluate_filing_pipeline(
+        aggregates, kw_present, fil_errors, fil_tokens = p1.evaluate_filing_pipeline(
             paf, metric_ids
         )
         fil_elapsed = time.monotonic() - fil_t0
         errors.extend(fil_errors)
 
-        total_cost_usd += _COST_PER_FILING_USD
+        # Accumulate token counts from this filing.
+        input_tokens_total += fil_tokens.get("input_tokens", 0)
+        output_tokens_total += fil_tokens.get("output_tokens", 0)
+        cache_read_total += fil_tokens.get("cache_read", 0)
+        cache_create_total += fil_tokens.get("cache_create", 0)
+        # total_calls: one call per enrolled metric per filing (Path A runs all metrics).
+        total_calls += len(metric_ids)
+        # cache_reads: proxy = number of call-slots whose segments hit the cache.
+        # We use cache_read_total (token count) > 0 as the filing-level signal;
+        # per-call granularity is not returned by evaluate_filing_pipeline.
+        # Recomputed from totals below after the loop.
+
+        # Compute running cost from token totals using Haiku pricing.
+        from src.llm.presence_classifier_client import estimate_cost_usd_from_counts
+
+        total_cost_usd = estimate_cost_usd_from_counts(
+            input_tokens=input_tokens_total,
+            output_tokens=output_tokens_total,
+            cache_read=cache_read_total,
+            cache_create=cache_create_total,
+        )
 
         filing_rows: list[Phase2Row] = []
         for metric in metric_ids:
@@ -965,6 +1131,25 @@ def run_eval(
         )
 
     partial_fh.close()
+
+    # Compute cache_reads from token totals now that the loop is complete.
+    # cache_read_total is in tokens; we convert to a call-equivalent count
+    # by prorating against total_calls. A filing whose cache_read token count
+    # is > 0 "used the cache". We estimate the per-call fraction by assuming
+    # each call contributes equally. The true per-call count is not returned by
+    # evaluate_filing_pipeline, so we use: cache_reads ≈ total_calls if
+    # cache_read_total > 0 else 0 at the filing level. A more precise
+    # approximation: if cache_read_total / (input_tokens_total or 1) ≥ 0.5,
+    # we treat the filing-level bucket as "cached". We bucket at the filing
+    # level using the per-filing cache_read contribution tracked in the loop —
+    # but since we only have totals here, approximate as:
+    #   cache_reads = round(total_calls * cache_read_fraction)
+    # where cache_read_fraction = cache_read_total / max(input_tokens_total, 1).
+    if input_tokens_total > 0:
+        cache_read_fraction = cache_read_total / input_tokens_total
+        cache_reads = round(total_calls * cache_read_fraction)
+    else:
+        cache_reads = 0
 
     run_finished_at = datetime.now(UTC).isoformat()
     for r in rows:

@@ -79,13 +79,23 @@ python3 scripts/run_phase2_quantitative_eval.py --gold-only --limit 1 --i-accept
 |----|-----------|-----------|------|
 | C1 | Zero prompt/parse errors from `classify_segment` | == 0 errors | **Hard** |
 | C2 | Per-Tier-1-metric classifier recall ≥ keyword recall − 5pt (≥5-filing coverage) | all Tier-1 metrics | **Hard** |
-| C3 | Aggregate Tier-1 classifier recall ≥ keyword recall + 5pt (weighted) | across merged corpus | **Hard** |
+| C3 | At least one Tier-1 metric with kw recall < 0.95 has `clf_only_tp ≥ 3` AND `clf_only_precision ≥ 0.50` | metrics with headroom only | **Hard** |
 | C4 | No Tier-1 metric with classifier F1 < 0.40 (≥5-filing coverage) | all Tier-1 metrics | **Hard** |
 | C5 | Classifier error rate ≤ 0.5% of calls | hard cap | **Hard** |
 | C6 | Cache hit rate ≥ 85% | informational | No |
 | C7 | Total cost ≤ `--cost-budget` USD (default $25) | informational | No |
+| C8 | Classifier-keyword agreement rate ≥ 85% across all (filing, metric) pairs | informational | No |
+| `C3_aggregate_recall_delta` | Aggregate Tier-1 classifier recall vs keyword recall (informational) | reported for triage | No |
 
 `go_no_go = "GO"` iff all hard criteria (C1–C5) pass.
+
+### C3 reframe (2026-05-14)
+
+C3 was previously "aggregate Tier-1 classifier recall ≥ keyword recall + 5pt." The 2026-05-11 gate run (see Run history) found classifier and keyword recall tied to 3 decimals (0.988 / 0.988) on every enrolled Tier-1 metric — the 5pt-improvement threshold is mathematically unreachable when the keyword baseline is near-ceiling.
+
+The reframed C3 measures what the classifier *actually contributes* on top of keyword: it counts (filing, metric) positives that the classifier catches AND the keyword path missed (`clf_only_tp`). The gate passes when at least one Tier-1 metric where keyword has headroom (recall < 0.95) sees the classifier catch ≥3 new positives at ≥50% precision.
+
+The old metric is preserved as informational `C3_aggregate_recall_delta` for triage continuity. C8 (agreement rate) is a new informational diagnostic — high agreement + a few high-precision clf-only TPs is the canonical GO signal under the new framing.
 
 ## Exit codes
 
@@ -111,9 +121,13 @@ breakdown.
   recall is >5pt below its keyword baseline. The `detail` field names the
   metric(s) and the delta. Check the prompt YAML for that metric; bump
   `prompt_version` and re-smoke (Phase 1) before re-running Phase 2.
-- **C3 (aggregate recall)**: The classifier is not outperforming the keyword
-  baseline by ≥5pt across Tier-1 metrics. Often co-occurs with C2 breaches.
-  Investigate the metrics with the largest negative deltas.
+- **C3 (clf-only positives)**: No Tier-1 metric where keyword has headroom
+  (recall < 0.95) saw the classifier catch ≥3 new positives at ≥50% precision.
+  Two diagnostic cases: (a) no Tier-1 metric has headroom — keyword is already
+  catching everything in the corpus, so the classifier has no room to
+  contribute; consider whether the corpus covers the right metrics. (b) Headroom
+  exists but classifier predictions are noisy — inspect `clf_only_tp` and
+  `clf_only_precision` per metric; prompts may need tightening on FP patterns.
 - **C4 (F1 floor)**: A Tier-1 metric has both poor precision and recall.
   Symptom of over-triggering (high FP) or under-triggering (high FN).
   Inspect per-metric rows in the CSV for that metric.
@@ -231,5 +245,6 @@ CI never runs the live path — do not add `--i-accept-cost` to CI commands.
 | Run ID | Date | Decision | Notes |
 |---|---|---|---|
 | `20260511T1416live` | 2026-05-11 | **NO-GO** (C3) | First live run. Surfaced latent SQL + arity bugs (PR #600), dup-by-URL gap (gh-602), section_classification variant gap (gh-612), cache counter bug (gh-613). Findings: classifier recall == keyword recall on all 10 scoreable Tier-1 metrics; 5 Tier-1 metrics skipped for insufficient coverage. Full analysis: [`docs/analysis/llm-presence-classifier-phase2-eval-results-20260511.md`](../analysis/llm-presence-classifier-phase2-eval-results-20260511.md). |
+| `20260514Trerun` | 2026-05-14 | **NO-GO** (C3 reframed) | Gate v2: C3 reframed to clf-only-tp ≥ 3 on metrics with kw_recall < 0.95; gh-602 dedup applied (corpus 55 → 52); gh-613 token aggregation; new C8 agreement criterion. Real spend $194.88 (vs prior $13.75 count-estimate). **Clean NO-GO**: every enrolled Tier-1 metric has `clf_only_tp = 0` — classifier catches zero positives keyword missed. The one headroom-eligible metric (cm_large_customers_period_end, kw_recall 0.833) saw zero new positives. Surfaced gh-626 (C6/C7 reporting bugs; headline unaffected). Full analysis: [`docs/analysis/llm-presence-classifier-phase2-eval-results-20260514.md`](../analysis/llm-presence-classifier-phase2-eval-results-20260514.md). |
 
-Before launching a new run, read the most recent run's analysis doc. The 2026-05-11 run is the canonical reference for what the gate's pass/fail rubric does and does not measure.
+Before launching a new run, read the most recent run's analysis doc. The 2026-05-14 run is the canonical reference: it answers the question the 2026-05-11 run left structurally unanswerable.

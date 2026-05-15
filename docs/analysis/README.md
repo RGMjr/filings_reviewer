@@ -87,10 +87,19 @@ First live Phase-2 quantitative gate run (`scripts/run_phase2_quantitative_eval.
 
 ---
 
+### llm-presence-classifier-phase2-eval-results-20260514.md
+
+**Status**: Complete — gate decision: NO-GO (cleaner verdict than 2026-05-11)
+**Date**: 2026-05-14
+
+Phase-2 quantitative gate v2 run (`run_id 20260514Trerun`) with C3 reframed (clf-only-tp ≥ 3 on metrics with kw_recall < 0.95), gh-602 dedup-by-filing-id, gh-613 token aggregation, new informational C8 agreement criterion. 52 filings after dedup (3 dups removed); $194.88 real spend (vs $13.75 count-estimate previously); 0 errors of 520 calls. **Headline: every enrolled Tier-1 metric has `clf_only_tp = 0` — classifier catches zero positives keyword missed across all 10 metrics, including the one with measurable headroom (cm_large_customers_period_end at 83.3% kw_recall).** Recommendation: Option A close-out for enrolled metrics, with Option B carve-out (author prompts for 5 unenrolled Tier-1 metrics) as the only remaining experiment worth running. Surfaced gh-626 (C6/C7 reporting bugs, headline unaffected).
+
+---
+
 ## Archive
 
 Completed tasks, superseded reports, and research spikes are in `docs/archive/analysis/`. This includes all HRV-3 through HRV-6 validation docs, IMG-1-x completion summaries, GR-series validation reports, VIS-series chart extraction research, the beyond-SEC spike, and the 2025-12-26 comprehensive evaluation plan.
 
 ---
 
-**Last Updated**: 2026-05-12
+**Last Updated**: 2026-05-14
