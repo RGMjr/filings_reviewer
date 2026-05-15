@@ -13,6 +13,8 @@ touches:
 discovered: 2026-05-13
 updated: 2026-05-15
 gh_issue: 619
+pr_refs:
+  - 637
 note: Discovered while debugging the 2026-05-12 filings-extraction OOM. The OOM and this guard issue are independent — both surfaced in the same log.
 ---
 
