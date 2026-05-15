@@ -179,6 +179,18 @@ Top-level try/except in `main()` flips the ship row to `'failed'` with the excep
 
 **Tests** (`tests/integration/test_open_pattern_recommendation_pr.py`): happy path (seed + monkey-patched git/gh → assert YAML edit + DB writeback), endpoint `tier1_regressed` denial, endpoint stale-row sweep.
 
+**UI surface** (Track C-2). The Patterns tab renders a per-rec Ship-to-PR control inside every active rec card where `r.rule == 'exclusion_pattern' AND r.decision.decision == 'accepted'`. Three mutually exclusive render states:
+
+- **Shipped** — `r.decision.pr_number IS NOT NULL`. Green badge linking to `r.decision.pr_url` (the canonical link the worker wrote). No button.
+- **Shippable** — `latest_simulation_run.status='succeeded'`, `tier1_regressed=False`, `runs_agree=True`, and `simulation_deltas_by_rec` has this rec. Renders `<button class="ship-btn">Ship to PR</button>` inside a `.ship-control` wrapper carrying `data-decision-id`. When `min(coverage_filings) < 3` across this rec's metrics, the wrapper also carries `data-weak-coverage="1"` and renders a `.ship-admin-override-input` checkbox; clicking the button without ticking it leaves a "Tick the admin override to proceed." warning and never POSTs.
+- **Not-shippable** — sim missing / failed / regressed / runs-disagree / this rec absent from the latest sim. Renders an explainer line citing the specific reason and a `Ship unavailable` badge. No button.
+
+The route handler (`src/web/routes/review_unified.py::stats`) passes three template kwargs that drive the surface: `ship_min_coverage_by_rec` (`dict[str, int]` keyed by `str(decision_id)`; min `coverage_filings` across each rec's metrics), `ship_running` and `ship_running_run_id` (concurrency probe; mirrors the simulation surface, currently informational only). `r.decision.pr_number` / `r.decision.pr_url` are read directly from the rec dict — `db.get_recommendation_decisions` projects both columns and `compute_recommendations` attaches the raw decision row.
+
+JS handlers in `src/web/static/js/analytics.js` (`triggerShip`, `pollShipStatus`) mirror the simulation surface but operate per-card. Click delegation is on `document` for `.ship-btn`. Polling status updates land in the `.ship-status` span scoped to the clicked card; the page reloads 1.5s after `status='succeeded'` so the shipped-state badge renders from server-rendered state. Failures re-enable the button so the operator can retry. Error switch covers `ship_already_running`, `tier1_regressed`, `runs_disagree`, `weak_coverage`, `no_covering_simulation`, `no_accepted_recs`, `reviewer_name_required` — must match the endpoint's spelling above.
+
+No localStorage keys — ship state is fully server-rendered on every page load. The button never renders for rules other than `exclusion_pattern` (matches the script's Phase-1 scope).
+
 ## Image-confirmation reviewer notes
 
 `v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.
