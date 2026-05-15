@@ -481,8 +481,22 @@ def evaluate_criteria(
     cache_reads: int,
     total_cost_usd: float,
     cost_budget_usd: float,
+    input_tokens: int = 0,
 ) -> list[CriterionResult]:
-    """Evaluate C1–C7 against the accumulated rows and cost metrics."""
+    """Evaluate C1–C8 against the accumulated rows and cost metrics.
+
+    ``cache_reads`` and ``input_tokens`` are token counts (cache-read tokens
+    and fresh input tokens respectively); C6 reports the token-weighted hit
+    rate ``cache_reads / (cache_reads + input_tokens)`` matching Anthropic's
+    per-call client logs. ``total_calls`` is the classify_segment call
+    count (used by C5).
+
+    gh-626: prior to this change, ``cache_reads`` was a call-equivalent
+    proxy and C6 divided it by ``total_calls``, producing meaningless
+    ratios. Callers may continue passing ``cache_reads`` alone (default
+    ``input_tokens=0`` keeps the old single-arg signature working in
+    tests that never asserted on the C6 value).
+    """
     tier1 = _get_tier1_metrics()
     prf = per_metric_prf(rows)
 
@@ -667,14 +681,18 @@ def evaluate_criteria(
     )
     results.append(c5)
 
-    # C6 — cache hit rate ≥ 85% (informational).
-    cache_rate = cache_reads / total_calls if total_calls > 0 else 0.0
+    # C6 — token-weighted cache hit rate ≥ 85% (informational).
+    # cache_reads and input_tokens are both token counts; the ratio
+    # cache_reads / (cache_reads + input_tokens) matches Anthropic's
+    # per-call client log (gh-626 fix).
+    total_input_tokens = cache_reads + input_tokens
+    cache_rate = cache_reads / total_input_tokens if total_input_tokens > 0 else 0.0
     c6 = CriterionResult(
         id="C6",
-        description="Cache hit rate ≥ 85% (informational)",
+        description="Token-weighted cache hit rate ≥ 85% (informational)",
         hard=False,
         passed=cache_rate >= 0.85,
-        detail=f"{cache_reads}/{total_calls} cached = {cache_rate:.1%}",
+        detail=(f"{cache_reads}/{total_input_tokens} cached tokens = {cache_rate:.1%}"),
         value=round(cache_rate, 4),
         threshold=0.85,
     )
@@ -1132,24 +1150,10 @@ def run_eval(
 
     partial_fh.close()
 
-    # Compute cache_reads from token totals now that the loop is complete.
-    # cache_read_total is in tokens; we convert to a call-equivalent count
-    # by prorating against total_calls. A filing whose cache_read token count
-    # is > 0 "used the cache". We estimate the per-call fraction by assuming
-    # each call contributes equally. The true per-call count is not returned by
-    # evaluate_filing_pipeline, so we use: cache_reads ≈ total_calls if
-    # cache_read_total > 0 else 0 at the filing level. A more precise
-    # approximation: if cache_read_total / (input_tokens_total or 1) ≥ 0.5,
-    # we treat the filing-level bucket as "cached". We bucket at the filing
-    # level using the per-filing cache_read contribution tracked in the loop —
-    # but since we only have totals here, approximate as:
-    #   cache_reads = round(total_calls * cache_read_fraction)
-    # where cache_read_fraction = cache_read_total / max(input_tokens_total, 1).
-    if input_tokens_total > 0:
-        cache_read_fraction = cache_read_total / input_tokens_total
-        cache_reads = round(total_calls * cache_read_fraction)
-    else:
-        cache_reads = 0
+    # gh-626: cache_reads is now the raw cache-read token count;
+    # C6 computes the token-weighted hit rate from cache_read_total and
+    # input_tokens_total directly (no call-equivalent proxy).
+    cache_reads = cache_read_total
 
     run_finished_at = datetime.now(UTC).isoformat()
     for r in rows:
@@ -1210,6 +1214,7 @@ def run_eval(
         cache_reads=cache_reads,
         total_cost_usd=total_cost_usd,
         cost_budget_usd=cost_budget_usd,
+        input_tokens=input_tokens_total,
     )
 
     hard_failures = [c for c in criteria if c.hard and not c.passed]
@@ -1220,6 +1225,11 @@ def run_eval(
     prf_reviewed = per_metric_prf(rows, "reviewed")
     prf_merged = per_metric_prf(rows)
 
+    # gh-626: selected_* lists derive from the post-dedup enriched corpus
+    # so summary.json consumers see what actually ran (was inconsistent
+    # with per_metric.n which counted only deduped rows).
+    enriched_gold = [p.selection for p in enriched if p.selection.corpus == "gold"]
+    enriched_reviewed = [p.selection for p in enriched if p.selection.corpus == "reviewed"]
     summary = {
         "run_id": run_id,
         "run_started_at": run_started_at,
@@ -1228,10 +1238,10 @@ def run_eval(
         "go_no_go": go_no_go,
         "gold_only": gold_only,
         "limit": limit,
-        "selected_gold_filings": [f.filing_url for f in gold_filings],
+        "selected_gold_filings": [f.filing_url for f in enriched_gold],
         "selected_reviewed_filings": [
             {"filing_url": f.filing_url, "filing_id": f.filing_id, "company": f.company}
-            for f in reviewed_filings
+            for f in enriched_reviewed
         ],
         "metric_ids": metric_ids,
         "per_metric": {

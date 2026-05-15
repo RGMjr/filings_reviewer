@@ -741,24 +741,26 @@ def test_dedup_by_filing_id_seen_ids_excludes_pre_existing(cli):
 
 
 def test_token_aggregation_cache_reads_computed(cli):
-    """cache_reads is proportional to cache_read / input_tokens ratio in summary cost."""
-    # The cache_reads field in the live path is computed from token totals
-    # after the loop. We test the formula by calling evaluate_criteria with
-    # a known cache_reads value — the live computation feeds it.
-    # Direct test: evaluate_criteria with explicit cache_reads reports correctly.
+    """C6 reports the token-weighted cache hit rate from cache_reads + input_tokens.
+
+    Updated for gh-626: C6 is now cache_reads / (cache_reads + input_tokens)
+    rather than the broken cache_reads / total_calls.
+    """
     rows = [_make_row(cli, filing_url=f"https://example.com/f{i}.htm") for i in range(6)]
-    # 9 out of 10 calls "cached" → 90% hit rate → C6 passes.
+    # 9 cached tokens out of 10 total inputs → 90% hit rate → C6 passes.
     criteria = cli.evaluate_criteria(
         rows,
         [],
         total_calls=10,
         cache_reads=9,
+        input_tokens=1,
         total_cost_usd=1.0,
         cost_budget_usd=25.0,
     )
     c6 = next(c for c in criteria if c.id == "C6")
     assert c6.passed is True
-    assert "90.0%" in c6.detail or "9/10" in c6.detail
+    assert c6.value == 0.9
+    assert "90.0%" in c6.detail
 
 
 def test_token_aggregation_zero_cache_reads_fails_c6(cli):
@@ -866,3 +868,92 @@ def test_c8_present_in_criteria_list(cli):
     ids = [c.id for c in criteria]
     assert "C8" in ids
     assert "C3_aggregate_recall_delta" in ids  # informational demoted criterion
+
+
+# ---------------------------------------------------------------------------
+# gh-626: C6 cache hit rate fix (token-weighted ratio)
+# ---------------------------------------------------------------------------
+
+
+def test_c6_cache_hit_rate_is_token_weighted(cli):
+    """C6 reports cache_reads / (cache_reads + input_tokens), bounded to [0, 1].
+
+    Regression guard for the prior bug where C6 divided cache-read *tokens*
+    by call *count*, producing ratios like 545,704% (or, in the proxy
+    formulation, unbounded values when cache_read_total exceeded
+    input_tokens_total — which is the common case with prompt caching).
+    """
+    rows = [_make_row(cli)]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=100,
+        cache_reads=850_000,  # cache-read tokens
+        input_tokens=150_000,  # fresh input tokens
+        total_cost_usd=1.0,
+        cost_budget_usd=25.0,
+    )
+    c6 = next(c for c in criteria if c.id == "C6")
+    # 850_000 / (850_000 + 150_000) = 0.85 — at threshold.
+    assert c6.value == 0.85
+    assert c6.passed is True
+    assert 0.0 <= c6.value <= 1.0
+
+
+def test_c6_below_threshold_fails(cli):
+    """C6 fails when cache hit rate falls below the 85% target."""
+    rows = [_make_row(cli)]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=100,
+        cache_reads=500_000,
+        input_tokens=500_000,  # 50% hit rate
+        total_cost_usd=1.0,
+        cost_budget_usd=25.0,
+    )
+    c6 = next(c for c in criteria if c.id == "C6")
+    assert c6.value == 0.5
+    assert c6.passed is False
+
+
+def test_c6_realistic_high_cache_ratio_bounds_below_one(cli):
+    """C6 stays in [0,1] even when cache_reads >> input_tokens.
+
+    Mirror of the real 2026-05-14 v2 run: 310M cache reads vs 9.6M
+    input tokens — the broken proxy gave 32.3 (3231%); the token-weighted
+    formula gives 0.97.
+    """
+    rows = [_make_row(cli)]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=56_905,
+        cache_reads=310_533_111,
+        input_tokens=9_630_602,
+        total_cost_usd=194.79,
+        cost_budget_usd=25.0,
+    )
+    c6 = next(c for c in criteria if c.id == "C6")
+    assert 0.96 <= c6.value <= 0.98
+    assert c6.passed is True
+
+
+def test_c6_default_input_tokens_falls_back_to_full_credit(cli):
+    """Callers that don't pass input_tokens (legacy tests) get a sane default.
+
+    When input_tokens defaults to 0 and cache_reads > 0, the ratio is 1.0
+    (100% of accounted tokens are cached). This preserves the contract for
+    existing tests that pass only cache_reads without asserting on c6.value.
+    """
+    rows = [_make_row(cli)]
+    criteria = cli.evaluate_criteria(
+        rows,
+        [],
+        total_calls=10,
+        cache_reads=9,
+        total_cost_usd=1.0,
+        cost_budget_usd=25.0,
+    )
+    c6 = next(c for c in criteria if c.id == "C6")
+    assert c6.value == 1.0
