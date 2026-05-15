@@ -195,6 +195,98 @@
             });
     }
 
+    // ----------------------------------------------------------------
+    // Text-pattern simulation (Track C-1): parallel handler for the
+    // "Simulate Recommendations" button on the same page. Posts to
+    // /api/v2/extraction/simulate-accepted and polls
+    // /api/v2/extraction/simulation-runs/<uuid>/status. Reloads the page
+    // on success so the Patterns tab re-renders with the per-rec deltas.
+    // ----------------------------------------------------------------
+
+    function setSimulationStatusText(html) {
+        const el = $("#simulation-status");
+        if (el) el.innerHTML = html;
+    }
+
+    function pollSimulationStatus(runId) {
+        fetch(`/api/v2/extraction/simulation-runs/${runId}/status`, { credentials: "same-origin" })
+            .then((r) => {
+                if (!r.ok) throw new Error(`status HTTP ${r.status}`);
+                return r.json();
+            })
+            .then((row) => {
+                if (row.status === "running") {
+                    setSimulationStatusText('<span class="text-warning">⏳ Simulation in progress…</span>');
+                    setTimeout(() => pollSimulationStatus(runId), POLL_INTERVAL_MS);
+                } else if (row.status === "succeeded") {
+                    const n = row.num_recs_simulated || 0;
+                    const m = row.num_companies_validated || 0;
+                    setSimulationStatusText(
+                        `<span class="text-success">✓ Simulation complete (${n} recs across ${m} companies). Reloading…</span>`,
+                    );
+                    setTimeout(() => window.location.reload(), 1500);
+                } else if (row.status === "failed") {
+                    const err = row.error || "(no error message)";
+                    setSimulationStatusText(`<span class="text-danger">✗ Simulation failed: ${err}</span>`);
+                } else {
+                    setSimulationStatusText(
+                        `<span class="text-muted">Unknown status: ${row.status}</span>`,
+                    );
+                }
+            })
+            .catch((err) => {
+                setSimulationStatusText(
+                    `<span class="text-danger">Polling error: ${err.message}. Reload to recheck.</span>`,
+                );
+            });
+    }
+
+    function triggerSimulation() {
+        const reviewer = window.requireReviewerName ? window.requireReviewerName() : null;
+        if (!reviewer) return;
+
+        const btn = $("#btn-simulate-accepted");
+        if (btn) btn.disabled = true;
+        setSimulationStatusText('<span class="text-warning">Starting simulation…</span>');
+
+        fetch("/api/v2/extraction/simulate-accepted", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reviewer_id: reviewer }),
+        })
+            .then(async (r) => {
+                const body = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    if (body.error === "simulation_already_running") {
+                        setSimulationStatusText(
+                            `<span class="text-warning">A simulation is already running (id ${body.running_run_id}). Polling…</span>`,
+                        );
+                        pollSimulationStatus(body.running_run_id);
+                    } else if (body.error === "no_accepted_recs") {
+                        setSimulationStatusText(
+                            `<span class="text-warning">No accepted recommendations to simulate.</span>`,
+                        );
+                    } else if (body.error === "reviewer_name_required") {
+                        setSimulationStatusText(
+                            `<span class="text-danger">Reviewer name required. Reload and set your name.</span>`,
+                        );
+                    } else {
+                        setSimulationStatusText(
+                            `<span class="text-danger">Failed (HTTP ${r.status}): ${body.error || "unknown"}</span>`,
+                        );
+                    }
+                    return;
+                }
+                setSimulationStatusText('<span class="text-warning">⏳ Simulation queued — polling…</span>');
+                pollSimulationStatus(body.run_id);
+            })
+            .catch((err) => {
+                setSimulationStatusText(`<span class="text-danger">Network error: ${err.message}</span>`);
+                if (btn) btn.disabled = false;
+            });
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         const btn = $("#btn-update-image-classifier");
         if (btn) btn.addEventListener("click", triggerRetrain);
@@ -213,6 +305,15 @@
         if (textStatusEl) {
             const runningId = textStatusEl.dataset.runningId;
             if (runningId) pollTextAnalysisStatus(runningId);
+        }
+
+        const simBtn = $("#btn-simulate-accepted");
+        if (simBtn) simBtn.addEventListener("click", triggerSimulation);
+
+        const simStatusEl = $("#simulation-status");
+        if (simStatusEl) {
+            const runningId = simStatusEl.dataset.runningId;
+            if (runningId) pollSimulationStatus(runningId);
         }
 
         // ----------------------------------------------------------------

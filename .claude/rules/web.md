@@ -116,6 +116,35 @@ The same `CATEGORY_ACTIONS` dict also drives the Reject-form dropdown in `unifie
 
 **Decisions on category-level recommendation cards are NOT persisted.** Category cards are render-only and do not participate in the `text_pattern_recommendation_decisions` accept/dismiss/defer flow — categories are run-scoped aggregations without a stable per-card `decision_key`.
 
+### Text-pattern simulation endpoints
+
+Powers the **Simulate Recommendations** card on `/v2/review/stats` (Summary tab) and the per-rec deltas overlay on the Patterns tab. Lets an admin preview the gold-standard R/P/F1 impact of every accepted-but-unshipped recommendation in one batch before a ship-to-PR PR is opened. Read-only: the script writes to two sim tables only and does not mutate `config/metric_keywords.yaml`, `text_pattern_recommendation_decisions`, or any extraction state.
+
+- `POST /api/v2/extraction/simulate-accepted` — kicks off `scripts/simulate_text_pattern_changes.py` as a detached subprocess via `_spawn_simulation_runner`. Returns `202 + {run_id, status: 'running'}`. Three server-side gates fire in this order (after a stale-row sweep flips `status='running' AND started_at < NOW() - INTERVAL '1 hour'` to `failed`):
+  - `_require_reviewer_id` → 403 `{error: "reviewer_name_required"}`.
+  - **Concurrency**: any `text_pattern_simulation_runs` row with `status='running'` → 409 `{error: "simulation_already_running", running_run_id}`.
+  - **Affected-recs**: zero rows with `decision='accepted' AND pr_number IS NULL` in `text_pattern_recommendation_decisions` → 409 `{error: "no_accepted_recs"}`.
+- `GET /api/v2/extraction/simulation-runs/<uuid:run_id>/status` — polled by `static/js/analytics.js` every 5s. Returns the `text_pattern_simulation_runs` row plus a `deltas` array (every `text_pattern_simulation_deltas` row for the run). Decimals are coerced to float and UUID/timestamp fields stringified at the boundary. Returns 404 on unknown id; the `<uuid:>` converter rejects non-UUID paths.
+
+**Schema** (timestamp migration `sql/202605121359_add_text_pattern_simulation_runs.sql`, PR #609):
+
+- `text_pattern_simulation_runs` — one row per click. `status IN ('running','succeeded','failed')`. Carries `tier1_presence_recall_baseline`/`_patched`, `tier2_presence_recall_baseline`/`_patched`, `tier1_regressed`, `runs_agree`, `config_snapshot_hash`, `num_recs_simulated`, `num_companies_validated`, `triggered_by`, `error`.
+- `text_pattern_simulation_deltas` — `(run_id, recommendation_decision_id, metric_id)` shape with `baseline_*` / `patched_*` recall/precision/f1 and `coverage_filings` / `coverage_facts`. `recommendation_decision_id` FK is `ON DELETE SET NULL`, so a rec that gets un-accepted post-run leaves dangling deltas — those are skipped at render time because there's no card to attach to.
+
+**Template kwargs passed by `stats()`** (all explicit-None when no run exists, because the project enables Jinja `StrictUndefined`):
+
+- `latest_simulation_run` — most recent `text_pattern_simulation_runs` row (any status); `None` until the first click.
+- `simulation_running`, `simulation_running_run_id` — concurrency probe results, drive the in-flight ⏳ marker on `#simulation-status` via `data-running-id`.
+- `accepted_unshipped_rec_count` — drives the disabled state on `#btn-simulate-accepted` and the "N accepted recommendations ready to simulate" body line.
+- `simulation_deltas_by_rec` — `dict[str, list[dict]]` keyed by `str(text_pattern_recommendation_decisions.id)`, populated only when the latest run has `status='succeeded'`. Empty `{}` otherwise. The template indexes via `r.decision.id | string` — only accepted recs have `r.decision`, and only accepted recs feed the simulation, so the lookup surface is exact.
+- `simulation_stale` — `True` when the latest succeeded run's `config_snapshot_hash` differs from current `compute_config_hash()` (run-scoped, not per-card; surfaces as one badge per `<details>` block on the Patterns tab).
+
+**Coverage badge thresholds**: `coverage_filings < 3` → red "thin", `3..10` → amber "medium", `> 10` → green "strong". Tier-1 regression is foreshadowed via a red `alert alert-danger` banner above the per-rec deltas table — the (future) Ship-to-PR button (Track C-2 / Track D) will be disabled when `tier1_regressed=True`.
+
+**No localStorage keys** — simulation state is fully server-rendered on every page load; the JS only writes `#simulation-status .innerHTML` while polling.
+
+Manual escape hatch for a stuck row (SIGKILL / OOM leaks past Python so terminal status never lands): the 1-hour sweep on the next click clears it, or `UPDATE text_pattern_simulation_runs SET status='failed', error='manual cleanup', completed_at=NOW() WHERE id = '<uuid>'`.
+
 ## Image-confirmation reviewer notes
 
 `v2_image_metric_confirmations` has a `reviewer_notes TEXT` column (nullable, Phase 4a). Free-text observation captured per-batch — one `#image-reviewer-notes` textarea on the image card, applied to every per-metric row submitted in the same POST. Validated at the API layer to ≤1000 chars; mirrors the text-side `v2_review_decisions.reviewer_notes` contract. JS clears the textarea after a successful submit. Bulk-reject and the "Reject all (no relevant metrics)" sentinel writes leave the column NULL — by design, no free-text capture for bulk actions. The deferred LLM "Top Reviewer Themes" panel (Phase 4b) will read this column for image-side themes.

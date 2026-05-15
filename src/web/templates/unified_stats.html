@@ -223,6 +223,97 @@
       </div>
     </div>
 
+    {# Simulate Recommendations card (Track C-1). Wires Track B's
+       POST /api/v2/extraction/simulate-accepted and the polling status endpoint
+       into a Summary-tab card mirroring the Text Pattern Analysis card above.
+       Per-rec deltas render under each accepted rec on the Patterns tab; this
+       card is the run trigger + last-run summary. #}
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card border-info">
+          <div class="card-body">
+            <div class="row align-items-center">
+              <div class="col-md-7">
+                <h5 class="card-title mb-2">Simulate Recommendations</h5>
+                <p class="mb-1 small">
+                  {% if latest_simulation_run %}
+                    <strong>Last simulation:</strong>
+                    {% if latest_simulation_run.completed_at %}
+                      {{ latest_simulation_run.completed_at.strftime('%Y-%m-%d %H:%M UTC') }}
+                    {% else %}
+                      {{ latest_simulation_run.started_at.strftime('%Y-%m-%d %H:%M UTC') }} (started)
+                    {% endif %}
+                    <span class="badge bg-{% if latest_simulation_run.status == 'succeeded' %}success{% elif latest_simulation_run.status == 'failed' %}danger{% else %}warning text-dark{% endif %} ms-1">
+                      {{ latest_simulation_run.status }}
+                    </span>
+                    {% if latest_simulation_run.triggered_by %}
+                    <span class="text-muted">(by {{ latest_simulation_run.triggered_by }})</span>
+                    {% endif %}
+                  {% else %}
+                    <strong>Last simulation:</strong>
+                    <span class="text-muted">never (no simulations recorded)</span>
+                  {% endif %}
+                </p>
+                {% if latest_simulation_run and latest_simulation_run.status == 'succeeded' %}
+                  {% set b = latest_simulation_run.tier1_presence_recall_baseline or 0 %}
+                  {% set p = latest_simulation_run.tier1_presence_recall_patched or 0 %}
+                  {% set d = p - b %}
+                  <p class="mb-0 small">
+                    <strong>Tier-1 presence recall:</strong>
+                    {{ '%.3f' | format(b) }} → {{ '%.3f' | format(p) }}
+                    <span class="{% if latest_simulation_run.tier1_regressed %}text-danger fw-bold{% elif d > 0 %}text-success{% else %}text-muted{% endif %}">
+                      ({{ '%+.3f' | format(d) }})
+                    </span>
+                    <span class="text-muted ms-2">runs_agree: {{ 'yes' if latest_simulation_run.runs_agree else 'no' }}</span>
+                  </p>
+                  <p class="mb-0 small text-muted">
+                    {{ latest_simulation_run.num_recs_simulated or 0 }} recs across
+                    {{ latest_simulation_run.num_companies_validated or 0 }} companies
+                  </p>
+                {% elif latest_simulation_run and latest_simulation_run.status == 'failed' and latest_simulation_run.error %}
+                  <p class="mb-0 small text-danger">
+                    <strong>Error:</strong> {{ latest_simulation_run.error }}
+                  </p>
+                {% endif %}
+                <p class="mb-0 small">
+                  <strong>Accepted recommendations ready to simulate:</strong>
+                  {{ accepted_unshipped_rec_count }}
+                </p>
+                <p class="mb-0 small text-muted">
+                  Runs <code>scripts/simulate_text_pattern_changes.py</code> over every accepted
+                  recommendation that has not yet shipped to a PR. Read-only — no config or
+                  extraction state is mutated; per-rec R/P/F1 deltas and gold-standard coverage
+                  appear on the Patterns tab when the run completes.
+                </p>
+                <div id="simulation-status" class="small mt-2"
+                     {% if simulation_running %}data-running-id="{{ simulation_running_run_id }}"{% endif %}>
+                  {% if simulation_running %}
+                  <span class="text-warning">⏳ Simulation in progress — polling for completion…</span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                <button id="btn-simulate-accepted"
+                        class="btn btn-primary"
+                        {% if simulation_running or accepted_unshipped_rec_count == 0 %}disabled{% endif %}>
+                  Simulate Recommendations
+                </button>
+                <div class="text-muted small mt-1">
+                  {% if simulation_running %}
+                    Simulation already running — waiting on it to finish.
+                  {% elif accepted_unshipped_rec_count == 0 %}
+                    Need at least 1 accepted recommendation.
+                  {% else %}
+                    Ready — clicking will start a simulation.
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     {# Side-by-side aggregate cards: text facts + image confirmations #}
     <div class="row mb-4">
       <div class="col-lg-6 mb-3">
@@ -1680,6 +1771,67 @@
                                       maxlength="1000" rows="2"
                                       placeholder="Optional note (≤1000 chars)"></textarea>
                           </div>
+                        {% endif %}
+                        {# Simulation impact overlay (Track C-1). Renders only
+                           when the rec has a persisted decision (decision-id is
+                           the FK target on text_pattern_simulation_deltas) and
+                           the latest simulation produced deltas for it. #}
+                        {% if r.decision and simulation_deltas_by_rec.get(r.decision.id|string) %}
+                        {% set deltas = simulation_deltas_by_rec[r.decision.id|string] %}
+                        <details class="mt-2 small">
+                          <summary class="text-muted" style="cursor:pointer;">
+                            Simulation impact ({{ deltas|length }} metric{{ '' if deltas|length == 1 else 's' }})
+                          </summary>
+                          <div class="mt-2">
+                            {% if latest_simulation_run and latest_simulation_run.tier1_regressed %}
+                            <div class="alert alert-danger small mb-2 py-1">
+                              Tier-1 presence-recall regressed — Ship-to-PR will be disabled when Track D ships.
+                            </div>
+                            {% endif %}
+                            {% if simulation_stale %}
+                            <span class="badge bg-warning text-dark mb-2">Sim is stale (config changed since)</span>
+                            {% endif %}
+                            <table class="table table-sm mb-0">
+                              <thead>
+                                <tr>
+                                  <th>Metric</th>
+                                  <th>Baseline R</th>
+                                  <th>Patched R</th>
+                                  <th>Δ R</th>
+                                  <th>Δ F1</th>
+                                  <th>Coverage</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for delta in deltas %}
+                                {% set dr = (delta.patched_recall or 0) - (delta.baseline_recall or 0) %}
+                                {% set df1 = (delta.patched_f1 or 0) - (delta.baseline_f1 or 0) %}
+                                <tr>
+                                  <td><code>{{ delta.metric_id }}</code></td>
+                                  <td>{{ '%.3f' | format(delta.baseline_recall or 0) }}</td>
+                                  <td>{{ '%.3f' | format(delta.patched_recall or 0) }}</td>
+                                  <td class="{% if dr < 0 %}text-danger{% elif dr > 0 %}text-success{% else %}text-muted{% endif %}">
+                                    {{ '%+.3f' | format(dr) }}
+                                  </td>
+                                  <td class="{% if df1 < 0 %}text-danger{% elif df1 > 0 %}text-success{% else %}text-muted{% endif %}">
+                                    {{ '%+.3f' | format(df1) }}
+                                  </td>
+                                  <td>
+                                    {% set cf = delta.coverage_filings or 0 %}
+                                    {% if cf < 3 %}
+                                      <span class="badge bg-danger">thin ({{ cf }} filings)</span>
+                                    {% elif cf <= 10 %}
+                                      <span class="badge bg-warning text-dark">medium ({{ cf }} filings)</span>
+                                    {% else %}
+                                      <span class="badge bg-success">strong ({{ cf }} filings)</span>
+                                    {% endif %}
+                                  </td>
+                                </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
                         {% endif %}
                       </div>
                       {% endif %}

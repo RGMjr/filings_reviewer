@@ -3387,6 +3387,118 @@ class DatabaseAdapter:
             return False, None
         return True, str(rows[0]["id"])
 
+    def get_last_simulation_run(self) -> dict | None:
+        """Most recent text_pattern_simulation_runs row, any status.
+
+        Unlike the analysis surface (which gates on status='succeeded' so the
+        Patterns tab can render finding tables), the stats card surfaces
+        running, failed, and succeeded states alike — operator needs to see
+        whether the last click errored. Decimals and UUID/timestamps are
+        normalized at the boundary so the template can render directly.
+        """
+        rows = self.query(
+            """
+            SELECT id, status, started_at, completed_at,
+                   num_recs_simulated, num_companies_validated,
+                   tier1_presence_recall_baseline, tier1_presence_recall_patched,
+                   tier2_presence_recall_baseline, tier2_presence_recall_patched,
+                   tier1_regressed, runs_agree, config_snapshot_hash,
+                   triggered_by, error
+              FROM text_pattern_simulation_runs
+             ORDER BY started_at DESC
+             LIMIT 1
+            """
+        )
+        if not rows:
+            return None
+        row = dict(rows[0])
+        row["id"] = str(row["id"])
+        for num_field in (
+            "tier1_presence_recall_baseline",
+            "tier1_presence_recall_patched",
+            "tier2_presence_recall_baseline",
+            "tier2_presence_recall_patched",
+        ):
+            if row.get(num_field) is not None:
+                row[num_field] = float(row[num_field])
+        return row
+
+    def is_simulation_running(self) -> tuple[bool, str | None]:
+        """Concurrency probe mirroring is_text_analysis_running().
+
+        Returns (True, run_id) if any text_pattern_simulation_runs row is
+        currently in 'running' status, else (False, None).
+        """
+        rows = self.query(
+            """
+            SELECT id FROM text_pattern_simulation_runs
+             WHERE status = 'running'
+             LIMIT 1
+            """
+        )
+        if not rows:
+            return False, None
+        return True, str(rows[0]["id"])
+
+    def count_accepted_unshipped_recs(self) -> int:
+        """Recs eligible to feed the next simulation.
+
+        Mirrors the API gate in /api/v2/extraction/simulate-accepted — only
+        accepted decisions that have NOT been shipped to a PR (pr_number IS
+        NULL) are simulatable. Drives the Simulate card's disabled state and
+        the "N accepted recommendations ready to simulate" body line.
+        """
+        rows = self.query(
+            """
+            SELECT COUNT(*) AS n
+              FROM text_pattern_recommendation_decisions
+             WHERE decision = 'accepted'
+               AND pr_number IS NULL
+            """
+        )
+        return int(rows[0]["n"]) if rows else 0
+
+    def get_simulation_deltas_grouped(self, run_id: str) -> dict[str, list[dict]]:
+        """Per-recommendation deltas for the Patterns-tab overlay.
+
+        Returns a dict keyed by str(recommendation_decision_id) mapping to a
+        list of delta-row dicts (ordered by metric_id). Rows whose FK was
+        nulled out (rec was undone post-run; FK is ON DELETE SET NULL) are
+        skipped because they have no card to attach to. Decimals are coerced
+        to float at the boundary.
+        """
+        rows = self.query(
+            """
+            SELECT id, recommendation_decision_id, metric_id,
+                   baseline_recall, baseline_precision, baseline_f1,
+                   patched_recall, patched_precision, patched_f1,
+                   coverage_filings, coverage_facts
+              FROM text_pattern_simulation_deltas
+             WHERE run_id = %(run_id)s
+             ORDER BY metric_id
+            """,
+            {"run_id": run_id},
+        )
+        grouped: dict[str, list[dict]] = {}
+        for r in rows:
+            d = dict(r)
+            if d.get("recommendation_decision_id") is None:
+                continue
+            d["id"] = str(d["id"])
+            d["recommendation_decision_id"] = str(d["recommendation_decision_id"])
+            for num in (
+                "baseline_recall",
+                "baseline_precision",
+                "baseline_f1",
+                "patched_recall",
+                "patched_precision",
+                "patched_f1",
+            ):
+                if d.get(num) is not None:
+                    d[num] = float(d[num])
+            grouped.setdefault(d["recommendation_decision_id"], []).append(d)
+        return grouped
+
     def get_text_decision_metric_summary(self, run_id: str) -> list[dict]:
         """All text_decision_metric_summary rows for a given run, ordered by
         rejection volume DESC so the UI can render highest-pain metrics first.
