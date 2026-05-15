@@ -37,6 +37,12 @@ charset-normalizer>=3.3.0
 PyYAML>=6.0
 types-PyYAML>=6.0
 
+# Round-trip YAML editor — used by scripts/open_pattern_recommendation_pr.py to
+# patch config/metric_keywords.yaml in-place while preserving comments + key
+# ordering. PyYAML cannot preserve comments; ruamel.yaml is the standard
+# round-trip alternative.
+ruamel.yaml>=0.18.0
+
 # Faster HTML/XML parser for BeautifulSoup and extraction_v2
 # Required by extraction_v2/stages/ingestion.py for 10x faster parsing
 lxml>=6.1.0

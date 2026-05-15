@@ -49,7 +49,9 @@ from src.infra.logging_config import configure_logging
 from src.infra.sec_client import SECClient
 from src.ml.retrain_runner import (
     claim_next_queued_retrain,
+    claim_next_queued_ship_pr,
     run_retrain,
+    run_ship_pr,
 )
 from src.universe.onboarding import (
     FORM_TYPE_BUNDLES,
@@ -652,6 +654,13 @@ def main() -> int:
         retrain_row = claim_next_queued_retrain(db)
         if retrain_row is not None:
             run_retrain(db, retrain_row)
+            continue
+
+        # Ship-to-PR queue (Track D). UI-blocking like retrain — the admin
+        # is watching for a PR URL — so drain ahead of long-running batches.
+        ship_pr_row = claim_next_queued_ship_pr(db)
+        if ship_pr_row is not None:
+            run_ship_pr(db, ship_pr_row)
             continue
 
         batch_row = claim_next_queued_batch(db)
