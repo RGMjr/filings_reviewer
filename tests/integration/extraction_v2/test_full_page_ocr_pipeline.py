@@ -172,8 +172,13 @@ def test_full_page_ocr_path_a_synthesizes_image_ocr_segments(
 ) -> None:
     """End-to-end: 6 page-shaped images → triage promotes to FULL_PAGE_SCAN
     → OCR synthesizes ``image_ocr`` segments and populates ``ocr_text``."""
-    # Vision-API gate would otherwise auto-disable image/chart extraction.
+    # gh-619 vision-API gate is provider-aware: full-page-OCR provider (gemini),
+    # prescan provider (gemini), and chart-fallback provider (anthropic) each
+    # need their respective keys for Stage 5 to enable. Mock all three — the
+    # vision_client is monkey-patched below so no real API calls happen.
     monkeypatch.setenv("OPENAI_API_KEY", "test-fake-key-mock-handles-calls")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-fake-key-mock-handles-calls")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-fake-key-mock-handles-calls")
 
     config = PipelineConfig(
         enable_full_page_ocr=True,
