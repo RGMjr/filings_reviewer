@@ -1,5 +1,10 @@
 # LLM presence classifier — Phase-1 dual-corpus smoke eval
 
+> **Status (2026-05-15): CLOSED for enrolled Tier-1 metrics.** Phase-2 verdict
+> is final — see [`docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`](../analysis/llm-presence-classifier-rollout-closeout-20260515.md).
+> This runbook is retained for reference and for the **Option B carve-out**
+> (author prompts for the 5 unenrolled Tier-1 metrics) if ever activated.
+
 `scripts/run_phase1_eval.py` is the qualitative pre-flight that runs
 *before* paying for the larger held-out + reviewed-corpus quantitative
 eval. It surfaces prompt failures, parse errors, and disagreement

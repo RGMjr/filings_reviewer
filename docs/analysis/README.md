@@ -96,10 +96,19 @@ Phase-2 quantitative gate v2 run (`run_id 20260514Trerun`) with C3 reframed (clf
 
 ---
 
+### llm-presence-classifier-rollout-closeout-20260515.md
+
+**Status**: Decision memo — Option A adopted
+**Date**: 2026-05-15
+
+Closeout for the LLM presence classifier rollout on the 10 enrolled Tier-1 metrics. Decision: Option A — rollout closed, `presence_classifier_enabled` stays at default `False` indefinitely, classifier code retained as dormant infrastructure. Option B carve-out (5 unenrolled Tier-1 metrics: `cm_balance_by_cohort`, `cm_customers_period_end_by_tenure`, `cm_gross_margin_by_cohort`, `cm_new_customers_acquired`, `cm_transactions_by_cohort`) is the only legitimate future activation path; tracking issue filed separately. Phase-1 and Phase-2 runbooks gain a "Status: CLOSED" banner. CLAUDE.md updated to reflect the closed status.
+
+---
+
 ## Archive
 
 Completed tasks, superseded reports, and research spikes are in `docs/archive/analysis/`. This includes all HRV-3 through HRV-6 validation docs, IMG-1-x completion summaries, GR-series validation reports, VIS-series chart extraction research, the beyond-SEC spike, and the 2025-12-26 comprehensive evaluation plan.
 
 ---
 
-**Last Updated**: 2026-05-14
+**Last Updated**: 2026-05-15

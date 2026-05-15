@@ -1,5 +1,13 @@
 # LLM presence classifier — Phase-2 held-out + reviewed-corpus quantitative eval
 
+> **Status (2026-05-15): CLOSED for enrolled Tier-1 metrics.** Rollout closed
+> per Option A. See [`docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`](../analysis/llm-presence-classifier-rollout-closeout-20260515.md).
+> This runbook is retained as a record of the gate design and as the entry
+> point if the **Option B carve-out** (author prompts for the 5 unenrolled
+> Tier-1 metrics) is ever activated. The `presence_classifier_enabled` DB
+> flag stays at `False` indefinitely. Do NOT re-run this gate against the
+> currently enrolled set — its verdict is final.
+
 `scripts/run_phase2_quantitative_eval.py` is Gate 2 of 2 before flipping
 `presence_classifier_enabled` in production. Gate 1 (the qualitative smoke
 eval at `scripts/run_phase1_eval.py`) must pass first.

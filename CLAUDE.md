@@ -81,7 +81,7 @@ Metrics are classified into importance tiers based on analytical value. These ti
 - Extraction improvements (keywords, FP rules, value binding) should prioritize Tier 1 recall gaps first
 - Gold standard coverage expansion should target Tier 1 metrics with low coverage
 - Tier definitions live in `config/metric_keywords.yaml` (authoritative) and `src/gold_standard/v2_validator.py` (runtime)
-- **Phase-2 LLM presence classifier gate** (`scripts/run_phase2_quantitative_eval.py`) must pass (exit 0, go_no_go=GO) before flipping `presence_classifier_enabled` in production; run `python3 scripts/run_phase2_quantitative_eval.py --dry-run --gold-only` to validate corpus/label plumbing without API calls. See `docs/operations/llm-presence-classifier-phase2-quantitative-eval-runbook.md`.
+- **LLM presence classifier rollout: CLOSED for enrolled Tier-1 metrics (2026-05-15).** Phase-2 quantitative gate verdict was NO-GO on both live runs (2026-05-11 and 2026-05-14); the classifier catches zero positives the keyword path missed across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays at default `False` indefinitely. Code retained as dormant infrastructure. Option B carve-out (5 unenrolled Tier-1 metrics) is the only legitimate future activation path. Full record: `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
 
 ## Core Design Principles
 
