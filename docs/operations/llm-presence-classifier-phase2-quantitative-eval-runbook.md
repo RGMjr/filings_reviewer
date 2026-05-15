@@ -90,7 +90,7 @@ python3 scripts/run_phase2_quantitative_eval.py --gold-only --limit 1 --i-accept
 | C3 | At least one Tier-1 metric with kw recall < 0.95 has `clf_only_tp ≥ 3` AND `clf_only_precision ≥ 0.50` | metrics with headroom only | **Hard** |
 | C4 | No Tier-1 metric with classifier F1 < 0.40 (≥5-filing coverage) | all Tier-1 metrics | **Hard** |
 | C5 | Classifier error rate ≤ 0.5% of calls | hard cap | **Hard** |
-| C6 | Cache hit rate ≥ 85% | informational | No |
+| C6 | Token-weighted cache hit rate ≥ 85% (`cache_read / (cache_read + input_tokens)`) | informational | No |
 | C7 | Total cost ≤ `--cost-budget` USD (default $25) | informational | No |
 | C8 | Classifier-keyword agreement rate ≥ 85% across all (filing, metric) pairs | informational | No |
 | `C3_aggregate_recall_delta` | Aggregate Tier-1 classifier recall vs keyword recall (informational) | reported for triage | No |
