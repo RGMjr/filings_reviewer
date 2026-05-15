@@ -129,6 +129,9 @@ def _stub_analytics_helpers(mock_db) -> None:
     mock_db.count_accepted_unshipped_recs.return_value = 0
     mock_db.get_simulation_deltas_grouped.return_value = {}
 
+    # Track C-2 ship-to-PR probe (no ship in flight by default).
+    mock_db.is_ship_running.return_value = (False, None)
+
 
 def test_stats_renders_empty(client, mock_db):
     mock_db.get_v2_review_stats.return_value = _empty_text_data()
@@ -401,6 +404,8 @@ def test_stats_summary_renders_review_activity(client, mock_db):
     mock_db.is_simulation_running.return_value = (False, None)
     mock_db.count_accepted_unshipped_recs.return_value = 0
     mock_db.get_simulation_deltas_grouped.return_value = {}
+    # Track C-2 ship probe (no ship in flight).
+    mock_db.is_ship_running.return_value = (False, None)
 
     resp = client.get("/v2/review/stats")
     assert resp.status_code == 200
@@ -1610,7 +1615,7 @@ def test_stats_renders_tier1_regressed_banner(client, mock_db):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert "Tier-1 presence-recall regressed" in body
-    assert "Ship-to-PR will be disabled" in body
+    assert "Ship to PR is disabled below" in body
     # Coverage_filings=2 → red "thin" badge.
     assert "thin (2 filings)" in body
 
@@ -1779,3 +1784,243 @@ def test_simulate_button_data_running_id_set_when_running(client, mock_db):
     assert "Simulation in progress" in body
     # Button is disabled while a run is in flight.
     assert "Simulation already running" in body
+
+
+# --------------------------------------------------------------------
+# Track C-2 — Ship-to-PR button on Patterns tab
+# --------------------------------------------------------------------
+
+
+def _seed_ship_fixture(
+    mock_db,
+    *,
+    rule: str = "exclusion_pattern",
+    decision: str = "accepted",
+    coverage_filings: int = 5,
+    tier1_regressed: bool = False,
+    runs_agree: bool = True,
+    sim_status: str = "succeeded",
+    has_sim: bool = True,
+    include_in_sim: bool = True,
+    pr_number: int | None = None,
+    pr_url: str | None = None,
+) -> str:
+    """Common scaffold: one rec card with optional sim + delta state.
+
+    Returns the rec decision_id (uuid str) so tests can reference it in
+    assertions if needed.
+    """
+    import uuid as _uuid
+    from datetime import datetime
+
+    ts = datetime(2026, 5, 14, 10, 0, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {"wrong_metric": 18, "wrong_value": 13},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "segment_text",
+            "occurrence_count": 14,
+            "pct_of_decisions": 45.20,
+            "examples": [],
+        }
+    ]
+    decision_id = _uuid.uuid4()
+    # The decision_key surfaced by the recommendations engine differs by
+    # rule: exclusion_pattern uses the phrase, keyword_overlap uses a target
+    # metric id. For the non-exclusion test we still seed an accepted rec on
+    # cm_new_customers_acquired but with rule='keyword_overlap'; the
+    # corresponding decision_key needs to match a key that compute_recommendations
+    # will produce. For this test we keep the same phrase — the helper only
+    # cares that the rec card renders, not that the rule semantics fire.
+    decision_key = "accounts receivable" if rule == "exclusion_pattern" else "cm_arpu"
+    mock_db.get_recommendation_decisions.return_value = [
+        {
+            "id": decision_id,
+            "metric_id": "cm_new_customers_acquired",
+            "rule": rule,
+            "decision_key": decision_key,
+            "decision": decision,
+            "reviewer_id": "RGM",
+            "reviewer_note": None,
+            "pr_number": pr_number,
+            "pr_url": pr_url,
+            "created_at": ts,
+            "updated_at": ts,
+        }
+    ]
+    if has_sim:
+        sim_run_id = _uuid.uuid4()
+        mock_db.get_last_simulation_run.return_value = {
+            "id": str(sim_run_id),
+            "status": sim_status,
+            "started_at": ts,
+            "completed_at": ts,
+            "num_recs_simulated": 1,
+            "num_companies_validated": 5,
+            "tier1_presence_recall_baseline": 0.80,
+            "tier1_presence_recall_patched": 0.75 if tier1_regressed else 0.82,
+            "tier2_presence_recall_baseline": 0.70,
+            "tier2_presence_recall_patched": 0.71,
+            "tier1_regressed": tier1_regressed,
+            "runs_agree": runs_agree,
+            "config_snapshot_hash": None,
+            "triggered_by": "RGM",
+            "error": None,
+        }
+        if include_in_sim and sim_status == "succeeded":
+            mock_db.get_simulation_deltas_grouped.return_value = {
+                str(decision_id): [
+                    {
+                        "id": str(_uuid.uuid4()),
+                        "recommendation_decision_id": str(decision_id),
+                        "metric_id": "cm_new_customers_acquired",
+                        "baseline_recall": 0.500,
+                        "baseline_precision": 0.700,
+                        "baseline_f1": 0.583,
+                        "patched_recall": 0.600,
+                        "patched_precision": 0.700,
+                        "patched_f1": 0.646,
+                        "coverage_filings": coverage_filings,
+                        "coverage_facts": 12,
+                    }
+                ]
+            }
+        else:
+            mock_db.get_simulation_deltas_grouped.return_value = {}
+    mock_db.count_accepted_unshipped_recs.return_value = 1
+    return str(decision_id)
+
+
+def test_ship_button_renders_when_sim_ok_and_rec_accepted(client, mock_db):
+    """Sim healthy + accepted exclusion_pattern rec + coverage >=3 →
+    Ship button renders without admin-override checkbox."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+    _seed_ship_fixture(mock_db, coverage_filings=5)
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "ship-btn" in body
+    assert "Ship to PR" in body
+    assert "ship-admin-override-input" not in body
+    assert "Ship unavailable" not in body
+    assert 'data-weak-coverage="1"' not in body
+
+
+def test_ship_button_requires_admin_override_when_coverage_thin(client, mock_db):
+    """coverage_filings=2 → button visible AND admin-override checkbox AND
+    data-weak-coverage attribute on the wrapper."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+    _seed_ship_fixture(mock_db, coverage_filings=2)
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "ship-btn" in body
+    assert "ship-admin-override-input" in body
+    assert 'data-weak-coverage="1"' in body
+    assert "Admin override: coverage thin (2 filings)" in body
+
+
+def test_ship_button_renders_shipped_state_when_pr_number_set(client, mock_db):
+    """A shipped rec (pr_number IS NOT NULL) renders the Shipped badge + PR
+    link and never renders the ship button."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+    _seed_ship_fixture(
+        mock_db,
+        pr_number=42,
+        pr_url="https://github.com/RGMjr/filings_reviewer/pull/42",
+    )
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Shipped to PR" in body
+    assert "https://github.com/RGMjr/filings_reviewer/pull/42" in body
+    assert "#42" in body
+    assert "ship-btn" not in body
+
+
+def test_ship_button_hidden_when_tier1_regressed(client, mock_db):
+    """tier1_regressed=True → 'Latest sim regressed' explainer, no ship button."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+    _seed_ship_fixture(mock_db, tier1_regressed=True, coverage_filings=5)
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Latest sim regressed" in body
+    assert "Ship unavailable" in body
+    assert "ship-btn" not in body
+
+
+def test_ship_button_hidden_when_runs_disagree(client, mock_db):
+    """runs_agree=False → 'Sim runs disagreed' explainer, no ship button."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+    _seed_ship_fixture(mock_db, runs_agree=False, coverage_filings=5)
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Sim runs disagreed" in body
+    assert "Ship unavailable" in body
+    assert "ship-btn" not in body
+
+
+def test_ship_button_hidden_for_non_exclusion_pattern_rule(client, mock_db):
+    """Accepted keyword_overlap rec with sim ok → no ship surface at all."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+    _seed_ship_fixture(mock_db, rule="keyword_overlap", coverage_filings=5)
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # No ship surface on non-exclusion rules.
+    assert "ship-btn" not in body
+    assert "ship-admin-override-input" not in body
+    assert "Ship unavailable" not in body
+    assert "Shipped to PR" not in body
+
+
+def test_ship_button_hidden_when_rec_not_in_last_sim(client, mock_db):
+    """Accepted rec absent from the latest sim's deltas → 'This rec was not
+    part of the last simulation run' explainer, no ship button."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+    _seed_ship_fixture(mock_db, include_in_sim=False)
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "This rec was not part of the last simulation run" in body
+    assert "Ship unavailable" in body
+    assert "ship-btn" not in body

@@ -3440,6 +3440,25 @@ class DatabaseAdapter:
             return False, None
         return True, str(rows[0]["id"])
 
+    def is_ship_running(self) -> tuple[bool, str | None]:
+        """Concurrency probe for the ship-to-PR queue.
+
+        Returns (True, run_id) if any text_pattern_ship_runs row is in
+        'queued' or 'running' status, else (False, None). Both states count
+        as "ship in flight" so multi-tab clicks don't pile up parallel ships
+        — matches the gate in POST /api/v2/extraction/ship-to-pr.
+        """
+        rows = self.query(
+            """
+            SELECT id FROM text_pattern_ship_runs
+             WHERE status IN ('queued', 'running')
+             LIMIT 1
+            """
+        )
+        if not rows:
+            return False, None
+        return True, str(rows[0]["id"])
+
     def count_accepted_unshipped_recs(self) -> int:
         """Recs eligible to feed the next simulation.
 

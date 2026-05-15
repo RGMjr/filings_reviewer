@@ -348,6 +348,19 @@ def stats():
 
             simulation_stale = sim_hash != compute_config_hash()
 
+    # Ship-to-PR surface (Track C-2). For each rec with sim deltas, compute the
+    # min coverage_filings across its metrics — gates whether the Ship button
+    # renders without an admin-override checkbox. Recs without deltas have no
+    # entry and the template skips the ship surface for them.
+    ship_min_coverage_by_rec: dict[str, int] = {}
+    for rec_id, deltas in simulation_deltas_by_rec.items():
+        coverage_values = [
+            d["coverage_filings"] for d in deltas if d.get("coverage_filings") is not None
+        ]
+        if coverage_values:
+            ship_min_coverage_by_rec[rec_id] = min(coverage_values)
+    ship_running, ship_running_run_id = db.is_ship_running()
+
     category_rollup = compute_category_rollup(text_metric_summary)
     cross_metric_findings = compute_cross_metric_findings(text_phrase_findings)
     covered_phrases = {
@@ -415,6 +428,9 @@ def stats():
         simulation_deltas_by_rec=simulation_deltas_by_rec,
         accepted_unshipped_rec_count=accepted_unshipped_rec_count,
         simulation_stale=simulation_stale,
+        ship_min_coverage_by_rec=ship_min_coverage_by_rec,
+        ship_running=ship_running,
+        ship_running_run_id=ship_running_run_id,
     )
 
 

@@ -1772,6 +1772,63 @@
                                       placeholder="Optional note (≤1000 chars)"></textarea>
                           </div>
                         {% endif %}
+                        {# Ship-to-PR surface (Track C-2). Only renders for
+                           accepted exclusion_pattern recs. Three mutually
+                           exclusive states: shipped (badge + PR link),
+                           shippable (button + optional admin-override), and
+                           not-shippable (explainer text). #}
+                        {% if r.rule == 'exclusion_pattern' and r.decision and r.decision.decision == 'accepted' %}
+                          {% if r.decision.pr_number %}
+                          <div class="mt-1 small">
+                            <span class="badge bg-success">
+                              Shipped to PR
+                              <a href="{{ r.decision.pr_url }}" target="_blank" class="text-white text-decoration-underline">
+                                #{{ r.decision.pr_number }}
+                              </a>
+                            </span>
+                          </div>
+                          {% else %}
+                            {% set sim_ok = latest_simulation_run
+                                            and latest_simulation_run.status == 'succeeded'
+                                            and not latest_simulation_run.tier1_regressed
+                                            and latest_simulation_run.runs_agree %}
+                            {% set min_cov = ship_min_coverage_by_rec.get(r.decision.id | string) %}
+                            {% set has_deltas = min_cov is not none %}
+                            {% set weak_coverage = has_deltas and min_cov < 3 %}
+                            {% if sim_ok and has_deltas %}
+                            <div class="mt-2 small ship-control"
+                                 data-decision-id="{{ r.decision.id }}"
+                                 {% if weak_coverage %}data-weak-coverage="1"{% endif %}>
+                              {% if weak_coverage %}
+                              <label class="form-check small text-warning d-block mb-1">
+                                <input type="checkbox" class="form-check-input ship-admin-override-input">
+                                Admin override: coverage thin ({{ min_cov }} filing{{ '' if min_cov == 1 else 's' }}).
+                                Confirm I want to ship anyway.
+                              </label>
+                              {% endif %}
+                              <button type="button" class="btn btn-sm btn-outline-primary ship-btn">
+                                Ship to PR
+                              </button>
+                              <span class="ship-status ms-2 small text-muted"></span>
+                            </div>
+                            {% else %}
+                            <div class="mt-1 small text-muted">
+                              <span class="badge bg-secondary">Ship unavailable</span>
+                              {% if not latest_simulation_run %}
+                                No simulation run yet. Click "Simulate Recommendations" first.
+                              {% elif latest_simulation_run.status != 'succeeded' %}
+                                Most recent simulation {{ latest_simulation_run.status }}; re-run to enable shipping.
+                              {% elif latest_simulation_run.tier1_regressed %}
+                                Latest sim regressed Tier-1 recall — ship disabled.
+                              {% elif not latest_simulation_run.runs_agree %}
+                                Sim runs disagreed — ship disabled.
+                              {% elif not has_deltas %}
+                                This rec was not part of the last simulation run. Re-simulate to include it.
+                              {% endif %}
+                            </div>
+                            {% endif %}
+                          {% endif %}
+                        {% endif %}
                         {# Simulation impact overlay (Track C-1). Renders only
                            when the rec has a persisted decision (decision-id is
                            the FK target on text_pattern_simulation_deltas) and
@@ -1785,7 +1842,7 @@
                           <div class="mt-2">
                             {% if latest_simulation_run and latest_simulation_run.tier1_regressed %}
                             <div class="alert alert-danger small mb-2 py-1">
-                              Tier-1 presence-recall regressed — Ship-to-PR will be disabled when Track D ships.
+                              Tier-1 presence-recall regressed — Ship to PR is disabled below.
                             </div>
                             {% endif %}
                             {% if simulation_stale %}

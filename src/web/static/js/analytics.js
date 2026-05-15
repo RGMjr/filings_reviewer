@@ -287,6 +287,118 @@
             });
     }
 
+    // ----------------------------------------------------------------
+    // Track C-2 — per-rec Ship-to-PR button on the Patterns tab. Posts
+    // to /api/v2/extraction/ship-to-pr with a single decision id and
+    // polls /api/v2/extraction/ship-runs/<uuid>/status. Multiple cards
+    // can be on one page; each click owns its own status span and
+    // disabled state via the enclosing .ship-control element.
+    // ----------------------------------------------------------------
+
+    function pollShipStatus(runId, cardEl) {
+        fetch(`/api/v2/extraction/ship-runs/${runId}/status`, { credentials: "same-origin" })
+            .then((r) => {
+                if (!r.ok) throw new Error(`status HTTP ${r.status}`);
+                return r.json();
+            })
+            .then((row) => {
+                const statusEl = cardEl.querySelector(".ship-status");
+                if (row.status === "queued" || row.status === "running") {
+                    if (statusEl) statusEl.innerHTML = '<span class="text-warning">⏳ Opening PR…</span>';
+                    setTimeout(() => pollShipStatus(runId, cardEl), POLL_INTERVAL_MS);
+                } else if (row.status === "succeeded") {
+                    if (statusEl) {
+                        statusEl.innerHTML = `<span class="text-success">✓ Shipped to <a href="${row.pr_url}" target="_blank">PR #${row.pr_number}</a>. Reloading…</span>`;
+                    }
+                    setTimeout(() => window.location.reload(), 1500);
+                } else if (row.status === "failed") {
+                    const err = row.error || "(no error message)";
+                    if (statusEl) statusEl.innerHTML = `<span class="text-danger">✗ Ship failed: ${err}</span>`;
+                    const btn = cardEl.querySelector(".ship-btn");
+                    if (btn) btn.disabled = false;
+                } else {
+                    if (statusEl) statusEl.innerHTML = `<span class="text-muted">Unknown status: ${row.status}</span>`;
+                }
+            })
+            .catch((err) => {
+                const statusEl = cardEl.querySelector(".ship-status");
+                if (statusEl) statusEl.innerHTML = `<span class="text-danger">Polling error: ${err.message}</span>`;
+            });
+    }
+
+    function triggerShip(btn) {
+        const reviewer = window.requireReviewerName ? window.requireReviewerName() : null;
+        if (!reviewer) return;
+
+        const cardEl = btn.closest(".ship-control");
+        if (!cardEl) return;
+        const decisionId = cardEl.dataset.decisionId;
+        const adminOverrideEl = cardEl.querySelector(".ship-admin-override-input");
+        const adminOverride = !!(adminOverrideEl && adminOverrideEl.checked);
+        const statusEl = cardEl.querySelector(".ship-status");
+
+        if (cardEl.dataset.weakCoverage === "1" && !adminOverride) {
+            if (statusEl) statusEl.innerHTML = '<span class="text-warning">Tick the admin override to proceed.</span>';
+            return;
+        }
+
+        btn.disabled = true;
+        if (statusEl) statusEl.innerHTML = '<span class="text-warning">Starting ship…</span>';
+
+        fetch("/api/v2/extraction/ship-to-pr", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                recommendation_decision_ids: [decisionId],
+                reviewer_id: reviewer,
+                admin_override: adminOverride,
+            }),
+        })
+            .then(async (r) => {
+                const body = await r.json().catch(() => ({}));
+                if (!r.ok) {
+                    let msg;
+                    switch (body.error) {
+                        case "ship_already_running":
+                            msg = `A ship is already running (id ${body.running_run_id}). Polling…`;
+                            if (statusEl) statusEl.innerHTML = `<span class="text-warning">${msg}</span>`;
+                            pollShipStatus(body.running_run_id, cardEl);
+                            return;
+                        case "tier1_regressed":
+                            msg = "Sim regressed Tier-1 recall — ship blocked. Re-run simulation.";
+                            break;
+                        case "runs_disagree":
+                            msg = "Sim runs disagreed on Tier-1 — ship blocked. Re-run simulation.";
+                            break;
+                        case "weak_coverage":
+                            msg = `Coverage too thin (${(body.metrics || []).join(", ")}). Tick admin override and try again.`;
+                            break;
+                        case "no_covering_simulation":
+                            msg = "No simulation run covers this rec. Re-simulate first.";
+                            break;
+                        case "no_accepted_recs":
+                            msg = "No accepted recommendations to ship.";
+                            break;
+                        case "reviewer_name_required":
+                            msg = "Reviewer name required.";
+                            break;
+                        default:
+                            msg = `Ship failed (HTTP ${r.status}): ${body.error || "unknown"}`;
+                    }
+                    if (statusEl) statusEl.innerHTML = `<span class="text-danger">${msg}</span>`;
+                    btn.disabled = false;
+                    return;
+                }
+                if (statusEl) statusEl.innerHTML = '<span class="text-warning">⏳ Queued — polling…</span>';
+                pollShipStatus(body.run_id, cardEl);
+            })
+            .catch((err) => {
+                if (statusEl) statusEl.innerHTML = `<span class="text-danger">Network error: ${err.message}</span>`;
+                btn.disabled = false;
+            });
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         const btn = $("#btn-update-image-classifier");
         if (btn) btn.addEventListener("click", triggerRetrain);
@@ -338,6 +450,11 @@
                 if (!card) return;
                 const wrap = card.querySelector(".rec-note-wrap");
                 if (wrap) wrap.classList.toggle("d-none");
+                return;
+            }
+            const shipBtn = e.target.closest(".ship-btn");
+            if (shipBtn) {
+                triggerShip(shipBtn);
                 return;
             }
         });
