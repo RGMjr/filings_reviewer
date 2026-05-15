@@ -121,6 +121,13 @@ def _stub_analytics_helpers(mock_db) -> None:
     # Per-metric image decisions rollup (Images tab). Default empty so the new
     # card renders the no-data fallback; populated-state tests override.
     mock_db.get_image_decisions_by_metric_v2.return_value = []
+    # Text-pattern simulation surface (Track C-1). Default "no run yet" so the
+    # Summary card shows "Last simulation: never" and the per-rec deltas
+    # overlay is hidden; populated-state tests override explicitly.
+    mock_db.get_last_simulation_run.return_value = None
+    mock_db.is_simulation_running.return_value = (False, None)
+    mock_db.count_accepted_unshipped_recs.return_value = 0
+    mock_db.get_simulation_deltas_grouped.return_value = {}
 
 
 def test_stats_renders_empty(client, mock_db):
@@ -389,6 +396,11 @@ def test_stats_summary_renders_review_activity(client, mock_db):
     mock_db.get_recommendation_decisions.return_value = []
     mock_db.get_rejection_reason_rollup.return_value = []
     mock_db.query.return_value = []
+    # Track C-1 simulation helpers (no run yet).
+    mock_db.get_last_simulation_run.return_value = None
+    mock_db.is_simulation_running.return_value = (False, None)
+    mock_db.count_accepted_unshipped_recs.return_value = 0
+    mock_db.get_simulation_deltas_grouped.return_value = {}
 
     resp = client.get("/v2/review/stats")
     assert resp.status_code == 200
@@ -1343,3 +1355,427 @@ def test_patterns_tab_image_add_panel_renders(client, mock_db):
     assert "quarterly growth" in body
     # Sample image link resolves to the review page.
     assert "/v2/review/101" in body
+
+
+# =============================================================================
+# Track C-1 — Simulate Recommendations card + per-rec deltas overlay
+# =============================================================================
+
+
+def _empty_image_stats(mock_db) -> None:
+    """Shared image-stats stub used by the sim tests below."""
+    mock_db.get_v2_review_stats.return_value = _empty_text_data()
+    mock_db.get_image_decision_overall_v2.return_value = {
+        "total_decisions": 0,
+        "relevant_count": 0,
+        "not_relevant_count": 0,
+        "relevant_pct": 0.0,
+        "not_relevant_pct": 0.0,
+    }
+    mock_db.get_image_review_progress_v2.return_value = {
+        "total_candidates": 0,
+        "pending_count": 0,
+        "reviewed_count": 0,
+        "skipped_count": 0,
+        "auto_rejected_count": 0,
+        "review_pct": 0.0,
+    }
+    mock_db.get_image_decisions_by_tier_v2.return_value = []
+    mock_db.get_image_rejection_reasons_by_tier_v2.return_value = []
+
+
+def test_stats_renders_when_no_simulation_has_run(client, mock_db):
+    """Empty-state: no sim has ever run. The Simulate card renders with the
+    "never" body text and the button is disabled (no accepted recs either)."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Simulate Recommendations" in body
+    assert "never (no simulations recorded)" in body
+    assert 'id="btn-simulate-accepted"' in body
+    # Button disabled when zero accepted recs.
+    assert "Need at least 1 accepted recommendation" in body
+
+
+def test_stats_renders_simulation_deltas_on_accepted_rec(client, mock_db):
+    """Succeeded run + delta tied to an accepted rec's decision_id renders
+    the Simulation impact <details> block under the rec card."""
+    import uuid as _uuid
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+
+    ts = datetime(2026, 5, 14, 10, 0, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {"wrong_metric": 18, "wrong_value": 13},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "segment_text",
+            "occurrence_count": 14,
+            "pct_of_decisions": 45.20,
+            "examples": [],
+        }
+    ]
+    decision_id = _uuid.uuid4()
+    mock_db.get_recommendation_decisions.return_value = [
+        {
+            "id": decision_id,
+            "metric_id": "cm_new_customers_acquired",
+            "rule": "exclusion_pattern",
+            "decision_key": "accounts receivable",
+            "decision": "accepted",
+            "reviewer_id": "RGM",
+            "reviewer_note": None,
+            "pr_number": None,
+            "pr_url": None,
+            "created_at": ts,
+            "updated_at": ts,
+        }
+    ]
+    sim_run_id = _uuid.uuid4()
+    mock_db.get_last_simulation_run.return_value = {
+        "id": str(sim_run_id),
+        "status": "succeeded",
+        "started_at": ts,
+        "completed_at": ts,
+        "num_recs_simulated": 1,
+        "num_companies_validated": 5,
+        "tier1_presence_recall_baseline": 0.80,
+        "tier1_presence_recall_patched": 0.82,
+        "tier2_presence_recall_baseline": 0.70,
+        "tier2_presence_recall_patched": 0.71,
+        "tier1_regressed": False,
+        "runs_agree": True,
+        "config_snapshot_hash": None,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.count_accepted_unshipped_recs.return_value = 1
+    mock_db.get_simulation_deltas_grouped.return_value = {
+        str(decision_id): [
+            {
+                "id": str(_uuid.uuid4()),
+                "recommendation_decision_id": str(decision_id),
+                "metric_id": "cm_new_customers_acquired",
+                "baseline_recall": 0.500,
+                "baseline_precision": 0.700,
+                "baseline_f1": 0.583,
+                "patched_recall": 0.600,
+                "patched_precision": 0.700,
+                "patched_f1": 0.646,
+                "coverage_filings": 5,
+                "coverage_facts": 12,
+            }
+        ]
+    }
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Simulation impact" in body
+    # Metric row + coverage badge for 5 filings (3..10 → amber medium).
+    assert "cm_new_customers_acquired" in body
+    assert "medium (5 filings)" in body
+    # Δ recall = +0.100 → text-success class on that cell.
+    assert "+0.100" in body
+    # Summary card shows the succeeded run summary.
+    assert "Tier-1 presence recall" in body
+    assert "runs_agree: yes" in body
+
+
+def test_stats_renders_tier1_regressed_banner(client, mock_db):
+    """When tier1_regressed=True, the Simulation impact block prefaces its
+    table with a red alert-danger banner referencing the Ship-to-PR future."""
+    import uuid as _uuid
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+
+    ts = datetime(2026, 5, 14, 10, 0, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {"wrong_metric": 18, "wrong_value": 13},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "segment_text",
+            "occurrence_count": 14,
+            "pct_of_decisions": 45.20,
+            "examples": [],
+        }
+    ]
+    decision_id = _uuid.uuid4()
+    mock_db.get_recommendation_decisions.return_value = [
+        {
+            "id": decision_id,
+            "metric_id": "cm_new_customers_acquired",
+            "rule": "exclusion_pattern",
+            "decision_key": "accounts receivable",
+            "decision": "accepted",
+            "reviewer_id": "RGM",
+            "reviewer_note": None,
+            "pr_number": None,
+            "pr_url": None,
+            "created_at": ts,
+            "updated_at": ts,
+        }
+    ]
+    sim_run_id = _uuid.uuid4()
+    mock_db.get_last_simulation_run.return_value = {
+        "id": str(sim_run_id),
+        "status": "succeeded",
+        "started_at": ts,
+        "completed_at": ts,
+        "num_recs_simulated": 1,
+        "num_companies_validated": 5,
+        "tier1_presence_recall_baseline": 0.80,
+        "tier1_presence_recall_patched": 0.75,
+        "tier2_presence_recall_baseline": 0.70,
+        "tier2_presence_recall_patched": 0.71,
+        "tier1_regressed": True,
+        "runs_agree": True,
+        "config_snapshot_hash": None,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.count_accepted_unshipped_recs.return_value = 1
+    mock_db.get_simulation_deltas_grouped.return_value = {
+        str(decision_id): [
+            {
+                "id": str(_uuid.uuid4()),
+                "recommendation_decision_id": str(decision_id),
+                "metric_id": "cm_new_customers_acquired",
+                "baseline_recall": 0.500,
+                "baseline_precision": 0.700,
+                "baseline_f1": 0.583,
+                "patched_recall": 0.400,
+                "patched_precision": 0.700,
+                "patched_f1": 0.508,
+                "coverage_filings": 2,
+                "coverage_facts": 3,
+            }
+        ]
+    }
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Tier-1 presence-recall regressed" in body
+    assert "Ship-to-PR will be disabled" in body
+    # Coverage_filings=2 → red "thin" badge.
+    assert "thin (2 filings)" in body
+
+
+def test_stats_renders_simulation_stale_badge(client, mock_db):
+    """When config_snapshot_hash differs from current compute_config_hash(),
+    the deltas overlay shows the 'Sim is stale' badge."""
+    import uuid as _uuid
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+
+    ts = datetime(2026, 5, 14, 10, 0, tzinfo=UTC)
+    mock_db.get_last_text_analysis_run.return_value = {
+        "id": "abc",
+        "completed_at": ts,
+        "started_at": ts,
+        "status": "succeeded",
+        "num_decisions_analyzed": 31,
+        "num_metrics_analyzed": 1,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.get_text_decision_metric_summary.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "total_decisions": 50,
+            "accept_count": 5,
+            "reject_count": 31,
+            "correct_count": 14,
+            "rejection_categories": {"wrong_metric": 18, "wrong_value": 13},
+            "top_correction_targets": [],
+        }
+    ]
+    mock_db.get_text_decision_phrase_findings.return_value = [
+        {
+            "metric_id": "cm_new_customers_acquired",
+            "decision_type": "reject",
+            "phrase": "accounts receivable",
+            "phrase_ngram_size": 2,
+            "source_field": "segment_text",
+            "occurrence_count": 14,
+            "pct_of_decisions": 45.20,
+            "examples": [],
+        }
+    ]
+    decision_id = _uuid.uuid4()
+    mock_db.get_recommendation_decisions.return_value = [
+        {
+            "id": decision_id,
+            "metric_id": "cm_new_customers_acquired",
+            "rule": "exclusion_pattern",
+            "decision_key": "accounts receivable",
+            "decision": "accepted",
+            "reviewer_id": "RGM",
+            "reviewer_note": None,
+            "pr_number": None,
+            "pr_url": None,
+            "created_at": ts,
+            "updated_at": ts,
+        }
+    ]
+    sim_run_id = _uuid.uuid4()
+    mock_db.get_last_simulation_run.return_value = {
+        "id": str(sim_run_id),
+        "status": "succeeded",
+        "started_at": ts,
+        "completed_at": ts,
+        "num_recs_simulated": 1,
+        "num_companies_validated": 5,
+        "tier1_presence_recall_baseline": 0.80,
+        "tier1_presence_recall_patched": 0.82,
+        "tier2_presence_recall_baseline": 0.70,
+        "tier2_presence_recall_patched": 0.71,
+        "tier1_regressed": False,
+        "runs_agree": True,
+        "config_snapshot_hash": "stale-hash-value",
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.count_accepted_unshipped_recs.return_value = 1
+    mock_db.get_simulation_deltas_grouped.return_value = {
+        str(decision_id): [
+            {
+                "id": str(_uuid.uuid4()),
+                "recommendation_decision_id": str(decision_id),
+                "metric_id": "cm_new_customers_acquired",
+                "baseline_recall": 0.500,
+                "baseline_precision": 0.700,
+                "baseline_f1": 0.583,
+                "patched_recall": 0.600,
+                "patched_precision": 0.700,
+                "patched_f1": 0.646,
+                "coverage_filings": 15,
+                "coverage_facts": 30,
+            }
+        ]
+    }
+
+    with patch(
+        "src.extraction_v2.config_hash.compute_config_hash",
+        return_value="current-hash-value",
+    ):
+        resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert "Sim is stale" in body
+    # coverage_filings=15 → green "strong" badge.
+    assert "strong (15 filings)" in body
+
+
+def test_simulate_button_disabled_with_zero_accepted_recs(client, mock_db):
+    """Even with a succeeded sim history, zero accepted-unshipped recs
+    disables the button and surfaces the appropriate helper text."""
+    from datetime import datetime
+
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+
+    ts = datetime(2026, 5, 14, 10, 0, tzinfo=UTC)
+    mock_db.get_last_simulation_run.return_value = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "status": "succeeded",
+        "started_at": ts,
+        "completed_at": ts,
+        "num_recs_simulated": 1,
+        "num_companies_validated": 5,
+        "tier1_presence_recall_baseline": 0.80,
+        "tier1_presence_recall_patched": 0.82,
+        "tier2_presence_recall_baseline": 0.70,
+        "tier2_presence_recall_patched": 0.71,
+        "tier1_regressed": False,
+        "runs_agree": True,
+        "config_snapshot_hash": None,
+        "triggered_by": "RGM",
+        "error": None,
+    }
+    mock_db.count_accepted_unshipped_recs.return_value = 0
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Disabled attribute on the button.
+    assert 'id="btn-simulate-accepted"' in body
+    # Helper text confirms gating reason.
+    assert "Need at least 1 accepted recommendation" in body
+
+
+def test_simulate_button_data_running_id_set_when_running(client, mock_db):
+    """When a simulation is currently running, the status div carries the
+    data-running-id attribute so the JS resumes polling on page load."""
+    _stub_analytics_helpers(mock_db)
+    _empty_image_stats(mock_db)
+
+    running_id = "22222222-2222-2222-2222-222222222222"
+    mock_db.is_simulation_running.return_value = (True, running_id)
+    mock_db.count_accepted_unshipped_recs.return_value = 3
+
+    resp = client.get("/v2/review/stats")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="simulation-status"' in body
+    assert f'data-running-id="{running_id}"' in body
+    # In-flight first-paint marker.
+    assert "Simulation in progress" in body
+    # Button is disabled while a run is in flight.
+    assert "Simulation already running" in body

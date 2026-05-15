@@ -329,6 +329,25 @@ def stats():
     all_recommendations = [r for recs in text_recommendations.values() for r in recs]
     archived_count = sum(1 for r in all_recommendations if r.get("is_stale"))
 
+    # Simulation surface (Track C-1) — parallel to the text-analysis surface
+    # above. Drives the "Simulate Recommendations" card on the Summary tab and
+    # the per-rec deltas overlay on the Patterns tab. All five kwargs must be
+    # passed even when None because Jinja runs under StrictUndefined.
+    latest_simulation_run = db.get_last_simulation_run()
+    simulation_running, simulation_running_run_id = db.is_simulation_running()
+    accepted_unshipped_rec_count = db.count_accepted_unshipped_recs()
+    simulation_deltas_by_rec: dict[str, list[dict]] = {}
+    simulation_stale = False
+    if latest_simulation_run and latest_simulation_run.get("status") == "succeeded":
+        simulation_deltas_by_rec = db.get_simulation_deltas_grouped(
+            str(latest_simulation_run["id"])
+        )
+        sim_hash = latest_simulation_run.get("config_snapshot_hash")
+        if sim_hash:
+            from src.extraction_v2.config_hash import compute_config_hash
+
+            simulation_stale = sim_hash != compute_config_hash()
+
     category_rollup = compute_category_rollup(text_metric_summary)
     cross_metric_findings = compute_cross_metric_findings(text_phrase_findings)
     covered_phrases = {
@@ -390,6 +409,12 @@ def stats():
         covered_phrases=covered_phrases,
         interpretations=interpretations,
         image_add_findings=image_add_findings,
+        latest_simulation_run=latest_simulation_run,
+        simulation_running=simulation_running,
+        simulation_running_run_id=simulation_running_run_id,
+        simulation_deltas_by_rec=simulation_deltas_by_rec,
+        accepted_unshipped_rec_count=accepted_unshipped_rec_count,
+        simulation_stale=simulation_stale,
     )
 
 
