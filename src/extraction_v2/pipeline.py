@@ -93,6 +93,14 @@ def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
 
 
+_VISION_PROVIDER_ENV_VARS: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GOOGLE_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
+
 # Document type constants
 DOC_TYPE_SEC_FILING = "sec_filing"
 DOC_TYPE_TRANSCRIPT = "transcript"
@@ -625,14 +633,39 @@ class V2Pipeline:
                 )
 
     def _check_vision_api_availability(self) -> None:
-        """Check if OPENAI_API_KEY is set; disable image/chart extraction if not."""
-        if self.config.enable_chart_extraction and not os.environ.get("OPENAI_API_KEY", "").strip():
+        """Disable Stage 5 (OCR/chart) when its configured providers' env vars are missing.
+
+        Stage 4 (image triage) has no vision-API dependency — it uses learned-model +
+        keyword-proximity heuristics only — and is left untouched. Stage 5 calls vision
+        providers for full-page OCR, prescan, and chart-fallback; each is gated on the
+        env var matching its configured provider (gh-619).
+        """
+        if not self.config.enable_chart_extraction:
+            return
+        missing: list[str] = []
+        for field_name in (
+            "vision_full_page_ocr_provider",
+            "vision_prescan_provider",
+            "vision_chart_fallback_provider",
+        ):
+            provider = getattr(self.config, field_name)
+            env_var = _VISION_PROVIDER_ENV_VARS.get(provider.lower().strip())
+            if env_var is None:
+                missing.append(f"{field_name}={provider!r} (unknown provider)")
+            elif not os.environ.get(env_var, "").strip():
+                missing.append(f"{field_name}={provider} requires {env_var}")
+        if missing:
             logger.warning(
-                "OPENAI_API_KEY is not set. Disabling image and chart extraction "
-                "(Stages 4 and 5). Text extraction will proceed normally."
+                "Stage 5 (OCR/chart) disabled: %s (not set). "
+                "Stage 4 (image triage) remains enabled.",
+                "; ".join(missing),
             )
-            self.config.enable_image_extraction = False
             self.config.enable_chart_extraction = False
+            if self.config.enable_image_extraction:
+                logger.info(
+                    "Stage 4 (image triage) enabled without Stage 5 — "
+                    "text + image-triage only this run."
+                )
 
     def _setup_stages(self) -> None:
         """Initialize pipeline stages."""

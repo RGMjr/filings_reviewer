@@ -805,28 +805,40 @@ class TestRetainContext:
 
 
 class TestPipelineApiKeyCheck:
-    """Tests for automatic disabling of chart/image extraction when API key is missing."""
+    """Tests for provider-aware gating of Stage 5 (OCR/chart) on vision provider env vars.
 
-    def test_chart_extraction_disabled_when_no_api_key(
+    Stage 4 (image triage) has no vision API dependency and stays enabled regardless.
+    Stage 5 needs each configured vision provider's env var present (gh-619).
+    """
+
+    def _clear_vision_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for var in ("OPENAI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+
+    def test_stage4_enabled_when_all_vision_env_vars_missing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Pipeline should auto-disable chart and image extraction when OPENAI_API_KEY is unset."""
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        """Stage 4 has no vision dependency; it stays enabled even with no env vars set.
+
+        Stage 5 is disabled because the default chart_fallback=anthropic needs ANTHROPIC_API_KEY.
+        """
+        self._clear_vision_env(monkeypatch)
         config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
         pipeline = V2Pipeline(config=config)
-        # Both flags should be False after initialization
+        assert pipeline.config.enable_image_extraction is True
         assert pipeline.config.enable_chart_extraction is False
-        assert pipeline.config.enable_image_extraction is False
-        # Neither Stage 4 nor Stage 5 should be in the stage list
         stage_ids = [s for s, _ in pipeline._stages]
-        assert PipelineStage.IMAGE_TRIAGE not in stage_ids
+        assert PipelineStage.IMAGE_TRIAGE in stage_ids
         assert PipelineStage.OCR_CHART_EXTRACTION not in stage_ids
 
-    def test_chart_extraction_enabled_when_api_key_set(
+    def test_both_stages_enabled_when_all_required_keys_set(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Pipeline should keep chart extraction enabled when OPENAI_API_KEY is set."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-12345")
+        """With default providers (gemini full-page/prescan, anthropic chart-fallback),
+        Stage 5 enables when both GOOGLE_API_KEY and ANTHROPIC_API_KEY are set."""
+        self._clear_vision_env(monkeypatch)
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
         config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
         pipeline = V2Pipeline(config=config)
         assert pipeline.config.enable_chart_extraction is True
@@ -838,10 +850,85 @@ class TestPipelineApiKeyCheck:
     def test_no_warning_when_chart_extraction_already_disabled(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No warning should be issued when chart extraction is already disabled."""
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        # When chart extraction is already disabled, no warning needed
+        """No env-var check needed when chart extraction is already disabled."""
+        self._clear_vision_env(monkeypatch)
         config = PipelineConfig(enable_chart_extraction=False)
         pipeline = V2Pipeline(config=config)
-        # Should not raise, and chart extraction stays disabled
         assert pipeline.config.enable_chart_extraction is False
+
+    def test_prod_failure_mode_only_google_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """gh-619 prod failure mode: filings-extraction cron has only GOOGLE_API_KEY set.
+
+        Default providers (gemini/gemini/anthropic) → chart_fallback=anthropic
+        misses ANTHROPIC_API_KEY → Stage 5 disabled, Stage 4 stays enabled.
+        """
+        self._clear_vision_env(monkeypatch)
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+        config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
+        pipeline = V2Pipeline(config=config)
+        assert pipeline.config.enable_image_extraction is True
+        assert pipeline.config.enable_chart_extraction is False
+        stage_ids = [s for s, _ in pipeline._stages]
+        assert PipelineStage.IMAGE_TRIAGE in stage_ids
+        assert PipelineStage.OCR_CHART_EXTRACTION not in stage_ids
+
+    def test_single_vendor_gemini_enables_both_stages(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Overriding chart_fallback to gemini collapses all Stage 5 providers to one vendor.
+
+        With only GOOGLE_API_KEY set, both stages should enable.
+        """
+        self._clear_vision_env(monkeypatch)
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+        config = PipelineConfig(
+            enable_chart_extraction=True,
+            enable_image_extraction=True,
+            vision_chart_fallback_provider="gemini",
+        )
+        pipeline = V2Pipeline(config=config)
+        assert pipeline.config.enable_chart_extraction is True
+        assert pipeline.config.enable_image_extraction is True
+        stage_ids = [s for s, _ in pipeline._stages]
+        assert PipelineStage.IMAGE_TRIAGE in stage_ids
+        assert PipelineStage.OCR_CHART_EXTRACTION in stage_ids
+
+    def test_openai_full_page_ocr_missing_key_disables_stage5(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit vision_full_page_ocr_provider=openai requires OPENAI_API_KEY even
+        when other vendors' keys are present."""
+        self._clear_vision_env(monkeypatch)
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+        config = PipelineConfig(
+            enable_chart_extraction=True,
+            enable_image_extraction=True,
+            vision_full_page_ocr_provider="openai",
+        )
+        pipeline = V2Pipeline(config=config)
+        assert pipeline.config.enable_image_extraction is True
+        assert pipeline.config.enable_chart_extraction is False
+
+    def test_warning_message_names_provider_and_env_var(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The disable warning must name both the offending config field/provider and
+        the specific env var that's missing."""
+        import logging
+        import re
+
+        self._clear_vision_env(monkeypatch)
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+        config = PipelineConfig(enable_chart_extraction=True, enable_image_extraction=True)
+        with caplog.at_level(logging.WARNING, logger="src.extraction_v2.pipeline"):
+            V2Pipeline(config=config)
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert warnings, "expected a WARNING log naming the missing provider/env var"
+        text = "\n".join(r.getMessage() for r in warnings)
+        assert re.search(
+            r"vision_chart_fallback_provider=anthropic requires ANTHROPIC_API_KEY",
+            text,
+        ), f"warning copy did not name provider+env var; got: {text!r}"

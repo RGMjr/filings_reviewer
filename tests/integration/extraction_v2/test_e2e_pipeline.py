@@ -171,9 +171,12 @@ class TestE2ESlackFiling:
             PipelineStage.METRIC_PRESENCE,
         }
 
-        # Image stages are skipped when OPENAI_API_KEY is not set (e.g. in CI)
+        # OCR_CHART_EXTRACTION requires a vision-API key (OPENAI/Gemini) and is
+        # skipped when none is set (e.g. in CI). IMAGE_TRIAGE runs regardless —
+        # the keyword pre-scan + learned-model triage need no external API
+        # (gh-619: provider-aware vision-API guard).
         if not os.getenv("OPENAI_API_KEY"):
-            expected_stages -= {PipelineStage.IMAGE_TRIAGE, PipelineStage.OCR_CHART_EXTRACTION}
+            expected_stages -= {PipelineStage.OCR_CHART_EXTRACTION}
 
         assert executed_stages == expected_stages, (
             f"Missing stages: {expected_stages - executed_stages}"

@@ -950,8 +950,10 @@ class TestV2PipelineSecClient:
         """V2Pipeline passes sec_client through to OCRExtractionStage."""
         from src.extraction_v2.pipeline import V2Pipeline
 
-        # Provide a fake API key so image/chart extraction is not disabled
-        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        # Provide fake API keys for default vision providers (gemini full-page/prescan,
+        # anthropic chart-fallback) so Stage 5 is not disabled by the gh-619 guard.
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-google-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
         mock_client = MagicMock()
         pipeline = V2Pipeline(sec_client=mock_client)
 
