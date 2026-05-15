@@ -86,7 +86,19 @@
 
    On approval, `rm` each listed file. **Do not** `git rm` even if the file happens to be tracked — defer that to a separate `/commit-proj` so the deletion lands in a reviewable PR. If any listed file is tracked (`git ls-files --error-unmatch <path>` succeeds), report it in the summary as `tracked stale worker-prompts (need /commit-proj): <list>` instead of deleting.
 
-7. **Report.** Output a concise summary:
+7. **Local-and-remote: resolved-fragment sync.** Reconcile GitHub issue state with `docs/known-issues/gh-*.md` fragment frontmatter. The fragment system is the authoritative status surface; `/commit-proj` step 9 creates a GH issue paired with each new fragment, but nothing closes the issue when the fragment is later flipped to `resolved`. This step closes that gap.
+
+   For each `docs/known-issues/gh-*.md` whose frontmatter has `status: resolved`:
+   - Parse `<N>` from the filename (`gh-<N>-<slug>.md`).
+   - Run `gh issue view <N> --json state -q .state`. If the call returns `not found` (issue was deleted upstream), log and continue.
+   - If the issue is `OPEN`, close it autonomously: `gh issue close <N> --comment "Resolved per docs/known-issues/gh-<N>-<slug>.md (status: resolved). Closing to reconcile GH issue state with the local fragment."`
+   - If the issue is already `CLOSED`, skip (idempotent).
+
+   Do NOT close fragments whose status is `partially-resolved` or `open`. The fragment frontmatter is the source of truth here.
+
+   **Autonomous, not interactive.** This step matches the branch-deletion pattern (step 4): act without prompting. `gh issue close` is reversible via `gh issue reopen`, and the comment includes the fragment path so a misclose is one-command undoable. Autonomous behavior is required for the 2am unattended cron run. Report the closed-issue list in the step 8 summary.
+
+8. **Report.** Output a concise summary:
    ```
    cleanup: mode=<local|remote>
      pruned remote-tracking refs: N
@@ -99,6 +111,7 @@
      skipped active agent worktrees: N (live pids)
      deleted stale worker-prompts: <list or "none">
      tracked stale worker-prompts (need /commit-proj): <list or "none">
+     closed stale GH issues (fragment status=resolved): <list or "none">
    ```
 
 ## Safety rules
@@ -111,6 +124,7 @@
 - Worktrees whose path is neither under `.claude/worktrees/` nor under `$HOME/.claude-worktrees/<repo>/` are never touched — they're user-managed.
 - Do not prune branches via step 4 that are still checked out in any linked worktree — step 5 removes the worktree and branch together.
 - Worker-prompt deletion (step 6) requires user confirmation; never auto-delete. Tracked files are reported, not removed — they require a `/commit-proj` PR. Bespoke prompts (`STAGEC_*`, `WAVE*_*`, etc.) are out of scope and never listed.
+- GH issue closure (step 7) acts only on fragments whose frontmatter is exactly `status: resolved`. Never close based on `partially-resolved`, `open`, or a missing/malformed status field. The fragment frontmatter is the source of truth — do not infer state from PR refs, commit history, or issue body content.
 
 ## Out of scope
 
