@@ -67,6 +67,25 @@ is deployed later via `render.yaml`.
 
 The migration also creates the seed table `industry_sic_buckets` (SIC code → primary bucket, snapshot of `config/industry_sic_codes.yaml`). The companion doc `metabase-tier1-reporting.md` has copy-pastable SQL for the four reports.
 
+### Image-review progress view — `sql/202605191650_v_analytics_image_review_progress.sql`
+
+| View | Grain | Use |
+|------|-------|-----|
+| `v_analytics_image_review_progress` | 1 row / non-decorative `v2_image_assets` row | Per-image review state derived from the `v2_image_metric_confirmations` rollup, mirrors `DatabaseAdapter._derive_image_review_state`. Powers the "Image Confirmations" box on `/v2/review/stats`. |
+
+Columns: `img_id`, `filing_id`, `review_status` (raw), `classification`, `detected_count`, `total_confirmation_count`, `positive_count`, `detected_decided_count`, `has_no_relevant_sentinel`, `image_review_state` (`'pending'` / `'relevant'` / `'no_relevant'`).
+
+**Counter-definition change (2026-05-19).** `DatabaseAdapter.get_image_review_progress_v2()` now sources `reviewed_count` / `not_relevant_count` / `pending_count` from this view, NOT from the raw `v2_image_assets.review_status` column. Pre-fix, "Reviewed Images" counted only the rare `mark_complete=true` path; per-metric reviews accumulated in `v2_image_metric_confirmations` but never flipped `review_status`, so the tile reported a small fraction of actual reviewer effort. The new definition counts:
+
+- `image_review_state='relevant'` — all detected metrics decided with ≥1 accept/correct/add, OR legacy `review_status='reviewed'`.
+- `image_review_state='no_relevant'` — raw `'skipped'` / `'auto_rejected'`, or all detected metrics rejected via per-metric flow. Splits into:
+  - `rejected_not_relevant_count` — sentinel `decision='reject'` + `rejection_reason='no_relevant_metrics'` on a zero-detected image (the explicit "Reject all — no relevant metrics" reviewer action).
+  - `skipped_count` — raw `'skipped'` without a sentinel row (the "Skip image" button path).
+
+The view intentionally diverges from `_derive_image_review_state` on one edge: legacy `review_status='reviewed'` images with no per-metric rows count as `'relevant'` here (kept as a positive signal for backward compat with historical V1 reviewer activity), where the Python derive function — used only for queue-thumbnail indicators — returns `'pending'`.
+
+Expect the prod `reviewed_count` to jump on first deploy: the user-reported "Reviewed Images = 658" was the pre-fix `mark_complete=true` count; the post-fix number reflects the full reviewer-effort surface.
+
 Both views use `CREATE OR REPLACE`, so the migration is safe to re-apply after
 editing. If a column or join changes, bump the migration number and add a new
 file — do not edit in place (violates migration checksum tracking in

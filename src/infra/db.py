@@ -2635,12 +2635,35 @@ class DatabaseAdapter:
         return len(result) > 0
 
     def get_image_review_progress_v2(self, filing_id: int | None = None) -> dict[str, Any]:
+        """V2-native image-review progress counts.
+
+        Sourced from the ``v_analytics_image_review_progress`` view so the
+        per-metric review flow (which leaves ``v2_image_assets.review_status``
+        at ``'pending'``) is reflected in analytics. Pre-fix this method
+        counted only the raw column, so any image whose review completed via
+        accept/correct/add without an explicit ``mark_complete=true`` flag
+        was missing from ``reviewed_count``. The new definition treats both
+        signals as positive — see project memory
+        ``project_image_review_status_not_flipped_by_per_metric``.
+
+        Returned shape:
+
+        - ``reviewed_count`` — images in ``image_review_state='relevant'``
+          (legacy ``review_status='reviewed'`` OR per-metric flow complete
+          with ≥1 accept/correct/add).
+        - ``not_relevant_count`` — images in ``image_review_state='no_relevant'``
+          (raw ``skipped``/``auto_rejected`` OR all detected metrics rejected
+          via per-metric flow). Splits into:
+            * ``rejected_not_relevant_count`` — sentinel reject row
+              (``rejection_reason='no_relevant_metrics'``) on a zero-detected
+              image: the explicit "no relevant metrics" reviewer action.
+            * ``skipped_count`` — raw ``review_status='skipped'`` without a
+              sentinel row: the "Skip image" button path.
+        - ``auto_rejected_count`` — raw ``review_status='auto_rejected'``.
+        - ``pending_count`` — everything else (no decisions yet, or partial
+          per-metric coverage).
         """
-        V2-native progress counts. If filing_id is given, counts are filing-scoped;
-        otherwise they are across all filings. Only non-decorative images are counted
-        (matches queue semantics used by the UI).
-        """
-        filter_clause = "AND v.filing_id = %(filing_id)s" if filing_id is not None else ""
+        filter_clause = "WHERE filing_id = %(filing_id)s" if filing_id is not None else ""
         params: dict[str, Any] = {}
         if filing_id is not None:
             params["filing_id"] = filing_id
@@ -2648,14 +2671,21 @@ class DatabaseAdapter:
         sql = f"""
             SELECT
                 COUNT(*) AS total_candidates,
-                COUNT(*) FILTER (WHERE v.review_status = 'pending')        AS pending_count,
-                COUNT(*) FILTER (WHERE v.review_status = 'reviewed')       AS reviewed_count,
-                COUNT(*) FILTER (WHERE v.review_status = 'skipped')        AS skipped_count,
-                COUNT(*) FILTER (WHERE v.review_status = 'auto_rejected')  AS auto_rejected_count
-            FROM v2_image_assets v
-            WHERE v.classification NOT IN ('decorative', 'logo', 'signature')
-              AND v.filename IS NOT NULL AND v.filename != ''
-              {filter_clause}
+                COUNT(*) FILTER (WHERE image_review_state = 'pending')     AS pending_count,
+                COUNT(*) FILTER (WHERE image_review_state = 'relevant')    AS reviewed_count,
+                COUNT(*) FILTER (WHERE image_review_state = 'no_relevant') AS not_relevant_count,
+                COUNT(*) FILTER (
+                    WHERE image_review_state = 'no_relevant'
+                      AND has_no_relevant_sentinel
+                ) AS rejected_not_relevant_count,
+                COUNT(*) FILTER (
+                    WHERE image_review_state = 'no_relevant'
+                      AND review_status = 'skipped'
+                      AND NOT has_no_relevant_sentinel
+                ) AS skipped_count,
+                COUNT(*) FILTER (WHERE review_status = 'auto_rejected')    AS auto_rejected_count
+            FROM v_analytics_image_review_progress
+            {filter_clause}
         """
         rows = self.query(sql, params if params else None)
         if not rows:
@@ -2663,6 +2693,8 @@ class DatabaseAdapter:
                 "total_candidates": 0,
                 "pending_count": 0,
                 "reviewed_count": 0,
+                "not_relevant_count": 0,
+                "rejected_not_relevant_count": 0,
                 "skipped_count": 0,
                 "auto_rejected_count": 0,
                 "review_pct": 0.0,
@@ -2674,6 +2706,8 @@ class DatabaseAdapter:
             "total_candidates": total,
             "pending_count": row["pending_count"] or 0,
             "reviewed_count": reviewed,
+            "not_relevant_count": row["not_relevant_count"] or 0,
+            "rejected_not_relevant_count": row["rejected_not_relevant_count"] or 0,
             "skipped_count": row["skipped_count"] or 0,
             "auto_rejected_count": row["auto_rejected_count"] or 0,
             "review_pct": round(reviewed / total * 100, 1) if total > 0 else 0.0,

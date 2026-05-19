@@ -383,12 +383,23 @@
                 <div class="text-muted small">Not Relevant</div>
               </div>
               <div class="col-4">
-                <div class="fs-4 fw-bold text-info">{{ image_progress.reviewed_count or 0 }}</div>
+                <div class="fs-4 fw-bold text-info"
+                     title="Images whose per-metric review is complete with at least one accepted/corrected/added metric, plus legacy V1-reviewed images. Pre-2026-05-19 this only counted images with mark_complete=true.">
+                  {{ image_progress.reviewed_count or 0 }}
+                </div>
                 <div class="text-muted small">Reviewed Images</div>
               </div>
               <div class="col-4">
-                <div class="fs-4 fw-bold text-secondary">{{ image_progress.skipped_count or 0 }}</div>
-                <div class="text-muted small">Skipped Images</div>
+                <div class="fs-4 fw-bold text-secondary"
+                     title="Images with no relevant metrics: explicit Skip image, Reject-all (no relevant metrics), or all detected metrics rejected via per-metric flow.">
+                  {{ image_progress.not_relevant_count or 0 }}
+                </div>
+                <div class="text-muted small">Not Relevant Images</div>
+                <div class="text-muted" style="font-size: 0.75rem;">
+                  &#x21B3; Skipped {{ image_progress.skipped_count or 0 }}
+                  &middot;
+                  Rejected {{ image_progress.rejected_not_relevant_count or 0 }}
+                </div>
               </div>
             </div>
           </div>

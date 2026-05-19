@@ -148,6 +148,8 @@ def test_stats_renders_empty(client, mock_db):
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -186,6 +188,8 @@ def test_stats_renders_with_data(client, mock_db):
         "reviewed_count": 10,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 83.3,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = [
@@ -243,6 +247,8 @@ def test_stats_renders_image_decisions_by_metric_card(client, mock_db):
         "reviewed_count": 9,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 100.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -298,6 +304,8 @@ def test_stats_image_decisions_by_metric_empty_state(client, mock_db):
         "reviewed_count": 1,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 100.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -333,6 +341,8 @@ def test_stats_summary_renders_review_activity(client, mock_db):
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -451,6 +461,8 @@ def test_patterns_tab_renders_recommendation_alert(client, mock_db):
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -529,6 +541,8 @@ def test_patterns_tab_renders_decided_recommendation(client, mock_db):
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -640,6 +654,8 @@ def test_patterns_tab_archived_section(client, mock_db):
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -756,6 +772,8 @@ def _zero_image_data():
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
 
@@ -1100,6 +1118,8 @@ def test_images_tab_renders_decision_breakdown_cards(client, mock_db):
         "reviewed_count": 100,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 83.3,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -1157,6 +1177,8 @@ def test_images_tab_renders_legacy_accepts_banner(client, mock_db):
         "reviewed_count": 50,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 83.3,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -1273,6 +1295,8 @@ def test_legacy_accepts_banner_count_is_linked_to_backfill_queue(client, mock_db
         "reviewed_count": 48,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 100.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -1315,6 +1339,8 @@ def test_patterns_tab_image_add_panel_renders(client, mock_db):
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
@@ -1383,6 +1409,8 @@ def _empty_image_stats(mock_db) -> None:
         "reviewed_count": 0,
         "skipped_count": 0,
         "auto_rejected_count": 0,
+        "not_relevant_count": 0,
+        "rejected_not_relevant_count": 0,
         "review_pct": 0.0,
     }
     mock_db.get_image_decisions_by_tier_v2.return_value = []
