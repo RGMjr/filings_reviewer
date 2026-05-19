@@ -524,6 +524,98 @@ class TestGetImageReviewProgressV2:
         progress = clean_db.get_image_review_progress_v2()
         assert progress["total_candidates"] >= 1
 
+    def test_per_metric_completed_image_counts_as_reviewed(self, clean_db):
+        """Per-metric flow: image stays at review_status='pending' but
+        every detected metric has been accepted → counts as reviewed."""
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db, img_id, [{"metric_id": "cm_active_customers_total", "score": 0.9}]
+        )
+        _insert_confirmation(
+            clean_db,
+            img_id,
+            decision="accept",
+            detected_metric_id="cm_active_customers_total",
+            confirmed_metric_id="cm_active_customers_total",
+        )
+
+        progress = clean_db.get_image_review_progress_v2(filing_id=filing_id)
+
+        assert progress["total_candidates"] == 1
+        assert progress["pending_count"] == 0
+        assert progress["reviewed_count"] == 1
+        assert progress["not_relevant_count"] == 0
+
+    def test_per_metric_all_rejected_counts_as_not_relevant(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db, img_id, [{"metric_id": "cm_active_customers_total", "score": 0.9}]
+        )
+        _insert_confirmation(
+            clean_db,
+            img_id,
+            decision="reject",
+            detected_metric_id="cm_active_customers_total",
+            rejection_reason="not_present",
+        )
+
+        progress = clean_db.get_image_review_progress_v2(filing_id=filing_id)
+
+        assert progress["pending_count"] == 0
+        assert progress["reviewed_count"] == 0
+        assert progress["not_relevant_count"] == 1
+        # No skip + no sentinel row → neither sub-count fires.
+        assert progress["skipped_count"] == 0
+        assert progress["rejected_not_relevant_count"] == 0
+
+    def test_sentinel_no_relevant_metrics_splits_out(self, clean_db):
+        """'Reject all — no relevant metrics' on a zero-detected image writes
+        a sentinel row and skips. Must surface as rejected_not_relevant,
+        not as skipped."""
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg", review_status="skipped")
+        _insert_confirmation(
+            clean_db,
+            img_id,
+            decision="reject",
+            detected_metric_id=None,
+            confirmed_metric_id=None,
+            rejection_reason="no_relevant_metrics",
+        )
+
+        progress = clean_db.get_image_review_progress_v2(filing_id=filing_id)
+
+        assert progress["not_relevant_count"] == 1
+        assert progress["rejected_not_relevant_count"] == 1
+        assert progress["skipped_count"] == 0  # sentinel disqualifies this from skipped
+
+    def test_partial_per_metric_coverage_stays_pending(self, clean_db):
+        _, filing_id = create_test_company_and_filing(clean_db)
+        img_id = _insert_v2_image(clean_db, filing_id, "chart.jpg")
+        _set_detected_metrics(
+            clean_db,
+            img_id,
+            [
+                {"metric_id": "cm_active_customers_total", "score": 0.9},
+                {"metric_id": "cm_net_revenue_retention", "score": 0.8},
+            ],
+        )
+        # Only one of two detected metrics decided.
+        _insert_confirmation(
+            clean_db,
+            img_id,
+            decision="accept",
+            detected_metric_id="cm_active_customers_total",
+            confirmed_metric_id="cm_active_customers_total",
+        )
+
+        progress = clean_db.get_image_review_progress_v2(filing_id=filing_id)
+
+        assert progress["pending_count"] == 1
+        assert progress["reviewed_count"] == 0
+
 
 class TestGetNextPendingImageCandidateV2:
     def test_returns_first_pending(self, clean_db):
