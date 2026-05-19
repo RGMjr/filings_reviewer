@@ -588,8 +588,11 @@ cm_revenue_concentration:
     - '\bno\s+customer\b'
     - '\bdid\s+not\s+(?:exceed|comprise)\b'
     - '\bin\s+excess\s+of\b'
-    # FIX-FP: Exclude accounts receivable concentration (not revenue concentration)
-    - '\baccounts\s+receivable\b'
+    # FIX-FP: Exclude accounts receivable concentration (not revenue concentration).
+    # Covers plural ("receivables"), "receivable(s), net", and "trade receivable(s)".
+    - '\baccounts?\s+receivables?\b'
+    - '\breceivables?\s*,\s*net\b'
+    - '\btrade\s+receivables?\b'
 
 # =============================================================================
 # Revenue Predictability Metrics (DEPRECATED 2026-01-07)
