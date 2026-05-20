@@ -349,6 +349,31 @@ class TestFiltering:
         assert result.success
         assert len(mock_context.candidates) == 0
 
+    def test_excludes_plural_accounts_receivables_for_revenue_concentration(
+        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
+    ) -> None:
+        """AR exclusion catches the plural variant ("accounts receivables")."""
+        # The pre-fix regex \baccounts\s+receivable\b missed the trailing 's'.
+        segment = make_segment("Two customers accounted for 37% of our accounts receivables.")
+        mock_context.segments.append(segment)
+
+        stage.process(mock_context)
+
+        metric_ids = [c.metric_id for c in mock_context.candidates]
+        assert "cm_revenue_concentration" not in metric_ids
+
+    def test_excludes_receivables_net_for_revenue_concentration(
+        self, stage: CandidateGenerationStage, mock_context: MockPipelineContext
+    ) -> None:
+        """AR exclusion catches the "receivables, net" balance-sheet variant."""
+        segment = make_segment("Two customers accounted for 37% of our receivables, net.")
+        mock_context.segments.append(segment)
+
+        stage.process(mock_context)
+
+        metric_ids = [c.metric_id for c in mock_context.candidates]
+        assert "cm_revenue_concentration" not in metric_ids
+
 
 # =============================================================================
 # Confidence Scoring Tests
