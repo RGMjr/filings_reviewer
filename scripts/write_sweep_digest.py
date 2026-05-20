@@ -142,9 +142,7 @@ def render_digest(
         for o in opened:
             pr_num = o.get("pr_number", "?")
             pr_url = o.get("pr_url", "")
-            lines.append(
-                f"- #{o['issue']} — PR [#{pr_num}]({pr_url}) — open, CI pending"
-            )
+            lines.append(f"- #{o['issue']} — PR [#{pr_num}]({pr_url}) — open, CI pending")
             lines.append(f"  - Status: `gh pr checks {pr_num}`")
     lines.append("")
 
@@ -176,7 +174,6 @@ def render_digest(
         for o in abandoned:
             reason = o.get("reason", "unknown reason")
             lines.append(f"- #{o['issue']} — abandoned: {reason}")
-    lines.append("")
 
     return "\n".join(lines)
 

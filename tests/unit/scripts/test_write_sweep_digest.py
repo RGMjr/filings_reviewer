@@ -36,6 +36,13 @@ class TestRenderDigest:
         assert "## Abandoned (0)" in out
         assert "_(none)_" in out
 
+    def test_render_digest_does_not_end_with_trailing_blank_line(self) -> None:
+        # The caller writes ``digest + "\n"`` to disk, so render_digest must not
+        # itself end with a newline — otherwise the file ends ``...\n\n`` and
+        # end-of-file-fixer (pre-commit) loops on every push.
+        out = render_digest([], "2026-04-22")
+        assert not out.endswith("\n"), "render_digest must not append trailing newline"
+
     def test_merged_outcome_renders_pr_link(self) -> None:
         out = render_digest(
             [
