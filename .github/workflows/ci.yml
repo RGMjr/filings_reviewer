@@ -174,7 +174,10 @@ jobs:
       - name: Audit dependencies
         # CVE-2026-3219 (pip 26.0.1) still has no upstream fix — ignore until
         # a patched pip is released. CVE-2026-6357 is resolved by the upgrade above.
-        run: uv run pip-audit --ignore-vuln CVE-2026-3219
+        # PYSEC-2024-277 (joblib): untrusted-load risk. N/A here — we only
+        # joblib.load() our own retrained model artifact stored in R2 via
+        # src/shared/image_features._load_model. No published fix version.
+        run: uv run pip-audit --ignore-vuln CVE-2026-3219 --ignore-vuln PYSEC-2024-277
 
   integration-tests:
     name: Integration Tests
