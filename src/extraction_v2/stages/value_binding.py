@@ -82,6 +82,26 @@ _FINANCIAL_LINE_ITEM_STUB_ALLOW: frozenset[str] = frozenset(
 )
 
 
+def _is_financial_line_item_count_row(metric_id: str, row_label: str) -> bool:
+    """True when a count/transaction metric is being bound to a financial
+    statement line-item row (e.g. "Total accounts receivable").
+
+    This catches the FP class where a count keyword spuriously matches a
+    substring of the row label — e.g. cm_customers_period_end's "total
+    accounts" pattern matching the stub "Total accounts receivable" — and
+    then binds the row's dollar figures as customer counts.
+
+    Scoped to ``_COUNT_ONLY_METRICS``: financial metrics like
+    cm_gross_margin_overall legitimately bind from margin/income rows, so
+    they must NOT be guarded here. The allow-list is also honored.
+    """
+    if metric_id in _FINANCIAL_LINE_ITEM_STUB_ALLOW:
+        return False
+    if metric_id not in _COUNT_ONLY_METRICS:
+        return False
+    return bool(_FINANCIAL_LINE_ITEM_STUB_RE.search(row_label))
+
+
 class ValueBindingStage:
     """
     Stage 7: Value Binding.
@@ -489,7 +509,13 @@ class ValueBindingStage:
             )
 
         # Strategy 5: Candidate cell itself contains a value (data cell with both keyword and value)
-        if not bound_values and candidate_cell.text:
+        if (
+            not bound_values
+            and candidate_cell.text
+            and not _is_financial_line_item_count_row(
+                candidate.metric_id, " ".join(candidate_cell.stub_path)
+            )
+        ):
             parsed = self._parse_number(candidate_cell.text)
             if parsed:
                 value, unit, raw = parsed
@@ -600,6 +626,22 @@ class ValueBindingStage:
         """
         bound_values: list[BoundValue] = []
         if fixed_idx is None:
+            return bound_values
+
+        # Row-scan guard: when a count/transaction metric's fixed row stub is a
+        # financial statement line item (e.g. "Total accounts receivable"), the
+        # count keyword spuriously matched the row label — binding the row's
+        # dollar figures as counts is a false positive. Suppress the whole row.
+        # Column-scan (iterate_rows=True) has its own per-cell stub guard below;
+        # this closes the row-scan exemption for count metrics specifically.
+        if not iterate_rows and _is_financial_line_item_count_row(
+            candidate.metric_id, " ".join(fixed_path)
+        ):
+            logger.debug(
+                "Skipping row-scan binding for %s: row stub %r is a financial line item",
+                candidate.metric_id,
+                fixed_path,
+            )
             return bound_values
 
         match_text_lower = candidate.match_text.lower()

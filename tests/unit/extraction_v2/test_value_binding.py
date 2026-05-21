@@ -35,6 +35,7 @@ from src.extraction_v2.stages.value_binding import (
     _FINANCIAL_LINE_ITEM_STUB_RE,
     _WIDER_PROXIMITY_METRICS,
     ValueBindingStage,
+    _is_financial_line_item_count_row,
 )
 
 # ============================================================================
@@ -3940,7 +3941,9 @@ class TestStubFinancialLineItemGuard:
     - Financial line-item stub → cell skipped
     - Allow-list metric (cm_gross_margin_by_cohort) → cell still binds
     - Legitimate customer metric stub → cell binds normally
-    - Row-scan binding (iterate_rows=False) → not affected
+    - Row-scan binding (iterate_rows=False): count/transaction metrics whose
+      fixed row stub is a financial line item ARE now suppressed (see
+      TestRowScanFinancialLineItemGuard); non-count metrics remain unaffected.
     """
 
     @staticmethod
@@ -4105,4 +4108,124 @@ class TestStubFinancialLineItemGuard:
         # We verify this by checking that the financial line item pattern does NOT match.
         assert not _FINANCIAL_LINE_ITEM_STUB_RE.search("Active customers"), (
             "Legitimate customer stub must not match _FINANCIAL_LINE_ITEM_STUB_RE"
+        )
+
+
+class TestFinancialLineItemCountRowHelper:
+    """Unit tests for the _is_financial_line_item_count_row predicate."""
+
+    def test_accounts_receivable_count_metric_flagged(self) -> None:
+        assert _is_financial_line_item_count_row(
+            "cm_customers_period_end", "Total accounts receivable"
+        )
+
+    def test_accounts_receivable_related_parties_flagged(self) -> None:
+        assert _is_financial_line_item_count_row(
+            "cm_customers_period_end", "Total accounts receivable from related parties"
+        )
+
+    def test_transaction_metric_flagged(self) -> None:
+        assert _is_financial_line_item_count_row(
+            "cm_purchase_transactions_overall", "Accounts receivable, net"
+        )
+
+    def test_allow_listed_metric_not_flagged(self) -> None:
+        # cm_revenue_concentration legitimately binds AR-adjacent rows.
+        assert not _is_financial_line_item_count_row(
+            "cm_revenue_concentration", "Total accounts receivable"
+        )
+
+    def test_non_count_metric_not_flagged(self) -> None:
+        # cm_gross_margin_overall legitimately binds from margin rows; it is not
+        # a count metric, so it must NOT be guarded here.
+        assert not _is_financial_line_item_count_row("cm_gross_margin_overall", "Gross margin")
+
+    def test_legitimate_count_row_not_flagged(self) -> None:
+        assert not _is_financial_line_item_count_row("cm_customers_period_end", "Total customers")
+
+
+class TestRowScanFinancialLineItemGuard:
+    """End-to-end: a count-metric candidate matched in a financial line-item
+    stub cell must NOT row-bind that row's dollar figures (the FP class in
+    Synopsys 11753 / GreenVector 234111, where 'total accounts' matched the
+    stub 'Total accounts receivable').
+    """
+
+    @staticmethod
+    def _make_row_table(
+        row_specs: list[tuple[str, list[str]]],
+        data_headers: list[str],
+        table_id: str = "row-table",
+    ) -> Table:
+        """Build a header-row + stub-col table; each row_spec is (stub, [values])."""
+        n_cols = 1 + len(data_headers)
+        cells: list[Cell] = [
+            Cell(row=0, col=0, text="", is_header=True, header_path=[], stub_path=[])
+        ]
+        for j, h in enumerate(data_headers):
+            cells.append(
+                Cell(row=0, col=j + 1, text=h, is_header=True, header_path=[], stub_path=[])
+            )
+        for i, (stub, vals) in enumerate(row_specs):
+            r = i + 1
+            cells.append(Cell(row=r, col=0, text=stub, is_stub=True, header_path=[], stub_path=[]))
+            for j, v in enumerate(vals):
+                cells.append(
+                    Cell(row=r, col=j + 1, text=v, header_path=[data_headers[j]], stub_path=[stub])
+                )
+        n_rows = len(row_specs) + 1
+        table = Table(
+            table_id=table_id,
+            row_count=n_rows,
+            col_count=n_cols,
+            header_rows=1,
+            stub_cols=1,
+            cells=cells,
+        )
+        table._grid = [[None] * n_cols for _ in range(n_rows)]
+        for cell in cells:
+            table._grid[cell.row][cell.col] = cell
+        return table
+
+    @staticmethod
+    def _stub_candidate(
+        metric_id: str, match_text: str, row: int, table_id: str = "row-table"
+    ) -> MetricCandidate:
+        return MetricCandidate(
+            candidate_id=f"cand-{metric_id}-{row}",
+            metric_id=metric_id,
+            match_text=match_text,
+            source_type=SourceType.HTML_TABLE,
+            source_locator=SourceLocator(table_id=table_id, cell_row=row, cell_col=0),
+        )
+
+    def test_accounts_receivable_row_suppressed(self) -> None:
+        stage = ValueBindingStage()
+        table = self._make_row_table(
+            row_specs=[("Total accounts receivable", ["442,074", "388,255"])],
+            data_headers=["2016", "2015"],
+        )
+        candidate = self._stub_candidate("cm_customers_period_end", "Total accounts", row=1)
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        stage.process(context)  # type: ignore
+
+        assert len(context.bound_values) == 0, (
+            "AR-row dollar figures must not bind as customer counts"
+        )
+
+    def test_legitimate_customer_count_row_binds(self) -> None:
+        stage = ValueBindingStage()
+        table = self._make_row_table(
+            row_specs=[("Total customers", ["52,000", "42,000"])],
+            data_headers=["2019", "2018"],
+        )
+        candidate = self._stub_candidate("cm_customers_period_end", "Total customers", row=1)
+
+        context = MockPipelineContext(tables=[table], candidates=[candidate])
+        stage.process(context)  # type: ignore
+
+        bound_raws = {bv.value_raw for bv in context.bound_values}
+        assert "52,000" in bound_raws and "42,000" in bound_raws, (
+            "Legitimate 'Total customers' row must still bind"
         )
