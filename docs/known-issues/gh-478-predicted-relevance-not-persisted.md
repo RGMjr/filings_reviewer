@@ -3,7 +3,7 @@ id: 478
 source: gh
 slug: predicted-relevance-not-persisted
 title: v2_image_assets persistence INSERT omits predicted_relevance — gate runs in-memory but score never reaches DB
-status: resolved
+status: archived
 severity: high
 autonomy: review
 estimated: S

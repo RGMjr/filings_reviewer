@@ -8,7 +8,7 @@ pr_refs:
 severity: medium
 slug: gemini-pro-empty-content-on-vision-json-object
 source: legacy
-status: resolved
+status: archived
 title: gemini-pro Returns Empty Content on vision + response_format=json_object
 touches:
   - src/llm/vision_client.py

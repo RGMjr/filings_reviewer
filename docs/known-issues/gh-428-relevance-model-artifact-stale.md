@@ -3,7 +3,7 @@ id: 428
 source: gh
 slug: relevance-model-artifact-stale
 title: Image relevance model artifact stale — disk joblib trained on 808 samples while CSV has 1,499
-status: resolved
+status: archived
 severity: medium
 autonomy: review
 estimated: S

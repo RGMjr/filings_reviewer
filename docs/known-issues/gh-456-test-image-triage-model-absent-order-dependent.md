@@ -3,7 +3,7 @@ id: 456
 source: gh
 slug: test-image-triage-model-absent-order-dependent
 title: "test_image_triage: TestLearnedTriageGate::test_gate_on_but_model_absent_falls_back_to_heuristic order-dependent on data/image_model/ filesystem state"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —
