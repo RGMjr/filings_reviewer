@@ -92,7 +92,7 @@ The table below documents every variable. Variables marked **Required** must be 
 | Variable | Description |
 |---|---|
 | `FMP_API_KEY` | Financial Modeling Prep API key. Required for transcript ingestion via `scripts/ingest_transcripts.py --source fmp`. Get from [financialmodelingprep.com](https://financialmodelingprep.com/developer/docs/). |
-| `SENTRY_DSN` | Sentry error tracking DSN. Uncomment in `.env` to enable. |
+| `SENTRY_DSN` | Sentry error-monitoring DSN. Uncomment in `.env` to enable. Errors-only (no tracing) and PII-scrubbed via `src/infra/sentry.py`; no-op when unset or under `APP_ENV=testing`. See `.claude/rules/infrastructure.md` for prod env-group wiring and free-tier limits. |
 | `JSON_LOGS` | Set to `1` to emit structured JSON log output instead of plain text. |
 | `GITHUB_PERSONAL_ACCESS_TOKEN` | GitHub token for the Claude Code MCP server. Scopes: `repo`, `read:org`. |
 | `BRAVE_API_KEY` | Brave Search API key for the Brave Search MCP server. |
