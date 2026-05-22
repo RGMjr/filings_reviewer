@@ -57,6 +57,13 @@ def configure_logging(
         force=True,  # Override any existing configuration
     )
 
+    # Wire Sentry for background workers / scripts that call this at startup
+    # (e.g. onboarding_runner, batch_v2_extraction). No-op without SENTRY_DSN
+    # or under APP_ENV=testing. See src/infra/sentry.py.
+    from src.infra.sentry import init_sentry
+
+    init_sentry()
+
 
 def get_timestamped_log_path(prefix: str, log_dir: Path = Path("logs")) -> Path:
     """

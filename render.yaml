@@ -13,6 +13,12 @@ envVarGroups:
         sync: false
       - key: R2_ENDPOINT_URL
         sync: false
+      # Sentry error-monitoring DSN. Errors-only, PII-scrubbed (src/infra/sentry.py).
+      # In this group so it reaches exactly filings-reviewer, filings-extraction,
+      # and filings-onboarding-runner — NOT nightly-sweep or metabase. Leave
+      # unset to disable Sentry (init is a no-op without it).
+      - key: SENTRY_DSN
+        sync: false
 
   - name: filings-claude-secrets
     envVars:

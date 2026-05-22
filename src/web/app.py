@@ -18,6 +18,7 @@ from flask import Flask, current_app, g, jsonify, render_template, request
 from flask_talisman import Talisman
 
 from src.infra.db import DatabaseAdapter
+from src.infra.sentry import init_sentry
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +254,11 @@ def create_app(
     # Apply any overrides
     if config_override:
         app.config.update(config_override)
+
+    # Initialize Sentry error monitoring before blueprints so request handlers
+    # are instrumented. No-op without SENTRY_DSN or under the testing config.
+    # See src/infra/sentry.py.
+    init_sentry(config_name)
 
     # Validate/initialize configuration based on environment
     if config_name == "production":
