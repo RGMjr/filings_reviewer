@@ -3,7 +3,7 @@ id: 299
 source: gh
 slug: stale-onedrive-paths-in-html-storage
 title: Stale OneDrive paths in filings.html_storage_path block re-extraction
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

@@ -3,7 +3,7 @@ id: 389
 source: gh
 slug: phase2-analytics-integration-tests
 title: Add integration tests for Phase-2 Metric Analytics helpers
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

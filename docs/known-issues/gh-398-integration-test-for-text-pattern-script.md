@@ -3,7 +3,7 @@ id: 398
 source: gh
 slug: integration-test-for-text-pattern-script
 title: "Add integration test for scripts/analyze_text_decision_patterns.py"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

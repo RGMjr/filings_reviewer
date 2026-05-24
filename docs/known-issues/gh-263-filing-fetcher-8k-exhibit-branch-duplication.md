@@ -3,7 +3,7 @@ id: 263
 source: gh
 slug: filing-fetcher-8k-exhibit-branch-duplication
 title: FilingFetcher.fetch_filing duplicates 8-K exhibit-99-1 logic across cold-fetch and cached-backfill branches
-status: resolved
+status: archived
 severity: low
 autonomy: safe
 estimated: S

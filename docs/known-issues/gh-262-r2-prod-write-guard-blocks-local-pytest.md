@@ -3,7 +3,7 @@ id: 262
 source: gh
 slug: r2-prod-write-guard-blocks-local-pytest
 title: R2 prod-write guard fails 10 e2e tests on a clean main during local pytest
-status: resolved
+status: archived
 severity: medium
 autonomy: safe
 estimated: S

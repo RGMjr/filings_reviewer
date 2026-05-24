@@ -6,7 +6,7 @@ id: 112
 severity: medium
 slug: test-accession-normalization-check-form-type
 source: legacy
-status: resolved
+status: archived
 title: tests/integration/infra/test_accession_normalization.py — all upsert tests fail on check_form_type
 touches:
   - tests/integration/infra/test_accession_normalization.py
