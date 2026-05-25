@@ -7,7 +7,7 @@ note: Resolved 2026-04-23 — cannot reproduce on main; retained in table for au
 severity: low
 slug: integration-test-db-flakiness-under-full-suite-pytest-x
 source: legacy
-status: resolved
+status: archived
 title: Integration Test DB Flakiness Under Full-Suite `pytest -x`
 touches: []
 updated: '2026-04-23'

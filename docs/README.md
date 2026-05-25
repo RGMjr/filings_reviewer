@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn [cleanup]` | Project-local: capture durable lessons from the current session into project memory, or audit and prune existing memory entries. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that discovers open PRs automatically; compose with `/loop <interval> /monitor-prs` to poll. |
+| `/pick-issues [count] [strategy]` | Project-local: select one or more known-issue fragments and draft worker prompts ready to dispatch. Strategies: `highest-impact`, `parallel-safe`, `xs-only`, `tier1-recall-gap`. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: run the KNOWN_ISSUES sweeper manually (same flow as the nightly Render cron). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,20 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-05-25 — LLM classifier closeout, Sentry, admin review tool, Tier-1 analytics
+
+- **LLM presence classifier: closed (Option A).** Phase-2 quantitative gate returned NO-GO on both live runs (2026-05-11 and 2026-05-14); classifier catches zero positives the keyword path missed across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays `False` indefinitely. Full record: `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md` (PR #632).
+- **Admin review tool** shipped end-to-end (PRs #601, #603): backend routes + DB methods for admin override flow, UI at `/admin/review`, `override_reason` + `supersedes_confirmation_id` columns on `v2_image_metric_confirmations`.
+- **Sentry error monitoring** wired into web, worker, and extraction services (PR #657).
+- **Tier-1 analytics views** (`v_analytics_*`) added for Metabase reporting; first tier-1 disclosure views for all enrolled metrics (PR #618).
+- **Ship-to-PR machinery**: extraction recommendation acceptance pushes accepted patterns to a PR automatically (PR #630); `/v2/review/stats` Patterns tab gets Ship-to-PR button (PR #638).
+- **Phase-2 quantitative gate runner**: multi-run dedup + token-weighted cache rate + C3/C6 corrections (PRs #627, #635).
+- **Simulation UI** on `/v2/review/stats` (PR #629).
+- **Cleanup skill**: resolved-fragment GH-issue sync step added (PR #639).
+- **Extraction fixes**: provider-aware vision-API guard (gh-619, PR #637); section_classification heading-markup variant gap (gh-612, PR #624); financial row-count binding; AR false-positive exclusion.
+- **Infra**: idna bumped to 3.15 (CVE-2026-45409); numpy ≥2.4.5; google-auth updated.
+- **Documentation**: CLAUDE.md architecture listing updated to include `src/auth` and `src/ml`; slash-command table in this file updated with `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep`; 134 resolved known-issue fragments updated to `archived`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

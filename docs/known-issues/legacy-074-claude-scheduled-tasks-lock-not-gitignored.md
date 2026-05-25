@@ -8,7 +8,7 @@ pr_refs: []
 severity: low
 slug: claude-scheduled-tasks-lock-not-gitignored
 source: legacy
-status: resolved
+status: archived
 title: '`.claude/scheduled_tasks.lock` Not Gitignored'
 touches: []
 updated: '2026-04-22'
