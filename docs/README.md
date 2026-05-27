@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
+**Version:** 2.9
 **Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-05-27
 
 ---
 
@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory entries for staleness and duplication. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically — babysit current open PRs without specifying PR numbers. |
+| `/pick-issues` | Project-local: pick known-issue fragments and draft worker prompts ready to dispatch to fresh sessions; replaces manual KNOWN_ISSUES browsing. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: run the KNOWN_ISSUES nightly sweeper manually — same flow the Render cron runs nightly; useful for ad-hoc backlog drains. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,20 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-05-27 — Sentry monitoring, Phase-2 gate closure, stats UI, doc housekeeping
+
+- ✅ **Sentry error monitoring** wired into web app, extraction worker, and pipeline (PR #657); replaces silent error swallowing in all three services.
+- ✅ **LLM presence classifier rollout closed as NO-GO** (2026-05-15, PR #632): Phase-2 quantitative gate found zero positives above keyword baseline across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays `False` indefinitely; full record in `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
+- ✅ **Phase-2 gate v2** (PR #627/#635): C3 reframe, dedup by `filing_id`, token-weighted cache rate, `selected_*` corpus fixes (gh-626).
+- ✅ **Tier-1 disclosure views** for Metabase reporting (PR #618): `v_analytics_*` views covering all Tier-1 metrics.
+- ✅ **Simulation UI** on `/v2/review/stats` (PR #629): run simulate-accepted in-browser before shipping to PR.
+- ✅ **Ship-to-PR machinery** for accepted recommendations (PR #630) and a **Ship-to-PR button** on the Patterns tab (PR #638).
+- ✅ **Admin review tool** extended: in-context image inspection panel + deep-link (PR #616).
+- ✅ **Stats dashboard fixes** (PR #648): Image Confirmations counters redefined to reflect per-metric review flow.
+- ✅ **Extraction fixes**: section-classification heading-markup variant gap (gh-612, PR #624); financial row count binding; AR FP exclusion (PR #655/#647); vision-API guard for provider-aware routing (gh-619, PR #637).
+- ✅ **`/cleanup` skill** gains resolved-fragment → GitHub issue sync step (PR #639).
+- ✅ **Doc housekeeping** (this audit): `src/auth` and `src/ml` added to CLAUDE.md architecture listing; `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` added to README slash-command table; 134 `status: resolved` known-issue fragments updated to `status: archived`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

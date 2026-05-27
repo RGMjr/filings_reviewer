@@ -3,7 +3,7 @@ id: 619
 source: gh
 slug: extraction-image-pipeline-silently-dark
 title: "filings-extraction image pipeline silently dark: OPENAI_API_KEY guard ignores Gemini provider"
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: —

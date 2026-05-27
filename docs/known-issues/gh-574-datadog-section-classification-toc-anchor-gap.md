@@ -3,7 +3,7 @@ id: 574
 source: gh
 slug: datadog-section-classification-toc-anchor-gap
 title: "section_classification: TOC-anchor heading markup detects 0 whitelisted sections, paraphrase path inert"
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: —
