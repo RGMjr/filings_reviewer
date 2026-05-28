@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn` | Capture a lesson from the current session into `.claude/lessons/` for future reference. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: monitor a set of PRs for CI status, reviews, and merge events; reports current state. |
+| `/pick-issues` | Project-local: select and brief a set of known-issues fragments for the next work session. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: manual trigger for the nightly autonomous sweep (picks eligible known-issues, opens PRs, auto-merges on green CI). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,21 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-05-28 — Post-pivot features, Phase-2 gate, and infrastructure hardening
+
+- **LLM presence classifier rollout closed (Option A — NO-GO).** Both Phase-2 quantitative runs (2026-05-11, 2026-05-14) returned zero net positives across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` remains `False`; code retained as dormant infrastructure. Full record: `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`. (#632)
+- **Phase-2 gate v2.** C3 reframe + dedup + token aggregation; `selected_*` fields now drawn from post-dedup corpus; C6 cache rate is token-weighted. Clean NO-GO finding published. (#627, #635 / gh-626)
+- **Simulation UI** on `/v2/review/stats` — preview accepted-recommendation outcomes before shipping. (#629, #609)
+- **Ship-to-PR button** on `/v2/review/stats` Patterns tab — accepted-recommendation shipping now one-click from the UI. (#638)
+- **Ship-to-PR extraction machinery** for accepted recommendations in `src/extraction_v2`. (#630)
+- **Tier-1 disclosure views for Metabase** — `v_analytics_*` views covering Tier-1 metric presence for BI reporting. (#618)
+- **Sentry error monitoring** wired into web app, worker, and extraction pipeline. (#657)
+- **Image Confirmations stats redefined** — counters now reflect per-metric review flow rather than per-image. (#648)
+- **`/cleanup` extended** with resolved-fragment → GitHub issue sync step. (#639)
+- **`src/auth`** and **`src/ml`** module directories added to CLAUDE.md architecture block (doc-audit fix).
+- **docs/README.md slash commands table** updated: `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` now documented (doc-audit fix).
+- **74 known-issues fragments** updated from `resolved` → `archived` (doc-audit fix).
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

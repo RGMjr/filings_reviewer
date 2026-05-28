@@ -3,7 +3,7 @@ id: 482
 source: gh
 slug: stacked-require-admin-cleanup
 title: "auth: remove stacked @require_admin from retrain/analysis endpoints (PR-C1 cleanup)"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: S

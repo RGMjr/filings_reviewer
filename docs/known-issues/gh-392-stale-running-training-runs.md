@@ -3,7 +3,7 @@ id: 392
 source: gh
 slug: stale-running-training-runs
 title: Stale 'running' rows in model_training_runs after SIGKILL/OOM
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

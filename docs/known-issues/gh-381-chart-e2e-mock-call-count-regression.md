@@ -3,7 +3,7 @@ id: 381
 source: gh
 slug: chart-e2e-mock-call-count-regression
 title: "test_chart_extraction_produces_chart_data: MockVisionClient.call_count == 2 (expected 1)"
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: —

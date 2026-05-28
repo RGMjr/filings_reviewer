@@ -3,7 +3,7 @@ id: 289
 source: gh
 slug: image-confidence-calibration-scope-b
 title: Scope B — image confidence calibration and coverage expansion
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

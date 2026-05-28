@@ -3,7 +3,7 @@ id: 562
 source: gh
 slug: demote-detection-tier-rollups
 title: Demote Detection Tier rollups on /v2/review/stats Images tab
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —
