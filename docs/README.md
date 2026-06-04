@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
+**Version:** 2.9
 **Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-06-04
 
 ---
 
@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically; compose with `/loop <interval> /monitor-prs`. |
+| `/pick-issues` | Project-local: pick one or more known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit for stale/redundant entries (`/learn cleanup`). |
+| `/sweep` | Project-local (manual): run the KNOWN_ISSUES sweeper on demand — same flow as the nightly Render cron. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,20 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-06-04 — Post-pivot feature work and observability
+
+- `src/auth` and `src/ml` directories added to CLAUDE.md architecture section (previously omitted).
+- Slash Commands table updated: `/monitor-prs`, `/pick-issues`, `/learn`, `/sweep` added (project-local command files were present but undocumented in README).
+- **LLM presence classifier rollout closed (2026-05-15):** Phase-2 gate returned NO-GO on both live runs; `presence_classifier_enabled` stays `False` indefinitely. Full record in `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`. (#632)
+- **Sentry error monitoring:** wired into web, worker, and extraction layers. (#657)
+- **Ship-to-PR automation:** accepted keyword/FP recommendations on `/v2/review/stats` Patterns tab can be pushed directly to a branch via the new Ship-to-PR button; underlying `simulate-accepted` endpoint + migration landed in #609, UI shipped in #638, machinery in #630.
+- **Phase-2 eval gate v2:** C3 reframe + dedup + token-weighted aggregation; C6 cache-rate counter fixed (token-weighted). (#627, #635)
+- **Simulation UI** on `/v2/review/stats`. (#629)
+- **`/cleanup` resolved-fragment sync step:** cleanup command now syncs resolved known-issue fragments with their GH issues. (#639)
+- **Image Confirmations counters** redefined to reflect per-metric review flow. (#648)
+- Financial row count binding fix and AR FP exclusion. (#655, #647)
+- Section classification heading-markup variant gap fixed (gh-612). (#624)
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
