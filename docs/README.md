@@ -1,13 +1,13 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot complete; LLM classifier rollout closed)
+**Last Updated:** 2026-06-11
 
 ---
 
-> **Pivot status (2026-04-25):** The system is mid-pivot from value-extraction-as-primary to **presence-as-primary** — the canonical scoring surface is now per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2 (gold-standard derivation + Tier-1 gate flip), PR3 (reviewer UI for text presence), PR4–PR5 are pending. Known gaps: legacy-097 (residual chart facts), legacy-098 (validator `presence_f1` not yet populated). See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
+> **Pivot status (2026-06-11):** The presence-pivot is **complete**. The canonical scoring surface is per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86). Text-presence PRs 1–5 have all landed. Known gaps legacy-097 (residual chart facts) and legacy-098 (validator `presence_f1`) are **resolved**. The LLM presence classifier rollout is **CLOSED** (verdict: NO-GO, 2026-05-15) — `presence_classifier_enabled` stays `False`; see `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`. See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the full history.
 
 ## Overview
 
@@ -124,7 +124,7 @@ Worker prompt templates are archived at `archive/historical/process/`. Use the A
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
 - **Parsing:** BeautifulSoup4, lxml
-- **Testing:** pytest (75%+ coverage, 4,500+ tests)
+- **Testing:** pytest (80%+ coverage enforced, 4,500+ tests)
 
 ### Cost Profile
 
@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn [cleanup]` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries (`/learn cleanup`). |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically. Compose with `/loop <interval> /monitor-prs` to babysit all open PRs. |
+| `/pick-issues [count] [strategy]` | Project-local: select eligible known-issue fragments and draft worker prompts ready for dispatch. Strategies: `highest-impact` (default), `parallel-safe`, `xs-only`, `tier1-recall-gap`. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: manually invoke the nightly known-issues sweeper (same flow as the Render cron). Useful for ad-hoc backlog drains and testing selector changes. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,14 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-06-11 — Documentation audit: catch-up for post-pivot changes
+
+- Presence-pivot banner updated: PRs 1–5 complete, legacy-097 and legacy-098 resolved, LLM classifier rollout CLOSED (2026-05-15).
+- `CLAUDE.md` architecture block updated: `src/auth/` and `src/ml/` were present but undocumented.
+- Slash commands table updated: added `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep` (all had project-local `.claude/commands/` files but were missing from this README).
+- Test coverage corrected: "75%+" updated to "80%+ enforced" to match the actual `pyproject.toml` threshold.
+- 134 `status: resolved` known-issue fragments updated to `status: archived` (bulk housekeeping; fragments had been resolved but not transitioned).
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

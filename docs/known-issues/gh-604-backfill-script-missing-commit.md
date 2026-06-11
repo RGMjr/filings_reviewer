@@ -3,7 +3,7 @@ id: 604
 source: gh
 slug: backfill-script-missing-commit
 title: backfill_legacy_reviewer_aliases.py silently rolls back UPDATEs (missing conn.commit())
-status: resolved
+status: archived
 severity: high
 autonomy: n/a
 estimated: —
