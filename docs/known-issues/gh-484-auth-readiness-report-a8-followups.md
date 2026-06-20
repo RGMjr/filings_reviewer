@@ -3,7 +3,7 @@ id: 484
 source: gh
 slug: auth-readiness-report-a8-followups
 title: "auth: three A8 follow-ups in auth_readiness_report.py"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: S

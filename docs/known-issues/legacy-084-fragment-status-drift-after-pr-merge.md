@@ -9,7 +9,7 @@ pr_refs:
 severity: low
 slug: fragment-status-drift-after-pr-merge
 source: legacy
-status: resolved
+status: archived
 title: Fragment Status Drift After PR Merge (Needs Auto-Update Mechanism)
 touches:
   - scripts/known_issues_selector.py

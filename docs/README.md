@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot mid-rollout; auth Stage A/B/C complete)
+**Last Updated:** 2026-06-20
 
 ---
 
@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/pick-issues [count] [strategy]` | Project-local: select and brief known-issue fragments for dispatch. Strategies: `highest-impact` (default), `parallel-safe`, `xs-only`, `tier1-recall-gap`. |
+| `/learn` | Project-local: capture durable session lessons into project memory; `/learn cleanup` audits existing entries. |
+| `/sweep` | Project-local: manually invoke the nightly known-issues sweeper (same flow as the Render cron; requires `SWEEP_FORCE=1`). |
+| `/monitor-prs` | Project-local: single-shot open-PR discovery wrapper; delegates to `/supervise-prs`. Compose with `/loop 8m /monitor-prs`. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,13 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-06-20 — Auth module, ML module, and documentation audit
+
+- `src/auth/` module added: OAuth/OIDC login flow, Stage A/B/C rollout (`auth_users`, `auth_sessions`, `auth_access_entries`, `auth_legacy_aliases` tables), route-level enforcement, service-account sentinel, CSRF protection. Admin review tool at `/admin/review` with override/supersedes confirmation workflow (`v2_image_metric_confirmations.override_reason` + `supersedes_confirmation_id`). See [`auth-stage-b-runbook.md`](operations/auth-stage-b-runbook.md) and [`auth-stage-c-runbook.md`](operations/auth-stage-c-runbook.md).
+- `src/ml/` module added: `retrain_runner.py` for background image-relevance model retraining.
+- LLM presence classifier rollout **CLOSED** 2026-05-15: Phase-2 quantitative gate was NO-GO — classifier catches zero positives the keyword path missed across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays `False` indefinitely. Option B carve-out (5 unenrolled Tier-1 metrics) is the only future activation path. Full record: [`docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`](analysis/llm-presence-classifier-rollout-closeout-20260515.md).
+- Documentation audit (2026-06-20): CLAUDE.md architecture block updated to include `auth` and `ml` modules; four missing slash commands added to README Slash Commands table (`/pick-issues`, `/learn`, `/sweep`, `/monitor-prs`); 132 resolved known-issue fragments marked `archived`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

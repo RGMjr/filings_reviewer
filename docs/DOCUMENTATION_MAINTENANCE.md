@@ -2,7 +2,7 @@
 
 **Purpose**: Keep project documentation lean and useful by regular cleanup.
 
-**Last Audit Run**: 2026-04-27
+**Last Audit Run**: 2026-06-20
 
 **Critical-path docs that must stay current**:
 - `CLAUDE.md` — architecture, commands list, test coverage percentage
@@ -79,4 +79,4 @@ find docs/ -name "*.md" -mtime +180 -not -path "*/archive/*" -not -path "*/known
 
 ---
 
-**Last Updated**: 2026-04-27
+**Last Updated**: 2026-06-20

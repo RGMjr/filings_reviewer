@@ -7,7 +7,7 @@ pr_refs: []
 severity: medium
 slug: migration-registry-drift-between-apply-scripts
 source: legacy
-status: resolved
+status: archived
 title: Migration registry drift between apply_migrations.py and apply_all_migrations.py
 touches:
   - scripts/apply_migrations.py

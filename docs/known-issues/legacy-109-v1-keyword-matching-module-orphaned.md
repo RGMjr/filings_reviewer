@@ -7,7 +7,7 @@ pr_refs: []
 severity: low
 slug: v1-keyword-matching-module-orphaned
 source: legacy
-status: resolved
+status: archived
 title: V1 src/review/keyword_matching.py Has No Live Callers — Module Deletable
 touches:
   - src/review/keyword_matching.py

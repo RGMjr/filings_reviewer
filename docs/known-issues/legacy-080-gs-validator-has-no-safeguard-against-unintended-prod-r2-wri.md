@@ -10,7 +10,7 @@ pr_refs:
 severity: medium
 slug: gs-validator-has-no-safeguard-against-unintended-prod-r2-wri
 source: legacy
-status: resolved
+status: archived
 title: GS Validator Has No Safeguard Against Unintended Prod R2 Writes
 touches:
 - src/infra/image_storage.py
