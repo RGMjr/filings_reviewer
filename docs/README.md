@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn [cleanup]` | Project-local: capture durable session lessons into project memory, or run a full memory audit with `/learn cleanup`. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: discover all open PRs dynamically and delegate to `/supervise-prs`; compose with `/loop <interval> /monitor-prs`. |
+| `/pick-issues [count] [strategy]` | Project-local: select and rank open known-issue fragments, check staleness and in-flight collisions, and draft worker prompts. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: run the nightly known-issues sweeper manually (same flow as the Render cron). Requires `SWEEP_FORCE=1`. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,16 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-06-22 — Auth rollout, ML module, LLM classifier closeout, command index refresh
+
+- **Auth rollout (Stage A–C):** New `src/auth/` module; `auth_users`, `auth_sessions`, `auth_access_entries`, `auth_legacy_aliases`, `feature_flags`, `admin_audit_log` tables. OAuth login flow auto-provisions/activates `auth_users` rows on first login (post PR-A5). `v2_audit_log.user_id` added (gh-520) with service-account sentinel (`00000000-…`). Stage B/C runbooks: `docs/operations/auth-stage-b-runbook.md`, `docs/operations/auth-stage-c-runbook.md`. Operator scripts: `scripts/seed_auth_users.py`, `scripts/seed_auth_legacy_aliases.py`, `scripts/auth_readiness_report.py`.
+- **Image model R2 persistence (gh-391):** New `src/infra/model_storage.py`; `model_training_runs` table stores opaque R2 keys for joblib artifacts; `models/image_relevance/latest_run_id.txt` pointer drives the loader. New `src/ml/` module for image-relevance ML code.
+- **Admin review tool (PR #597):** `/admin/review` endpoint; `v2_image_metric_confirmations` gains `override_reason TEXT` and `supersedes_confirmation_id UUID` columns for admin overrides of reviewer decisions.
+- **LLM presence classifier rollout CLOSED (2026-05-15):** Phase-2 quantitative gate was NO-GO on both live runs. `presence_classifier_enabled` stays `False`; code retained as dormant infrastructure. Full record: `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
+- **Filing HTML storage finalized:** R2 keys written on every fetch (gh-315); `html_content` DB-blob fallback dropped (gh-314).
+- **Slash command index updated:** Added `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` to command table (all project-local `.claude/commands/` files).
+- **CLAUDE.md architecture section:** Added `auth` and `ml` to the `src/` module listing.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
