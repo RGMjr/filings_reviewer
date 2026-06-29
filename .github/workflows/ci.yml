@@ -122,7 +122,7 @@ jobs:
       - name: Cache Playwright browsers
         if: steps.filter.outputs.run == 'true'
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chrome-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
