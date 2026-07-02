@@ -3,7 +3,7 @@ id: 293
 source: gh
 slug: image-card-undo-review-affordance
 title: "Image card: 'Undo review' / re-open affordance"
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: S

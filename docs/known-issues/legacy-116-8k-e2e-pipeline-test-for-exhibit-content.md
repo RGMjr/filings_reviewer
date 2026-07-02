@@ -8,7 +8,7 @@ pr_refs:
 severity: low
 slug: 8k-e2e-pipeline-test-for-exhibit-content
 source: legacy
-status: resolved
+status: archived
 title: Missing E2E Pipeline Test for 8-K Exhibit Metric Extraction
 touches:
 - tests/integration/extraction_v2/

@@ -3,7 +3,7 @@ id: 531
 source: gh
 slug: llm-token-columns-always-zero
 title: LLM classifier token columns always 0 in validator (token threading not implemented)
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —

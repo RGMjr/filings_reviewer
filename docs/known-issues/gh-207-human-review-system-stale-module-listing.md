@@ -3,7 +3,7 @@ id: 207
 source: gh
 slug: human-review-system-stale-module-listing
 title: docs/HUMAN_REVIEW_SYSTEM.md module listing references ~8 deleted V1 review files
-status: resolved
+status: archived
 severity: low
 autonomy: safe
 estimated: XS

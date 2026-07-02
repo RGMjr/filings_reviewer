@@ -6,7 +6,7 @@ id: 107
 severity: low
 slug: contract-test-lacks-vision-branch-coverage
 source: legacy
-status: resolved
+status: archived
 title: Mock Server Contract Test Never Exercises "Predicted Metrics (Vision)" Label Branch
 touches:
   - tests/ui/test_server.py

@@ -7,7 +7,7 @@ note: Stakeholder confirmed restatement-supersedes-original; 10-K/A demotes same
 severity: low
 slug: 10-k-a-supersession-semantics-undefined
 source: legacy
-status: resolved
+status: archived
 title: 10-K/A Supersession Semantics Undefined
 touches: []
 updated: '2026-04-28'

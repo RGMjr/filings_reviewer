@@ -3,7 +3,7 @@ id: 481
 source: gh
 slug: route-enforcement-integration-test
 title: "auth: add tests/integration/auth/test_route_enforcement.py (deferred from PR-C1)"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: M

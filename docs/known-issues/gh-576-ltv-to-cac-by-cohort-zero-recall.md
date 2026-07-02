@@ -3,7 +3,7 @@ id: 576
 source: gh
 slug: ltv-to-cac-by-cohort-zero-recall
 title: "Phase-1 eval: cm_ltv_to_cac_ratio_by_cohort 0 recall on gold corpus"
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: —
