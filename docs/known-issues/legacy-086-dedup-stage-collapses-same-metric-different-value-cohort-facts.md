@@ -9,7 +9,7 @@ note: 'Dissolved by the chart-presence pivot (PRs #147/#150/#151/#154, 2026-04-2
 severity: medium
 slug: dedup-stage-collapses-same-metric-different-value-cohort-facts
 source: legacy
-status: resolved
+status: archived
 title: Dedup Stage Collapses Same-Metric Different-Value Cohort Facts
 touches:
   - src/extraction_v2/stages/deduplication.py

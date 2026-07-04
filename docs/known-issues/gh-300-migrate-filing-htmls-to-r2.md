@@ -3,7 +3,7 @@ id: 300
 source: gh
 slug: migrate-filing-htmls-to-r2
 title: Migrate filing HTMLs to R2 long-haul storage (architecture)
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

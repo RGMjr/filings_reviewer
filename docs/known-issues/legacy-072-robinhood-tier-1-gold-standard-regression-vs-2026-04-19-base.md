@@ -12,7 +12,7 @@ pr_refs:
 severity: high
 slug: robinhood-tier-1-gold-standard-regression-vs-2026-04-19-base
 source: legacy
-status: resolved
+status: archived
 title: Robinhood Tier 1 Gold-Standard Regression vs. 2026-04-19 Baseline
 touches: []
 updated: '2026-04-22'

@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot complete; auth Stage B active)
+**Last Updated:** 2026-07-04
 
 ---
 
@@ -76,6 +76,18 @@ Instructions for setting up, running, and maintaining the system.
 | **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
 | **[github-org-transfer.md](operations/github-org-transfer.md)** | Decision record + runbook: when/how to migrate from user repo to GitHub org (unlocks merge queue, teams, org rulesets) | DevOps |
 | **[text-pipeline-presence-pivot-plan.md](operations/text-pipeline-presence-pivot-plan.md)** | Text-extraction pivot to per-(doc, metric) presence: rollout plan + PR1 landed-interface contract for downstream PRs | Developers |
+| **[nightly-sweep-runbook.md](operations/nightly-sweep-runbook.md)** | Nightly KNOWN_ISSUES sweeper: cron setup, selector config, stalled-runs alert, manual invoke | Developers, DevOps |
+| **[auth-stage-b-runbook.md](operations/auth-stage-b-runbook.md)** | Auth Stage B (shadow mode): flip `google_login_enabled`, rollback procedure | DevOps |
+| **[auth-stage-c-runbook.md](operations/auth-stage-c-runbook.md)** | Auth Stage C (enforcement): activate `auth_enforcement_enabled`, prerequisites, rollback | DevOps |
+| **[admin-review-runbook.md](operations/admin-review-runbook.md)** | Admin review tool at `/admin/review`: auditing suppressed images, overriding reviewer decisions | Developers, DevOps |
+| **[full-page-ocr-runbook.md](operations/full-page-ocr-runbook.md)** | Full-page-scan OCR: `FULL_PAGE_OCR_ENABLED` (Path A) and `IMAGE_KEYWORD_PRESCAN_ENABLED` (Path B) | Developers |
+| **[metric-classify-pipeline.md](operations/metric-classify-pipeline.md)** | Vision-API metric-classify stage pipeline runbook (`ENABLE_METRIC_CLASSIFY`) | Developers |
+| **[vision-model-selection.md](operations/vision-model-selection.md)** | Reference: which vision model each call site uses, env var controls, cost trade-offs | Developers |
+| **[metabase-tier1-reporting.md](operations/metabase-tier1-reporting.md)** | Tier-1 disclosure reports in Metabase: `v_analytics_company_tier1_summary` and related views | Analysts, DevOps |
+| **[ci-branch-protection.md](operations/ci-branch-protection.md)** | GitHub CI branch protection controls, dependabot setup, pre-push hook | DevOps |
+| **[BATCH_INGESTION.md](operations/BATCH_INGESTION.md)** | Batch ingestion for earnings call transcripts and investor presentations | Developers, DevOps |
+| **[llm-presence-classifier-phase1-eval-runbook.md](operations/llm-presence-classifier-phase1-eval-runbook.md)** | LLM presence classifier Phase-1 smoke eval runbook (CLOSED 2026-05-15; reference only) | Developers |
+| **[llm-presence-classifier-phase2-quantitative-eval-runbook.md](operations/llm-presence-classifier-phase2-quantitative-eval-runbook.md)** | LLM presence classifier Phase-2 quantitative gate design (CLOSED 2026-05-15; reference only) | Developers |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 
@@ -398,11 +410,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically; use with `/loop 8m /monitor-prs`. |
+| `/pick-issues` | Project-local: pick one or more known-issue fragments and draft worker prompts for dispatch to fresh sessions. |
+| `/sweep` | Project-local: manually invoke the nightly KNOWN_ISSUES sweeper (same flow as the Render cron). |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit memory for stale/redundant entries. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +437,21 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-07-04 — Post-pivot stabilization, auth rollout, LLM classifier closeout
+
+- **LLM presence classifier closed out (2026-05-15):** Phase-2 quantitative gate returned NO-GO on both live runs; classifier catches zero positives the keyword path missed across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays `False` indefinitely. Full record: [`docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`](analysis/llm-presence-classifier-rollout-closeout-20260515.md).
+- **Tier-1 Metabase disclosure views:** `v_analytics_company_tier1_summary` and `v_analytics_company_metric_disclosure` added; [`metabase-tier1-reporting.md`](operations/metabase-tier1-reporting.md) covers the four recurring Tier-1 reports.
+- **Ship-to-PR workflow:** Accepted recommendation cards on `/v2/review/stats` Patterns tab now have a Ship-to-PR button; `feat(extraction): ship-to-pr machinery` lands keyword/FP-filter changes as draft PRs without manual branch setup.
+- **Simulation UI:** `/v2/review/stats` gained a simulation mode that previews the effect of accepted suggestions before shipping (PR #629).
+- **Auth runbooks added:** [`auth-stage-b-runbook.md`](operations/auth-stage-b-runbook.md) (shadow mode flip) and [`auth-stage-c-runbook.md`](operations/auth-stage-c-runbook.md) (enforcement activation) document the operator procedure for each auth stage.
+- **Admin review tool runbook:** [`admin-review-runbook.md`](operations/admin-review-runbook.md) documents `/admin/review` — auditing suppressed images, overriding reviewer decisions, `override_reason` / `supersedes_confirmation_id` schema.
+- **Nightly sweep operational:** [`nightly-sweep-runbook.md`](operations/nightly-sweep-runbook.md) documents the `filings-nightly-sweep` Render cron (06:00 UTC), stalled-runs alert via `scripts/check_stalled_runs.py`, and manual-invoke path.
+- **Sentry error monitoring:** Wired into web, worker, and extraction services (PR #657).
+- **`src/auth` and `src/ml` modules:** `src/auth/` holds the full OAuth/OIDC auth stack (14 modules); `src/ml/retrain_runner.py` drives the relevance-model retrain worker. Both now listed in the architecture block.
+- **Resolved-fragment GH-issue sync:** `/cleanup` skill gained a step that syncs `status: resolved` fragments with their closed GitHub issues.
+- **Slash command table updated:** `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep` added to the Commands table below (previously missing).
+- **14 new operations runbooks added to index** (see Operations table above): auth-stage-b/c, admin-review, nightly-sweep, full-page-ocr, metric-classify-pipeline, vision-model-selection, metabase-tier1-reporting, ci-branch-protection, BATCH_INGESTION, llm-presence-classifier-phase1/2 eval (closed reference).
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

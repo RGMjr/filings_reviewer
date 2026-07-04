@@ -3,7 +3,7 @@ id: 298
 source: gh
 slug: chart-only-drain-branch-unreachable
 title: chart_only=True drain branch is unreachable post-presence-pivot
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

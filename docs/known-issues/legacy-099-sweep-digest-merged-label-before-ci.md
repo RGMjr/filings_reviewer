@@ -6,7 +6,7 @@ id: 99
 severity: medium
 slug: sweep-digest-merged-label-before-ci
 source: legacy
-status: resolved
+status: archived
 title: Sweep digest labels safe-tier PRs "merged" before CI has actually merged them
 touches:
   - scripts/run_nightly_sweep.sh

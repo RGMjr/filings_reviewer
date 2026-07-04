@@ -10,7 +10,7 @@ note: 'PR #150 added the presence P/R/F1 infrastructure to the validator + basel
 severity: low
 slug: validator-presence-f1-not-populated
 source: legacy
-status: resolved
+status: archived
 title: Validator presence_f1 Stays Null — detected_metrics Not Populated in-Memory
 touches:
   - src/gold_standard/v2_validator.py
