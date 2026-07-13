@@ -27,7 +27,7 @@ ruff>=0.1.0
 mypy>=1.0.0
 
 # psycopg type stubs (needed for mypy)
-types-psycopg2>=2.9.21.20260518
+types-psycopg2>=2.9.21.20260712
 
 # Dependency vulnerability scanning
 pip-audit>=2.7.0
