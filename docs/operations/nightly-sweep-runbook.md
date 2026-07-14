@@ -17,7 +17,7 @@ Every night at 02:00 EDT (06:00 UTC), the `filings-nightly-sweep` Render cron se
      but CI has not yet completed (or CI status could not be determined at digest-write time).
    - **Awaiting your approval** — review-tier draft PRs with one-line approve/discard commands.
    - **Abandoned** — issues the sweeper tried but gave up on, with the reason.
-6. Opens a PR for the digest file.
+6. Opens a PR for the digest file — skipped when the digest is empty (no picks and no stalled-runs findings).
 
 The source of truth for which issues the sweeper may touch is the `autonomy:` field in each fragment's YAML frontmatter under `docs/known-issues/`. The rollup `docs/KNOWN_ISSUES.md` is a CI-generated build artifact (not tracked in git); fragments are authoritative.
 
