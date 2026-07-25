@@ -6,7 +6,7 @@ id: 102
 severity: low
 slug: sweep-autonomy-cleanup-resolved-archived
 source: legacy
-status: resolved
+status: archived
 title: Resolved/Archived Issues Retain Non-`n/a` Autonomy — Sweep Logs Noisy
 touches:
   - docs/known-issues/

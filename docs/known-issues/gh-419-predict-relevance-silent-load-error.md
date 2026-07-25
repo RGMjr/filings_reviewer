@@ -3,7 +3,7 @@ id: 419
 source: gh
 slug: predict-relevance-silent-load-error
 title: predict_relevance() silently swallows joblib load errors — runtime failure indistinguishable from model absent
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

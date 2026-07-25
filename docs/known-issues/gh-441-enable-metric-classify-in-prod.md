@@ -3,7 +3,7 @@ id: 441
 source: gh
 slug: enable-metric-classify-in-prod
 title: Enable Vision-API metric classifier in prod (ENABLE_METRIC_CLASSIFY=true)
-status: resolved
+status: archived
 severity: medium
 autonomy: review
 estimated: S

@@ -9,7 +9,7 @@ pr_refs:
 severity: low
 slug: nightly-sweeper-orchestrator-uses-gnu-timeout-incompatible-w
 source: legacy
-status: resolved
+status: archived
 title: Nightly Sweeper Orchestrator Uses GNU `timeout` (Incompatible with macOS)
 touches: []
 updated: '2026-04-22'

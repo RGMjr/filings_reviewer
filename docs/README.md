@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot complete; analytics expansion in progress)
+**Last Updated:** 2026-07-25
 
 ---
 
@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically — babysit "whatever I have open right now" without typing PR numbers. |
+| `/pick-issues` | Project-local: select one or more known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries. |
+| `/sweep` | Project-local: run the KNOWN_ISSUES nightly sweeper manually (same flow as the Render cron). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,19 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-07-25 — Post-pivot consolidation and analytics expansion
+
+- **LLM presence classifier rollout closed (NO-GO, 2026-05-15).** Phase-2 gate v2 ran C3 reframe + dedup + token aggregation; both live runs (2026-05-11 and 2026-05-14) returned zero incremental positives across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays `False` indefinitely; Option B carve-out (5 unenrolled Tier-1 metrics) is the only future activation path. See `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
+- **Ship-to-PR machinery.** `/v2/review/stats` Patterns tab now shows a "Ship to PR" button that opens a GitHub PR pre-populated with accepted text-pattern recommendations (`feat: ship-to-pr machinery`, PR #630, PR #638).
+- **Simulation UI on /v2/review/stats.** New endpoint (`/v2/simulate-accepted`) and frontend panel let reviewers preview the impact of accepting suggested patterns before committing (#609, #629).
+- **Tier-1 disclosure views for Metabase.** `v_analytics_*` views extended with Tier-1 per-year disclosure rollups for BI reporting (#618).
+- **Sentry error monitoring.** Wired into web, extraction worker, and background extraction; controlled via `SENTRY_DSN` env var (#657).
+- **`/cleanup` enhanced.** Adds a resolved-fragment → GitHub-issue sync step that closes the GitHub issue when a fragment is set to `resolved` (#639).
+- **`src/auth` and `src/ml` modules.** Both modules are now live in `src/` and documented in CLAUDE.md architecture section.
+- **Dependency updates.** idna ≥3.17, numpy ≥2.4.6, types-psycopg2, google-auth; `CVE-2026-45409` patched via idna 3.15 bump (#649).
+- **135 known-issues fragments** advanced from `resolved` → `archived` in this audit pass.
+- **docs/README.md slash commands table** updated to include `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
