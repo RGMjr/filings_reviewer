@@ -9,7 +9,7 @@ pr_refs:
 severity: medium
 slug: eval-threshold-sweep-score-mismatch
 source: gh
-status: resolved
+status: archived
 title: evaluate_vision_metric_scores threshold sweep contradicts DB score distribution
 touches:
   - scripts/evaluate_vision_metric_scores.py

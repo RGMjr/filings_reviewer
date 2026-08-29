@@ -9,7 +9,7 @@ pr_refs:
 severity: medium
 slug: migrations-not-auto-applied-on-render-deploy
 source: legacy
-status: resolved
+status: archived
 title: Migrations Not Auto-Applied on Render Deploy
 touches:
 - render.yaml

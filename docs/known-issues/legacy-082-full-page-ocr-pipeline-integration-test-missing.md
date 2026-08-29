@@ -6,7 +6,7 @@ id: 82
 severity: low
 slug: full-page-ocr-pipeline-integration-test-missing
 source: legacy
-status: resolved
+status: archived
 title: Full-Page-OCR Pipeline Integration Test Missing
 touches:
 - tests/integration/extraction_v2/test_full_page_ocr_pipeline.py
