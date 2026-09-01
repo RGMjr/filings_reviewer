@@ -3,7 +3,7 @@ id: 605
 source: gh
 slug: stagec-runbook-rollback-wording
 title: Stage-C runbook overstates rollback irreversibility
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —

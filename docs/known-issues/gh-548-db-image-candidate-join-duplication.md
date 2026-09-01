@@ -3,7 +3,7 @@ id: 548
 source: gh
 slug: db-image-candidate-join-duplication
 title: "db.py: get_images_with_decision_type duplicates JOIN structure from get_image_review_candidate_v2"
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —

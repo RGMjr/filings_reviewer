@@ -3,7 +3,7 @@ id: 538
 source: gh
 slug: phase1-eval-required-coverage-prompts-missing
 title: "Phase-1 eval: required-coverage Tier-1 metrics lack classifier prompts"
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: —

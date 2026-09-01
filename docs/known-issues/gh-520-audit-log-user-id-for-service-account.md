@@ -3,7 +3,7 @@ id: 520
 source: gh
 slug: audit-log-user-id-for-service-account
 title: "audit-log: add user_id column to v2_audit_log for service-account traceability"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: S
