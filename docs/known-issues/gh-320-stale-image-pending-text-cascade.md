@@ -3,7 +3,7 @@ id: 320
 source: gh
 slug: stale-image-pending-text-cascade
 title: Stale IMAGE_PENDING in text-decision cascade may skip image-tab navigation
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —

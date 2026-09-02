@@ -3,7 +3,7 @@ id: 483
 source: gh
 slug: api-key-caller-migration-post-flip
 title: "auth: API-key-caller migration plan for post-flip (Stage D adjacent)"
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: M

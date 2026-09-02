@@ -10,7 +10,7 @@ pr_refs:
 severity: low
 slug: missing-playwright-e2e-for-cross-filing-auto-advance
 source: legacy
-status: resolved
+status: archived
 title: Missing Playwright E2E for image-queue cross-filing auto-advance
 touches:
 - tests/ui/*.spec.js

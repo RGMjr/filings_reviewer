@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries. |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically; babysit "whatever I have open right now" without typing PR numbers. |
+| `/pick-issues` | Project-local: pick one or more known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
+| `/sweep` | Project-local: run the KNOWN_ISSUES sweeper manually (same flow the nightly Render cron runs). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,14 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-02 — Auth/ML modules documented; slash command table completed
+
+- **CLAUDE.md architecture block** updated to list `src/auth/` and `src/ml/` alongside the existing source directories. The auth module (Stage A–C OAuth rollout, `auth_users`, `auth_sessions`, admin audit log) and ML module (image-relevance model, retrain pipeline, `model_training_runs`) were already documented in the Database section but were absent from the Architecture source list.
+- **Slash commands table** in this file now includes `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep`, which had project-local command files under `.claude/commands/` but no README entry. Note in table footer updated to reflect the full set of project-local commands.
+- **Known-issues fragments** (135 items): fragments with `status: resolved` migrated to `status: archived` so the nightly sweeper correctly skips them (sweeper targets `open` / `partially-resolved` only).
+- LLM presence classifier rollout formally closed (2026-05-15); Phase-2 gate verdict was NO-GO. See `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
+- Auth Stage B/C runbooks landed (`docs/operations/auth-stage-b-runbook.md`, `auth-stage-c-runbook.md`); admin review tool documented at `docs/operations/admin-review-runbook.md`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
