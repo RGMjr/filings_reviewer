@@ -6,7 +6,7 @@ id: 108
 severity: medium
 slug: gs-validator-baseline-drift-farfetch
 source: legacy
-status: resolved
+status: archived
 title: GS Validator Baseline Drift — Farfetch Reports has_regression=True on Unmodified Main
 touches:
   - src/gold_standard/v2_validator.py

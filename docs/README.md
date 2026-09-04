@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot mid-rollout; LLM classifier CLOSED)
+**Last Updated:** 2026-09-04
 
 ---
 
@@ -357,7 +357,7 @@ When updating documentation:
 ### Code Changes
 
 1. Write tests for new code
-2. Maintain >75% test coverage
+2. Maintain >80% test coverage
 3. Update relevant documentation
 4. Follow existing code patterns
 
@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries. |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically (no need to specify PR numbers). |
+| `/pick-issues` | Project-local: select and brief one or more known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
+| `/sweep` | Project-local: manually invoke the nightly known-issues sweeper (same logic as the Render 06:00 UTC cron; useful for ad-hoc backlog drains). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,22 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-06-03 — LLM classifier closed; ship-to-PR; Sentry; auth progression
+
+- **LLM presence classifier rollout CLOSED (2026-05-15).** Phase-2 quantitative gate ran twice (2026-05-11, 2026-05-14); both returned NO-GO (zero positives caught above keyword baseline across all 10 enrolled Tier-1 metrics). `presence_classifier_enabled` stays `False` indefinitely. Option B carve-out (5 unenrolled Tier-1 metrics) is the only legitimate future activation path. Full record: `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
+- **Phase-2 gate v2 (`da5016d`):** C3 reframe + dedup + token-weighted aggregation + clean NO-GO verdict; selected_* drawn from post-dedup corpus.
+- **Ship-to-PR machinery (`ed5cff1`, `5105684`):** accepted recommendations on `/v2/review/stats` now have a "Ship to PR" button that opens a pre-filled PR branch. Backend endpoint + script added; accepted-recommendation simulation endpoint + migration (`5272979`).
+- **Simulation UI on `/v2/review/stats` (`5e5c3a8`):** interactive simulation panel for projecting extraction changes before committing.
+- **Sentry error monitoring (`22b95f9`):** wired into web, worker, and extraction services.
+- **Tier-1 Metabase views (`c10e587`):** `v_analytics_tier1_*` disclosure views for Metabase reporting; `docs/operations/metabase-tier1-reporting.md` added.
+- **Provider-aware vision-API guard (`fd92ca2`, gh-619):** image pipeline guard respects configured vision provider; fixes dark-pipeline symptoms when provider is not OpenAI.
+- **Image Confirmations stats redefinition (`ff0fbbf`, gh-648):** per-metric review flow counters corrected.
+- **`/cleanup` resolved-fragment sync step (`208af10`):** closes the corresponding GitHub issue when a fragment is marked resolved, eliminating manual issue-close follow-up.
+- **Extraction fixes:** section-classification heading-markup variant gap (gh-612, `2bab212`), financial row-count binding (`530ec2b`), AR FP exclusion (`f652b28`).
+- **Sweep robustness:** fail-fast on expired `GH_TOKEN` via `gh api user` probe (gh-620, `e3a33ea`); sweep-digest trailing-blank-line fix (`972ba21`).
+- **Auth rollout:** `review-ui-authorization-spec.md` updated to 2026-05-01; Stage B and C runbooks refined; `auth_users` auto-provision on first OAuth login shipping.
+- **Docs:** `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` commands added to slash-command table; `CLAUDE.md` architecture block updated to include `src/auth/` and `src/ml/`; coverage threshold corrected to >80% throughout.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

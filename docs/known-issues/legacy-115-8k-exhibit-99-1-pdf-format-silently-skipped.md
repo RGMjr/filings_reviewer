@@ -6,7 +6,7 @@ id: 115
 severity: low
 slug: 8k-exhibit-99-1-pdf-format-silently-skipped
 source: legacy
-status: resolved
+status: archived
 title: 8-K Exhibit 99.1 in PDF Format is Silently Skipped
 touches:
 - src/infra/sec_client.py
