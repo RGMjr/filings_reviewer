@@ -3,7 +3,7 @@ id: 406
 source: gh
 slug: retrain-sklearn-version-check
 title: retrain_image_triage.py should enforce sklearn version match against requirements.lock
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —

@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
+**Version:** 2.9
 **Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-09-05
 
 ---
 
@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries. |
+| `/monitor-prs` | Project-local: single-shot wrapper that resolves the open-PR list dynamically (no PR numbers needed); compose with `/loop 8m /monitor-prs` to babysit open PRs. |
+| `/pick-issues` | Project-local: select known-issue fragments and draft worker prompts ready to dispatch. Supports `count`, `strategy` args (`highest-impact`, `parallel-safe`, `xs-only`, `tier1-recall-gap`). |
+| `/sweep` | Project-local: run the known-issues sweeper manually (same flow as the nightly Render cron). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,17 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-05 — Post-pivot operational hardening
+
+- **LLM presence classifier closed out:** Phase-2 gate ran twice (2026-05-11, 2026-05-14) — NO-GO on both; classifier catches zero positives the keyword path missed across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays `False` indefinitely. Full record: `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
+- **Analytics:** Tier-1 disclosure views for Metabase reporting added (`feat #618`). Simulate-accepted endpoint + migration (`feat #609`); simulation UI on `/v2/review/stats` (`feat #629`); Ship-to-PR button on Patterns tab (`feat #638`); ship-to-PR machinery for accepted recommendations (`feat #630`).
+- **Observability:** Sentry error monitoring wired into web, worker, and extraction (`feat #657`).
+- **Sweep hardening:** Fail-fast on expired `GH_TOKEN` via `gh api user` probe (gh-620); `/cleanup` now syncs resolved-fragment GH issues (`feat #639`); stats counters redefined to reflect per-metric image review flow (`fix #648`).
+- **Extraction fixes:** Provider-aware vision-API guard (gh-619); section_classification heading-markup variant gap (gh-612); financial row count binding; AR FP exclusion.
+- **Slash commands documented:** `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep` added to this README's Slash Commands table (previously missing).
+- **CLAUDE.md updated:** `src/auth` and `src/ml` modules added to the architecture source listing (previously omitted).
+- **Known-issues hygiene:** 135 fragments advanced from `status: resolved` → `status: archived`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

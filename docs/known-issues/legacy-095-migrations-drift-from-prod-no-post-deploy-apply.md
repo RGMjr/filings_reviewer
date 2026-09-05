@@ -11,7 +11,7 @@ pr_refs:
 severity: high
 slug: migrations-drift-from-prod-no-post-deploy-apply
 source: legacy
-status: resolved
+status: archived
 title: Schema Migrations Drift From Prod — No Post-Deploy Apply Step
 touches:
   - scripts/apply_migrations.py
