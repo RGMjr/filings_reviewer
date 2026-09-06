@@ -1,13 +1,15 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
+**Version:** 2.9
 **Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-09-06
 
 ---
 
 > **Pivot status (2026-04-25):** The system is mid-pivot from value-extraction-as-primary to **presence-as-primary** — the canonical scoring surface is now per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2 (gold-standard derivation + Tier-1 gate flip), PR3 (reviewer UI for text presence), PR4–PR5 are pending. Known gaps: legacy-097 (residual chart facts), legacy-098 (validator `presence_f1` not yet populated). See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
+>
+> **LLM presence classifier rollout: CLOSED (2026-05-15).** The phase-2 quantitative gate verdict was NO-GO on both live evaluation runs (2026-05-11 and 2026-05-14); the classifier catches zero positives the keyword path missed across all 10 enrolled Tier-1 metrics. `presence_classifier_enabled` stays `False` indefinitely. Code is retained as dormant infrastructure. Full record: [`analysis/llm-presence-classifier-rollout-closeout-20260515.md`](analysis/llm-presence-classifier-rollout-closeout-20260515.md).
 
 ## Overview
 
@@ -37,7 +39,11 @@ Core system architecture and design specifications.
 | **[system-overview.md](architecture/system-overview.md)** | Complete system architecture, components, data flow | Everyone - START HERE |
 | **[data-model.md](architecture/data-model.md)** | Database schema, table specifications, relationships | Developers, Analysts |
 | **[extraction-pipeline.md](architecture/extraction-pipeline.md)** | Extraction pipeline stages, components, interfaces | Developers |
+| **[extraction-decisions.md](architecture/extraction-decisions.md)** | Key extraction design decisions and rationale | Developers |
 | **[llm-integration.md](architecture/llm-integration.md)** | OpenAI GPT-4o-mini integration, costs, prompts | Developers |
+| **[image-storage.md](architecture/image-storage.md)** | Image storage (R2/local filesystem) architecture and key paths | Developers, DevOps |
+| **[image-decision-revalidation-design.md](architecture/image-decision-revalidation-design.md)** | Design for admin re-review / decision override on image confirmations | Developers |
+| **[per-metric-image-classifier.md](architecture/per-metric-image-classifier.md)** | Per-metric Vision classifier design and rollout plan | Developers |
 | **[auth-rollout-implementation-plan.md](architecture/auth-rollout-implementation-plan.md)** | Stage-by-stage PR plan for the review-UI authorization rollout | Developers, DevOps |
 
 ### Requirements (Business Needs)
@@ -47,6 +53,9 @@ Business requirements and metric definitions.
 | Document | Description | Audience |
 |----------|-------------|----------|
 | **[analytic-requirements.md](requirements/analytic-requirements.md)** | Core business requirements, research questions, hypotheses | All stakeholders |
+| **[review-ui-authorization-spec.md](requirements/review-ui-authorization-spec.md)** | Auth requirements and access-control spec for the review UI | Developers, DevOps |
+| **[text-candidate-review-analysis-improvement-spec.md](requirements/text-candidate-review-analysis-improvement-spec.md)** | Spec for improving text-candidate review UI and analysis tools | Developers |
+| **[text-decision-analysis-improvement-spec.md](requirements/text-decision-analysis-improvement-spec.md)** | Spec for improving text-decision analysis and pattern recommendations | Developers |
 
 ### Development (Implementation Guidance)
 
@@ -74,7 +83,17 @@ Instructions for setting up, running, and maintaining the system.
 | **[text-pattern-recommendations-runbook.md](operations/text-pattern-recommendations-runbook.md)** | Translate accepted Suggested-actions cards on `/v2/review/stats` into keyword / FP-filter PRs | Developers |
 | **[image-model-training-runbook.md](operations/image-model-training-runbook.md)** | Image relevance model: export → train → score pipeline | Developers |
 | **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
+| **[BATCH_INGESTION.md](operations/BATCH_INGESTION.md)** | Batch ingestion runbook: queuing, monitoring, and error recovery | Developers, DevOps |
 | **[github-org-transfer.md](operations/github-org-transfer.md)** | Decision record + runbook: when/how to migrate from user repo to GitHub org (unlocks merge queue, teams, org rulesets) | DevOps |
+| **[ci-branch-protection.md](operations/ci-branch-protection.md)** | CI branch-protection rules: required checks, rulesets, and admin override policy | DevOps |
+| **[auth-stage-b-runbook.md](operations/auth-stage-b-runbook.md)** | Auth Stage B: enabling Google login, seeding users, pre-flip readiness check | Developers, DevOps |
+| **[auth-stage-c-runbook.md](operations/auth-stage-c-runbook.md)** | Auth Stage C: route-level enforcement, `FILINGS_API_KEY` gate removal | Developers, DevOps |
+| **[full-page-ocr-runbook.md](operations/full-page-ocr-runbook.md)** | Full-page OCR pipeline: enabling, running, and troubleshooting | Developers, DevOps |
+| **[metric-classify-pipeline.md](operations/metric-classify-pipeline.md)** | `ENABLE_METRIC_CLASSIFY` pipeline: enabling Vision classifier, running, reviewing output | Developers |
+| **[metabase-tier1-reporting.md](operations/metabase-tier1-reporting.md)** | Metabase Tier-1 reporting: dashboard setup, `v_analytics_*` views, BI deployment | Analysts, DevOps |
+| **[llm-presence-classifier-phase1-eval-runbook.md](operations/llm-presence-classifier-phase1-eval-runbook.md)** | Phase 1 LLM presence classifier evaluation runbook (archive reference — rollout closed 2026-05-15) | Developers |
+| **[llm-presence-classifier-phase2-quantitative-eval-runbook.md](operations/llm-presence-classifier-phase2-quantitative-eval-runbook.md)** | Phase 2 quantitative evaluation runbook (archive reference — rollout closed 2026-05-15) | Developers |
+| **[vision-model-selection.md](operations/vision-model-selection.md)** | Vision model selection decision record and bakeoff results | Developers |
 | **[text-pipeline-presence-pivot-plan.md](operations/text-pipeline-presence-pivot-plan.md)** | Text-extraction pivot to per-(doc, metric) presence: rollout plan + PR1 landed-interface contract for downstream PRs | Developers |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
@@ -124,7 +143,8 @@ Worker prompt templates are archived at `archive/historical/process/`. Use the A
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
 - **Parsing:** BeautifulSoup4, lxml
-- **Testing:** pytest (75%+ coverage, 4,500+ tests)
+- **Testing:** pytest (80%+ coverage, 4,500+ tests)
+- **Error Monitoring:** Sentry (`sentry-sdk`; configured via `SENTRY_DSN` env var; wired into web, worker, and extraction — see `src/infra/sentry.py`)
 
 ### Cost Profile
 
@@ -357,7 +377,7 @@ When updating documentation:
 ### Code Changes
 
 1. Write tests for new code
-2. Maintain >75% test coverage
+2. Maintain >80% test coverage
 3. Update relevant documentation
 4. Follow existing code patterns
 
@@ -395,9 +415,13 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn [cleanup]` | End-of-session lesson capture into project agent memory, or audit/prune existing memory entries (`cleanup` mode). |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: thin wrapper around `/supervise-prs` that discovers open non-draft PRs dynamically. Compose with `/loop 8m /monitor-prs` for continuous supervision. |
+| `/pick-issues` | Project-local: select and brief known-issue fragments as worker prompts. Supports `count`, `strategy` (highest-impact / parallel-safe / xs-only / tier1-recall-gap), and `--no-write`. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: manual invoke of the nightly known-issues sweeper (same flow as the Render cron). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
@@ -421,6 +445,16 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-06 — Documentation audit: index catch-up, Sentry, classifier closeout
+
+- **LLM presence classifier rollout closed (2026-05-15):** Added banner to Overview section noting the phase-2 NO-GO verdict and permanent `presence_classifier_enabled: False` status. Full closeout record at [`analysis/llm-presence-classifier-rollout-closeout-20260515.md`](analysis/llm-presence-classifier-rollout-closeout-20260515.md).
+- **Sentry error monitoring added to Technology Stack (PR #657, 2026-05-22):** Wired into web, worker, and extraction layers via `src/infra/sentry.py`. Configured via `SENTRY_DSN` env var — see `operations/setup-guide.md` for configuration details.
+- **Architecture index expanded:** Added `extraction-decisions.md`, `image-storage.md`, `image-decision-revalidation-design.md`, `per-metric-image-classifier.md` — all four were present in `docs/architecture/` but unlisted.
+- **Requirements index expanded:** Added `review-ui-authorization-spec.md`, `text-candidate-review-analysis-improvement-spec.md`, `text-decision-analysis-improvement-spec.md`.
+- **Operations index expanded (10 additional entries):** `BATCH_INGESTION.md`, `auth-stage-b-runbook.md`, `auth-stage-c-runbook.md`, `ci-branch-protection.md`, `full-page-ocr-runbook.md`, `metric-classify-pipeline.md`, `metabase-tier1-reporting.md`, `vision-model-selection.md`, and the two phase-1/2 LLM-classifier eval runbooks (archive-reference only, rollout closed).
+- **Slash commands table expanded:** Added `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` — all four have command files in `.claude/commands/` but were not listed in the README.
+- **Coverage requirement corrected:** Changed "Maintain >75% test coverage" to ">80%" to match the enforced minimum in `CLAUDE.md` and `pyproject.toml`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
