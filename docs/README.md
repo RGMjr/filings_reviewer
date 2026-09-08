@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot live; auth Stage A deployed)
+**Last Updated:** 2026-09-08
 
 ---
 
@@ -76,6 +76,18 @@ Instructions for setting up, running, and maintaining the system.
 | **[analytics-ui-runbook.md](operations/analytics-ui-runbook.md)** | Read-only BI role, `v_analytics_*` views, Metabase deployment plan | Developers, Analysts |
 | **[github-org-transfer.md](operations/github-org-transfer.md)** | Decision record + runbook: when/how to migrate from user repo to GitHub org (unlocks merge queue, teams, org rulesets) | DevOps |
 | **[text-pipeline-presence-pivot-plan.md](operations/text-pipeline-presence-pivot-plan.md)** | Text-extraction pivot to per-(doc, metric) presence: rollout plan + PR1 landed-interface contract for downstream PRs | Developers |
+| **[admin-review-runbook.md](operations/admin-review-runbook.md)** | Admin review tool at `/admin/review`: override reviewer decisions, supersede confirmations, audit trail | Developers, DevOps |
+| **[auth-stage-b-runbook.md](operations/auth-stage-b-runbook.md)** | Stage B auth rollout: flip feature flag, verify readiness report, cutover to OAuth login flow | DevOps |
+| **[auth-stage-c-runbook.md](operations/auth-stage-c-runbook.md)** | Stage C auth enforcement: migrate routes from API key gate to session-based auth | Developers, DevOps |
+| **[nightly-sweep-runbook.md](operations/nightly-sweep-runbook.md)** | Nightly known-issues sweeper: selector config, SWEEP_FORCE flag, digest publishing, manual re-run | Developers, DevOps |
+| **[full-page-ocr-runbook.md](operations/full-page-ocr-runbook.md)** | Full-page OCR pipeline: backfill, environment flags, OCR provenance columns | Developers |
+| **[metric-classify-pipeline.md](operations/metric-classify-pipeline.md)** | Per-metric image classification pipeline: ENABLE_METRIC_CLASSIFY flag, vision routing, confidence tuning | Developers |
+| **[llm-presence-classifier-phase1-eval-runbook.md](operations/llm-presence-classifier-phase1-eval-runbook.md)** | Phase-1 evaluation runbook for LLM presence classifier (closed; Option A adopted 2026-05-15) | Developers |
+| **[llm-presence-classifier-phase2-quantitative-eval-runbook.md](operations/llm-presence-classifier-phase2-quantitative-eval-runbook.md)** | Phase-2 quantitative gate runbook for LLM presence classifier (NO-GO verdict; classifier dormant) | Developers |
+| **[metabase-tier1-reporting.md](operations/metabase-tier1-reporting.md)** | Tier-1 disclosure analytics views in Metabase (`v_analytics_tier1_*`) | Analysts, DevOps |
+| **[vision-model-selection.md](operations/vision-model-selection.md)** | Vision model bakeoff results and routing config (`VISION_ROUTING_MODE`) | Developers |
+| **[ci-branch-protection.md](operations/ci-branch-protection.md)** | CI branch protection rules, required status checks, and merge queue configuration | DevOps |
+| **[BATCH_INGESTION.md](operations/BATCH_INGESTION.md)** | Batch ingestion operations: ingest batches table, status tracking, worker config | Developers, DevOps |
 
 ### Human Review System (✅ COMPLETE - Production Ready)
 
@@ -116,7 +128,7 @@ Worker prompt templates are archived at `archive/historical/process/`. Use the A
 - **Corpus Size:** 7,304 in-scope S-1/F-1 filings (2015-2025)
 - **Processing Time:** ~9-17 seconds per filing
 - **Expected Runtime:** 2-5 days for full corpus (with parallelization)
-- **Database:** PostgreSQL with 7 core tables
+- **Database:** PostgreSQL with 15+ V2 core tables
 
 ### Technology Stack
 
@@ -124,7 +136,7 @@ Worker prompt templates are archived at `archive/historical/process/`. Use the A
 - **Database:** PostgreSQL (via psycopg3)
 - **LLM:** OpenAI GPT-4o-mini
 - **Parsing:** BeautifulSoup4, lxml
-- **Testing:** pytest (75%+ coverage, 4,500+ tests)
+- **Testing:** pytest (80%+ coverage enforced, 4,500+ tests)
 
 ### Cost Profile
 
@@ -395,14 +407,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn [cleanup]` | Project-local: capture durable lessons from the current session into project memory, or audit and prune existing memory entries. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that discovers open PRs dynamically; compose with `/loop <interval> /monitor-prs` to babysit without specifying PR numbers. |
+| `/pick-issues [count] [strategy]` | Project-local: select highest-impact known-issue fragments and draft worker prompts. Strategies: `highest-impact`, `parallel-safe`, `xs-only`, `tier1-recall-gap`. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: run the nightly known-issues sweeper manually (same flow as the Render cron). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +437,24 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-08 — Documentation audit: auth/ml modules, missing runbooks, stale stats
+
+- **CLAUDE.md architecture section** updated to include `auth` and `ml` modules (both were present in `src/` but absent from the listing).
+- **Slash Commands table** updated: added `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep` (all have project-local `.claude/commands/` files but were missing from the table).
+- **Operations table** updated: added 13 missing runbooks — `admin-review-runbook.md`, `auth-stage-b-runbook.md`, `auth-stage-c-runbook.md`, `nightly-sweep-runbook.md`, `full-page-ocr-runbook.md`, `metric-classify-pipeline.md`, `llm-presence-classifier-phase1-eval-runbook.md`, `llm-presence-classifier-phase2-quantitative-eval-runbook.md`, `metabase-tier1-reporting.md`, `vision-model-selection.md`, `ci-branch-protection.md`, `BATCH_INGESTION.md` — all landed since v2.8 but were unlisted.
+- **Stats corrected**: "7 core tables" → "15+ V2 core tables"; "75%+ coverage" → "80%+ coverage enforced".
+- **Notable work since v2.8 (not yet in version history):**
+  - Auth Stage A (PR-A1): `auth_users`, `auth_sessions`, `auth_access_entries`, `auth_legacy_aliases`, `feature_flags`, `admin_audit_log` tables; OAuth/OIDC login blueprint; `seed_auth_users.py` / `seed_auth_legacy_aliases.py`; `auth_readiness_report.py`; `backfill_legacy_reviewer_aliases.py`.
+  - Admin review tool (`/admin/review`): `override_reason`, `supersedes_confirmation_id` on `v2_image_metric_confirmations` (PR #597); `admin_review.py` route.
+  - **LLM presence classifier rollout closed (2026-05-15):** Phase-2 quantitative gate returned NO-GO on both live runs; `presence_classifier_enabled` remains `False`; classifier code retained as dormant infrastructure (see `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`).
+  - Tier-1 disclosure analytics views for Metabase (`v_analytics_tier1_*`; PR #618; migration `202605131507_tier1_disclosure_analytics.sql`).
+  - Text-pattern simulation: `simulate-accepted` endpoint, script, and migration `202605121359_add_text_pattern_simulation_runs.sql` (PR #609); Ship-to-PR button on `/v2/review/stats` Patterns tab (PR #638).
+  - Sentry error monitoring wired into web, worker, and extraction (PR #657).
+  - Audit-log `user_id` column added (migration `202605071643_...`); service-account sentinel seeded into `auth_users`.
+  - `src/ml/` module added (`retrain_runner.py`) for image-triage model retrain queue.
+  - Nightly sweeper: fail-fast on expired GH_TOKEN (PR #622); sweep digests continue through 2026-08-11 on remote.
+- **Known-issues backlog:** 134 fragments carry `status: resolved` or `status: closed` and have not been updated to `status: archived`. These should be swept/archived; the nightly sweeper is paused (`SWEEP_FORCE` unset in Render) as of 2026-06-03.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
