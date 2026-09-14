@@ -1,12 +1,12 @@
 # System Architecture Overview
 
-**Version:** 3.1
-**Last Updated:** 2026-04-25
+**Version:** 3.2
+**Last Updated:** 2026-09-14
 **Status:** Production Ready (presence-pivot mid-rollout)
 
 ---
 
-> **Pivot status (2026-04-25):** The system's primary scoring surface is **presence** — per-`(doc_id, canonical_metric_id)` records aggregated from text facts, chart detections, the Vision metric-classifier, and metric definitions, persisted to `v2_text_metric_presence`. Per-value `MetricFact` rows continue as advisory evidence; CMASB-required values flow via manual entry (`POST /api/v2/missed-metric`). Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2–PR5 pending. See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md).
+> **Pivot status (2026-09-14):** The system's primary scoring surface is **presence** — per-`(doc_id, canonical_metric_id)` records aggregated from text facts, chart detections, the Vision metric-classifier, and metric definitions, persisted to `v2_text_metric_presence`. Per-value `MetricFact` rows continue as advisory evidence; CMASB-required values flow via manual entry (`POST /api/v2/missed-metric`). Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182), PR2 (Tier-1 gate flip) **landed**, PR5 (chart-contribution cleanup) **landed**. PR3 (reviewer UI for text presence) and PR4 (Tier-1 definition LLM classifier) are pending. See [`../operations/text-pipeline-presence-pivot-plan.md`](../operations/text-pipeline-presence-pivot-plan.md).
 
 ## Executive Summary
 
@@ -598,6 +598,6 @@ python3 scripts/run_v2_extraction.py
 
 ---
 
-**Last Updated:** 2026-04-25
-**Version:** 3.1
+**Last Updated:** 2026-09-14
+**Version:** 3.2
 **Status:** Production Ready (presence-pivot mid-rollout)

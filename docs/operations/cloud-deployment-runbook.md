@@ -1,7 +1,7 @@
 # Cloud Deployment Runbook
 
 **Infrastructure:** Render (web service + worker + 2 crons, all Ohio region) + Neon (PostgreSQL)
-**Last updated:** 2026-04-22
+**Last updated:** 2026-09-14
 
 ---
 
@@ -15,7 +15,7 @@
 | Region | Ohio — pinned in `render.yaml` via `region: ohio` on every service |
 | Live since | 2026-04-08 |
 | Pre-cutover checklist | Complete |
-| DB | Production Neon — all 21 migrations applied; `html_content` and `image_cache` populated |
+| DB | Production Neon — migrations managed automatically via `src.infra.migrations.migration_files()`; `html_content` and `image_cache` populated |
 | Last smoke test | 2026-04-10 — 8/8 passed |
 
 ### Pre-cutover checklist (run 2026-04-08)
@@ -29,7 +29,7 @@
 
 - Migration 21 (`21_create_image_cache.sql`): table already existed in Neon (applied manually); registered in tracking table and in `apply_all_migrations.py`.
 - Smoke tests: 8/8 passed against `https://filings-reviewer.onrender.com`.
-- Note: Two migration scripts exist — `apply_migrations.py` (canonical, used for Neon; uses `id`+`checksum` schema) and `apply_all_migrations.py` (uses `migration_name` schema, tracks a different ledger). Both are now up-to-date with migration 21.
+- Note: Two migration scripts exist — `apply_migrations.py` (canonical, used for Neon; uses `id`+`checksum` schema) and `apply_all_migrations.py` (uses `migration_name` schema, tracks a different ledger). Migration order is now derived dynamically from `src.infra.migrations.migration_files()` rather than a hardcoded list; both scripts consume this shared source of truth.
 
 ---
 
@@ -73,6 +73,7 @@ Set these in the Render service dashboard under **Environment → Environment Va
 | `DB_POOL_ENABLED` | `true` | |
 | `DB_POOL_MIN_SIZE` | `1` | Keep low on Render free tier |
 | `DB_POOL_MAX_SIZE` | `5` | Neon free tier allows ~10 concurrent connections |
+| `SENTRY_DSN` | `https://...@sentry.io/...` | Optional. Errors-only, PII-scrubbed (`src/infra/sentry.py`). Set in `filings-shared-secrets` env group so it reaches all three services (web, extraction, onboarding-runner). No-op when unset. |
 
 ---
 
@@ -116,7 +117,7 @@ psql "$NEON_DIRECT_URL" -f sql/16_add_8k_form_type.sql
 DATABASE_URL="$NEON_DIRECT_URL" python3 scripts/apply_all_migrations.py
 ```
 
-> **Migration ordering note:** `scripts/apply_all_migrations.py` encodes the canonical order for all 21 migrations, including files with duplicate numeric prefixes (`04`, `08`, `09`, `10`, `11`, `12`). Use it instead of a manual shell loop to avoid ordering mistakes.
+> **Migration ordering note:** `scripts/apply_all_migrations.py` derives canonical order dynamically from `src.infra.migrations.migration_files()` — new migrations placed in `sql/` are picked up automatically. No hardcoded count. Use the script instead of a manual shell loop to avoid ordering mistakes; it safely skips already-applied migrations.
 >
 > If you need to apply a single migration manually, use `psql "$NEON_DIRECT_URL" -f sql/<filename>.sql`.
 

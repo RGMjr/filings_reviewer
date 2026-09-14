@@ -1,13 +1,13 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
+**Version:** 2.9
 **Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-09-14
 
 ---
 
-> **Pivot status (2026-04-25):** The system is mid-pivot from value-extraction-as-primary to **presence-as-primary** — the canonical scoring surface is now per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2 (gold-standard derivation + Tier-1 gate flip), PR3 (reviewer UI for text presence), PR4–PR5 are pending. Known gaps: legacy-097 (residual chart facts), legacy-098 (validator `presence_f1` not yet populated). See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
+> **Pivot status (2026-09-14):** The system's primary scoring surface is **presence** — per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182), PR2 (Tier-1 gate flip) **landed**, PR5 (chart-contribution cleanup) **landed**. PR3 (reviewer UI for text presence) and PR4 (Tier-1 definition LLM classifier) are pending. See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
 
 ## Overview
 
@@ -421,6 +421,19 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-14 — Documentation audit: Sentry, pivot PR status, migration references
+
+- Pivot status banners updated: PR2 (Tier-1 gate flip) and PR5 (chart-contribution cleanup) **landed**; PR3 and PR4 still pending.
+- `docs/README.md` version bumped; resolved known-issues legacy-097 and legacy-098 removed from banner.
+- `docs/architecture/system-overview.md` pivot banner corrected.
+- `docs/operations/cloud-deployment-runbook.md`: added `SENTRY_DSN` to environment variables table; removed stale "21 migrations" count (now dynamic via `src.infra.migrations.migration_files()`).
+- Sentry error monitoring shipped in PR #657 (May 2026): centralised init in `src/infra/sentry.py`, errors-only, PII-scrubbed, gated on `SENTRY_DSN` / `APP_ENV`.
+- Tier-1 disclosure `v_analytics_*` views for Metabase reporting shipped (`202605131507_tier1_disclosure_analytics.sql`).
+- Ship-to-PR button on `/v2/review/stats` Patterns tab landed (PR #638).
+- Simulation UI on `/v2/review/stats` landed (PR #629).
+- Image Confirmations counters redefined to reflect per-metric review flow (PR #648).
+- AR FP exclusion broadened for `cm_revenue_concentration` (PR #647); financial row count binding fix for `cm_customers_period_end` (PR #655).
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
