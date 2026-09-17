@@ -1,13 +1,13 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot established; LLM classifier closed)
+**Last Updated:** 2026-09-17
 
 ---
 
-> **Pivot status (2026-04-25):** The system is mid-pivot from value-extraction-as-primary to **presence-as-primary** — the canonical scoring surface is now per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2 (gold-standard derivation + Tier-1 gate flip), PR3 (reviewer UI for text presence), PR4–PR5 are pending. Known gaps: legacy-097 (residual chart facts), legacy-098 (validator `presence_f1` not yet populated). See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
+> **Pivot status (updated 2026-09-17):** The presence-as-primary pivot is established. Chart-presence is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16); Tier-1 presence-recall regression is the CI gate. The LLM presence classifier was evaluated through Phase 2 and the rollout was **closed** on 2026-05-15 (Option A — zero Tier-1 positives gained; classifier dormant). PRs 2–5 of the original text-presence rollout plan remain as future work. See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md` for the closeout record.
 
 ## Overview
 
@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically (no PR numbers needed). |
+| `/pick-issues` | Project-local: select one or more known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: run the KNOWN_ISSUES sweeper manually (same flow the Render cron runs nightly). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,22 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-17 — Documentation audit: architecture sync, slash commands, version refresh
+
+- `CLAUDE.md` architecture block updated to include `src/auth/` and `src/ml/` (both were present in the codebase but missing from the listing).
+- Slash Commands table updated to include `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep` — all four had `.claude/commands/` files but were absent from this table.
+- Status header updated from "presence-pivot mid-rollout" to "presence-pivot established; LLM classifier closed" to reflect the 2026-05-15 closeout of the LLM presence classifier rollout (Option A adopted; classifier dormant).
+- Version bumped to 2.9; Last Updated set to 2026-09-17.
+- Key completed work since v2.8 not yet captured in version history:
+  - Sentry error monitoring wired into web, worker, and extraction services (#657, 2026-05-22).
+  - Tier-1 disclosure analytics views added for Metabase reporting (#618, 2026-05-13); see `docs/operations/metabase-tier1-reporting.md`.
+  - Ship-to-PR button and simulation UI on `/v2/review/stats` (#638, #629, 2026-05-21/22).
+  - Text-pattern ship-run machinery: `simulate_accepted` endpoint + migration (#609); recommendations ship directly to PRs without manual extraction steps.
+  - LLM presence classifier Phase-2 evaluation concluded with NO-GO verdict on both runs (2026-05-11, 2026-05-14); rollout permanently closed for enrolled Tier-1 metrics — see `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md` and `docs/operations/llm-presence-classifier-phase2-quantitative-eval-runbook.md`.
+  - Sweeper `fail-fast` on expired GH_TOKEN (gh-620 fix, #622) and resolved-fragment GH-issue sync step (#639).
+  - gh-619 provider-aware vision-API guard (#637); gh-612 section_classification heading-markup variant gap (#624).
+  - `DOCUMENTATION_MAINTENANCE.md` audit note: 134 known-issues fragments carry `status: resolved` and have not been transitioned to `status: archived` — the nightly sweeper has been idle since 2026-06-03; operator should re-enable (`SWEEP_FORCE=1` in Render's `filings-claude-secrets` env group) or run `/sweep` manually to drain the backlog.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
