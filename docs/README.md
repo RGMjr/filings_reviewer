@@ -1,13 +1,13 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
-**Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Version:** 2.9
+**Status:** Production Ready (presence-pivot: PR1/PR2/PR5 landed; PR3 pending; LLM classifier rollout closed)
+**Last Updated:** 2026-09-18
 
 ---
 
-> **Pivot status (2026-04-25):** The system is mid-pivot from value-extraction-as-primary to **presence-as-primary** — the canonical scoring surface is now per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2 (gold-standard derivation + Tier-1 gate flip), PR3 (reviewer UI for text presence), PR4–PR5 are pending. Known gaps: legacy-097 (residual chart facts), legacy-098 (validator `presence_f1` not yet populated). See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) for the rollout plan and authoritative interface contract.
+> **Pivot status (2026-09-18):** The system has pivoted from value-extraction-as-primary to **presence-as-primary** — the canonical scoring surface is per-`(doc_id, canonical_metric_id)` detection, with values demoted to advisory evidence and a manual-entry path (`POST /api/v2/missed-metric`) when CMASB needs them. Chart-presence pivot is **live** (#86, 2026-04-23). Text-presence PR1 **landed** (#182, 2026-04-16). PR2 (Tier 1 gate flip to presence-recall) **landed** (2026-04-25). PR5 (MetricPresenceStage chart-contribution removal) **landed**. PR3 (reviewer UI for text presence) still **pending**. PR4 (LLM Tier-1 classifier) **closed/cancelled** — Phase-2 gate returned NO-GO on 2026-05-11 and 2026-05-14; `presence_classifier_enabled` stays `False` indefinitely. See [`operations/text-pipeline-presence-pivot-plan.md`](operations/text-pipeline-presence-pivot-plan.md) and [`analysis/llm-presence-classifier-rollout-closeout-20260515.md`](analysis/llm-presence-classifier-rollout-closeout-20260515.md).
 
 ## Overview
 
@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn [cleanup]` | Capture durable session lessons into project memory, or audit/prune stale memory entries. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically; use with `/loop 8m /monitor-prs`. |
+| `/pick-issues` | Select one or more known-issue fragments and draft worker prompts for dispatch to fresh sessions. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Run the KNOWN_ISSUES sweeper manually (same flow as the Render nightly cron). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,15 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-18 — Documentation audit: slash commands, src modules, pivot status
+
+- **Pivot status updated**: PR2 (Tier 1 gate flip) and PR5 (chart-contribution removal) confirmed landed; PR3 (reviewer UI) still pending; PR4 (LLM Tier-1 classifier) closed as NO-GO after Phase-2 evaluation (2026-05-15). `presence_classifier_enabled` remains `False` indefinitely.
+- **LLM presence classifier rollout closed**: Phase-2 gate returned NO-GO on 2026-05-11 and 2026-05-14 — the classifier caught zero positives the keyword path missed across all 10 enrolled Tier-1 metrics. Full record: `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`.
+- **Post-pivot features landed**: ship-to-PR machinery for accepted recommendations (PR #630), simulation UI on `/v2/review/stats` (PRs #629, #638), Sentry error monitoring wired into web/worker/extraction (PR #657), `v2/review/stats` Image Confirmations counters redefined (PR #648).
+- **Extraction fixes**: provider-aware Vision-API guard (gh-619), financial row count binding (gh-655), AR FP exclusion (gh-647), section-classification heading-markup variant gap (gh-612).
+- **Slash command table corrected**: added `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` (all four were present in `.claude/commands/` but missing from this table).
+- **CLAUDE.md architecture updated**: `src/auth/` and `src/ml/` added to the module list.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
