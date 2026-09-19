@@ -3,7 +3,7 @@ id: 405
 source: gh
 slug: chart-classifier-overflag
 title: Investigate over-flagging by chart classifier (image_features model coefficient signal)
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

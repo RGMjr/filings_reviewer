@@ -3,7 +3,7 @@ id: 461
 source: gh
 slug: flaky-text-decision-patterns-unique-violation
 title: Flaky test_first_run_anchor_null_processes_all_decisions — v2_review_decisions_unique_fact UniqueViolation under xdist
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

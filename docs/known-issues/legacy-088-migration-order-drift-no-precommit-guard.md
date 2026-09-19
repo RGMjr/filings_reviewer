@@ -3,7 +3,7 @@ id: 88
 source: legacy
 slug: migration-order-drift-no-precommit-guard
 title: No pre-commit guard catches sql/ files missing from MIGRATION_ORDER
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: S

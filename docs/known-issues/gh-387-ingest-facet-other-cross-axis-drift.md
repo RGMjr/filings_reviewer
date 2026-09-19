@@ -3,7 +3,7 @@ id: 387
 source: gh
 slug: ingest-facet-other-cross-axis-drift
 title: "/ingest/ facet cascade does not restrict year/form-type tiles to the 'Other' partition"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

@@ -3,7 +3,7 @@ id: 333
 source: gh
 slug: definition-persistence-delete-wrong-column
 title: Migration sort order broke test_definition_persistence and fresh-DB setup
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: S

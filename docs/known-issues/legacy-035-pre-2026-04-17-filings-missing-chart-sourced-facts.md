@@ -9,7 +9,7 @@ note: 'Dissolved by the chart-presence pivot (2026-04-23). Historical filings no
 severity: low
 slug: pre-2026-04-17-filings-missing-chart-sourced-facts
 source: legacy
-status: resolved
+status: archived
 title: Pre-2026-04-17 Filings Missing Chart-Sourced Facts
 touches: []
 updated: '2026-04-23'

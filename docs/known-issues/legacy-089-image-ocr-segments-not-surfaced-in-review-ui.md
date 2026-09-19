@@ -6,7 +6,7 @@ id: 89
 severity: medium
 slug: image-ocr-segments-not-surfaced-in-review-ui
 source: legacy
-status: resolved
+status: archived
 title: Image-OCR Segments + Re-OCR'd Images Not Surfaced in Review UI
 touches:
   - src/web/routes/review_unified.py

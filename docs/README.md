@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
+**Version:** 2.9
 **Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-09-19
 
 ---
 
@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn` | Capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically; babysit "whatever I have open now" without typing PR numbers. |
+| `/pick-issues` | Pick known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Run the KNOWN_ISSUES sweeper manually (same flow as the nightly cron) for ad-hoc backlog drains. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,16 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-19 — Documentation audit: Sentry, stats fixes, slash commands, module inventory
+
+- **Sentry error monitoring wired in** (PR #657, 2026-05-22): `src/infra/sentry.py` integrated into web app, onboarding worker, and extraction cron (errors-only, PII-scrubbed). Documented in `docs/operations/setup-guide.md` and `.claude/rules/infrastructure.md`.
+- **Financial row count binding fix** (PR #655, 2026-05-21): `src/extraction_v2/stages/value_binding.py` — corrected row-count binding for financial tables.
+- **AR FP exclusion** (PR #647, 2026-05-20): `config/metric_keywords.yaml` — added accounts-receivable disambiguation to prevent cross-clause false positives.
+- **Image Confirmations counters redefined** (PR #648, 2026-05-19): `src/infra/db.py`, `src/web/templates/unified_stats.html` — counters now reflect the per-metric review flow. New analytics view: `sql/202605191650_v_analytics_image_review_progress.sql`.
+- Slash commands table corrected: added `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` which were present in `.claude/commands/` but missing from this doc.
+- Architecture module inventory corrected: `src/auth` and `src/ml` added to CLAUDE.md module list.
+- Known-issues fragments: 40 fragments with `status: resolved` updated to `status: archived`.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

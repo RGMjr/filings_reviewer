@@ -3,7 +3,7 @@ id: 205
 source: gh
 slug: dead-v1-conftest-helpers
 title: Dead V1 helper functions in tests/integration/conftest.py
-status: resolved
+status: archived
 severity: low
 autonomy: safe
 estimated: XS
