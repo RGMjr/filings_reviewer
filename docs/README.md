@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically — no need to supply PR numbers. |
+| `/pick-issues` | Project-local: pick one or more known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
+| `/sweep` | Project-local: manually invoke the nightly known-issues sweeper (same logic as the `filings-nightly-sweep` cron). |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit existing memory for stale/redundant entries. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,21 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-20 — Post-pivot features, auth, Sentry, analytics
+
+Major work landed since v2.8 (2026-04-25):
+
+- **LLM presence classifier rollout closed (2026-05-15):** Phase-2 gate verdict was NO-GO; `presence_classifier_enabled` stays `False` indefinitely. Full close-out record in `docs/analysis/llm-presence-classifier-rollout-closeout-20260515.md`. ([PR #632](https://github.com/RGMjr/filings_reviewer/pull/632))
+- **Ship-to-PR machinery** for accepted extraction recommendations: backend endpoint + `/v2/review/stats` Patterns-tab button lets reviewers push extraction suggestions directly to a PR. ([PR #630](https://github.com/RGMjr/filings_reviewer/pull/630), [PR #638](https://github.com/RGMjr/filings_reviewer/pull/638))
+- **Simulation UI** on `/v2/review/stats`: lets analysts preview extraction changes before shipping. ([PR #629](https://github.com/RGMjr/filings_reviewer/pull/629))
+- **Tier-1 disclosure analytics views** for Metabase reporting (`v_analytics_tier1_*`). ([PR #618](https://github.com/RGMjr/filings_reviewer/pull/618))
+- **Sentry error monitoring** wired into web app, worker, and extraction pipeline. ([PR #657](https://github.com/RGMjr/filings_reviewer/pull/657))
+- **`/cleanup` resolved-fragment GH-issue sync** step: cleanup now closes resolved known-issue GH issues automatically. ([PR #639](https://github.com/RGMjr/filings_reviewer/pull/639))
+- **`/commit-proj` subscribe-and-merge** when CI is still running at push time. ([PR #625](https://github.com/RGMjr/filings_reviewer/pull/625))
+- **Image stats counter fix:** Image Confirmations counters redefined to reflect per-metric review flow. ([PR #648](https://github.com/RGMjr/filings_reviewer/pull/648))
+- **New project-local slash commands documented:** `/monitor-prs`, `/pick-issues`, `/sweep`, `/learn` added to the slash commands table above.
+- **CLAUDE.md architecture list corrected:** `src/auth` and `src/ml` added to the `src/` subdirectory inventory.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 
