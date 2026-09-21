@@ -3,7 +3,7 @@ id: 204
 source: gh
 slug: 46-extend-audit-missing-from-apply-migrations
 title: 46_extend_audit_http_method_constraint.sql missing from apply_migrations.py MIGRATIONS list
-status: resolved
+status: archived
 severity: low
 autonomy: safe
 estimated: XS

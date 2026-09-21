@@ -9,7 +9,7 @@ pr_refs:
 severity: low
 slug: local-dev-stuck-batch-recovery-is-manual
 source: legacy
-status: resolved
+status: archived
 title: Local-Dev Stuck-Batch Recovery Is Manual
 touches:
 - docs/operations/*

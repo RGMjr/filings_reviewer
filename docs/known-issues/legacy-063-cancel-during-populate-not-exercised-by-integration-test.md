@@ -7,7 +7,7 @@ note: Monkey-patch integration test; mid-complexity
 severity: low
 slug: cancel-during-populate-not-exercised-by-integration-test
 source: legacy
-status: resolved
+status: archived
 pr_refs:
 - 337
 title: Cancel-During-Populate Not Exercised by Integration Test

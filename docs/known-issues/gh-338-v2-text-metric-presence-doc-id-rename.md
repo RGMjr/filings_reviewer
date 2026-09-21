@@ -3,7 +3,7 @@ id: 338
 source: gh
 slug: v2-text-metric-presence-doc-id-rename
 title: v2_text_metric_presence.doc_id should be renamed to filing_id
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: S

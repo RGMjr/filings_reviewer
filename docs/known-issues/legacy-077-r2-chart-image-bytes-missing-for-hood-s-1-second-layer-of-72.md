@@ -12,7 +12,7 @@ pr_refs:
 severity: high
 slug: r2-chart-image-bytes-missing-for-hood-s-1-second-layer-of-72
 source: legacy
-status: resolved
+status: archived
 title: 'R2 Chart-Image Bytes Missing for HOOD S-1 (Second Layer of #72)'
 touches: []
 updated: '2026-04-22'

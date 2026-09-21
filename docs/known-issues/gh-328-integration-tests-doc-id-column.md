@@ -3,7 +3,7 @@ id: 328
 source: gh
 slug: integration-tests-doc-id-column
 title: Integration tests broken by doc_id column removal from v2_metric_facts
-status: resolved
+status: archived
 severity: high
 autonomy: n/a
 estimated: M

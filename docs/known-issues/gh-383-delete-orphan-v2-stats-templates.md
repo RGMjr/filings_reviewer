@@ -3,7 +3,7 @@ id: 383
 source: gh
 slug: delete-orphan-v2-stats-templates
 title: Delete orphan legacy templates v2_stats.html and v2_filing_list.html
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

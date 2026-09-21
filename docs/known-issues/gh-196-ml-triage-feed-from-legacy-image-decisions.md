@@ -7,7 +7,7 @@ id: 196
 severity: medium
 slug: ml-triage-feed-from-legacy-image-decisions
 source: gh
-status: resolved
+status: archived
 title: ML image-triage training pipeline reads legacy v2_image_review_decisions
 touches:
   - scripts/export_image_training_data.py

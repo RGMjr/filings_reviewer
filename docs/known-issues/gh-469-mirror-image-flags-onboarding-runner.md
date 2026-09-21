@@ -3,7 +3,7 @@ id: 469
 source: gh
 slug: mirror-image-flags-onboarding-runner
 title: Mirror image-extraction env flags onto filings-onboarding-runner (gh-441/gh-442 scope gap)
-status: resolved
+status: archived
 severity: high
 autonomy: review
 estimated: S

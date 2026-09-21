@@ -6,7 +6,7 @@ id: 101
 severity: high
 slug: extraction-cron-silent-success-on-pipeline-error
 source: legacy
-status: resolved
+status: archived
 title: Extraction Cron Reports Success With 0 Facts on Fatal Pipeline Error
 touches:
   - scripts/batch_v2_extraction.py

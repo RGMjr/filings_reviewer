@@ -9,7 +9,7 @@ pr_refs:
 severity: low
 slug: chart-call-limit-10-truncates-ocr-on-high-chart-filings
 source: legacy
-status: resolved
+status: archived
 title: Chart OCR dollar budget may truncate non-Tier-1 presence signals on high-chart filings
 touches: []
 updated: '2026-05-07'

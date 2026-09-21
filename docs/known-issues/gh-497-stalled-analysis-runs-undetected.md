@@ -3,7 +3,7 @@ id: 497
 source: gh
 slug: stalled-analysis-runs-undetected
 title: No proactive alert on stalled text_decision_analysis_runs / model_training_runs / v2_ingest_batches rows
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

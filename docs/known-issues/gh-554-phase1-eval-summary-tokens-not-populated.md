@@ -3,7 +3,7 @@ id: 554
 source: gh
 slug: phase1-eval-summary-tokens-not-populated
 title: "Phase-1 eval: surface token counts in summary.tokens rollup"
-status: resolved
+status: archived
 pr_refs:
   - 586
 severity: low
