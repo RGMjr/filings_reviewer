@@ -3,7 +3,7 @@ id: 445
 source: gh
 slug: image-triage-test-pollution-from-cache-dir
 title: test_gate_on_but_model_absent_falls_back_to_heuristic fails under full pytest run due to data/image_model/_cache/ pollution
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

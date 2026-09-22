@@ -6,7 +6,7 @@ Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclo
 
 ## Architecture
 
-Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, shared, web, llm, gold_standard). Config in `config/metric_keywords.yaml`. See `docs/README.md` for full index.
+Source lives in `src/` (auth, extraction_v2, filing_fetcher, gold_standard, infra, llm, ml, review, shared, universe, web). Config in `config/metric_keywords.yaml`. See `docs/README.md` for full index.
 
 **Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 

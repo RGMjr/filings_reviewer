@@ -395,14 +395,18 @@ Workflow commands for common tasks:
 | `/cleanup` | Project-local: prune merged branches, stale remote-tracking refs, and dead Claude worktrees. Safe to re-run. |
 | `/commit-proj` | Project-local: auto-branch off main, commit, push, open PR, enable auto-merge. Renamed from `/commit` to disambiguate from the global skill of the same name. See [CONTRIBUTING.md](development/CONTRIBUTING.md#committing-via-commit-claude-code). |
 | `/doc-audit` | Run documentation freshness audit (reports staleness, does not auto-fix) |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit/prune stale entries. |
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically (no PR numbers needed). Compose with `/loop 8m /monitor-prs`. |
+| `/pick-issues` | Project-local: select one or more known-issue fragments and draft worker prompts ready to dispatch to fresh sessions. |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/sweep` | Project-local: manually invoke the nightly KNOWN_ISSUES sweeper (same flow the Render cron runs at 06:00 UTC). |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,13 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-22 — Documentation audit: CLAUDE.md, README slash-command table, known-issues cleanup
+
+- **CLAUDE.md architecture line** updated to include `src/auth` and `src/ml` — both active top-level source directories not previously listed.
+- **Slash command table** (this file) expanded with four previously undocumented project-local commands: `/learn`, `/monitor-prs`, `/pick-issues`, and `/sweep`. Note updated to list all ten project-local commands.
+- **Known-issues fragments**: 134 fragments whose `status:` was `resolved` updated to `archived`, aligning with the lifecycle in `DOCUMENTATION_MAINTENANCE.md`. The nightly sweep only processes `open`/`partially-resolved` fragments, so these were silently bypassed.
+- Version history entry added to capture post-v2.8 auth rollout (Stage A → OAuth → Stages B/C), LLM presence classifier rollout closeout (2026-05-15), and admin review tool (PR #597) — workstreams active between April and June 2026 with no corresponding version bump.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

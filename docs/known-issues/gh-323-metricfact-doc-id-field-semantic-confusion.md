@@ -3,7 +3,7 @@ id: 323
 source: gh
 slug: metricfact-doc-id-field-semantic-confusion
 title: MetricFact.doc_id dataclass field is semantically confused
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —

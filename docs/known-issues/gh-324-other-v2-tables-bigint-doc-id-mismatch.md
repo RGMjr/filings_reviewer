@@ -3,7 +3,7 @@ id: 324
 source: gh
 slug: other-v2-tables-bigint-doc-id-mismatch
 title: Other v2 tables share v2_metric_facts' BIGINT-named-doc_id mismatch
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: M

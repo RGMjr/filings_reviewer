@@ -3,7 +3,7 @@ id: 291
 source: gh
 slug: image-tab-typeahead-consolidate-datalist
 title: Drop redundant /api/v2/metrics/list AJAX from image-tab typeahead
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: —

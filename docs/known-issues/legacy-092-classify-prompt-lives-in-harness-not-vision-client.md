@@ -6,7 +6,7 @@ id: 92
 severity: low
 slug: classify-prompt-lives-in-harness-not-vision-client
 source: legacy
-status: resolved
+status: archived
 title: CLASSIFY_PROMPT Lives in Bake-off Harness — Move to VisionClient When Classify Lands in Prod
 touches:
   - scripts/benchmark_vision.py

@@ -8,7 +8,7 @@ pr_refs:
 severity: medium
 slug: test-db-filings-reviewers-v2-documents-missing
 source: legacy
-status: resolved
+status: archived
 title: test_db_filings_reviewers.py — test_reviewers_aggregates_text_and_image_sources fails on missing v2_documents relation
 touches:
   - tests/integration/test_db_filings_reviewers.py

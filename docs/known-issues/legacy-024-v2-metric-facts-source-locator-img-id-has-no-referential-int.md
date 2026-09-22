@@ -12,7 +12,7 @@ pr_refs:
 severity: low
 slug: v2-metric-facts-source-locator-img-id-has-no-referential-int
 source: legacy
-status: resolved
+status: archived
 title: '`v2_metric_facts.source_locator.img_id` Has No Referential Integrity'
 touches:
   - scripts/check_image_referential_integrity.py

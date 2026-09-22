@@ -7,7 +7,7 @@ note: Root architecture issue; no single-file fix
 severity: low
 slug: mock-server-template-contract-coupling
 source: legacy
-status: resolved
+status: archived
 title: Mock-Server / Template-Contract Coupling
 touches: []
 updated: '2026-04-17'
