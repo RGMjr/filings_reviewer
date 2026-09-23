@@ -130,5 +130,11 @@ cryptography>=49.0.0
 msgpack>=1.2.1
 pyasn1>=0.6.4
 soupsieve>=2.9.0
+# aiohttp: PYSEC-2026-2104-2113/3545-3547 (fixed in 3.14.3).
+# anyio: CVE-2026-63374/64847 (fixed in 4.14.2).
+# click: PYSEC-2026-2132 (fixed in 8.3.3).
+aiohttp>=3.14.3
+anyio>=4.14.2
+click>=8.3.3
 
 # Development and test dependencies are in requirements-dev.txt

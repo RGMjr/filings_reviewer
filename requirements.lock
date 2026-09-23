@@ -2,8 +2,10 @@
 #    uv pip compile requirements.txt -o requirements.lock
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.13.5
-    # via fsspec
+aiohttp==3.14.3
+    # via
+    #   -r requirements.txt
+    #   fsspec
 aiosignal==1.4.0
     # via aiohttp
 annotated-doc==0.0.4
@@ -12,8 +14,9 @@ annotated-types==0.7.0
     # via pydantic
 anthropic==0.97.0
     # via -r requirements.txt
-anyio==4.13.0
+anyio==4.15.1
     # via
+    #   -r requirements.txt
     #   anthropic
     #   google-genai
     #   httpx
@@ -43,8 +46,9 @@ charset-normalizer==3.4.6
     #   -r requirements.txt
     #   pdfminer-six
     #   requests
-click==8.3.1
+click==8.5.0
     # via
+    #   -r requirements.txt
     #   flask
     #   typer
 cryptography==50.0.1
@@ -265,8 +269,9 @@ typer==0.24.1
     # via huggingface-hub
 types-pyyaml==6.0.12.20260408
     # via -r requirements.txt
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
+    #   aiohttp
     #   aiosignal
     #   anthropic
     #   anyio
