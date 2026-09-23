@@ -55,7 +55,8 @@ pymupdf>=1.23.0
 pypdfium2>=4.0.0
 
 # HuggingFace dataset access (optional, used by huggingface_source.py)
-datasets>=2.0.0
+# Pinned >=5.0.1 for PYSEC-2026-3716.
+datasets>=5.0.1
 
 # Application monitoring (optional, used by extraction_v2/logging_config.py)
 sentry-sdk>=1.0.0
@@ -115,9 +116,19 @@ flask-talisman>=1.1.0
 nh3>=0.2.17
 
 # Image processing - parses pixel dimensions from cached image bytes for feature engineering
-Pillow>=12.2.0
+# Pinned >=12.3.0 for PYSEC-2026-2253-2257 / PYSEC-2026-3451-3496 (fixed in 12.3.0).
+Pillow>=12.3.0
 
-# Transitive constraint — pinned to clear CVE-2026-45409 (fixed in 3.15).
+# Transitive constraints — pinned to clear known CVEs.
+# idna: CVE-2026-45409 (fixed in 3.15).
+# cryptography: PYSEC-2026-3553/3554/GHSA-537c-gmf6-5ccf (fixed in 49.0.0).
+# msgpack: PYSEC-2026-3625 (fixed in 1.2.1).
+# pyasn1: PYSEC-2026-3455/3456/3457 (fixed in 0.6.4).
+# soupsieve: PYSEC-2026-3071/3072/CVE-2026-85999/86000 (fixed in 2.9.0).
 idna>=3.17
+cryptography>=49.0.0
+msgpack>=1.2.1
+pyasn1>=0.6.4
+soupsieve>=2.9.0
 
 # Development and test dependencies are in requirements-dev.txt
