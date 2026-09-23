@@ -3,7 +3,7 @@ id: 477
 source: gh
 slug: image-triage-env-vars-module-scope
 title: image_triage.py reads USE_LEARNED_TRIAGE at module scope — env-var changes silently require worker restart
-status: resolved
+status: archived
 severity: high
 autonomy: review
 estimated: S

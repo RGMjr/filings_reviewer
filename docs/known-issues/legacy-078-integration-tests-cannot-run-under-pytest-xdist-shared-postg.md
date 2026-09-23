@@ -6,7 +6,7 @@ id: 78
 severity: medium
 slug: integration-tests-cannot-run-under-pytest-xdist-shared-postg
 source: legacy
-status: resolved
+status: archived
 title: Integration Tests Cannot Run Under pytest-xdist — Shared Postgres Fixtures
 touches: []
 updated: '2026-04-22'

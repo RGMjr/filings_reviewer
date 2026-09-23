@@ -3,7 +3,7 @@ id: 315
 source: gh
 slug: fetcher-writes-r2-keys
 title: Refactor filing_fetcher to write R2 storage keys directly
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: M

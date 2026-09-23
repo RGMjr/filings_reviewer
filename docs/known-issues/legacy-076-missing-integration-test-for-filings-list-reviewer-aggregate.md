@@ -8,7 +8,7 @@ pr_refs: []
 severity: low
 slug: missing-integration-test-for-filings-list-reviewer-aggregate
 source: legacy
-status: resolved
+status: archived
 title: Missing Integration Test for Filings-List Reviewer Aggregate
 touches: []
 updated: '2026-04-22'

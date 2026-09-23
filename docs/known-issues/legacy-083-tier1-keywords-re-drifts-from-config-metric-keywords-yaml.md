@@ -7,7 +7,7 @@ pr_refs: []
 severity: low
 slug: tier1-keywords-re-drifts-from-config-metric-keywords-yaml
 source: legacy
-status: resolved
+status: archived
 title: '`TIER1_KEYWORDS_RE` Drifts From `config/metric_keywords.yaml`'
 touches: []
 updated: '2026-04-24'

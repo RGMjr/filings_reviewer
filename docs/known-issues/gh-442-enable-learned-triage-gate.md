@@ -3,7 +3,7 @@ id: 442
 source: gh
 slug: enable-learned-triage-gate
 title: Enable learned-triage gate in prod (USE_LEARNED_TRIAGE=true) and tune LEARNED_TRIAGE_MIN
-status: resolved
+status: archived
 severity: medium
 autonomy: review
 estimated: S

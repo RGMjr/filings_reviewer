@@ -6,7 +6,7 @@ id: 104
 severity: medium
 slug: presentation-accession-prefix-breaks-v2-image-urls
 source: legacy
-status: resolved
+status: archived
 title: '"presentation:" / "transcript:" Accession Prefix Blocks V2 Image Fetcher'
 touches:
   - src/infra/sec_client.py

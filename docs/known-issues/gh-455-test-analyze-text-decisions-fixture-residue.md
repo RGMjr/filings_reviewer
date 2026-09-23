@@ -3,7 +3,7 @@ id: 455
 source: gh
 slug: test-analyze-text-decisions-fixture-residue
 title: "Integration test: v2_review_decisions fixture leaves residue causing UniqueViolation in test_analyze_text_decision_patterns"
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

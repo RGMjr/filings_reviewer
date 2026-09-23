@@ -10,7 +10,7 @@ pr_refs:
 severity: low
 slug: fix-pr-not-setting-pr-refs-on-resolved-fragment
 source: gh
-status: resolved
+status: archived
 title: Fix-PR Authors Don't Set pr_refs on the Fragment They Resolve
 touches:
   - .claude/commands/commit-proj.md

@@ -7,7 +7,7 @@ note: "Resolved 2026-04-23: not a code regression. Bisect + env comparison prove
 severity: medium
 slug: text-recall-regression-farfetch-robinhood
 source: legacy
-status: resolved
+status: archived
 title: Text Recall Regression on Farfetch + Robinhood Between 04-19 and 04-22 Baselines
 touches:
   - data/gold_standard/v2_baseline.json

@@ -3,7 +3,7 @@ id: 575
 source: gh
 slug: ltv-per-customer-zero-recall
 title: "Phase-1 eval: cm_lifetime_value_per_customer 0 recall on gold corpus"
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: —

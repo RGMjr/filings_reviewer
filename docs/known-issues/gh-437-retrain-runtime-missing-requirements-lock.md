@@ -3,7 +3,7 @@ id: 437
 source: gh
 slug: retrain-runtime-missing-requirements-lock
 title: Retrain dies at startup — requirements.lock missing from runtime Docker image (gh-406 sklearn version check unreachable)
-status: resolved
+status: archived
 severity: high
 autonomy: review
 estimated: S

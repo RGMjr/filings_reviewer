@@ -10,7 +10,7 @@ pr_refs:
 severity: low
 slug: gs-gate-cache-turnover-tolerance
 source: gh
-status: resolved
+status: archived
 title: GS gate has no tolerance band for LLM cache-turnover noise
 touches:
   - src/gold_standard/baseline.py
