@@ -3,7 +3,7 @@ id: 475
 source: gh
 slug: feature-flags-silent-context-error
 title: "auth: feature_flags _read_flag_from_db silently swallows context errors, hides config bugs"
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: S

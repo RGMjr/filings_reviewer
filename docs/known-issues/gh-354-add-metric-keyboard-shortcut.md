@@ -3,7 +3,7 @@ id: 354
 source: gh
 slug: add-metric-keyboard-shortcut
 title: Add keyboard shortcut for "Add metric the classifier missed" button
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: XS

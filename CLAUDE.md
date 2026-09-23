@@ -6,7 +6,10 @@ Python system for analyzing SEC S-1/F-1 filings to assess customer metric disclo
 
 ## Architecture
 
-Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, shared, web, llm, gold_standard). Config in `config/metric_keywords.yaml`. See `docs/README.md` for full index.
+Source lives in `src/` (infra, universe, filing_fetcher, extraction_v2, review, shared, web, llm, gold_standard, auth, ml). Config in `config/metric_keywords.yaml`. See `docs/README.md` for full index.
+
+- **auth** — Google OAuth flow, session management, CSRF, permissions, service-account sentinel, Stage A/B/C enforcement (`admin.py`, `oauth.py`, `sessions.py`, etc.)
+- **ml** — image relevance model retrain runner (`retrain_runner.py`)
 
 **Pipeline (V2):** UniverseBuilder → FilingFetcher → V2Pipeline → V2PersistenceAdapter → Database
 

@@ -1,9 +1,9 @@
 # Customer Metrics Filings Analysis - Documentation
 
 **Project:** SEC Filings Customer Metrics Extraction System
-**Version:** 2.8
+**Version:** 2.9
 **Status:** Production Ready (presence-pivot mid-rollout)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-09-23
 
 ---
 
@@ -398,11 +398,15 @@ Workflow commands for common tasks:
 | `/metric-lifecycle` | Guidance for adding, deprecating, or removing metrics |
 | `/project-tutorial [lesson]` | Interactive project lessons with live codebase walkthroughs (10 topics) |
 | `/supervise-prs` | Project-local: single-shot PR-cohort status check; compose with `/loop <interval> /supervise-prs <prs>` to poll merges, dispatch `/ci-fix` on required-check failures, and hand off to `/cleanup`. |
+| `/learn` | Project-local: capture durable lessons from the current session into project memory, or audit/prune existing memory entries. |
+| `/monitor-prs` | Project-local: single-shot wrapper around `/supervise-prs` that resolves the open-PR list dynamically (no PR numbers needed). Compose with `/loop 8m /monitor-prs`. |
+| `/pick-issues` | Project-local: select one or more known-issue fragments and draft worker prompts ready to dispatch. Supports strategies: `highest-impact`, `parallel-safe`, `xs-only`, `tier1-recall-gap`. |
+| `/sweep` | Project-local: manually invoke the KNOWN_ISSUES nightly sweeper (same flow as the Render cron). Useful for ad-hoc backlog drains and pre-deploy verification. |
 | `/ci-fix` | Global/plugin: iterate ruff / mypy / pytest to green on a red PR, then defer to `/commit-proj`. |
 | `/merge-check` | Global/plugin: pre-merge sanity sweep (CI status, migrations, import integrity, tests, type check, branch freshness). |
 | `/plan-review` | Global/plugin: review and critique a plan before execution. |
 
-> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/metric-lifecycle`, `/project-tutorial`, and `/supervise-prs` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
+> **Note:** `/cleanup`, `/commit-proj`, `/doc-audit`, `/learn`, `/metric-lifecycle`, `/monitor-prs`, `/pick-issues`, `/project-tutorial`, `/supervise-prs`, and `/sweep` are project-local command files under `.claude/commands/`. `/ci-fix`, `/merge-check`, and `/plan-review` are delivered via Claude Code skills/plugins rather than project-local files. `/commit-proj` was renamed from `/commit` to disambiguate from the global skill of the same name.
 
 ### Sub-Agents (`.claude/agents/`)
 
@@ -421,6 +425,13 @@ Specialized sub-agents invoked via the Claude Code Agent tool for targeted tasks
 ---
 
 ## Version History
+
+### v2.9 — 2026-09-23 — Documentation audit: fragment housekeeping, command table, architecture update
+
+- Bulk-archived 134 known-issue fragments that were at `status: resolved` — updated to `status: archived` per `DOCUMENTATION_MAINTENANCE.md`.
+- Added `/learn`, `/monitor-prs`, `/pick-issues`, `/sweep` to the Slash Commands table in this file; updated the footnote to name all ten project-local command files.
+- Updated `CLAUDE.md` architecture line to include `src/auth` and `src/ml`; added one-line descriptions of each.
+- Notable code changes since v2.8 (2026-04-25): LLM presence classifier rollout closed (Option A NO-GO verdict — code retained as dormant infrastructure, `presence_classifier_enabled` stays `False`); Sentry error monitoring wired into web/worker/extraction; `ship-to-PR` button on `/v2/review/stats` Patterns tab; simulation UI on review stats; Phase-2 gate v2 (C3 reframe + dedup + token aggregation); Tier-1 disclosure views for Metabase reporting; provider-aware vision-API guard (gh-619); financial row-count value-binding fix; AR false-positive exclusion; `/cleanup` now syncs resolved-fragment GH-issue state.
 
 ### v2.8 — 2026-04-25 — Documentation aligned with presence pivot
 

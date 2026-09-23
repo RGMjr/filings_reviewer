@@ -3,7 +3,7 @@ id: 314
 source: gh
 slug: drop-filings-html-content-column
 title: Drop filings.html_content column after R2 soak window
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 estimated: S

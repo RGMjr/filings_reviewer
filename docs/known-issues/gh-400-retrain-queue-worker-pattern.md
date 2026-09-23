@@ -3,7 +3,7 @@ id: 400
 source: gh
 slug: retrain-queue-worker-pattern
 title: Move image-classifier retrain off web subprocess onto background worker queue
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

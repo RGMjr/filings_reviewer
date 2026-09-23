@@ -3,7 +3,7 @@ id: 359
 source: gh
 slug: gemini-2-0-flash-deprecated-default
 title: Default gemini-2.0-flash model deprecated for new Gemini API accounts
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

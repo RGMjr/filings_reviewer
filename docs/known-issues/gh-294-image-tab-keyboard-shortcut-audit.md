@@ -3,7 +3,7 @@ id: 294
 source: gh
 slug: image-tab-keyboard-shortcut-audit
 title: "Image tab: keyboard-shortcut audit + parity with text tab"
-status: resolved
+status: archived
 severity: low
 autonomy: n/a
 pr_refs:

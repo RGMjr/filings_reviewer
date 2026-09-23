@@ -3,7 +3,7 @@ id: 366
 source: gh
 slug: vision-routing-mode-test-contamination
 title: Fix VISION_ROUTING_MODE test contamination causing 16 ordering-dependent failures
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

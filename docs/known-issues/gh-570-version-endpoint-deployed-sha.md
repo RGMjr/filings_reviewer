@@ -3,7 +3,7 @@ id: 570
 source: gh
 slug: version-endpoint-deployed-sha
 title: Add /version endpoint exposing deployed git SHA
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

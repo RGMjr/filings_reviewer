@@ -13,7 +13,7 @@ pr_refs:
 severity: low
 slug: residual-chart-facts-after-presence-pivot
 source: legacy
-status: resolved
+status: archived
 title: Residual Chart Facts Remain After Chart-Presence Pivot (Drain Deferred)
 touches: []
 updated: '2026-04-28'

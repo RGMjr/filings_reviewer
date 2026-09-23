@@ -3,7 +3,7 @@ id: 280
 source: gh
 slug: image-level-rejection-signal-ml-training
 title: Image-level rejection signal for ML training (zero-detected-metric images leave no row)
-status: resolved
+status: archived
 severity: medium
 autonomy: n/a
 estimated: —

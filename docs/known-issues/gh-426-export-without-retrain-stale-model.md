@@ -3,7 +3,7 @@ id: 426
 source: gh
 slug: export-without-retrain-stale-model
 title: Export-without-retrain leaves data/image_model/relevance_model.joblib stale
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

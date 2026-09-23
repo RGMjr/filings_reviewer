@@ -3,7 +3,7 @@ id: 464
 source: gh
 slug: sticky-bulk-bar-overlap-on-scroll
 title: "Sticky review header and bulk-action-bar overlap each other on scroll (z-index 1010 vs 1011, same top)"
-status: resolved
+status: archived
 severity: low
 autonomy: skip
 estimated: —

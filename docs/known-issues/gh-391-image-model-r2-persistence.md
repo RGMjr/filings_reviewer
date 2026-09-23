@@ -3,7 +3,7 @@ id: 391
 source: gh
 slug: image-model-r2-persistence
 title: Persist data/image_model/ artifacts to R2 (Render disk is ephemeral)
-status: resolved
+status: archived
 severity: medium
 autonomy: skip
 estimated: —

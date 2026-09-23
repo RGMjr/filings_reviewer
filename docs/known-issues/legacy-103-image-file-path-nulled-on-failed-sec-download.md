@@ -6,7 +6,7 @@ id: 103
 severity: high
 slug: image-file-path-nulled-on-failed-sec-download
 source: legacy
-status: resolved
+status: archived
 title: v2_image_assets.file_path Overwritten to NULL When SEC Download Fails During Force-Reextract
 touches:
   - src/extraction_v2/persistence.py

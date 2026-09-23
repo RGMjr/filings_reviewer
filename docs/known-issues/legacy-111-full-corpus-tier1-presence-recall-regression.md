@@ -7,7 +7,7 @@ note: Symptom self-resolved (cache turnover); structural concern split out to gh
 severity: high
 slug: full-corpus-tier1-presence-recall-regression
 source: legacy
-status: resolved
+status: archived
 title: Full-corpus Tier-1 presence-recall regression on clean main blocks --fail-on-regression gate
 touches:
   - data/gold_standard/v2_baseline.json

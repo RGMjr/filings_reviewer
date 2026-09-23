@@ -8,7 +8,7 @@ pr_refs:
 severity: low
 slug: stale-conftest-checksum-workarounds-after-self-heal
 source: legacy
-status: resolved
+status: archived
 title: Stale checksum-drift workarounds in tests/integration/conftest.py after self-heal landed
 touches:
   - tests/integration/conftest.py

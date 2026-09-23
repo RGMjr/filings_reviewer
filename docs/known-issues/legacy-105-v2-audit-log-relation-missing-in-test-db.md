@@ -6,7 +6,7 @@ id: 105
 severity: low
 slug: v2-audit-log-relation-missing-in-test-db
 source: legacy
-status: resolved
+status: archived
 title: v2_audit_log Relation Missing in Test DB Causes Log Noise
 touches:
   - sql/

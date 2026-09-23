@@ -7,7 +7,7 @@ note: Cross-referenced only; closes when dependents close
 severity: medium
 slug: v2-image-assets-file-path-rooted-in-tmpdir-purged-by-os
 source: legacy
-status: resolved
+status: archived
 title: '`v2_image_assets.file_path` Rooted in TMPDIR (Purged by OS)'
 touches: []
 updated: '2026-04-19'
