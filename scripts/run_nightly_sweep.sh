@@ -311,6 +311,9 @@ fi
 # --- 6. PR the digest (docs-only, minimal flow) ---
 DIGEST_PATH="$DIGEST_DIR/$DATE.md"
 if [[ -f "$DIGEST_PATH" ]]; then
+  if [[ "$NUM_PICKS" == "0" && -z "$STALL_SECTION" ]]; then
+    log "Digest is empty (no picks, no stalls) — skipping PR."
+  else
   DIGEST_BRANCH="claude/sweep-digest/$DATE"
   if git checkout -b "$DIGEST_BRANCH" --quiet 2>/dev/null; then
     git add "$DIGEST_PATH"
@@ -342,6 +345,7 @@ if [[ -f "$DIGEST_PATH" ]]; then
   else
     log "digest branch $DIGEST_BRANCH already exists — skipping PR"
   fi
+  fi  # end: has picks or stall content
 fi
 
 log "Sweep complete. Outcomes: $(python3 -c 'import json, sys; d=json.load(open(sys.argv[1])); print(len([o for o in d if o["outcome"]=="opened"]), "opened,", len([o for o in d if o["outcome"]=="awaiting_review"]), "awaiting,", len([o for o in d if o["outcome"]=="abandoned"]), "abandoned")' "$OUTCOMES_FILE")"
