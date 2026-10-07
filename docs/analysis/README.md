@@ -105,10 +105,19 @@ Closeout for the LLM presence classifier rollout on the 10 enrolled Tier-1 metri
 
 ---
 
+### doc-audit-2026-10-07.md
+
+**Status**: Complete — all checks passed
+**Date**: 2026-10-07
+
+Scheduled documentation freshness audit. Checks: README.md version history staleness, plan files at docs root, slash command table vs `.claude/commands/` consistency, CLAUDE.md architecture vs `src/` directory, known-issues fragments with unarchived resolved/closed status. **5/5 checks passed; no corrective action required.**
+
+---
+
 ## Archive
 
 Completed tasks, superseded reports, and research spikes are in `docs/archive/analysis/`. This includes all HRV-3 through HRV-6 validation docs, IMG-1-x completion summaries, GR-series validation reports, VIS-series chart extraction research, the beyond-SEC spike, and the 2025-12-26 comprehensive evaluation plan.
 
 ---
 
-**Last Updated**: 2026-05-15
+**Last Updated**: 2026-10-07
